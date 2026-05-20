@@ -779,6 +779,34 @@ function hasDiscoveryFilterValue(value) {
   return parseDiscoveryFilterValue(value) !== null
 }
 
+function parseOpenMetric(value) {
+  const normalized = String(value ?? '').trim().toLowerCase().replaceAll(',', '')
+  if (!normalized) return 0
+
+  const numeric = Number.parseFloat(normalized.replace(/[^\d.]/g, ''))
+  if (!Number.isFinite(numeric)) return 0
+
+  if (normalized.includes('억')) return Math.round(numeric * 100000000)
+  if (normalized.includes('만')) return Math.round(numeric * 10000)
+  if (normalized.includes('k')) return Math.round(numeric * 1000)
+  if (normalized.includes('m')) return Math.round(numeric * 1000000)
+
+  return Math.round(numeric)
+}
+
+function deriveHandleFromUrl(value) {
+  const text = String(value || '').trim()
+  if (!text) return '@public.creator'
+
+  try {
+    const url = new URL(text.startsWith('http') ? text : `https://${text}`)
+    const lastSegment = url.pathname.split('/').filter(Boolean).at(-1)
+    return lastSegment ? `@${lastSegment.replace(/^@/, '')}` : '@public.creator'
+  } catch {
+    return text.startsWith('@') ? text : `@${text.replace(/^@/, '')}`
+  }
+}
+
 function App() {
   const [workspace, setWorkspace] = usePersistentState(STORE_KEY, defaultWorkspace)
   const [query, setQuery] = useState('')
@@ -826,6 +854,16 @@ function App() {
   const [youtubeDraft, setYoutubeDraft] = useState({
     apiKey: '',
     lookup: '',
+  })
+  const [publicProfileDraft, setPublicProfileDraft] = useState({
+    profileUrl: '',
+    platform: 'Instagram',
+    name: '',
+    handle: '',
+    category: '리뷰',
+    followers: '',
+    averageViews: '',
+    note: '',
   })
   const [trackingDraft, setTrackingDraft] = useState({
     campaignId: '',
@@ -1210,6 +1248,111 @@ function App() {
     } finally {
       setYoutubeSyncing(false)
     }
+  }
+
+  const savePublicProfileSnapshot = (event) => {
+    event.preventDefault()
+    const followers = parseOpenMetric(publicProfileDraft.followers)
+
+    if (!followers) {
+      showToast('공개 프로필에 보이는 팔로워 수를 입력해주세요.')
+      return
+    }
+
+    const handle = publicProfileDraft.handle || deriveHandleFromUrl(publicProfileDraft.profileUrl)
+    const averageViews =
+      parseOpenMetric(publicProfileDraft.averageViews) || Math.round(followers * 0.18)
+    const existingCreator = creators.find(
+      (creator) =>
+        creator.platform === publicProfileDraft.platform &&
+        creator.handle.toLowerCase() === handle.toLowerCase(),
+    )
+    const collectedAt = nowLabel()
+    const sourceUrl = publicProfileDraft.profileUrl || `${publicProfileDraft.platform} 공개 프로필`
+    const metricSources = [
+      {
+        metric: '팔로워',
+        source: '공개 프로필 화면 확인',
+        method: `${publicProfileDraft.platform} 공개 URL에 표시된 팔로워 수 입력`,
+        confidence: 80,
+        freshness: collectedAt,
+        originalUrl: sourceUrl,
+        value: followers,
+      },
+      {
+        metric: '평균 조회',
+        source: publicProfileDraft.averageViews ? '공개 콘텐츠 화면 확인' : '팔로워 기반 임시 추정',
+        method: publicProfileDraft.averageViews
+          ? '최근 콘텐츠에 표시된 공개 조회 수 입력'
+          : '평균 조회 미입력으로 팔로워 대비 18% 임시 추정',
+        confidence: publicProfileDraft.averageViews ? 74 : 56,
+        freshness: collectedAt,
+        originalUrl: sourceUrl,
+        value: averageViews,
+      },
+    ]
+    const nextCreator = {
+      ...(existingCreator ?? {}),
+      id: existingCreator?.id ?? createId(),
+      name: publicProfileDraft.name || existingCreator?.name || handle.replace('@', ''),
+      handle,
+      avatar:
+        existingCreator?.avatar ||
+        'https://images.unsplash.com/photo-1508214751196-bcfd4ca60f91?auto=format&fit=crop&w=160&q=80',
+      platform: publicProfileDraft.platform,
+      category: publicProfileDraft.category,
+      country: existingCreator?.country ?? 'KR',
+      followers,
+      averageViews,
+      engagement: existingCreator?.engagement ?? 4.5,
+      growth: existingCreator?.growth ?? 0,
+      fit: existingCreator?.fit ?? 80,
+      brandSafety: existingCreator?.brandSafety ?? 92,
+      fakeRisk: existingCreator?.fakeRisk ?? 8,
+      cpm: existingCreator?.cpm ?? 6000,
+      price: existingCreator?.price ?? Math.max(300000, Math.round(averageViews * 18)),
+      audience: existingCreator?.audience ?? '공개 프로필 수치 기반 · 오디언스 인증 필요',
+      city: existingCreator?.city ?? 'KR',
+      lastPost: '공개 수치 수집',
+      status: '공개 데이터 확인',
+      topics: existingCreator?.topics?.length
+        ? existingCreator.topics
+        : ['공개 프로필', '팔로워 수집', publicProfileDraft.category],
+      sourceUrl,
+      sourceCollectedAt: collectedAt,
+      sourceNote: publicProfileDraft.note,
+      metricSources,
+    }
+
+    updateWorkspace((current) => {
+      const nextCreators = existingCreator
+        ? current.creators.map((creator) => (creator.id === existingCreator.id ? nextCreator : creator))
+        : [nextCreator, ...current.creators]
+
+      return appendActivity(
+        {
+          ...current,
+          creators: nextCreators,
+          shortlist: current.shortlist.includes(nextCreator.id)
+            ? current.shortlist
+            : [...current.shortlist, nextCreator.id],
+        },
+        'data',
+        `${nextCreator.name} 공개 팔로워 수집 · ${compactNumber(followers)} · ${sourceUrl}`,
+      )
+    })
+    setSelectedCreatorId(nextCreator.id)
+    setPublicProfileDraft({
+      profileUrl: '',
+      platform: publicProfileDraft.platform,
+      name: '',
+      handle: '',
+      category: publicProfileDraft.category,
+      followers: '',
+      averageViews: '',
+      note: '',
+    })
+    showToast(`${nextCreator.name} 공개 팔로워 수치를 후보 DB에 저장했어요.`)
   }
 
   const createBrand = (event) => {
@@ -3394,6 +3537,92 @@ function App() {
                 <Stat label="데이터 신뢰도" value={`${dataCoverage.confidence}%`} />
                 <Stat label="공식 API 대상" value={`${dataCoverage.officialReady}명`} />
               </div>
+              <form className="public-profile-form" onSubmit={savePublicProfileSnapshot}>
+                <div>
+                  <strong>공개 프로필 팔로워 수집</strong>
+                  <p>Instagram, TikTok, YouTube 등 공개 화면에 보이는 팔로워 수치를 출처 URL과 함께 저장합니다.</p>
+                </div>
+                <label>
+                  <span>프로필 URL</span>
+                  <input
+                    value={publicProfileDraft.profileUrl}
+                    onChange={(event) => setPublicProfileDraft({ ...publicProfileDraft, profileUrl: event.target.value })}
+                    placeholder="https://www.instagram.com/creator"
+                  />
+                </label>
+                <div className="modal-two-col">
+                  <label>
+                    <span>플랫폼</span>
+                    <select
+                      value={publicProfileDraft.platform}
+                      onChange={(event) => setPublicProfileDraft({ ...publicProfileDraft, platform: event.target.value })}
+                    >
+                      {platformOptions.filter((option) => option !== '전체').map((option) => (
+                        <option key={option}>{option}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    <span>카테고리</span>
+                    <select
+                      value={publicProfileDraft.category}
+                      onChange={(event) => setPublicProfileDraft({ ...publicProfileDraft, category: event.target.value })}
+                    >
+                      {categoryOptions.filter((option) => option !== '전체').map((option) => (
+                        <option key={option}>{option}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="modal-two-col">
+                  <label>
+                    <span>크리에이터명</span>
+                    <input
+                      value={publicProfileDraft.name}
+                      onChange={(event) => setPublicProfileDraft({ ...publicProfileDraft, name: event.target.value })}
+                      placeholder="예: 민서로그"
+                    />
+                  </label>
+                  <label>
+                    <span>핸들</span>
+                    <input
+                      value={publicProfileDraft.handle}
+                      onChange={(event) => setPublicProfileDraft({ ...publicProfileDraft, handle: event.target.value })}
+                      placeholder="@creator"
+                    />
+                  </label>
+                </div>
+                <div className="modal-two-col">
+                  <label>
+                    <span>팔로워 수</span>
+                    <input
+                      value={publicProfileDraft.followers}
+                      onChange={(event) => setPublicProfileDraft({ ...publicProfileDraft, followers: event.target.value })}
+                      placeholder="12.4만 또는 124000"
+                    />
+                  </label>
+                  <label>
+                    <span>평균 조회</span>
+                    <input
+                      value={publicProfileDraft.averageViews}
+                      onChange={(event) => setPublicProfileDraft({ ...publicProfileDraft, averageViews: event.target.value })}
+                      placeholder="선택 입력"
+                    />
+                  </label>
+                </div>
+                <label>
+                  <span>확인 메모</span>
+                  <input
+                    value={publicProfileDraft.note}
+                    onChange={(event) => setPublicProfileDraft({ ...publicProfileDraft, note: event.target.value })}
+                    placeholder="예: 공개 프로필 상단 팔로워 수 확인"
+                  />
+                </label>
+                <button className="primary-button" type="submit">
+                  <Database size={17} />
+                  공개 수치 저장
+                </button>
+              </form>
               <form className="youtube-sync-form" onSubmit={syncYouTubeChannel}>
                 <div>
                   <strong>YouTube 공식 지표 가져오기</strong>

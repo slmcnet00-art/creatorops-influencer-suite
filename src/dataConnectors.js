@@ -82,21 +82,22 @@ export function buildCreatorSourceEvidence(creator) {
   const isYouTube = creator.platform === 'YouTube'
   const isConnectedPlatform = isYouTube
   const publicSnapshotSource = `${creator.platform} 공개 프로필 스냅샷`
+  const sourceOverride = (metric) => creator.metricSources?.find((source) => source.metric === metric)
 
   return [
     {
       metric: '팔로워',
-      source: isConnectedPlatform ? 'YouTube Data API 검증 대상' : publicSnapshotSource,
-      method: isConnectedPlatform ? 'channels.list statistics' : '공개 프로필/미디어킷 주기 수집',
-      confidence: isConnectedPlatform ? 96 : 72,
-      freshness: isConnectedPlatform ? '일 1회 갱신' : '주 1회 스냅샷',
+      source: sourceOverride('팔로워')?.source ?? (isConnectedPlatform ? 'YouTube Data API 검증 대상' : publicSnapshotSource),
+      method: sourceOverride('팔로워')?.method ?? (isConnectedPlatform ? 'channels.list statistics' : '공개 프로필/미디어킷 주기 수집'),
+      confidence: sourceOverride('팔로워')?.confidence ?? (isConnectedPlatform ? 96 : 72),
+      freshness: sourceOverride('팔로워')?.freshness ?? (isConnectedPlatform ? '일 1회 갱신' : '주 1회 스냅샷'),
     },
     {
       metric: '평균 조회',
-      source: isConnectedPlatform ? 'YouTube videos.list 계산' : '최근 콘텐츠 공개 지표 계산',
-      method: '최근 N개 콘텐츠 중앙값/평균값 혼합',
-      confidence: isConnectedPlatform ? 92 : 70,
-      freshness: '캠페인 후보 갱신 시',
+      source: sourceOverride('평균 조회')?.source ?? (isConnectedPlatform ? 'YouTube videos.list 계산' : '최근 콘텐츠 공개 지표 계산'),
+      method: sourceOverride('평균 조회')?.method ?? '최근 N개 콘텐츠 중앙값/평균값 혼합',
+      confidence: sourceOverride('평균 조회')?.confidence ?? (isConnectedPlatform ? 92 : 70),
+      freshness: sourceOverride('평균 조회')?.freshness ?? '캠페인 후보 갱신 시',
     },
     {
       metric: '참여율',

@@ -2030,7 +2030,8 @@
   padding: 12px;
 }
 
-.youtube-sync-form {
+.youtube-sync-form,
+.public-profile-form {
   display: grid;
   gap: 10px;
   padding: 14px;
@@ -2039,35 +2040,49 @@
   background: var(--accent-soft);
 }
 
+.public-profile-form {
+  border-color: rgba(47, 191, 113, 0.24);
+  background: var(--green-soft);
+}
+
 .youtube-sync-form strong,
 .youtube-sync-form p,
-.youtube-sync-form span {
+.youtube-sync-form span,
+.public-profile-form strong,
+.public-profile-form p,
+.public-profile-form span {
   display: block;
 }
 
-.youtube-sync-form strong {
+.youtube-sync-form strong,
+.public-profile-form strong {
   color: var(--text-strong);
 }
 
-.youtube-sync-form p {
+.youtube-sync-form p,
+.public-profile-form p {
   margin: 5px 0 0;
   color: var(--text);
   font-size: 13px;
   line-height: 1.45;
 }
 
-.youtube-sync-form label {
+.youtube-sync-form label,
+.public-profile-form label {
   display: grid;
   gap: 6px;
 }
 
-.youtube-sync-form span {
+.youtube-sync-form span,
+.public-profile-form span {
   color: var(--text-soft);
   font-size: 12px;
   font-weight: 800;
 }
 
-.youtube-sync-form input {
+.youtube-sync-form input,
+.public-profile-form input,
+.public-profile-form select {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: 8px;
