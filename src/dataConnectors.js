@@ -25,6 +25,51 @@ export const competitorDataBlueprints = [
   },
 ]
 
+export const marketBenchmarkBlueprints = [
+  {
+    market: 'Korea',
+    competitor: 'REVU',
+    pattern: '공개모집형 체험단과 섭외형 REVU Select를 분리',
+    supplement: '캠페인 타입을 공개모집/제안형/앰배서더/커머스로 나누고, 지원자 검토 흐름을 추가',
+    status: '캠페인 타입 반영',
+  },
+  {
+    market: 'Korea',
+    competitor: 'TAGby',
+    pattern: '타겟 설정, 미션, 리워드, 게시물 모니터링, 통계 보고서가 한 흐름',
+    supplement: '캠페인 생성 시 미션/리워드/검수 플로우를 저장하고 상세에서 바로 확인',
+    status: '미션/리워드 반영',
+  },
+  {
+    market: 'Global',
+    competitor: 'Aspire',
+    pattern: '인바운드 마켓플레이스와 아웃바운드 탐색을 함께 운영',
+    supplement: '지원형 캠페인과 직접 제안형 캠페인을 같은 파이프라인에서 구분 관리',
+    status: '운영 구조 반영',
+  },
+  {
+    market: 'Global',
+    competitor: 'Upfluence',
+    pattern: '브랜드 팬/고객 기반 크리에이터 발굴과 AI 메일링 어시스턴트',
+    supplement: '브랜드 적합도와 친근한 제안 메시지를 결합하고 고객/팬 소스 필드를 확장 예정',
+    status: '메시지 강화 완료',
+  },
+  {
+    market: 'Global',
+    competitor: 'Influencity',
+    pattern: 'Discovery, IRM/Data, Campaigns, Reports로 분리된 올인원 구조',
+    supplement: '대시보드/발굴/캠페인/리포트/메시지를 독립 화면으로 분리하고 데이터 원장을 추가',
+    status: '화면 구조 반영',
+  },
+  {
+    market: 'Global',
+    competitor: 'GRIN',
+    pattern: '제품 발송, 할인 코드, 커미션, ROI까지 커머스 운영 연결',
+    supplement: '캠페인에 커머스 지표와 리워드/지급 기준을 추가해 ROI 리포트와 연결',
+    status: '커머스 필드 반영',
+  },
+]
+
 export const dataConnectorBlueprints = [
   {
     name: 'YouTube Data API',
@@ -202,6 +247,210 @@ export async function fetchYouTubeChannelSnapshot({ apiKey, lookup }) {
     country: snippet.country || 'KR',
     source: 'YouTube Data API',
   }
+}
+
+export async function searchYouTubeCreatorDiscovery({ apiKey, query, maxResults = 8 }) {
+  const cleanKey = String(apiKey || '').trim()
+  const cleanQuery = String(query || '').trim()
+
+  if (!cleanKey) {
+    throw new Error('YouTube 실제 검색에는 YouTube Data API 키가 필요합니다.')
+  }
+
+  if (!cleanQuery) {
+    throw new Error('검색어를 입력해주세요.')
+  }
+
+  const searchParams = new URLSearchParams({
+    part: 'snippet',
+    type: 'channel',
+    q: cleanQuery,
+    maxResults: String(Math.min(Math.max(Number(maxResults) || 8, 1), 20)),
+    regionCode: 'KR',
+    relevanceLanguage: 'ko',
+    key: cleanKey,
+  })
+
+  const searchResponse = await fetch(`https://www.googleapis.com/youtube/v3/search?${searchParams.toString()}`)
+  const searchPayload = await searchResponse.json()
+
+  if (!searchResponse.ok) {
+    const message = searchPayload?.error?.message || 'YouTube 채널 검색에 실패했습니다.'
+    throw new Error(message)
+  }
+
+  const channelIds = Array.from(
+    new Set((searchPayload.items || []).map((item) => item.id?.channelId).filter(Boolean)),
+  )
+
+  if (!channelIds.length) return []
+
+  const channelParams = new URLSearchParams({
+    part: 'snippet,statistics',
+    id: channelIds.join(','),
+    key: cleanKey,
+  })
+  const channelResponse = await fetch(`https://www.googleapis.com/youtube/v3/channels?${channelParams.toString()}`)
+  const channelPayload = await channelResponse.json()
+
+  if (!channelResponse.ok) {
+    const message = channelPayload?.error?.message || 'YouTube 채널 통계를 가져오지 못했습니다.'
+    throw new Error(message)
+  }
+
+  return (channelPayload.items || []).map((channel) => {
+    const statistics = channel.statistics || {}
+    const snippet = channel.snippet || {}
+    const subscribers = Number(statistics.subscriberCount || 0)
+    const viewCount = Number(statistics.viewCount || 0)
+    const videoCount = Number(statistics.videoCount || 0)
+    const averageViews = videoCount > 0 ? Math.round(viewCount / videoCount) : 0
+    const handle = snippet.customUrl?.startsWith('@')
+      ? snippet.customUrl
+      : `channel/${channel.id}`
+
+    return {
+      id: channel.id,
+      platform: 'YouTube',
+      name: snippet.title || 'YouTube Creator',
+      handle: handle.startsWith('@') ? handle : `@${handle.replace(/^channel\//, '')}`,
+      profileUrl: snippet.customUrl?.startsWith('@')
+        ? `https://www.youtube.com/${snippet.customUrl}`
+        : `https://www.youtube.com/channel/${channel.id}`,
+      avatar: snippet.thumbnails?.high?.url || snippet.thumbnails?.default?.url || '',
+      followers: subscribers,
+      averageViews,
+      totalViews: viewCount,
+      videoCount,
+      description: snippet.description || '',
+      country: snippet.country || 'KR',
+      source: 'YouTube Data API',
+      verifiedMetrics: true,
+    }
+  })
+}
+
+export async function searchGoogleProfileDiscovery({ apiKey, cx, query, platform, maxResults = 8 }) {
+  const cleanKey = String(apiKey || '').trim()
+  const cleanCx = String(cx || '').trim()
+  const cleanQuery = String(query || '').trim()
+  const cleanPlatform = platform === '전체' ? '' : platform
+
+  if (!cleanKey || !cleanCx) {
+    throw new Error('Instagram/TikTok 실제 웹 검색에는 Google Programmable Search API 키와 CX가 필요합니다.')
+  }
+
+  if (!cleanQuery) {
+    throw new Error('검색어를 입력해주세요.')
+  }
+
+  const platformQueries = cleanPlatform
+    ? [cleanPlatform]
+    : ['Instagram', 'TikTok', 'YouTube']
+  const results = []
+
+  for (const itemPlatform of platformQueries) {
+    const siteQuery = getPlatformSiteQuery(itemPlatform)
+    const params = new URLSearchParams({
+      key: cleanKey,
+      cx: cleanCx,
+      q: `${siteQuery} ${cleanQuery}`,
+      num: String(Math.min(Math.max(Number(maxResults) || 8, 1), 10)),
+      gl: 'kr',
+      safe: 'active',
+    })
+    const response = await fetch(`https://www.googleapis.com/customsearch/v1?${params.toString()}`)
+    const payload = await response.json()
+
+    if (!response.ok) {
+      const message = payload?.error?.message || 'Google 공개 웹 검색에 실패했습니다.'
+      throw new Error(message)
+    }
+
+    results.push(
+      ...(payload.items || [])
+        .map((item) => normalizeProfileSearchItem(item, itemPlatform))
+        .filter(Boolean),
+    )
+  }
+
+  return dedupeProfileResults(results).slice(0, Number(maxResults) || 8)
+}
+
+function getPlatformSiteQuery(platform) {
+  if (platform === 'Instagram') return 'site:instagram.com'
+  if (platform === 'TikTok') return 'site:tiktok.com/@'
+  return 'site:youtube.com'
+}
+
+function normalizeProfileSearchItem(item, platform) {
+  const link = item.link || item.formattedUrl || ''
+  if (!link) return null
+
+  try {
+    const url = new URL(link)
+    const hostname = url.hostname.replace(/^www\./, '')
+    const segments = url.pathname.split('/').filter(Boolean)
+
+    if (platform === 'Instagram') {
+      if (!hostname.includes('instagram.com')) return null
+      const handle = segments[0]
+      if (!handle || ['p', 'reel', 'tv', 'stories', 'explore', 'accounts'].includes(handle)) return null
+      return buildSearchResult(item, platform, `@${handle}`, `https://www.instagram.com/${handle}`)
+    }
+
+    if (platform === 'TikTok') {
+      if (!hostname.includes('tiktok.com')) return null
+      const handle = segments.find((segment) => segment.startsWith('@'))
+      if (!handle) return null
+      return buildSearchResult(item, platform, handle, `https://www.tiktok.com/${handle}`)
+    }
+
+    if (platform === 'YouTube') {
+      if (!hostname.includes('youtube.com')) return null
+      const handle = segments.find((segment) => segment.startsWith('@')) || segments.find((segment) => segment.startsWith('UC'))
+      if (!handle) return null
+      const profileUrl = handle.startsWith('@')
+        ? `https://www.youtube.com/${handle}`
+        : `https://www.youtube.com/channel/${handle}`
+      return buildSearchResult(item, platform, handle.startsWith('@') ? handle : `@${handle}`, profileUrl)
+    }
+  } catch {
+    return null
+  }
+
+  return null
+}
+
+function buildSearchResult(item, platform, handle, profileUrl) {
+  const title = stripHtml(item.title || '').replace(/\s*[-|•].*$/, '').trim()
+  return {
+    id: `${platform}:${handle}`,
+    platform,
+    name: title || handle.replace('@', ''),
+    handle,
+    profileUrl,
+    snippet: stripHtml(item.snippet || ''),
+    source: 'Google Programmable Search',
+    verifiedMetrics: false,
+  }
+}
+
+function stripHtml(value) {
+  return String(value || '')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function dedupeProfileResults(results) {
+  const seen = new Set()
+  return results.filter((item) => {
+    const key = `${item.platform}:${item.profileUrl || item.handle}`.toLowerCase()
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
 }
 
 function parseYouTubeLookup(value) {
