@@ -177,6 +177,9 @@ const contactChannelCatalog = {
 
 const contactChannelOptions = Object.values(contactChannelCatalog)
 
+const seedingTypeOptions = ['무가시딩', '유가시딩', '공동구매 셀러', '모집형 체험단']
+const contentGuideChannelOptions = ['Instagram Reels', 'TikTok', 'YouTube Shorts', 'YouTube Longform', 'Blog', 'Multi Channel']
+
 const defaultCreators = [
   {
     id: 1,
@@ -1266,6 +1269,142 @@ function buildFriendlyProposalMessage(creator, brief, campaign) {
 가능한 콘텐츠 형식, 진행 가능 일정, 희망 단가를 알려주시면 그에 맞춰 제안서와 가이드를 바로 정리해드리겠습니다. 감사합니다.`
 }
 
+function buildInfluencerContentGuide({ brand, brief, campaign, creators = [] }) {
+  const seedType = campaign.guideSeedType || '무가시딩'
+  const channel = campaign.guideChannel || 'Instagram Reels'
+  const campaignName = campaign.name || `${brief.product} 인플루언서 캠페인`
+  const oneMessage =
+    campaign.oneMessage ||
+    `${brief.product}는 ${brief.persona || '타깃 고객'}에게 실제 사용 맥락에서 설득되는 선택지입니다.`
+  const rawHooks =
+    campaign.hookPoints ||
+    [
+      `${brief.product}를 처음 봤을 때 생기는 궁금증`,
+      `가격, 성분, 사용성, 상황 중 하나를 첫 3초에 제시`,
+      `직접 사용 장면과 결과 느낌을 과장 없이 연결`,
+      `댓글로 질문이 나올 만한 비교 포인트`,
+    ].join('\n')
+  const hooks = rawHooks
+    .split(/\r?\n/)
+    .map((item) => item.replace(/^[-*•\d.\s]+/, '').trim())
+    .filter(Boolean)
+    .slice(0, 12)
+  const creatorSummary = creators.length
+    ? creators
+        .slice(0, 8)
+        .map((creator) => `- ${creator.name} (${creator.platform}, ${creator.handle})`)
+        .join('\n')
+    : '- 섭외 확정 전이면 채널별 후보에게 공통 전달'
+  const learningContext = buildLearningContext(brief)
+  const seedingRule = {
+    무가시딩:
+      '제품 제공 중심. 금전 리워드가 없는 대신 크리에이터의 자연스러운 사용 경험과 자율 표현을 존중한다. 업로드 강제처럼 보이는 표현은 피하고, 필수 고지/금지 표현만 명확히 전달한다.',
+    유가시딩:
+      '유료 협업. 산출물, 일정, 검수, 수정 범위, 광고/협찬 표기를 명확히 합의한다. 원메시지는 지키되 크리에이터 말투를 살릴 수 있게 예시형으로 제공한다.',
+    '공동구매 셀러':
+      '조회수보다 전환과 구매 맥락이 중요하다. 가격/혜택/사용 시나리오/구매 링크 또는 코드 안내를 자연스럽게 연결하고, 판매 압박보다 문제 해결 흐름을 우선한다.',
+    '모집형 체험단':
+      '다수 크리에이터가 같은 기준으로 제작할 수 있게 공통 미션, 필수 컷, 제출 방식, 마감일을 선명하게 제시한다. 과장된 후기나 결과 보장 표현은 금지한다.',
+  }[seedType]
+  const channelRule = {
+    'Instagram Reels':
+      '첫 1-2초 썸네일/자막 후킹이 중요하다. 세로 9:16, 15-45초, 자막 중심으로 제품 사용 장면과 감정 반응을 빠르게 보여준다.',
+    TikTok:
+      '문제 제기-반전-사용 장면-댓글 유도 흐름이 적합하다. 말투는 짧고 직접적으로, 챌린지/비교/실험형 구성이 잘 맞는다.',
+    'YouTube Shorts':
+      '검색/추천 유입을 고려해 제목형 첫 문장과 명확한 결론이 필요하다. 30-60초 안에 문제, 사용, 판단, CTA를 닫는다.',
+    'YouTube Longform':
+      '상세 리뷰, 비교, 사용 전후 맥락을 충분히 설명한다. 챕터형 구성과 고정댓글 링크/쿠폰 안내를 포함한다.',
+    Blog:
+      '검색형 키워드, 사진 컷, 사용 조건, 장단점, 구매 정보가 중요하다. 제목/소제목/표 형태로 제품 정보를 정리한다.',
+    'Multi Channel':
+      '릴스/틱톡/쇼츠는 첫 3초 후킹과 사용 장면, 블로그/롱폼은 정보 구조와 비교 포인트를 강화한다.',
+  }[channel]
+
+  return `# ${brand.name} ${campaignName} 인플루언서 콘텐츠 가이드
+
+## 1. 캠페인 개요
+- 브랜드: ${brand.name}
+- 제품/서비스: ${brief.product || '-'}
+- 협업 유형: ${seedType}
+- 권장 채널: ${channel}
+- 캠페인 목표: ${campaign.objective || brief.goal || '-'}
+- KPI: ${campaign.kpiGoal || '조회수, 댓글, 저장/공유, 전환 링크 클릭, 구매/문의'}
+- 마감/업로드 일정: ${campaign.deadline || '협의'}
+- 리워드/제공 조건: ${campaign.reward || '제품 제공 및 조건 협의'}
+
+## 2. 콘텐츠 원메시지
+${oneMessage}
+
+## 3. 후킹포인트
+${hooks.map((hook, index) => `${index + 1}. ${hook}`).join('\n')}
+
+## 4. ${seedType} 운영 원칙
+${seedingRule}
+
+## 5. ${channel} 제작 방향
+${channelRule}
+
+## 6. 권장 구성
+1. 첫 3초: 가격, 문제, 상황, 비교, 감정 중 하나로 시청 이유를 만든다.
+2. 문제 공감: 타깃 고객이 겪는 불편을 실제 상황으로 보여준다.
+3. 제품 사용: 손에 들고 쓰는 장면, 디테일 컷, 사용 전후 느낌을 담는다.
+4. 판단 근거: 왜 이 제품을 선택할 만한지 한 문장으로 정리한다.
+5. CTA: 댓글 질문, 링크 확인, 쿠폰/공동구매, 저장 유도 중 캠페인 목적에 맞게 마무리한다.
+
+## 7. UGC 공통 가이드라인
+- 영상 비율: 9:16 세로형, 최소 1080×1920 권장
+- 자막: 나레이션 동시 자막 필수, 핵심 키워드는 색상 또는 굵기로 강조
+- 컷 전환: 한 장면 1-3초 기준, "나레이션 한 문장 = 컷 하나" 원칙
+- 제품 노출: 라벨/패키지 정면 노출, 최종 컷에 제품 풀샷 포함
+- 톤: 과장 리액션보다 실험 리포터/뷰티 에디터처럼 담백하게, 감정보다 팩트와 사용 근거 중심
+
+## 8. STEP별 자막/나레이션/연출 가이드
+| STEP | 구간 | 자막/화면 문구 | 나레이션 방향 | 연출 |
+| --- | --- | --- | --- | --- |
+| 1. Hook | 0-3초 | ${hooks[0] || oneMessage} | 시청자가 바로 멈출 수 있게 문제/가격/상황을 단정적으로 제시 | 얼굴 클로즈업, 제품/상황 컷, 강한 자막 |
+| 2. Problem | 3-10초 | 타깃이 겪는 불편 한 문장 | "저도 이럴 때 불편했어요"처럼 공감형으로 연결 | 실제 사용 전 상황, 비교 컷 |
+| 3. Solution | 10-25초 | ${brief.product || '제품'} 핵심 포인트 | 제품이 문제를 어떻게 해결하는지 원메시지 중심으로 설명 | 제품 라벨, 손 사용, 디테일 컷 |
+| 4. Proof | 25-40초 | 근거/성분/수치/사용감 | 과장 없이 사용감과 판단 근거 제시 | 텍스트 그래픽, 전후 느낌, 테스트 컷 |
+| 5. CTA | 마지막 | 댓글/링크/저장/공동구매 안내 | 강요보다 자연스러운 다음 행동 안내 | 제품 풀샷, 고정댓글/링크 안내 |
+
+## 9. 필수 포함 요소
+- 제품명 또는 브랜드명이 자연스럽게 노출되는 장면
+- 원메시지를 크리에이터 본인 말투로 풀어낸 문장
+- 사용 장면 또는 제품 디테일 컷
+- 협찬/광고 표기 등 채널 정책에 맞는 고지
+- 금지 표현을 피한 캡션과 자막
+
+## 10. 금지/주의 표현
+- 의학적 효능, 치료, 즉각 개선, 과장 전후 비교
+- 경쟁사 실명 비방
+- 실제와 다른 가격/혜택/성분/성능 표현
+- 크리에이터가 경험하지 않은 내용을 경험처럼 말하는 표현
+${brief.exclusions ? `- 브랜드 추가 제외 표현: ${brief.exclusions}` : ''}
+
+## 11. 캡션 예시
+${brief.product || '제품'}를 직접 써보면서 가장 먼저 느낀 포인트는 "${oneMessage}"였어요.  
+자세한 사용감과 구매/참여 정보는 본문 또는 고정댓글에서 확인해주세요.
+
+## 12. 필수 키워드
+${keywordList(`${brief.product}, ${brief.keywords}`).slice(0, 8).map((keyword) => `- ${keyword}`).join('\n') || '- 제품명 / 브랜드명 / 캠페인 핵심 키워드'}
+
+## 13. 채널별 체크리스트
+- Instagram Reels/TikTok/Shorts: 9:16, 첫 3초 자막, 제품 사용 장면, 짧은 CTA
+- YouTube Longform: 챕터, 장단점, 링크/쿠폰 고정댓글, 상세 사용 조건
+- Blog: 제목 키워드, 사진 8장 이상, 장단점 표, 구매 정보, 협찬 고지
+
+## 14. 검수/제출
+- 초안 제출: ${campaign.approvalFlow || '브리프 전달 → 초안 검수 → 수정 반영 → 게시 확인'}
+- 제출물: 영상 원본 또는 게시 링크, 썸네일/캡션, 성과 확인용 링크
+- 성과 기록: 조회수, 댓글, 저장/공유, 클릭, 구매/문의 전환
+
+## 15. 배정 후보
+${creatorSummary}
+${learningContext ? `\n## 16. 브랜드 학습자료 반영 메모\n${learningContext}` : ''}
+`
+}
+
 function buildTikTokSellerProposalMessage(creator, brief, campaign) {
   const campaignName = campaign?.name ?? `${brief.product} 공동구매 캠페인`
   const kpiText = campaign?.kpiGoal
@@ -1926,6 +2065,11 @@ function App() {
     sellerRecruitTarget: '',
     brandGuideAttachments: [],
     campaignGuideMaterials: [],
+    guideSeedType: '무가시딩',
+    guideChannel: 'Instagram Reels',
+    oneMessage: '',
+    hookPoints: '',
+    generatedContentGuide: '',
   })
   const [brandDraft, setBrandDraft] = useState({
     name: '',
@@ -3074,6 +3218,39 @@ function App() {
     showToast('인플루언서 브랜드 가이드 양식을 다운로드했어요.')
   }
 
+  const buildCampaignContentGuideFromDraft = (draft = campaignDraft) =>
+    buildInfluencerContentGuide({
+      brand: activeBrand,
+      brief: brandBrief,
+      campaign: draft,
+      creators: getCreatorsByIds(creators, shortlist),
+    })
+
+  const generateCampaignContentGuide = () => {
+    const nextGuide = buildCampaignContentGuideFromDraft()
+    setCampaignDraft((current) => ({
+      ...current,
+      generatedContentGuide: nextGuide,
+    }))
+    showToast('인플루언서 전달용 콘텐츠 가이드를 생성했어요.')
+  }
+
+  const downloadGeneratedCampaignContentGuide = () => {
+    const guide = campaignDraft.generatedContentGuide || buildCampaignContentGuideFromDraft()
+    exportFile(
+      `creatorops-${activeBrand.name || 'brand'}-${campaignDraft.name || 'campaign'}-content-guide.md`,
+      'text/markdown;charset=utf-8',
+      guide,
+    )
+    if (!campaignDraft.generatedContentGuide) {
+      setCampaignDraft((current) => ({
+        ...current,
+        generatedContentGuide: guide,
+      }))
+    }
+    showToast('콘텐츠 가이드를 다운로드했어요.')
+  }
+
   const attachCampaignGuideFile = async (event) => {
     const file = event.target.files?.[0]
     if (!file) return
@@ -3981,6 +4158,25 @@ function App() {
     setModal({ type: 'campaign', campaignId: campaign.id })
   }
 
+  const downloadCampaignContentGuide = (campaign) => {
+    if (!campaign) return
+    const guide =
+      campaign.generatedContentGuide ||
+      buildInfluencerContentGuide({
+        brand: activeBrand,
+        brief: brandBrief,
+        campaign,
+        creators: getCreatorsByIds(creators, campaign.creatorIds ?? []),
+      })
+
+    exportFile(
+      `creatorops-${activeBrand.name || 'brand'}-${campaign.name || 'campaign'}-content-guide.md`,
+      'text/markdown;charset=utf-8',
+      guide,
+    )
+    showToast(`${campaign.name} 콘텐츠 가이드를 다운로드했어요.`)
+  }
+
   const advanceCampaign = (campaignId) => {
     updateWorkspace((current) => {
       const campaign = current.campaigns.find((item) => item.id === campaignId)
@@ -4017,6 +4213,7 @@ function App() {
     const assignedCreators = getCreatorsByIds(creators, shortlist)
     const estimatedCost = assignedCreators.reduce((sum, creator) => sum + creator.price, 0)
     const budget = Number(campaignDraft.budget) || Math.max(estimatedCost, 15000000)
+    const generatedContentGuide = campaignDraft.generatedContentGuide || buildCampaignContentGuideFromDraft(campaignDraft)
     const nextCampaign = {
       id: createId(),
       brandId: activeBrand.id,
@@ -4042,6 +4239,11 @@ function App() {
       targetRevenue: normalizeNumericTarget(campaignDraft.targetRevenue),
       sellerRecruitTarget: Number(campaignDraft.sellerRecruitTarget) || 0,
       brandGuideAttachments: campaignDraft.brandGuideAttachments ?? [],
+      guideSeedType: campaignDraft.guideSeedType,
+      guideChannel: campaignDraft.guideChannel,
+      oneMessage: campaignDraft.oneMessage,
+      hookPoints: campaignDraft.hookPoints,
+      generatedContentGuide,
       progress: 12,
       creatorIds: [...shortlist],
       stages: [Math.max(18, shortlist.length * 8), 8, 3, 1],
@@ -4096,6 +4298,11 @@ function App() {
       sellerRecruitTarget: '',
       brandGuideAttachments: [],
       campaignGuideMaterials: [],
+      guideSeedType: '무가시딩',
+      guideChannel: 'Instagram Reels',
+      oneMessage: '',
+      hookPoints: '',
+      generatedContentGuide: '',
     })
     setModal(null)
     showToast(`${nextCampaign.name} 캠페인을 저장했어요. 새로고침해도 남습니다.`)
@@ -5808,6 +6015,69 @@ function App() {
                   placeholder="예: 여름 신제품 런칭"
                 />
               </label>
+              <div className="campaign-guide-panel content-guide-builder">
+                <div>
+                  <span className="mini-label">Content Guide Generator</span>
+                  <strong>인플루언서 가이드 생성하기</strong>
+                  <p>무가시딩/유가시딩/공동구매 유형과 채널 특성에 맞춰 원메시지, 후킹포인트, 필수 컷, 금지 표현을 전달용 가이드로 작성합니다.</p>
+                </div>
+                <div className="modal-two-col">
+                  <label>
+                    협업 유형
+                    <select
+                      value={campaignDraft.guideSeedType}
+                      onChange={(event) => setCampaignDraft({ ...campaignDraft, guideSeedType: event.target.value })}
+                    >
+                      {seedingTypeOptions.map((option) => (
+                        <option key={option}>{option}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label>
+                    전달 채널
+                    <select
+                      value={campaignDraft.guideChannel}
+                      onChange={(event) => setCampaignDraft({ ...campaignDraft, guideChannel: event.target.value })}
+                    >
+                      {contentGuideChannelOptions.map((option) => (
+                        <option key={option}>{option}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <label>
+                  콘텐츠 원메시지
+                  <input
+                    value={campaignDraft.oneMessage}
+                    onChange={(event) => setCampaignDraft({ ...campaignDraft, oneMessage: event.target.value })}
+                    placeholder="예: 이 제품은 실제 사용 상황에서 가격보다 안정감이 설득 포인트다."
+                  />
+                </label>
+                <label>
+                  후킹포인트
+                  <textarea
+                    value={campaignDraft.hookPoints}
+                    onChange={(event) => setCampaignDraft({ ...campaignDraft, hookPoints: event.target.value })}
+                    placeholder={'예: 첫 3초 가격/혜택 자막\n실제 사용 장면\n비교 포인트\n댓글 유도 질문'}
+                  />
+                </label>
+                <div className="campaign-guide-actions">
+                  <button className="secondary-button compact-button" type="button" onClick={generateCampaignContentGuide}>
+                    <FileText size={16} />
+                    생성하기
+                  </button>
+                  <button className="primary-button compact-button" type="button" onClick={downloadGeneratedCampaignContentGuide}>
+                    <Download size={16} />
+                    가이드 다운로드
+                  </button>
+                </div>
+                {campaignDraft.generatedContentGuide && (
+                  <div className="content-guide-preview">
+                    <span>생성된 가이드 미리보기</span>
+                    <pre>{campaignDraft.generatedContentGuide.slice(0, 900)}</pre>
+                  </div>
+                )}
+              </div>
               <label>
                 예산
                 <input
@@ -6479,6 +6749,23 @@ function App() {
                   </div>
                 </div>
               )}
+              <div className="campaign-guide-detail">
+                <span className="mini-label">Generated Content Guide</span>
+                <strong>인플루언서 전달용 콘텐츠 가이드</strong>
+                <p>
+                  {activeCampaignForModal.guideSeedType ?? '무가시딩'} · {activeCampaignForModal.guideChannel ?? 'Instagram Reels'} · 원메시지/후킹포인트 기반
+                </p>
+                <div className="campaign-guide-actions">
+                  <button
+                    className="primary-button compact-button"
+                    type="button"
+                    onClick={() => downloadCampaignContentGuide(activeCampaignForModal)}
+                  >
+                    <Download size={16} />
+                    전달 가이드 다운로드
+                  </button>
+                </div>
+              </div>
               <div className="assignment-list">
                 <span className="mini-label">배정 크리에이터</span>
                 {getCreatorsByIds(creators, activeCampaignForModal.creatorIds).map((creator) => (

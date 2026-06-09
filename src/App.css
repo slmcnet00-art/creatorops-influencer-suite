@@ -3182,6 +3182,61 @@
   font-weight: 800;
 }
 
+.content-guide-builder {
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.content-guide-builder label {
+  display: grid;
+  gap: 7px;
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.content-guide-builder input,
+.content-guide-builder select,
+.content-guide-builder textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 11px;
+  color: var(--text-strong);
+  background: var(--surface-strong);
+  font: inherit;
+}
+
+.content-guide-builder textarea {
+  min-height: 96px;
+  resize: vertical;
+}
+
+.content-guide-preview {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.content-guide-preview span {
+  display: block;
+  margin-bottom: 7px;
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.content-guide-preview pre {
+  max-height: 220px;
+  margin: 0;
+  overflow: auto;
+  color: var(--text);
+  white-space: pre-wrap;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .youtube-sync-form,
 .public-profile-form {
   display: grid;
