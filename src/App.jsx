@@ -698,6 +698,7 @@ const defaultWorkspace = {
 }
 
 const platformOptions = ['전체', 'YouTube', 'Instagram', 'TikTok']
+const briefPlatformOptions = ['YouTube', 'Instagram', 'TikTok', 'TikTok 셀러']
 const categoryOptions = ['전체', '뷰티', '테크', '푸드', '피트니스', '아웃도어', '펫', '리뷰', '공동구매']
 const campaignStatuses = ['섭외', '콘텐츠 제작', '라이브', '리포트', '완료']
 const campaignTypeOptions = ['제안형', '공개모집', '앰배서더', '커머스/제휴', 'UGC/숏폼', '틱톡 공동구매 셀러']
@@ -1405,32 +1406,6 @@ ${learningContext ? `\n## 16. 브랜드 학습자료 반영 메모\n${learningCo
 `
 }
 
-function buildTikTokSellerProposalMessage(creator, brief, campaign) {
-  const campaignName = campaign?.name ?? `${brief.product} 공동구매 캠페인`
-  const kpiText = campaign?.kpiGoal
-    ? `이번 캠페인 KPI는 ${campaign.kpiGoal}로 잡고 있습니다.`
-    : '이번 캠페인은 조회수와 실제 구매 전환을 함께 보는 구조입니다.'
-  const commerceText = campaign?.commerceMetric ?? '공동구매 코드, 전환 링크, 조회수, 댓글 반응'
-  const learningContext = buildLearningContext(brief)
-  const learningText = learningContext
-    ? `\n\n브랜드 학습자료 기준으로 강조할 포인트와 피해야 할 표현도 함께 맞추겠습니다.\n${learningContext}`
-    : ''
-
-  return `${creator.name}님 안녕하세요. ${brief.brandName}의 ${campaignName} 공동구매/셀러 협업 제안드립니다.
-
-최근 ${creator.platform}에서 ${creator.topics.slice(0, 3).join(', ')} 콘텐츠를 보면서, 단순 노출보다 실제 구매 맥락을 만드는 힘이 있다고 느꼈습니다. 평균 조회 ${compactNumber(creator.averageViews)}, 참여율 ${percent(creator.engagement)} 기준으로 ${brief.product}를 소개했을 때 팔로워 반응과 전환을 함께 기대할 수 있다고 판단했습니다.
-
-${kpiText}
-성과는 ${commerceText} 기준으로 확인하고, 진행 전 제품 포인트/판매 스크립트/필수 고지사항은 저희가 정리해드리겠습니다.${learningText}
-
-가능하시다면 아래 중 편한 번호로 답장 부탁드립니다.
-1. 공동구매 진행 가능
-2. 샘플/조건 먼저 확인 희망
-3. 일정은 어렵지만 다음 제안 수신 가능
-
-진행 가능 일정, 희망 조건, 판매 링크/코드 운영 가능 여부를 알려주시면 바로 맞춰서 정리드리겠습니다.`
-}
-
 function buildRecommendation(creator, brief, campaign) {
   const learningMaterials = getLearningMaterials(brief)
   const learningKeywordText = learningMaterials.map((item) => `${item.keywords}, ${item.doSay}`).join(', ')
@@ -1451,7 +1426,7 @@ function buildRecommendation(creator, brief, campaign) {
   const keywordHits = wantedKeywords.filter((keyword) => creatorText.includes(keyword))
   const exclusionHits = exclusions.filter((keyword) => creatorText.includes(keyword))
   const pendingMetrics = hasPendingMetrics(creator)
-  const platformFit = brief.platforms.includes(creator.platform) ? 18 : -8
+  const platformFit = matchesBriefPlatform(creator, brief.platforms) ? 18 : -8
   const categoryFit = brief.categories.includes(creator.category) ? 18 : -4
   const scaleFit = pendingMetrics ? 4 : creator.followers >= Number(brief.minFollowers) ? 12 : -10
   const budgetFit = pendingMetrics || creator.price <= Number(brief.maxPrice) ? 8 : -12
@@ -1551,6 +1526,11 @@ function stripMarkdown(line) {
     .replace(/^[-*]\s*/, '')
     .replace(/^\d+\.\s*/, '')
     .replace(/^\[[ x]\]\s*/i, '')
+}
+
+function matchesBriefPlatform(creator, platforms = []) {
+  if (platforms.includes(creator.platform)) return true
+  return creator.platform === 'TikTok' && platforms.includes('TikTok 셀러')
 }
 
 async function exportGuideDocx(filenameBase, guide) {
@@ -3468,7 +3448,7 @@ function App() {
           !isExampleCreator(creator) &&
           (pendingMetrics || creator.followers >= Number(brandBrief.minFollowers)) &&
           (pendingMetrics || creator.price <= Number(brandBrief.maxPrice)) &&
-          brandBrief.platforms.includes(creator.platform)
+          matchesBriefPlatform(creator, brandBrief.platforms)
         )
       },
     )
@@ -3492,61 +3472,6 @@ function App() {
       ),
     )
     showToast(`AI가 브랜드 페르소나 기준으로 후보 ${ranked.length}명을 추출했어요.`)
-  }
-
-  const queueBulkTikTokSellerOutreach = () => {
-    const campaign = selectedCampaign
-    if (!campaign) {
-      showToast('틱톡 셀러 대량 섭외를 저장하려면 현재 브랜드에 캠페인을 먼저 생성해주세요.')
-      setModal({ type: 'create' })
-      return
-    }
-
-    const alreadyQueuedCreatorIds = new Set(
-      activeOutreach
-        .filter((item) => item.campaignId === campaign.id)
-        .map((item) => item.creatorId),
-    )
-    const targets = tikTokSellerCandidates
-      .filter((creator) => !alreadyQueuedCreatorIds.has(creator.id))
-      .slice(0, Number(campaign.sellerRecruitTarget || 20) || 20)
-
-    if (!targets.length) {
-      showToast('새로 저장할 틱톡 공동구매 셀러 후보가 없습니다.')
-      return
-    }
-
-    const records = targets.map((creator) => {
-      const message = buildTikTokSellerProposalMessage(creator, brandBrief, campaign)
-      const contactPlan = buildContactPlan(creator, getRecommendedContactChannelId(creator), message, campaign.name)
-
-      return {
-        id: createId() + creator.id,
-        creatorId: creator.id,
-        campaignId: campaign.id,
-        source: '대량 섭외',
-        status: '승인 대기',
-        channel: contactPlan.id,
-        deliveryMode: contactPlan.deliveryMode,
-        complianceNote: contactPlan.notice,
-        message,
-        reason: `틱톡 공동구매 셀러 후보 · 평균 조회 ${compactNumber(creator.averageViews)} · 참여율 ${percent(creator.engagement)} · KPI ${campaign.kpiGoal ?? '미정'}`,
-        createdAt: nowLabel(),
-      }
-    })
-
-    updateWorkspace((current) =>
-      appendActivity(
-        {
-          ...current,
-          outreach: [...records, ...current.outreach],
-          shortlist: Array.from(new Set([...current.shortlist, ...targets.map((creator) => creator.id)])),
-        },
-        'outreach',
-        `${campaign.name} 틱톡 공동구매 셀러 ${records.length}명 대량 섭외 검토함 저장`,
-      ),
-    )
-    showToast(`틱톡 공동구매 셀러 ${records.length}명을 메시지 검토함에 저장했어요.`)
   }
 
   const buildRecommendationOutreachRecord = (recommendation, creator, campaign) => {
@@ -4892,10 +4817,6 @@ function App() {
                 <h2>브랜드 조건 설정</h2>
               </div>
               <div className="panel-heading-actions">
-                <button className="secondary-button compact-button" type="button" onClick={queueBulkTikTokSellerOutreach}>
-                  <Send size={16} />
-                  틱톡 셀러 대량 저장
-                </button>
                 <button className="primary-button compact-button" type="button" onClick={runAiDiscovery}>
                   <Target size={16} />
                   AI 매칭 실행
@@ -4968,18 +4889,16 @@ function App() {
             <div className="brief-toggles">
               <div>
                 <span className="mini-label">플랫폼</span>
-                {platformOptions
-                  .filter((option) => option !== '전체')
-                  .map((option) => (
-                    <button
-                      className={`toggle-chip ${brandBrief.platforms.includes(option) ? 'selected' : ''}`}
-                      type="button"
-                      key={option}
-                      onClick={() => toggleBriefList('platforms', option)}
-                    >
-                      {option}
-                    </button>
-                  ))}
+                {briefPlatformOptions.map((option) => (
+                  <button
+                    className={`toggle-chip ${brandBrief.platforms.includes(option) ? 'selected' : ''}`}
+                    type="button"
+                    key={option}
+                    onClick={() => toggleBriefList('platforms', option)}
+                  >
+                    {option}
+                  </button>
+                ))}
               </div>
               <div>
                 <span className="mini-label">카테고리</span>
