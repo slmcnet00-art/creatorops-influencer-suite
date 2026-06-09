@@ -3803,67 +3803,6 @@ function App() {
     setModal({ type: 'fulfillment' })
   }
 
-  const exportCsvReport = () => {
-    const rows = [
-      [
-        'campaign',
-        'status',
-        'owner',
-        'budget',
-        'spend',
-        'revenue',
-        'creator_count',
-        'creators',
-        'deadline',
-        'campaign_type',
-        'mission',
-        'reward',
-        'approval_flow',
-        'commerce_metric',
-        'kpi_goal',
-        'target_views',
-        'target_conversions',
-        'target_orders',
-        'target_revenue',
-        'kpi_progress',
-        'seller_recruit_target',
-      ],
-      ...brandCampaigns.map((campaign) => {
-        const campaignCreators = getCreatorsByIds(creators, campaign.creatorIds)
-          .map((creator) => creator.name)
-          .join(' / ')
-        const kpiSummary = campaignKpiSummaries.find((summary) => summary.campaignId === campaign.id)
-
-        return [
-          campaign.name,
-          campaign.status,
-          campaign.owner,
-          campaign.budget,
-          campaign.spend,
-          campaign.revenue,
-          campaign.creatorIds.length,
-          campaignCreators,
-          campaign.deadline,
-          campaign.campaignType ?? '제안형',
-          campaign.mission ?? '',
-          campaign.reward ?? '',
-          campaign.approvalFlow ?? '',
-          campaign.commerceMetric ?? '',
-          campaign.kpiGoal ?? '',
-          campaign.targetViews ?? 0,
-          campaign.targetConversions ?? 0,
-          campaign.targetOrders ?? 0,
-          campaign.targetRevenue ?? 0,
-          `${kpiSummary?.progress ?? 0}%`,
-          campaign.sellerRecruitTarget ?? 0,
-        ]
-      }),
-    ]
-    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n')
-    exportFile('creatorops-campaign-report.csv', 'text/csv;charset=utf-8', csv)
-    showToast('CSV 리포트를 다운로드했어요.')
-  }
-
   const exportPerformanceReport = () => {
     const rows = [
       [
@@ -4947,15 +4886,8 @@ function App() {
             <button className="icon-button" type="button" title="검색 초기화" onClick={resetSearch}>
               <RefreshCw size={18} />
             </button>
-            <button className="icon-button" type="button" title="CSV 리포트 다운로드" onClick={exportCsvReport}>
-              <Download size={18} />
-            </button>
             <button className="icon-button" type="button" title="데이터 관리" onClick={() => setModal({ type: 'data' })}>
               <Database size={18} />
-            </button>
-            <button className="primary-button" type="button" onClick={() => setModal({ type: 'create' })}>
-              <Plus size={17} />
-              캠페인 생성
             </button>
           </div>
         </header>
@@ -5658,14 +5590,20 @@ function App() {
                 <span className="mini-label">Campaigns</span>
                 <h2>캠페인 파이프라인</h2>
               </div>
-              <button
-                className="icon-button"
-                type="button"
-                title="캠페인 요약"
-                onClick={() => setModal({ type: 'campaignSummary' })}
-              >
-                <MoreHorizontal size={18} />
-              </button>
+              <div className="panel-heading-actions">
+                <button className="primary-button compact-button" type="button" onClick={() => setModal({ type: 'create' })}>
+                  <Plus size={16} />
+                  캠페인 생성
+                </button>
+                <button
+                  className="icon-button"
+                  type="button"
+                  title="캠페인 요약"
+                  onClick={() => setModal({ type: 'campaignSummary' })}
+                >
+                  <MoreHorizontal size={18} />
+                </button>
+              </div>
             </div>
 
             <div className="campaign-list">
@@ -6118,11 +6056,19 @@ function App() {
                   <span>현재 선택된 브랜드에 캠페인을 생성합니다.</span>
                 </div>
               </div>
+              <label>
+                캠페인명
+                <input
+                  value={campaignDraft.name}
+                  onChange={(event) => setCampaignDraft({ ...campaignDraft, name: event.target.value })}
+                  placeholder="예: 여름 신제품 런칭"
+                />
+              </label>
               <div className="campaign-guide-panel">
                 <div>
-                  <span className="mini-label">Influencer Brand Guide</span>
-                  <strong>인플루언서 브랜드 가이드</strong>
-                  <p>캠페인 원메시지, 페르소나, USP, 영상 내러티브, 금지/주의 표현을 정리해 크리에이터 미션과 브랜드 학습자료에 연결합니다.</p>
+                  <span className="mini-label">Creator Delivery Assets</span>
+                  <strong>브랜드 가이드 첨부/양식</strong>
+                  <p>캠페인 원메시지, USP, 금지/주의 표현처럼 크리에이터에게 전달할 자료만 이곳에서 관리합니다.</p>
                 </div>
                 <div className="campaign-guide-actions">
                   <button className="secondary-button compact-button" type="button" onClick={downloadCampaignGuideTemplate}>
@@ -6145,14 +6091,6 @@ function App() {
                   </div>
                 )}
               </div>
-              <label>
-                캠페인명
-                <input
-                  value={campaignDraft.name}
-                  onChange={(event) => setCampaignDraft({ ...campaignDraft, name: event.target.value })}
-                  placeholder="예: 여름 신제품 런칭"
-                />
-              </label>
               <div className="campaign-guide-panel content-guide-builder">
                 <div>
                   <span className="mini-label">Content Guide Generator</span>
@@ -7161,7 +7099,7 @@ function App() {
 function modalTitle(type) {
   return {
     brand: '브랜드 추가',
-    create: '캠페인 생성',
+    create: '캠페인 실행 조건 입력',
     creator: '크리에이터 등록',
     proposal: '제안 보내기',
     tracking: '콘텐츠 추적 등록',
