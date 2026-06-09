@@ -955,6 +955,17 @@ function percent(value) {
   return `${Number(value || 0).toFixed(1)}%`
 }
 
+function contentEngagementRate(post) {
+  const views = Number(post?.views || 0)
+  if (!views) return 0
+  const interactions =
+    Number(post.likes || 0) +
+    Number(post.comments || 0) +
+    Number(post.shares || 0) +
+    Number(post.saves || 0)
+  return (interactions / views) * 100
+}
+
 function normalizeNumericTarget(value) {
   if (value === null || value === undefined || value === '') return 0
   return Number(String(value).replace(/[^\d.-]/g, '')) || 0
@@ -2558,7 +2569,6 @@ function App() {
 
   const selectedCreatorOutreach = activeOutreach.filter((item) => item.creatorId === selectedCreator?.id)
   const selectedCreatorQuotes = activeQuotes.filter((item) => item.creatorId === selectedCreator?.id)
-  const selectedCampaignPosts = activeTrackedPosts.filter((post) => post.campaignId === selectedCampaign?.id)
   const autoOutreachCount = activeOutreach.filter((item) => item.source === '자동').length
   const bulkOutreachCount = activeOutreach.filter((item) => item.source === '대량 섭외').length
   const manualOutreachCount = activeOutreach.filter((item) => item.source !== '자동' && item.source !== '대량 섭외').length
@@ -2596,6 +2606,13 @@ function App() {
         }),
         { views: 0, likes: 0, comments: 0, shares: 0, saves: 0, conversions: 0 },
       ),
+    [activeTrackedPosts],
+  )
+  const trackedAverageEngagement = useMemo(
+    () =>
+      activeTrackedPosts.length
+        ? activeTrackedPosts.reduce((sum, post) => sum + contentEngagementRate(post), 0) / activeTrackedPosts.length
+        : 0,
     [activeTrackedPosts],
   )
 
@@ -3851,15 +3868,24 @@ function App() {
     const rows = [
       [
         'campaign',
+        'campaign_status',
         'creator',
+        'handle',
         'platform',
+        'category',
+        'followers',
+        'creator_average_views',
+        'creator_engagement_rate',
+        'profile_url',
         'content_title',
         'url',
+        'content_status',
         'views',
         'likes',
         'comments',
         'shares',
         'saves',
+        'content_engagement_rate',
         'conversions',
         'last_checked',
       ],
@@ -3868,22 +3894,31 @@ function App() {
         const creator = creators.find((item) => item.id === post.creatorId)
         return [
           campaign?.name ?? '',
+          campaign?.status ?? '',
           creator?.name ?? '',
+          creator?.handle ?? '',
           post.platform,
+          creator?.category ?? '',
+          creator?.followers ?? '',
+          creator?.averageViews ?? '',
+          creator ? percent(creator.engagement) : '',
+          creator?.profileUrl ?? '',
           post.title,
           post.url,
+          post.status,
           post.views,
           post.likes,
           post.comments,
           post.shares,
           post.saves,
+          percent(contentEngagementRate(post)),
           post.conversions,
           post.lastChecked,
         ]
       }),
     ]
     const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n')
-    const html = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>CreatorOps Report</title><style>body{font-family:system-ui,sans-serif;margin:32px;color:#15201d}table{border-collapse:collapse;width:100%}td,th{border:1px solid #dce4e1;padding:8px;text-align:left}th{background:#eef2f1}.metric{display:inline-block;margin:0 16px 16px 0}</style><h1>CreatorOps 성과 보고서</h1><div class="metric"><strong>조회수</strong><br>${compactNumber(trackedTotals.views)}</div><div class="metric"><strong>댓글</strong><br>${compactNumber(trackedTotals.comments)}</div><div class="metric"><strong>공유</strong><br>${compactNumber(trackedTotals.shares)}</div><div class="metric"><strong>전환</strong><br>${compactNumber(trackedTotals.conversions)}</div><table><thead><tr>${rows[0].map((cell) => `<th>${cell}</th>`).join('')}</tr></thead><tbody>${rows.slice(1).map((row) => `<tr>${row.map((cell) => `<td>${cell}</td>`).join('')}</tr>`).join('')}</tbody></table></html>`
+    const html = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>CreatorOps Performance Report</title><style>body{font-family:system-ui,sans-serif;margin:32px;color:#15201d}h1{margin-bottom:4px}.sub{color:#66736f;margin:0 0 22px}.metric{display:inline-block;min-width:140px;margin:0 10px 14px 0;padding:12px;border:1px solid #dce4e1;border-radius:8px;background:#f7faf9}.metric strong{display:block;color:#68736f;font-size:12px}.metric span{display:block;margin-top:5px;font-size:22px;font-weight:800}table{border-collapse:collapse;width:100%;font-size:12px}td,th{border:1px solid #dce4e1;padding:8px;text-align:left;vertical-align:top}th{position:sticky;top:0;background:#eef2f1}a{color:#0071e3}</style><h1>CreatorOps 성과 보고서</h1><p class="sub">${activeBrand.name} · 업로드 인플루언서/계정/링크/성과 지표 상세</p><div class="metric"><strong>업로드 콘텐츠</strong><span>${activeTrackedPosts.length}건</span></div><div class="metric"><strong>조회수</strong><span>${compactNumber(trackedTotals.views)}</span></div><div class="metric"><strong>댓글</strong><span>${compactNumber(trackedTotals.comments)}</span></div><div class="metric"><strong>공유</strong><span>${compactNumber(trackedTotals.shares)}</span></div><div class="metric"><strong>전환</strong><span>${compactNumber(trackedTotals.conversions)}</span></div><table><thead><tr>${rows[0].map((cell) => `<th>${escapeXml(cell)}</th>`).join('')}</tr></thead><tbody>${rows.slice(1).map((row) => `<tr>${row.map((cell, index) => index === 9 || index === 11 ? `<td><a href="${escapeXml(cell)}" target="_blank">${escapeXml(cell)}</a></td>` : `<td>${escapeXml(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></html>`
     exportFile('creatorops-performance-report.csv', 'text/csv;charset=utf-8', csv)
     exportFile('creatorops-performance-report.html', 'text/html;charset=utf-8', html)
     showToast('성과 CSV와 HTML 보고서를 다운로드했어요.')
@@ -5784,6 +5819,10 @@ function App() {
               <Stat label="조회수" value={compactNumber(trackedTotals.views)} />
               <Stat label="댓글" value={compactNumber(trackedTotals.comments)} />
               <Stat label="공유" value={compactNumber(trackedTotals.shares)} />
+              <Stat label="저장" value={compactNumber(trackedTotals.saves)} />
+              <Stat label="전환" value={compactNumber(trackedTotals.conversions)} />
+              <Stat label="평균 참여율" value={percent(trackedAverageEngagement)} />
+              <Stat label="업로드 인플루언서" value={`${new Set(activeTrackedPosts.map((post) => post.creatorId)).size}명`} />
             </div>
 
             <div className="campaign-kpi-report">
@@ -5808,23 +5847,55 @@ function App() {
             </div>
 
             <div className="tracked-content-list">
-              {selectedCampaignPosts.slice(0, 3).map((post) => {
+              {activeTrackedPosts.map((post) => {
                 const creator = creators.find((item) => item.id === post.creatorId)
+                const campaign = brandCampaigns.find((item) => item.id === post.campaignId)
+                const engagementRate = contentEngagementRate(post)
                 return (
                   <article className="tracked-post" key={post.id}>
-                    <div>
-                      <span className="status-chip success-chip">{post.status}</span>
+                    <div className="tracked-post-main">
+                      <div className="tracked-post-head">
+                        <span className="status-chip success-chip">{post.status}</span>
+                        <span className="type-chip">{campaign?.name ?? '캠페인 미지정'}</span>
+                      </div>
                       <strong>{post.title}</strong>
-                      <p>{creator?.name ?? '알 수 없음'} · {post.platform} · {post.lastChecked}</p>
+                      <p>{creator?.name ?? '알 수 없음'} · {creator?.handle ?? '핸들 미입력'} · {post.platform} · {post.lastChecked}</p>
+                      <div className="tracked-account-meta">
+                        <span>팔로워 {creator ? compactNumber(creator.followers) : '-'}</span>
+                        <span>평균 조회 {creator ? compactNumber(creator.averageViews) : '-'}</span>
+                        <span>계정 참여율 {creator ? percent(creator.engagement) : '-'}</span>
+                        <span>{creator?.category ?? '카테고리 미입력'}</span>
+                      </div>
+                      <div className="tracked-links">
+                        {creator?.profileUrl && (
+                          <a href={creator.profileUrl} target="_blank" rel="noreferrer">
+                            계정 보기
+                          </a>
+                        )}
+                        <a href={post.url} target="_blank" rel="noreferrer">
+                          업로드 링크
+                        </a>
+                      </div>
                     </div>
                     <div className="post-metrics">
                       <span>{compactNumber(post.views)} 조회</span>
+                      <span>{compactNumber(post.likes)} 좋아요</span>
                       <span>{compactNumber(post.comments)} 댓글</span>
                       <span>{compactNumber(post.shares)} 공유</span>
+                      <span>{compactNumber(post.saves)} 저장</span>
+                      <span>{compactNumber(post.conversions)} 전환</span>
+                      <strong>{percent(engagementRate)} 참여율</strong>
                     </div>
                   </article>
                 )
               })}
+              {!activeTrackedPosts.length && (
+                <div className="empty-state compact-empty">
+                  <BarChart3 size={22} />
+                  <strong>아직 추적 중인 업로드 콘텐츠가 없습니다.</strong>
+                  <p>콘텐츠 추적 등록에서 인플루언서, 업로드 링크, 조회수/댓글/공유 데이터를 추가하면 상세 보고서가 생성됩니다.</p>
+                </div>
+              )}
             </div>
 
             <div className="insight-strip">
