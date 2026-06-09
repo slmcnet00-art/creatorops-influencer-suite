@@ -1533,6 +1533,131 @@ function matchesBriefPlatform(creator, platforms = []) {
   return creator.platform === 'TikTok' && platforms.includes('TikTok 셀러')
 }
 
+function hasFinalConsonant(value) {
+  const charCode = String(value || '').trim().charCodeAt(String(value || '').trim().length - 1)
+  return Number.isFinite(charCode) && charCode >= 0xac00 && charCode <= 0xd7a3 && (charCode - 0xac00) % 28 > 0
+}
+
+function withKoreanJosa(value, pair) {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  const [withFinal, withoutFinal] = pair.split('/')
+  return `${text}${hasFinalConsonant(text) ? withFinal : withoutFinal}`
+}
+
+function buildInfluencerStrategy({ brand, brief, campaign, creators = [], recommendations = [], learningMaterials = [] }) {
+  const selectedPlatforms = (brief.platforms?.length ? brief.platforms : ['Instagram', 'TikTok']).filter(Boolean)
+  const selectedCategories = (brief.categories?.length ? brief.categories : ['리뷰']).filter((item) => item !== '전체')
+  const realCreators = creators.filter((creator) => !isExampleCreator(creator))
+  const matchedCreators = realCreators.filter((creator) => matchesBriefPlatform(creator, selectedPlatforms))
+  const sellerMode = selectedPlatforms.includes('TikTok 셀러') || campaign?.campaignType?.includes('셀러')
+  const campaignGoal = campaign?.kpiGoal || brief.goal || '조회수와 전환을 함께 보는 캠페인'
+  const budget = Number(campaign?.budget || 0)
+  const maxCreatorFee = Number(brief.maxPrice || 0)
+  const estimatedSlots = maxCreatorFee ? Math.max(3, Math.floor((budget || maxCreatorFee * 5) / Math.max(maxCreatorFee, 1))) : 6
+  const learningKeywords = learningMaterials
+    .map((item) => item.doSay || item.keywords || item.summary)
+    .filter(Boolean)
+    .slice(0, 4)
+  const forbidden = keywordList(brief.exclusions).slice(0, 5)
+  const primaryPlatform = sellerMode ? 'TikTok 셀러' : selectedPlatforms[0] ?? 'Instagram'
+  const productText = brief.product || '제품'
+  const personaText = brief.persona || '핵심 고객'
+  const strategyType = sellerMode
+    ? 'Scale-up / 공동구매 셀러 확장'
+    : campaign?.objective?.includes('전환') || brief.goal?.includes('전환')
+      ? 'Launch-to-Conversion'
+      : 'Launch / 브랜드 인지도 확장'
+
+  const castingMix = [
+    sellerMode
+      ? `TikTok 공동구매 셀러 ${Math.max(10, Number(campaign?.sellerRecruitTarget || 20))}명: 구매 링크/코드 운영 가능 여부를 우선 필터링`
+      : `${primaryPlatform} 메인 크리에이터 ${Math.min(estimatedSlots, 5)}명: 첫 주 Anchor 콘텐츠와 신뢰 증명 담당`,
+    `마이크로/미드 인플루언서 ${Math.max(4, Math.min(12, estimatedSlots * 2))}명: 댓글 질문, 저장/공유, 사용 상황 확산 담당`,
+    `${selectedCategories.slice(0, 3).join(', ') || '브랜드 핏'} 카테고리 후보: 페르소나 적합성과 과거 콘텐츠 톤을 우선 검수`,
+  ]
+
+  const hookLines = [
+    `M2 Number Shock: "${withKoreanJosa(productText, '을/를')} ${personaText} 기준으로 가격/효용 숫자로 먼저 보여주기"`,
+    `M5 Physical Artifact: 실제 제품, 패키지, 사용 장면, 측정표처럼 조작하기 어려운 증거를 첫 5초 안에 노출`,
+    `M7 Specificity Overload: 성분, 사이즈, 사용 기간, 전환 조건처럼 구체 숫자를 자막에 넣기`,
+    `M6 Counter-Instinct Casting: 해당 카테고리에 까다로운 리뷰어가 인정하는 구조로 신뢰 확보`,
+    sellerMode
+      ? 'M3 Stakes: 공동구매 혜택, 마감, 코드 조건을 명확히 보여주되 과장/허위 긴급성은 금지'
+      : 'M1 Confession Arc: 처음엔 의심했지만 실제 사용 후 인정하는 리뷰 흐름',
+  ]
+
+  const kpiPlan = [
+    `도달/조회: ${campaign?.targetViews ? compactNumber(campaign.targetViews) : '캠페인 목표 조회수'} 대비 후보별 예상 조회 기여도 기록`,
+    `참여: 댓글 질문, 저장, 공유를 콘텐츠별로 수집하고 평균 참여율 ${brief.minEngagement || '목표'} 기준으로 비교`,
+    `전환: ${campaign?.commerceMetric || 'UTM 링크, 쿠폰 코드, 공동구매 링크'} 기준으로 주문/문의/클릭을 분리 기록`,
+    `운영: 제안 발송, 응답, 섭외 완료, 콘텐츠 게시, 리포트까지 상태 로그를 남김`,
+  ]
+
+  const budgetPlan = budget
+    ? [
+        `콘텐츠 제작/출연료 55%: ${won(Math.round(budget * 0.55))}`,
+        `마이크로/셀러 확장 25%: ${won(Math.round(budget * 0.25))}`,
+        `성과 리워드/추가 콘텐츠 10%: ${won(Math.round(budget * 0.1))}`,
+        `리포트/운영/예비비 10%: ${won(Math.round(budget * 0.1))}`,
+      ]
+    : [
+        `최대 단가 ${won(maxCreatorFee)} 기준으로 메인 후보와 마이크로 후보를 분리`,
+        '확정 예산 입력 후 메인/확산/성과 리워드 비중을 자동 산정',
+      ]
+
+  return `# ${brand.name || brief.brandName} 인플루언서 전략 초안
+
+## 1. 전략 유형
+- 유형: ${strategyType}
+- 목표: ${campaignGoal}
+- 핵심 제품: ${productText}
+- 타깃 페르소나: ${personaText}
+- 우선 채널: ${selectedPlatforms.join(', ')}
+
+## 2. Big Idea
+${withKoreanJosa(productText, '을/를')} 단순 협찬 리뷰가 아니라 "${withKoreanJosa(personaText, '이/가')} 실제 구매를 결정하는 증거 콘텐츠"로 설계합니다. 첫 콘텐츠는 신뢰 증명, 두 번째 흐름은 사용 상황, 세 번째 흐름은 구매/문의 전환으로 나눕니다.
+
+## 3. 캐스팅 전략
+${castingMix.map((item) => `- ${item}`).join('\n')}
+- 현재 실제 후보 풀: ${matchedCreators.length}명 / AI 추천 후보: ${recommendations.length}명
+
+## 4. 콘텐츠 후킹 포인트
+${hookLines.map((item) => `- ${item}`).join('\n')}
+
+## 5. 채널별 운영
+${selectedPlatforms.map((platform) => {
+    if (platform === 'TikTok 셀러') return '- TikTok 셀러: 대량 후보 발굴 → 메시지 검토함 → 샘플/조건 확인 → 공동구매 링크/코드 운영'
+    if (platform === 'YouTube') return '- YouTube: 5분 이상 상세 리뷰 또는 Shorts 미러링으로 검색형 신뢰 콘텐츠 확보'
+    if (platform === 'Instagram') return '- Instagram: 릴스 첫 3초 후킹, 스토리 리마인드, 저장 유도 Q&A 구성'
+    if (platform === 'TikTok') return '- TikTok: 짧은 문제 제기, 사용 장면, 댓글 유도형 CTA로 반복 노출'
+    return `- ${platform}: 채널 특성에 맞춰 첫 3초 후킹과 CTA를 분리`
+  }).join('\n')}
+
+## 6. KPI 설계
+${kpiPlan.map((item) => `- ${item}`).join('\n')}
+
+## 7. 예산/섭외 구조
+${budgetPlan.map((item) => `- ${item}`).join('\n')}
+
+## 8. 브랜드 학습자료 반영
+${learningKeywords.length ? learningKeywords.map((item) => `- 강조: ${item}`).join('\n') : '- 등록된 학습자료가 없으므로 제품 USP, 금지 표현, 상세페이지 문구를 먼저 넣는 것을 권장'}
+${forbidden.length ? forbidden.map((item) => `- 금지/주의: ${item}`).join('\n') : '- 금지 표현은 캠페인 생성 전 별도 확인'}
+
+## 9. 컴플라이언스 게이트
+- 모든 콘텐츠에 #광고, #협찬 또는 유료광고 포함 표기를 명시
+- 가짜 후기, 무표기 커뮤니티 시딩, 경쟁사 실명 비방은 제외
+- 의학적 효능, 과장 전후 비교, 허위 긴급성 표현은 검수 단계에서 차단
+- 최종 실행 전 GO / MODIFY / HOLD / STOP 컨펌을 받음
+
+## 10. 다음 액션
+1. 실제 후보 발굴에서 공개 프로필 데이터를 수집
+2. AI 매칭 실행으로 후보 리스트 생성
+3. 메시지 검토함에서 제안 문구 확인
+4. 섭외 완료 풀과 콘텐츠 성과를 리포트로 추적
+`
+}
+
 async function exportGuideDocx(filenameBase, guide) {
   const { Document, HeadingLevel, Packer, Paragraph, TextRun } = await import('docx')
   const lines = splitGuideLines(guide)
@@ -2210,6 +2335,7 @@ function App() {
     rawText: '',
     result: null,
   })
+  const [influencerStrategy, setInfluencerStrategy] = useState('')
   const [proposalText, setProposalText] = useState(
     buildFriendlyProposalMessage(defaultCreators[0], defaultBrandBrief, defaultCampaigns[0]),
   )
@@ -3472,6 +3598,39 @@ function App() {
       ),
     )
     showToast(`AI가 브랜드 페르소나 기준으로 후보 ${ranked.length}명을 추출했어요.`)
+  }
+
+  const generateInfluencerStrategy = () => {
+    const strategy = buildInfluencerStrategy({
+      brand: activeBrand,
+      brief: brandBrief,
+      campaign: selectedCampaign,
+      creators,
+      recommendations: activeRecommendations,
+      learningMaterials: activeLearningMaterials,
+    })
+    setInfluencerStrategy(strategy)
+    showToast('브랜드 조건 기반 인플루언서 전략을 생성했어요.')
+  }
+
+  const downloadInfluencerStrategy = () => {
+    const strategy =
+      influencerStrategy ||
+      buildInfluencerStrategy({
+        brand: activeBrand,
+        brief: brandBrief,
+        campaign: selectedCampaign,
+        creators,
+        recommendations: activeRecommendations,
+        learningMaterials: activeLearningMaterials,
+      })
+    exportFile(
+      `creatorops-${safeFilePart(activeBrand.name || brandBrief.brandName)}-influencer-strategy.md`,
+      'text/markdown;charset=utf-8',
+      strategy,
+    )
+    if (!influencerStrategy) setInfluencerStrategy(strategy)
+    showToast('인플루언서 전략 문서를 다운로드했어요.')
   }
 
   const buildRecommendationOutreachRecord = (recommendation, creator, campaign) => {
@@ -4915,6 +5074,36 @@ function App() {
                     </button>
                   ))}
               </div>
+            </div>
+            <div className="strategy-builder">
+              <div className="strategy-builder-head">
+                <div>
+                  <span className="mini-label">Influencer Strategy</span>
+                  <strong>인플루언서 전략 짜기</strong>
+                  <p>브랜드, 제품, 타깃, KPI, 예산, 학습자료를 기준으로 캐스팅 믹스와 콘텐츠 후킹, KPI 운영안을 먼저 정리합니다.</p>
+                </div>
+                <div className="strategy-actions">
+                  <button className="primary-button compact-button" type="button" onClick={generateInfluencerStrategy}>
+                    <Target size={16} />
+                    전략 생성
+                  </button>
+                  <button className="secondary-button compact-button" type="button" onClick={downloadInfluencerStrategy}>
+                    <Download size={16} />
+                    다운로드
+                  </button>
+                </div>
+              </div>
+              {influencerStrategy ? (
+                <div className="strategy-preview">
+                  <span>생성된 전략 미리보기</span>
+                  <pre>{influencerStrategy.slice(0, 1600)}</pre>
+                </div>
+              ) : (
+                <div className="strategy-empty">
+                  <FileText size={18} />
+                  <span>전략을 생성하면 추천 후보를 고르기 전 캐스팅 기준과 콘텐츠 방향이 이곳에 정리됩니다.</span>
+                </div>
+              )}
             </div>
             <div className="learning-materials">
               <div className="learning-head">
