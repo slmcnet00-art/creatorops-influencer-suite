@@ -10,7 +10,9 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "docx": "^9.7.1",
     "lucide-react": "^1.16.0",
+    "pptxgenjs": "^4.0.1",
     "react": "^19.2.6",
     "react-dom": "^19.2.6",
     "read-excel-file": "^9.0.9"

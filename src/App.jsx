@@ -1521,6 +1521,193 @@ function exportFile(filename, mimeType, content) {
   URL.revokeObjectURL(url)
 }
 
+function exportBlob(filename, blob) {
+  const url = URL.createObjectURL(blob)
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
+
+function safeFilePart(value) {
+  return String(value || 'guide')
+    .trim()
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, '-')
+    .slice(0, 80) || 'guide'
+}
+
+function splitGuideLines(guide) {
+  return String(guide || '')
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+}
+
+function stripMarkdown(line) {
+  return line
+    .replace(/^#{1,6}\s*/, '')
+    .replace(/^[-*]\s*/, '')
+    .replace(/^\d+\.\s*/, '')
+    .replace(/^\[[ x]\]\s*/i, '')
+}
+
+async function exportGuideDocx(filenameBase, guide) {
+  const { Document, HeadingLevel, Packer, Paragraph, TextRun } = await import('docx')
+  const lines = splitGuideLines(guide)
+  const children = lines.map((line) => {
+    if (line.startsWith('# ')) {
+      return new Paragraph({
+        text: stripMarkdown(line),
+        heading: HeadingLevel.TITLE,
+        spacing: { after: 240 },
+      })
+    }
+
+    if (line.startsWith('## ')) {
+      return new Paragraph({
+        text: stripMarkdown(line),
+        heading: HeadingLevel.HEADING_2,
+        spacing: { before: 220, after: 120 },
+      })
+    }
+
+    if (/^[-*]\s+/.test(line) || /^\d+\.\s+/.test(line) || /^-\s*\[[ x]\]/i.test(line)) {
+      return new Paragraph({
+        children: [new TextRun(stripMarkdown(line))],
+        bullet: { level: 0 },
+        spacing: { after: 90 },
+      })
+    }
+
+    return new Paragraph({
+      children: [new TextRun(stripMarkdown(line))],
+      spacing: { after: 120 },
+    })
+  })
+
+  const document = new Document({
+    sections: [
+      {
+        properties: {},
+        children,
+      },
+    ],
+  })
+  const blob = await Packer.toBlob(document)
+  exportBlob(`${filenameBase}.docx`, blob)
+}
+
+async function exportGuidePptx(filenameBase, guide) {
+  const { default: pptxgen } = await import('pptxgenjs')
+  const lines = splitGuideLines(guide)
+  const title = stripMarkdown(lines.find((line) => line.startsWith('# ')) || '인플루언서 콘텐츠 가이드')
+  const sections = []
+  let current = { title, bullets: [] }
+
+  lines.forEach((line) => {
+    if (line.startsWith('## ')) {
+      if (current.bullets.length) sections.push(current)
+      current = { title: stripMarkdown(line), bullets: [] }
+      return
+    }
+    if (!line.startsWith('# ')) current.bullets.push(stripMarkdown(line))
+  })
+  if (current.bullets.length) sections.push(current)
+
+  const pptx = new pptxgen()
+  pptx.layout = 'LAYOUT_WIDE'
+  pptx.author = 'CreatorOps'
+  pptx.subject = title
+  pptx.title = title
+  pptx.theme = {
+    headFontFace: 'Aptos Display',
+    bodyFontFace: 'Aptos',
+    lang: 'ko-KR',
+  }
+
+  const cover = pptx.addSlide()
+  cover.background = { color: 'F5F7FA' }
+  cover.addText(title, {
+    x: 0.65,
+    y: 1.15,
+    w: 11.0,
+    h: 0.8,
+    fontFace: 'Aptos Display',
+    fontSize: 32,
+    bold: true,
+    color: '111827',
+    fit: 'shrink',
+  })
+  cover.addText('원메시지, 후킹포인트, 채널별 제작 기준을 한 장표 흐름으로 정리했습니다.', {
+    x: 0.68,
+    y: 2.05,
+    w: 10.2,
+    h: 0.45,
+    fontSize: 15,
+    color: '5B6472',
+    fit: 'shrink',
+  })
+  cover.addShape(pptx.ShapeType.rect, {
+    x: 0.68,
+    y: 3.15,
+    w: 5.4,
+    h: 0.12,
+    color: '0071E3',
+    line: { color: '0071E3' },
+  })
+
+  sections.slice(0, 12).forEach((section, index) => {
+    const slide = pptx.addSlide()
+    slide.background = { color: 'FFFFFF' }
+    slide.addText(`${String(index + 1).padStart(2, '0')}`, {
+      x: 0.55,
+      y: 0.4,
+      w: 0.7,
+      h: 0.35,
+      fontSize: 10,
+      bold: true,
+      color: '0071E3',
+    })
+    slide.addText(section.title, {
+      x: 1.15,
+      y: 0.35,
+      w: 10.5,
+      h: 0.55,
+      fontFace: 'Aptos Display',
+      fontSize: 23,
+      bold: true,
+      color: '111827',
+      fit: 'shrink',
+    })
+    const bullets = section.bullets.slice(0, 7).map((item) => ({ text: item, options: { bullet: { indent: 16 } } }))
+    slide.addText(bullets.length ? bullets : '세부 내용은 캠페인 브리프를 기준으로 보완하세요.', {
+      x: 1.15,
+      y: 1.25,
+      w: 10.4,
+      h: 4.8,
+      fontSize: 15,
+      color: '273142',
+      breakLine: false,
+      fit: 'shrink',
+      valign: 'top',
+      paraSpaceAfterPt: 10,
+    })
+  })
+
+  await pptx.writeFile({ fileName: `${filenameBase}.pptx` })
+}
+
+async function openGuideGoogleDraft(guide) {
+  try {
+    await navigator.clipboard?.writeText(guide)
+  } catch {
+    // Clipboard permission can be blocked by the browser; opening docs still gives the user a destination.
+  }
+  window.open('https://docs.new', '_blank', 'noopener,noreferrer')
+}
+
 function escapeXml(value) {
   return String(value ?? '')
     .replaceAll('&', '&amp;')
@@ -3093,20 +3280,25 @@ function App() {
     showToast('인플루언서 전달용 콘텐츠 가이드를 생성했어요.')
   }
 
-  const downloadGeneratedCampaignContentGuide = () => {
+  const downloadGeneratedCampaignContentGuide = async (format = 'docx') => {
     const guide = campaignDraft.generatedContentGuide || buildCampaignContentGuideFromDraft()
-    exportFile(
-      `creatorops-${activeBrand.name || 'brand'}-${campaignDraft.name || 'campaign'}-content-guide.md`,
-      'text/markdown;charset=utf-8',
-      guide,
-    )
+    const filenameBase = `creatorops-${safeFilePart(activeBrand.name || 'brand')}-${safeFilePart(campaignDraft.name || 'campaign')}-content-guide`
+
+    if (format === 'pptx') {
+      await exportGuidePptx(filenameBase, guide)
+    } else if (format === 'google') {
+      await openGuideGoogleDraft(guide)
+    } else {
+      await exportGuideDocx(filenameBase, guide)
+    }
+
     if (!campaignDraft.generatedContentGuide) {
       setCampaignDraft((current) => ({
         ...current,
         generatedContentGuide: guide,
       }))
     }
-    showToast('콘텐츠 가이드를 다운로드했어요.')
+    showToast(format === 'google' ? '가이드 본문을 복사하고 Google 문서를 열었어요.' : `콘텐츠 가이드를 ${format === 'pptx' ? 'PPT' : 'DOCX'}로 다운로드했어요.`)
   }
 
   const attachCampaignGuideFile = async (event) => {
@@ -4016,23 +4208,29 @@ function App() {
     setModal({ type: 'campaign', campaignId: campaign.id })
   }
 
-  const downloadCampaignContentGuide = (campaign) => {
-    if (!campaign) return
-    const guide =
-      campaign.generatedContentGuide ||
-      buildInfluencerContentGuide({
-        brand: activeBrand,
-        brief: brandBrief,
-        campaign,
-        creators: getCreatorsByIds(creators, campaign.creatorIds ?? []),
-      })
+  const getCampaignContentGuide = (campaign) =>
+    campaign?.generatedContentGuide ||
+    buildInfluencerContentGuide({
+      brand: activeBrand,
+      brief: brandBrief,
+      campaign,
+      creators: getCreatorsByIds(creators, campaign?.creatorIds ?? []),
+    })
 
-    exportFile(
-      `creatorops-${activeBrand.name || 'brand'}-${campaign.name || 'campaign'}-content-guide.md`,
-      'text/markdown;charset=utf-8',
-      guide,
-    )
-    showToast(`${campaign.name} 콘텐츠 가이드를 다운로드했어요.`)
+  const downloadCampaignContentGuide = async (campaign, format = 'docx') => {
+    if (!campaign) return
+    const guide = getCampaignContentGuide(campaign)
+    const filenameBase = `creatorops-${safeFilePart(activeBrand.name || 'brand')}-${safeFilePart(campaign.name || 'campaign')}-content-guide`
+
+    if (format === 'pptx') {
+      await exportGuidePptx(filenameBase, guide)
+    } else if (format === 'google') {
+      await openGuideGoogleDraft(guide)
+    } else {
+      await exportGuideDocx(filenameBase, guide)
+    }
+
+    showToast(format === 'google' ? `${campaign.name} 가이드를 복사하고 Google 문서를 열었어요.` : `${campaign.name} 콘텐츠 가이드를 ${format === 'pptx' ? 'PPT' : 'DOCX'}로 다운로드했어요.`)
   }
 
   const advanceCampaign = (campaignId) => {
@@ -5662,7 +5860,7 @@ function App() {
       {toast && <div className="toast">{toast}</div>}
 
       {modal && (
-        <Modal title={modalTitle(modal.type)} onClose={() => setModal(null)}>
+        <Modal title={modalTitle(modal.type)} variant={modal.type === 'campaign' ? 'campaign-modal-card' : ''} onClose={() => setModal(null)}>
           {modal.type === 'brand' && (
             <form className="modal-form" onSubmit={createBrand}>
               <label>
@@ -5827,9 +6025,17 @@ function App() {
                     <FileText size={16} />
                     생성하기
                   </button>
-                  <button className="primary-button compact-button" type="button" onClick={downloadGeneratedCampaignContentGuide}>
+                  <button className="primary-button compact-button" type="button" onClick={() => downloadGeneratedCampaignContentGuide('docx')}>
                     <Download size={16} />
-                    가이드 다운로드
+                    DOCX
+                  </button>
+                  <button className="secondary-button compact-button" type="button" onClick={() => downloadGeneratedCampaignContentGuide('pptx')}>
+                    <Download size={16} />
+                    PPT
+                  </button>
+                  <button className="secondary-button compact-button" type="button" onClick={() => downloadGeneratedCampaignContentGuide('google')}>
+                    <FileText size={16} />
+                    Google 문서
                   </button>
                 </div>
                 {campaignDraft.generatedContentGuide && (
@@ -6520,10 +6726,26 @@ function App() {
                   <button
                     className="primary-button compact-button"
                     type="button"
-                    onClick={() => downloadCampaignContentGuide(activeCampaignForModal)}
+                    onClick={() => downloadCampaignContentGuide(activeCampaignForModal, 'docx')}
                   >
                     <Download size={16} />
-                    전달 가이드 다운로드
+                    DOCX 다운로드
+                  </button>
+                  <button
+                    className="secondary-button compact-button"
+                    type="button"
+                    onClick={() => downloadCampaignContentGuide(activeCampaignForModal, 'pptx')}
+                  >
+                    <Download size={16} />
+                    PPT 다운로드
+                  </button>
+                  <button
+                    className="secondary-button compact-button"
+                    type="button"
+                    onClick={() => downloadCampaignContentGuide(activeCampaignForModal, 'google')}
+                  >
+                    <FileText size={16} />
+                    Google 문서 열기
                   </button>
                 </div>
               </div>
@@ -7153,11 +7375,11 @@ function Stat({ label, value }) {
   )
 }
 
-function Modal({ title, children, onClose }) {
+function Modal({ title, children, onClose, variant = '' }) {
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section
-        className="modal-card"
+        className={`modal-card ${variant}`}
         role="dialog"
         aria-modal="true"
         aria-label={title}
