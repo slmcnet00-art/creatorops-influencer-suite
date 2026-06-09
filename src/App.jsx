@@ -1893,6 +1893,7 @@ function App() {
   const [realDiscoverySearching, setRealDiscoverySearching] = useState(false)
   const [showExampleCreators, setShowExampleCreators] = useState(false)
   const [selectedRecommendationIds, setSelectedRecommendationIds] = useState([])
+  const [selectedDiscoveryCreatorIds, setSelectedDiscoveryCreatorIds] = useState([])
   const [realDiscoveryDraft, setRealDiscoveryDraft] = useState({
     youtubeApiKey: '',
     googleApiKey: '',
@@ -2108,6 +2109,12 @@ function App() {
     (showExampleCreators ? creators.find((creator) => creator.id === selectedCreatorId) : undefined) ??
     creators.find((creator) => !isExampleCreator(creator)) ??
     (showExampleCreators ? creators[0] : undefined)
+  const selectedDiscoveryCreators = useMemo(
+    () => filteredCreators.filter((creator) => selectedDiscoveryCreatorIds.includes(creator.id)),
+    [filteredCreators, selectedDiscoveryCreatorIds],
+  )
+  const allDiscoveryCreatorsSelected =
+    filteredCreators.length > 0 && selectedDiscoveryCreators.length === filteredCreators.length
 
   const selectedCampaign =
     brandCampaigns.find((campaign) => campaign.id === selectedCampaignId) ?? brandCampaigns[0]
@@ -2753,11 +2760,75 @@ function App() {
     showToast(exists ? `${creator.name} 저장을 해제했어요.` : `${creator.name}을(를) 쇼트리스트에 저장했어요.`)
   }
 
+  const toggleDiscoveryCreatorSelection = (creatorId) => {
+    setSelectedDiscoveryCreatorIds((current) =>
+      current.includes(creatorId)
+        ? current.filter((id) => id !== creatorId)
+        : [...current, creatorId],
+    )
+  }
+
+  const toggleAllDiscoveryCreators = () => {
+    setSelectedDiscoveryCreatorIds(allDiscoveryCreatorsSelected ? [] : filteredCreators.map((creator) => creator.id))
+  }
+
+  const buildCreatorProposalRecord = (creator, campaign, source = '수동') => {
+    const message = buildFriendlyProposalMessage(creator, brandBrief, campaign)
+    const contactPlan = buildContactPlan(creator, getRecommendedContactChannelId(creator), message, campaign.name)
+
+    return {
+      id: createId() + creator.id,
+      creatorId: creator.id,
+      campaignId: campaign.id,
+      source,
+      status: '승인 대기',
+      channel: contactPlan.id,
+      deliveryMode: contactPlan.deliveryMode,
+      complianceNote: contactPlan.notice,
+      message,
+      reason: `발굴 리스트 선택 제안 · ${creator.platform} · 팔로워 ${displayMetric(creator.followers)} · 평균 조회 ${displayMetric(creator.averageViews)} · 매칭 ${creator.fit ?? '-'}점`,
+      score: creator.fit,
+      createdAt: nowLabel(),
+    }
+  }
+
+  const queueSelectedDiscoveryCreators = () => {
+    const campaign = selectedCampaign
+
+    if (!campaign) {
+      showToast('선택 후보에게 제안하려면 현재 브랜드에 캠페인이 필요합니다.')
+      setModal({ type: 'create' })
+      return
+    }
+
+    if (!selectedDiscoveryCreators.length) {
+      showToast('제안 메시지를 만들 인플루언서를 먼저 선택하세요.')
+      return
+    }
+
+    const records = selectedDiscoveryCreators.map((creator) => buildCreatorProposalRecord(creator, campaign, '수동'))
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          outreach: [...records, ...current.outreach],
+          shortlist: Array.from(new Set([...current.shortlist, ...records.map((record) => record.creatorId)])),
+        },
+        'outreach',
+        `발굴 리스트 ${records.length}명 제안 메시지 검토함 저장`,
+      ),
+    )
+    setSelectedDiscoveryCreatorIds([])
+    showToast(`선택한 인플루언서 ${records.length}명의 제안 메시지를 검토함에 저장했어요.`)
+  }
+
   const resetSearch = () => {
     setQuery('')
     setPlatform('전체')
     setCategory('전체')
     setDiscoveryFilters(defaultDiscoveryFilters)
+    setSelectedDiscoveryCreatorIds([])
     showToast('검색 조건을 초기화했어요.')
   }
 
@@ -5114,6 +5185,33 @@ function App() {
               </div>
             </div>
 
+            {filteredCreators.length > 0 && (
+              <div className="recommendation-selection-bar creator-selection-bar">
+                <div>
+                  <strong>{selectedDiscoveryCreators.length}명 선택</strong>
+                  <span>발굴 리스트에서 선택한 인플루언서에게 한 번에 제안 메시지를 생성합니다.</span>
+                </div>
+                <div>
+                  <button
+                    className="secondary-button compact-button"
+                    type="button"
+                    onClick={toggleAllDiscoveryCreators}
+                  >
+                    {allDiscoveryCreatorsSelected ? '전체 해제' : '전체 선택'}
+                  </button>
+                  <button
+                    className="primary-button compact-button"
+                    type="button"
+                    onClick={queueSelectedDiscoveryCreators}
+                    disabled={!selectedDiscoveryCreators.length}
+                  >
+                    <Send size={15} />
+                    선택 제안 넣기
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="creator-list">
               {filteredCreators.length === 0 ? (
                 <div className="empty-state">
@@ -5134,11 +5232,13 @@ function App() {
                     creator={creator}
                     active={selectedCreator?.id === creator.id}
                     saved={shortlist.includes(creator.id)}
+                    checked={selectedDiscoveryCreatorIds.includes(creator.id)}
                     onSelect={() => {
                       setSelectedCreatorId(creator.id)
                       showToast(`${creator.name} 분석 패널을 열었어요.`)
                     }}
                     onSave={() => toggleShortlist(creator)}
+                    onToggle={() => toggleDiscoveryCreatorSelection(creator.id)}
                   />
                 ))
               )}
@@ -6675,10 +6775,14 @@ function SelectPill({ icon, value, options, onChange, label }) {
   )
 }
 
-function CreatorRow({ creator, active, saved, onSelect, onSave }) {
+function CreatorRow({ creator, active, saved, checked, onSelect, onSave, onToggle }) {
   const pendingMetrics = hasPendingMetrics(creator)
   return (
-    <article className={`creator-row ${active ? 'active' : ''}`}>
+    <article className={`creator-row ${active ? 'active' : ''} ${checked ? 'selected' : ''}`}>
+      <label className="recommendation-check creator-check" aria-label={`${creator.name} 선택`}>
+        <input type="checkbox" checked={checked} onChange={onToggle} />
+        <span />
+      </label>
       <button className="creator-button" type="button" onClick={onSelect}>
         <img src={creator.avatar} alt="" />
         <div className="creator-copy">

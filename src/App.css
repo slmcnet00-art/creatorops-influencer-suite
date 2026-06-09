@@ -1564,7 +1564,7 @@
 
 .creator-row {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 172px 94px 50px;
+  grid-template-columns: 28px minmax(260px, 1fr) 172px 94px 50px;
   align-items: center;
   gap: 12px;
   min-height: 88px;
@@ -1581,8 +1581,20 @@
   background: var(--accent-soft);
 }
 
+.creator-row.selected {
+  background: rgba(245, 249, 255, 0.94);
+}
+
+.creator-row.active.selected {
+  background: rgba(231, 242, 255, 0.98);
+}
+
 .creator-row:hover {
   background: rgba(255, 255, 255, 0.72);
+}
+
+.creator-check {
+  align-self: center;
 }
 
 .creator-button {
@@ -3436,7 +3448,7 @@
   }
 
   .creator-row {
-    grid-template-columns: minmax(0, 1fr) 74px 44px;
+    grid-template-columns: 28px minmax(0, 1fr) 74px 44px;
   }
 
   .creator-numbers {
@@ -3489,7 +3501,7 @@
   }
 
   .creator-row {
-    grid-template-columns: minmax(0, 1fr) 42px;
+    grid-template-columns: 28px minmax(0, 1fr) 42px;
     gap: 8px;
     padding: 12px;
   }
