@@ -1108,11 +1108,56 @@
   padding: 4px 18px 18px;
 }
 
+.recommendation-selection-bar {
+  margin: 0 18px 12px;
+  padding: 12px;
+  border: 1px solid rgba(0, 113, 227, 0.18);
+  border-radius: 8px;
+  background: var(--accent-soft);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.recommendation-selection-bar > div {
+  min-width: 0;
+}
+
+.recommendation-selection-bar > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.recommendation-selection-bar strong,
+.recommendation-selection-bar span {
+  display: block;
+}
+
+.recommendation-selection-bar strong {
+  color: var(--text-strong);
+  font-size: 14px;
+}
+
+.recommendation-selection-bar span {
+  margin-top: 3px;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
 .recommendation-card {
   padding: 12px;
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface-muted);
+}
+
+.recommendation-card.selected {
+  border-color: rgba(0, 113, 227, 0.36);
+  background: rgba(245, 249, 255, 0.94);
+  box-shadow: 0 12px 28px rgba(0, 113, 227, 0.08);
 }
 
 .recommendation-top,
@@ -1127,8 +1172,42 @@
   justify-content: space-between;
 }
 
+.recommendation-check {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  cursor: pointer;
+}
+
+.recommendation-check input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.recommendation-check span {
+  width: 18px;
+  height: 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: #ffffff;
+  box-sizing: border-box;
+  display: block;
+}
+
+.recommendation-check input:checked + span {
+  border-color: var(--accent);
+  background:
+    linear-gradient(135deg, transparent 47%, #ffffff 48%, #ffffff 56%, transparent 57%) 4px 8px / 8px 8px no-repeat,
+    linear-gradient(45deg, transparent 45%, #ffffff 46%, #ffffff 56%, transparent 57%) 8px 5px / 9px 12px no-repeat,
+    var(--accent);
+}
+
 .recommendation-top button {
   min-width: 0;
+  flex: 1;
   padding: 0;
   border: 0;
   background: transparent;
@@ -1159,6 +1238,28 @@
 .recommendation-footer span {
   color: var(--text-soft);
   font-size: 12px;
+}
+
+.recommendation-fit-strip {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.recommendation-fit-strip span {
+  min-height: 30px;
+  padding: 0 8px;
+  border: 1px solid rgba(0, 113, 227, 0.12);
+  border-radius: 8px;
+  color: var(--accent);
+  background: rgba(255, 255, 255, 0.72);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 900;
+  text-align: center;
 }
 
 .recommendation-metrics {

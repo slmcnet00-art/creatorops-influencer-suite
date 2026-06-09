@@ -1892,6 +1892,7 @@ function App() {
   const [youtubeSyncing, setYoutubeSyncing] = useState(false)
   const [realDiscoverySearching, setRealDiscoverySearching] = useState(false)
   const [showExampleCreators, setShowExampleCreators] = useState(false)
+  const [selectedRecommendationIds, setSelectedRecommendationIds] = useState([])
   const [realDiscoveryDraft, setRealDiscoveryDraft] = useState({
     youtubeApiKey: '',
     googleApiKey: '',
@@ -2021,6 +2022,12 @@ function App() {
       ),
     [activeBrand.id, activeCampaignIdSet, creators, recommendations, showExampleCreators],
   )
+  const selectedRecommendations = useMemo(
+    () => activeRecommendations.filter((recommendation) => selectedRecommendationIds.includes(recommendation.id)),
+    [activeRecommendations, selectedRecommendationIds],
+  )
+  const allRecommendationsSelected =
+    activeRecommendations.length > 0 && selectedRecommendations.length === activeRecommendations.length
   const activeOutreach = useMemo(
     () => outreach.filter((item) => activeCampaignIdSet.has(item.campaignId)),
     [activeCampaignIdSet, outreach],
@@ -3244,18 +3251,12 @@ function App() {
     showToast(`틱톡 공동구매 셀러 ${records.length}명을 메시지 검토함에 저장했어요.`)
   }
 
-  const queueRecommendation = (recommendation) => {
-    const creator = creators.find((item) => item.id === recommendation.creatorId)
-    const campaign = brandCampaigns.find((item) => item.id === recommendation.campaignId) ?? selectedCampaign
-    if (!creator || !campaign) {
-      showToast('메시지를 저장하려면 현재 브랜드에 캠페인이 필요합니다.')
-      return
-    }
-
+  const buildRecommendationOutreachRecord = (recommendation, creator, campaign) => {
     const message = buildFriendlyProposalMessage(creator, brandBrief, campaign)
     const contactPlan = buildContactPlan(creator, getRecommendedContactChannelId(creator), message, campaign.name)
-    const record = {
-      id: createId(),
+
+    return {
+      id: createId() + creator.id,
       creatorId: creator.id,
       campaignId: campaign.id,
       source: '자동',
@@ -3268,6 +3269,17 @@ function App() {
       score: recommendation.score,
       createdAt: nowLabel(),
     }
+  }
+
+  const queueRecommendation = (recommendation) => {
+    const creator = creators.find((item) => item.id === recommendation.creatorId)
+    const campaign = brandCampaigns.find((item) => item.id === recommendation.campaignId) ?? selectedCampaign
+    if (!creator || !campaign) {
+      showToast('메시지를 저장하려면 현재 브랜드에 캠페인이 필요합니다.')
+      return
+    }
+
+    const record = buildRecommendationOutreachRecord(recommendation, creator, campaign)
 
     updateWorkspace((current) =>
       appendActivity(
@@ -3280,6 +3292,73 @@ function App() {
       ),
     )
     showToast(`${creator.name} 제안 메시지를 검토함에 저장했어요.`)
+  }
+
+  const toggleRecommendationSelection = (recommendationId) => {
+    setSelectedRecommendationIds((current) =>
+      current.includes(recommendationId)
+        ? current.filter((id) => id !== recommendationId)
+        : [...current, recommendationId],
+    )
+  }
+
+  const toggleAllRecommendations = () => {
+    setSelectedRecommendationIds(allRecommendationsSelected ? [] : activeRecommendations.map((item) => item.id))
+  }
+
+  const saveSelectedRecommendations = () => {
+    const creatorIds = selectedRecommendations.map((recommendation) => recommendation.creatorId)
+
+    if (!creatorIds.length) {
+      showToast('쇼트리스트에 저장할 AI 후보를 먼저 선택하세요.')
+      return
+    }
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          shortlist: Array.from(new Set([...current.shortlist, ...creatorIds])),
+        },
+        'shortlist',
+        `AI 추천 후보 ${creatorIds.length}명 쇼트리스트 저장`,
+      ),
+    )
+    showToast(`선택한 AI 후보 ${creatorIds.length}명을 쇼트리스트에 저장했어요.`)
+  }
+
+  const queueSelectedRecommendations = () => {
+    if (!selectedRecommendations.length) {
+      showToast('메시지 검토함으로 보낼 AI 후보를 먼저 선택하세요.')
+      return
+    }
+
+    const records = selectedRecommendations
+      .map((recommendation) => {
+        const creator = creators.find((item) => item.id === recommendation.creatorId)
+        const campaign = brandCampaigns.find((item) => item.id === recommendation.campaignId) ?? selectedCampaign
+        return creator && campaign ? buildRecommendationOutreachRecord(recommendation, creator, campaign) : null
+      })
+      .filter(Boolean)
+
+    if (!records.length) {
+      showToast('선택 후보를 메시지로 저장하려면 현재 브랜드에 캠페인이 필요합니다.')
+      return
+    }
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          outreach: [...records, ...current.outreach],
+          shortlist: Array.from(new Set([...current.shortlist, ...records.map((record) => record.creatorId)])),
+        },
+        'outreach',
+        `AI 추천 후보 ${records.length}명 제안 메시지 검토함 저장`,
+      ),
+    )
+    setSelectedRecommendationIds([])
+    showToast(`선택한 AI 후보 ${records.length}명의 제안 메시지를 검토함에 저장했어요.`)
   }
 
   const openProposalModal = () => {
@@ -4771,9 +4850,45 @@ function App() {
                 >
                   시트
                 </button>
+                <button
+                  className="secondary-button compact-button"
+                  type="button"
+                  onClick={toggleAllRecommendations}
+                  disabled={!activeRecommendations.length}
+                >
+                  {allRecommendationsSelected ? '전체 해제' : '전체 선택'}
+                </button>
                 <span className="result-count">{activeRecommendations.length}명</span>
               </div>
             </div>
+            {activeRecommendations.length > 0 && (
+              <div className="recommendation-selection-bar">
+                <div>
+                  <strong>{selectedRecommendations.length}명 선택</strong>
+                  <span>선택한 후보를 쇼트리스트에 저장하거나 제안 메시지를 검토함으로 보냅니다.</span>
+                </div>
+                <div>
+                  <button
+                    className="secondary-button compact-button"
+                    type="button"
+                    onClick={saveSelectedRecommendations}
+                    disabled={!selectedRecommendations.length}
+                  >
+                    <BookmarkCheck size={15} />
+                    쇼트리스트 저장
+                  </button>
+                  <button
+                    className="primary-button compact-button"
+                    type="button"
+                    onClick={queueSelectedRecommendations}
+                    disabled={!selectedRecommendations.length}
+                  >
+                    <Send size={15} />
+                    제안 메시지 생성
+                  </button>
+                </div>
+              </div>
+            )}
             <div className="recommendation-list">
               {activeRecommendations.length === 0 ? (
                 <div className="empty-state compact-empty">
@@ -4782,12 +4897,14 @@ function App() {
                   <p>브랜드 조건을 설정하고 AI 매칭을 실행하세요.</p>
                 </div>
               ) : (
-                activeRecommendations.slice(0, 4).map((recommendation) => (
+                activeRecommendations.map((recommendation) => (
                   <RecommendationCard
                     key={recommendation.id}
                     recommendation={recommendation}
                     creator={creators.find((creator) => creator.id === recommendation.creatorId)}
+                    checked={selectedRecommendationIds.includes(recommendation.id)}
                     onSelect={() => setSelectedCreatorId(recommendation.creatorId)}
+                    onToggle={() => toggleRecommendationSelection(recommendation.id)}
                     onQueue={() => queueRecommendation(recommendation)}
                   />
                 ))
@@ -6603,13 +6720,17 @@ function CreatorRow({ creator, active, saved, onSelect, onSave }) {
   )
 }
 
-function RecommendationCard({ recommendation, creator, onSelect, onQueue }) {
+function RecommendationCard({ recommendation, creator, checked, onSelect, onToggle, onQueue }) {
   if (!creator) return null
   const pendingMetrics = hasPendingMetrics(creator)
 
   return (
-    <article className="recommendation-card">
+    <article className={`recommendation-card ${checked ? 'selected' : ''}`}>
       <div className="recommendation-top">
+        <label className="recommendation-check" aria-label={`${creator.name} 선택`}>
+          <input type="checkbox" checked={checked} onChange={onToggle} />
+          <span />
+        </label>
         <button type="button" onClick={onSelect}>
           <img src={creator.avatar} alt="" />
           <div>
@@ -6618,6 +6739,12 @@ function RecommendationCard({ recommendation, creator, onSelect, onQueue }) {
           </div>
         </button>
         <div className="ai-score">{recommendation.score}</div>
+      </div>
+      <div className="recommendation-fit-strip">
+        <span>브랜드 핏 {creator.fit ?? recommendation.score}</span>
+        <span>안전성 {creator.brandSafety ?? '-'}</span>
+        <span>가짜 팔로워 위험 {creator.fakeRisk ?? '-'}%</span>
+        <span>{creator.status ?? '검토 대기'}</span>
       </div>
       <div className="recommendation-metrics" aria-label={`${creator.name} 핵심 성과 지표`}>
         <span>팔로워 {displayMetric(creator.followers)}</span>
