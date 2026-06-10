@@ -4840,6 +4840,12 @@ function App() {
             onClick={() => jumpTo('dashboard')}
           />
           <NavButton
+            active={activeSection === 'campaigns'}
+            icon={<Target size={18} />}
+            label="캠페인"
+            onClick={() => jumpTo('campaigns')}
+          />
+          <NavButton
             active={activeSection === 'discovery'}
             icon={<UsersRound size={18} />}
             label="발굴"
@@ -4850,12 +4856,6 @@ function App() {
             icon={<MessageSquare size={18} />}
             label="메시지"
             onClick={() => jumpTo('messages')}
-          />
-          <NavButton
-            active={activeSection === 'campaigns'}
-            icon={<Target size={18} />}
-            label="캠페인"
-            onClick={() => jumpTo('campaigns')}
           />
           <NavButton
             active={activeSection === 'report'}
