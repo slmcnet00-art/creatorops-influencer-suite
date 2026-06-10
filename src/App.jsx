@@ -2639,6 +2639,29 @@ function App() {
       ),
     [activeFulfillmentRecords],
   )
+  const recruitedPoolByCampaign = useMemo(
+    () =>
+      brandCampaigns
+        .map((campaign) => ({
+          campaign,
+          count: activeRecruitedPool.filter((item) => item.campaignId === campaign.id).length,
+        }))
+        .filter((item) => item.count > 0),
+    [activeRecruitedPool, brandCampaigns],
+  )
+  const fulfillmentByCampaign = useMemo(
+    () =>
+      brandCampaigns
+        .map((campaign) => ({
+          campaign,
+          count: activeFulfillmentRecords.filter((item) => item.campaignId === campaign.id).length,
+          pending: activeFulfillmentRecords.filter(
+            (item) => item.campaignId === campaign.id && item.deliveryStatus !== '정산 완료',
+          ).length,
+        }))
+        .filter((item) => item.count > 0),
+    [activeFulfillmentRecords, brandCampaigns],
+  )
 
   const totals = useMemo(() => {
     const reach = filteredCreators.reduce((sum, creator) => sum + creator.followers, 0)
@@ -5672,6 +5695,18 @@ function App() {
               <Stat label="미완료" value={`${fulfillmentTotals.pending}건`} />
             </div>
 
+            <div className="campaign-context-strip">
+              <span className="mini-label">Campaign Mapping</span>
+              {(fulfillmentByCampaign.length
+                ? fulfillmentByCampaign
+                : brandCampaigns.map((campaign) => ({ campaign, count: 0, pending: 0 }))
+              ).map(({ campaign, count, pending }) => (
+                  <span className="campaign-context-chip" key={campaign.id}>
+                    {campaign.name} · {count}건 · 미완료 {pending}건
+                  </span>
+              ))}
+            </div>
+
             <div className="privacy-note">
               <ShieldCheck size={16} />
               <p>전화번호, 주소, 계좌는 운영 목적에만 쓰고 화면에서는 일부 마스킹합니다. 엑셀/시트에는 입력한 원본값이 포함됩니다.</p>
@@ -5682,7 +5717,7 @@ function App() {
                 <div className="empty-state compact-empty">
                   <WalletCards size={22} />
                   <strong>아직 배송/수동 정산 기록이 없습니다.</strong>
-                  <p>섭외 완료 후 제품 배송, 원고료 지급 예정액, 운송장까지 이곳에서 수동으로 관리합니다.</p>
+                  <p>기록 추가 시 캠페인을 선택하므로 제품 배송, 원고료 지급 예정액, 운송장까지 캠페인별로 구분됩니다.</p>
                 </div>
               ) : (
                 activeFulfillmentRecords.slice(0, 5).map((item) => (
@@ -5930,11 +5965,22 @@ function App() {
               </div>
             </div>
             <div className="pool-list">
+              <div className="campaign-context-strip">
+                <span className="mini-label">Campaign Mapping</span>
+                {(recruitedPoolByCampaign.length
+                  ? recruitedPoolByCampaign
+                  : brandCampaigns.map((campaign) => ({ campaign, count: 0 }))
+                ).map(({ campaign, count }) => (
+                  <span className="campaign-context-chip" key={campaign.id}>
+                    {campaign.name} · {count}명
+                  </span>
+                ))}
+              </div>
               {activeRecruitedPool.length === 0 ? (
                 <div className="empty-state compact-empty">
                   <UsersRound size={22} />
                   <strong>아직 섭외 완료된 인플루언서가 없습니다.</strong>
-                  <p>제안/응답 발송에서 섭외 완료 저장을 누르면 이곳에 쌓입니다.</p>
+                  <p>제안/응답 발송에서 섭외 완료 저장을 누르면 캠페인 배지와 함께 이곳에 쌓입니다.</p>
                 </div>
               ) : (
                 activeRecruitedPool.slice(0, 6).map((item) => (
@@ -7381,9 +7427,12 @@ function FulfillmentItem({ item, creator, campaign, onAdvance }) {
     <article className="fulfillment-item">
       <div className="fulfillment-item-top">
         <div>
-          <span className={`status-chip ${statusDone ? 'success-chip' : ''}`}>{item.deliveryStatus}</span>
+          <div className="item-chip-row">
+            <span className="campaign-context-chip strong-context">{campaign?.name ?? '캠페인 없음'}</span>
+            <span className={`status-chip ${statusDone ? 'success-chip' : ''}`}>{item.deliveryStatus}</span>
+          </div>
           <strong>{item.recipient || creator?.name || '수취인 미입력'}</strong>
-          <p>{item.handle || creator?.handle || '아이디 미입력'} · {campaign?.name ?? '캠페인 없음'} · {item.paymentDate}</p>
+          <p>{item.handle || creator?.handle || '아이디 미입력'} · {item.paymentDate}</p>
         </div>
         <div className="fulfillment-amount">
           <span>결제금액</span>
@@ -7441,7 +7490,10 @@ function PoolItem({ item, creator, campaign }) {
       <div className="pool-item-top">
         <img src={creator.avatar} alt="" />
         <div className="pool-creator-main">
-          <span className={`source-chip ${sourceTone}`}>{item.source}</span>
+          <div className="item-chip-row">
+            <span className="campaign-context-chip strong-context">{campaign?.name ?? '캠페인 없음'}</span>
+            <span className={`source-chip ${sourceTone}`}>{item.source}</span>
+          </div>
           <strong>{creator.name}</strong>
           <p>
             {creator.handle} · {creator.platform} · {creator.category}
