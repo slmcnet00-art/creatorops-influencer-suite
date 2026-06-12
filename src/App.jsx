@@ -746,6 +746,12 @@ function normalizeCampaign(campaign, brands) {
     defaultCampaigns.find((item) => item.id === campaign.id) ??
     defaultCampaigns.find((item) => item.name === campaign.name)
   const targets = inferCampaignTargets(campaign, fallback)
+  const schedule = {
+    recruitStart: campaign.schedule?.recruitStart ?? campaign.recruitStartDate ?? fallback?.schedule?.recruitStart ?? '',
+    recruitEnd: campaign.schedule?.recruitEnd ?? campaign.recruitEndDate ?? campaign.deadline ?? fallback?.schedule?.recruitEnd ?? fallback?.deadline ?? '',
+    uploadDue: campaign.schedule?.uploadDue ?? campaign.uploadDueDate ?? fallback?.schedule?.uploadDue ?? '',
+    reportDue: campaign.schedule?.reportDue ?? campaign.reportDueDate ?? fallback?.schedule?.reportDue ?? '',
+  }
 
   return {
     ...campaign,
@@ -761,7 +767,37 @@ function normalizeCampaign(campaign, brands) {
     targetOrders: targets.targetOrders,
     targetRevenue: targets.targetRevenue,
     sellerRecruitTarget: Number(campaign.sellerRecruitTarget ?? fallback?.sellerRecruitTarget ?? 0),
+    schedule,
   }
+}
+
+function getCampaignSchedule(campaign) {
+  return [
+    {
+      key: 'recruitStart',
+      label: '모집 시작',
+      date: campaign?.schedule?.recruitStart || campaign?.recruitStartDate || '',
+      helper: '후보 발굴/제안 발송 시작',
+    },
+    {
+      key: 'recruitEnd',
+      label: '모집 마감',
+      date: campaign?.schedule?.recruitEnd || campaign?.recruitEndDate || campaign?.deadline || '',
+      helper: '섭외 완료 풀 확정',
+    },
+    {
+      key: 'uploadDue',
+      label: '업로드 완료',
+      date: campaign?.schedule?.uploadDue || campaign?.uploadDueDate || '',
+      helper: '콘텐츠 링크 수집 마감',
+    },
+    {
+      key: 'reportDue',
+      label: '보고 완료',
+      date: campaign?.schedule?.reportDue || campaign?.reportDueDate || '',
+      helper: '성과 리포트 전달',
+    },
+  ]
 }
 
 function getContactChannel(channelId) {
@@ -2355,6 +2391,10 @@ function App() {
     name: '',
     budget: '',
     deadline: '',
+    recruitStartDate: '',
+    recruitEndDate: '',
+    uploadDueDate: '',
+    reportDueDate: '',
     objective: '브랜드 인지도',
     campaignType: '제안형',
     mission: '',
@@ -4253,7 +4293,13 @@ function App() {
       budget,
       spend: Math.min(Math.round(estimatedCost * 0.15), budget),
       revenue: Math.round(budget * 0.85),
-      deadline: campaignDraft.deadline || '일정 미정',
+      deadline: campaignDraft.recruitEndDate || campaignDraft.deadline || '일정 미정',
+      schedule: {
+        recruitStart: campaignDraft.recruitStartDate,
+        recruitEnd: campaignDraft.recruitEndDate || campaignDraft.deadline,
+        uploadDue: campaignDraft.uploadDueDate,
+        reportDue: campaignDraft.reportDueDate,
+      },
       objective: campaignDraft.objective,
       campaignType: campaignDraft.campaignType || '제안형',
       mission:
@@ -4314,6 +4360,10 @@ function App() {
       name: '',
       budget: '',
       deadline: '',
+      recruitStartDate: '',
+      recruitEndDate: '',
+      uploadDueDate: '',
+      reportDueDate: '',
       objective: '브랜드 인지도',
       campaignType: '제안형',
       mission: '',
@@ -6049,6 +6099,41 @@ function App() {
                   placeholder="6월 30일"
                 />
               </label>
+              <div className="campaign-schedule-fields">
+                <span className="mini-label">Campaign Schedule</span>
+                <label>
+                  모집 시작일
+                  <input
+                    value={campaignDraft.recruitStartDate}
+                    onChange={(event) => setCampaignDraft({ ...campaignDraft, recruitStartDate: event.target.value })}
+                    placeholder="예: 6월 1일"
+                  />
+                </label>
+                <label>
+                  모집 마감일
+                  <input
+                    value={campaignDraft.recruitEndDate}
+                    onChange={(event) => setCampaignDraft({ ...campaignDraft, recruitEndDate: event.target.value })}
+                    placeholder="예: 6월 10일"
+                  />
+                </label>
+                <label>
+                  업로드 완료일
+                  <input
+                    value={campaignDraft.uploadDueDate}
+                    onChange={(event) => setCampaignDraft({ ...campaignDraft, uploadDueDate: event.target.value })}
+                    placeholder="예: 6월 20일"
+                  />
+                </label>
+                <label>
+                  보고 완료일
+                  <input
+                    value={campaignDraft.reportDueDate}
+                    onChange={(event) => setCampaignDraft({ ...campaignDraft, reportDueDate: event.target.value })}
+                    placeholder="예: 6월 28일"
+                  />
+                </label>
+              </div>
               <div className="modal-two-col">
                 <label>
                   KPI 목표
@@ -6625,6 +6710,27 @@ function App() {
                 <Stat label="예상 매출" value={won(activeCampaignForModal.revenue)} />
                 <Stat label="진행률" value={`${activeCampaignForModal.progress}%`} />
                 <Stat label="셀러 목표" value={`${activeCampaignForModal.sellerRecruitTarget ?? 0}명`} />
+              </div>
+              <div className="campaign-schedule-timeline">
+                <div className="campaign-schedule-head">
+                  <div>
+                    <span className="mini-label">Campaign Schedule</span>
+                    <strong>모집부터 보고까지 일정</strong>
+                  </div>
+                  <span className="campaign-context-chip">마감 {activeCampaignForModal.deadline ?? '미정'}</span>
+                </div>
+                <div className="campaign-schedule-steps">
+                  {getCampaignSchedule(activeCampaignForModal).map((step, index) => (
+                    <article className={step.date ? '' : 'schedule-empty'} key={step.key}>
+                      <span>{index + 1}</span>
+                      <div>
+                        <strong>{step.label}</strong>
+                        <p>{step.date || '일정 미정'}</p>
+                        <small>{step.helper}</small>
+                      </div>
+                    </article>
+                  ))}
+                </div>
               </div>
               {selectedCampaignKpi?.metrics?.length > 0 && (
                 <div className="campaign-kpi-detail">
