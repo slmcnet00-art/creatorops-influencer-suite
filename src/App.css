@@ -2285,10 +2285,6 @@
   align-items: center;
 }
 
-.fulfillment-panel {
-  min-height: 390px;
-}
-
 .fulfillment-summary {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -2855,6 +2851,54 @@
   padding: 16px;
 }
 
+.campaign-ops-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.campaign-ops-detail {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.68);
+  display: grid;
+  gap: 12px;
+}
+
+.campaign-ops-detail-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.campaign-ops-detail-head strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-strong);
+}
+
+.campaign-ops-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.compact-list {
+  padding: 0;
+}
+
+.compact-list .empty-state {
+  min-height: 150px;
+}
+
+.compact-list .pool-item,
+.compact-list .fulfillment-item {
+  background: var(--surface-strong);
+}
+
 .modal-header {
   position: sticky;
   top: 0;
@@ -3316,7 +3360,8 @@
   }
 
   .campaign-modal-card .modal-grid,
-  .campaign-modal-card .campaign-playbook {
+  .campaign-modal-card .campaign-playbook,
+  .campaign-ops-detail-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -3584,8 +3629,17 @@
   }
 
   .campaign-modal-card .modal-grid,
-  .campaign-modal-card .campaign-playbook {
+  .campaign-modal-card .campaign-playbook,
+  .campaign-ops-detail-grid {
     grid-template-columns: 1fr;
+  }
+
+  .campaign-ops-detail-head {
+    flex-direction: column;
+  }
+
+  .campaign-ops-actions {
+    justify-content: flex-start;
   }
 
   .modal-two-col,

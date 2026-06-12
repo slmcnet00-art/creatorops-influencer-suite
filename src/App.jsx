@@ -2639,29 +2639,6 @@ function App() {
       ),
     [activeFulfillmentRecords],
   )
-  const recruitedPoolByCampaign = useMemo(
-    () =>
-      brandCampaigns
-        .map((campaign) => ({
-          campaign,
-          count: activeRecruitedPool.filter((item) => item.campaignId === campaign.id).length,
-        }))
-        .filter((item) => item.count > 0),
-    [activeRecruitedPool, brandCampaigns],
-  )
-  const fulfillmentByCampaign = useMemo(
-    () =>
-      brandCampaigns
-        .map((campaign) => ({
-          campaign,
-          count: activeFulfillmentRecords.filter((item) => item.campaignId === campaign.id).length,
-          pending: activeFulfillmentRecords.filter(
-            (item) => item.campaignId === campaign.id && item.deliveryStatus !== '정산 완료',
-          ).length,
-        }))
-        .filter((item) => item.count > 0),
-    [activeFulfillmentRecords, brandCampaigns],
-  )
 
   const totals = useMemo(() => {
     const reach = filteredCreators.reduce((sum, creator) => sum + creator.followers, 0)
@@ -3805,8 +3782,8 @@ function App() {
     setModal({ type: 'quote' })
   }
 
-  const openFulfillmentModal = () => {
-    if (!selectedCampaign) {
+  const openFulfillmentModal = (campaignOverride = selectedCampaign) => {
+    if (!campaignOverride) {
       showToast('배송/수동 정산을 관리하려면 현재 브랜드에 캠페인을 먼저 생성해주세요.')
       setModal({ type: 'create' })
       return
@@ -3817,7 +3794,7 @@ function App() {
 
     setFulfillmentDraft({
       ...createEmptyFulfillmentDraft(),
-      campaignId: selectedCampaign.id,
+      campaignId: campaignOverride.id,
       creatorId: recruitedCreator?.id ?? '',
       recipient: recruitedCreator?.name ?? '',
       handle: recruitedCreator?.handle ?? '',
@@ -3998,115 +3975,6 @@ function App() {
     }),
   ]
 
-  const getRecruitedPoolRows = () => [
-    [
-      '크리에이터',
-      '핸들',
-      '플랫폼',
-      '카테고리',
-      '캠페인',
-      '브랜드',
-      '섭외 출처',
-      '연락 채널',
-      '상태',
-      '클라이언트 컨펌 요약',
-      '오디언스',
-      '브랜드 적합도',
-      '브랜드 안정성',
-      '가짜 팔로워 위험',
-      '캠페인 목적',
-      '캠페인 마감',
-      '저장 사유',
-      '저장 시점',
-      '팔로워',
-      '평균 조회',
-      '참여율',
-      '예상 단가',
-    ],
-    ...activeRecruitedPool.map((poolItem) => {
-      const creator = creators.find((item) => item.id === poolItem.creatorId)
-      const campaign = brandCampaigns.find((item) => item.id === poolItem.campaignId)
-      const contactPlan = buildContactPlan(creator, poolItem.channel)
-
-      return [
-        creator?.name ?? '',
-        creator?.handle ?? '',
-        creator?.platform ?? '',
-        creator?.category ?? '',
-        campaign?.name ?? '',
-        campaign?.owner ?? '',
-        poolItem.source,
-        contactPlan.label,
-        poolItem.status,
-        creator
-          ? `${compactNumber(creator.followers)} 팔로워 · 평균 조회 ${compactNumber(creator.averageViews)} · 참여율 ${percent(creator.engagement)} · 예상 단가 ${won(creator.price)}`
-          : '',
-        creator?.audience ?? '',
-        creator?.fit ?? '',
-        creator?.brandSafety ?? '',
-        creator?.fakeRisk ?? '',
-        campaign?.objective ?? '',
-        campaign?.deadline ?? '',
-        poolItem.note,
-        poolItem.createdAt,
-        creator?.followers ?? 0,
-        creator?.averageViews ?? 0,
-        creator?.engagement ?? 0,
-        creator?.price ?? 0,
-      ]
-    }),
-  ]
-
-  const getFulfillmentRows = () => [
-    [
-      '결제일',
-      '캠페인',
-      '수취인',
-      '아이디',
-      '번호',
-      '주소',
-      '은행',
-      '계좌번호',
-      '예금주',
-      '결제금액',
-      '배송상태',
-      '택배사',
-      '운송장번호',
-      '메모',
-      '등록일',
-      '팔로워',
-      '평균 조회',
-      '참여율',
-      '예상 단가',
-    ],
-    ...activeFulfillmentRecords.map((item) => {
-      const creator = creators.find((creatorItem) => creatorItem.id === item.creatorId)
-      const campaign = brandCampaigns.find((campaignItem) => campaignItem.id === item.campaignId)
-
-      return [
-        item.paymentDate,
-        campaign?.name ?? '',
-        item.recipient,
-        item.handle || creator?.handle || '',
-        item.phone,
-        item.address,
-        item.bank,
-        item.accountNumber,
-        item.accountHolder,
-        Number(item.paymentAmount || 0),
-        item.deliveryStatus,
-        item.courier,
-        item.trackingNumber,
-        item.memo,
-        item.createdAt,
-        creator?.followers ?? 0,
-        creator?.averageViews ?? 0,
-        creator?.engagement ?? 0,
-        creator?.price ?? 0,
-      ]
-    }),
-  ]
-
   const buildAdvertiserListRows = (sourceType = 'recommendations') => {
     const selectedCampaignName = selectedCampaign?.name ?? brandBrief.product ?? '캠페인'
     const title = `${activeBrand.name}_${selectedCampaignName}_광고주 전달 리스트`
@@ -4245,25 +4113,6 @@ function App() {
 
   const sendDiscoveryToSheets = () => {
     sendRowsToGoogleSheets(getDiscoveryRows(), '크리에이터 발굴')
-  }
-
-  const exportRecruitedPoolExcel = () => {
-    exportExcelFile('creatorops-recruited-pool.xls', '섭외 완료 풀', getRecruitedPoolRows())
-    showToast('섭외 완료 풀을 엑셀로 다운로드했어요.')
-  }
-
-  const sendRecruitedPoolToSheets = () => {
-    sendRowsToGoogleSheets(getRecruitedPoolRows(), '섭외 완료 풀')
-  }
-
-  const exportFulfillmentExcel = () => {
-    exportExcelFile('creatorops-fulfillment-settlement.xls', '배송 수동 정산', getFulfillmentRows())
-    showToast('배송/수동 정산 데이터를 엑셀로 다운로드했어요.')
-  }
-
-  const sendFulfillmentToSheets = () => {
-    if (!window.confirm('배송/수동 정산 데이터에는 연락처, 주소, 계좌번호가 포함될 수 있습니다. Google Sheets로 보낼까요?')) return
-    sendRowsToGoogleSheets(getFulfillmentRows(), '배송/수동 정산')
   }
 
   const exportWorkspace = () => {
@@ -4821,6 +4670,16 @@ function App() {
     modal?.type === 'campaign'
       ? brandCampaigns.find((campaign) => campaign.id === modal.campaignId)
       : selectedCampaign
+  const campaignModalPool = activeCampaignForModal
+    ? activeRecruitedPool.filter((item) => item.campaignId === activeCampaignForModal.id)
+    : []
+  const campaignModalFulfillment = activeCampaignForModal
+    ? activeFulfillmentRecords.filter((item) => item.campaignId === activeCampaignForModal.id)
+    : []
+  const campaignModalFulfillmentAmount = campaignModalFulfillment.reduce(
+    (sum, item) => sum + Number(item.paymentAmount || 0),
+    0,
+  )
 
   return (
     <div className="app-shell">
@@ -5652,88 +5511,6 @@ function App() {
             </div>
           </section>
           )}
-
-          {activeSection === 'campaigns' && (
-          <section className="panel fulfillment-panel">
-            <div className="panel-heading">
-              <div>
-                <span className="mini-label">Logistics</span>
-                <h2>배송/수동 정산 관리</h2>
-              </div>
-              <div className="panel-heading-actions">
-                <button
-                  className="icon-button"
-                  type="button"
-                  title="배송/수동 정산 기록 추가"
-                  onClick={openFulfillmentModal}
-                >
-                  <Plus size={18} />
-                </button>
-                <button
-                  className="secondary-button compact-button"
-                  type="button"
-                  title="배송/수동 정산 엑셀 다운로드"
-                  onClick={exportFulfillmentExcel}
-                >
-                  <Download size={16} />
-                  엑셀
-                </button>
-                <button
-                  className="secondary-button compact-button"
-                  type="button"
-                  title="배송/수동 정산 Google Sheets로 보내기"
-                  onClick={sendFulfillmentToSheets}
-                >
-                  시트
-                </button>
-              </div>
-            </div>
-
-            <div className="fulfillment-summary">
-              <Stat label="관리 건수" value={`${activeFulfillmentRecords.length}건`} />
-              <Stat label="지급 예정액" value={won(fulfillmentTotals.amount)} />
-              <Stat label="미완료" value={`${fulfillmentTotals.pending}건`} />
-            </div>
-
-            <div className="campaign-context-strip">
-              <span className="mini-label">Campaign Mapping</span>
-              {(fulfillmentByCampaign.length
-                ? fulfillmentByCampaign
-                : brandCampaigns.map((campaign) => ({ campaign, count: 0, pending: 0 }))
-              ).map(({ campaign, count, pending }) => (
-                  <span className="campaign-context-chip" key={campaign.id}>
-                    {campaign.name} · {count}건 · 미완료 {pending}건
-                  </span>
-              ))}
-            </div>
-
-            <div className="privacy-note">
-              <ShieldCheck size={16} />
-              <p>전화번호, 주소, 계좌는 운영 목적에만 쓰고 화면에서는 일부 마스킹합니다. 엑셀/시트에는 입력한 원본값이 포함됩니다.</p>
-            </div>
-
-            <div className="fulfillment-list">
-              {activeFulfillmentRecords.length === 0 ? (
-                <div className="empty-state compact-empty">
-                  <WalletCards size={22} />
-                  <strong>아직 배송/수동 정산 기록이 없습니다.</strong>
-                  <p>기록 추가 시 캠페인을 선택하므로 제품 배송, 원고료 지급 예정액, 운송장까지 캠페인별로 구분됩니다.</p>
-                </div>
-              ) : (
-                activeFulfillmentRecords.slice(0, 5).map((item) => (
-                  <FulfillmentItem
-                    key={item.id}
-                    item={item}
-                    creator={creators.find((creator) => creator.id === item.creatorId)}
-                    campaign={brandCampaigns.find((campaign) => campaign.id === item.campaignId)}
-                    onAdvance={() => advanceFulfillmentStatus(item.id)}
-                  />
-                ))
-              )}
-            </div>
-          </section>
-          )}
-
           {activeSection === 'report' && (
           <section className="panel report-panel" id="report">
             <div className="panel-heading">
@@ -5927,75 +5704,6 @@ function App() {
             </div>
           </section>
           )}
-
-          {activeSection === 'campaigns' && (
-          <section className="panel">
-            <div className="panel-heading">
-              <div>
-                <span className="mini-label">Recruited Pool</span>
-                <h2>섭외 완료 풀</h2>
-              </div>
-              <div className="panel-heading-actions">
-                <button
-                  className="secondary-button compact-button"
-                  type="button"
-                  title="섭외 완료 풀 엑셀 다운로드"
-                  onClick={exportRecruitedPoolExcel}
-                >
-                  <Download size={16} />
-                  엑셀
-                </button>
-                <button
-                  className="secondary-button compact-button"
-                  type="button"
-                  title="광고주 전달용 숏폼 리스트 다운로드"
-                  onClick={() => exportAdvertiserListExcel('pool')}
-                >
-                  광고주용
-                </button>
-                <button
-                  className="secondary-button compact-button"
-                  type="button"
-                  title="섭외 완료 풀 Google Sheets로 보내기"
-                  onClick={sendRecruitedPoolToSheets}
-                >
-                  시트
-                </button>
-                <UsersRound size={19} />
-              </div>
-            </div>
-            <div className="pool-list">
-              <div className="campaign-context-strip">
-                <span className="mini-label">Campaign Mapping</span>
-                {(recruitedPoolByCampaign.length
-                  ? recruitedPoolByCampaign
-                  : brandCampaigns.map((campaign) => ({ campaign, count: 0 }))
-                ).map(({ campaign, count }) => (
-                  <span className="campaign-context-chip" key={campaign.id}>
-                    {campaign.name} · {count}명
-                  </span>
-                ))}
-              </div>
-              {activeRecruitedPool.length === 0 ? (
-                <div className="empty-state compact-empty">
-                  <UsersRound size={22} />
-                  <strong>아직 섭외 완료된 인플루언서가 없습니다.</strong>
-                  <p>제안/응답 발송에서 섭외 완료 저장을 누르면 캠페인 배지와 함께 이곳에 쌓입니다.</p>
-                </div>
-              ) : (
-                activeRecruitedPool.slice(0, 6).map((item) => (
-                  <PoolItem
-                    key={item.id}
-                    item={item}
-                    creator={creators.find((creator) => creator.id === item.creatorId)}
-                    campaign={brandCampaigns.find((campaign) => campaign.id === item.campaignId)}
-                  />
-                ))
-              )}
-            </div>
-          </section>
-          )}
-
           {activeSection === 'dashboard' && (
           <section className="panel wide-log-panel">
             <div className="panel-heading">
@@ -6917,6 +6625,74 @@ function App() {
                 {getCreatorsByIds(creators, activeCampaignForModal.creatorIds).map((creator) => (
                   <span key={creator.id}>{creator.name}</span>
                 ))}
+              </div>
+              <div className="campaign-ops-detail-grid">
+                <section className="campaign-ops-detail">
+                  <div className="campaign-ops-detail-head">
+                    <div>
+                      <span className="mini-label">Recruited Pool</span>
+                      <strong>이 캠페인의 섭외 완료 풀</strong>
+                    </div>
+                    <span className="campaign-context-chip">{campaignModalPool.length}명</span>
+                  </div>
+                  <div className="pool-list compact-list">
+                    {campaignModalPool.length === 0 ? (
+                      <div className="empty-state compact-empty">
+                        <UsersRound size={22} />
+                        <strong>이 캠페인에 섭외 완료된 인플루언서가 없습니다.</strong>
+                        <p>메시지 화면에서 섭외 완료 저장을 누르면 이 캠페인 상세에 쌓입니다.</p>
+                      </div>
+                    ) : (
+                      campaignModalPool.map((item) => (
+                        <PoolItem
+                          key={item.id}
+                          item={item}
+                          creator={creators.find((creator) => creator.id === item.creatorId)}
+                          campaign={activeCampaignForModal}
+                        />
+                      ))
+                    )}
+                  </div>
+                </section>
+
+                <section className="campaign-ops-detail">
+                  <div className="campaign-ops-detail-head">
+                    <div>
+                      <span className="mini-label">Logistics</span>
+                      <strong>이 캠페인의 배송/수동 정산</strong>
+                    </div>
+                    <div className="campaign-ops-actions">
+                      <span className="campaign-context-chip">{campaignModalFulfillment.length}건 · {won(campaignModalFulfillmentAmount)}</span>
+                      <button
+                        className="secondary-button compact-button"
+                        type="button"
+                        onClick={() => openFulfillmentModal(activeCampaignForModal)}
+                      >
+                        <Plus size={15} />
+                        기록 추가
+                      </button>
+                    </div>
+                  </div>
+                  <div className="fulfillment-list compact-list">
+                    {campaignModalFulfillment.length === 0 ? (
+                      <div className="empty-state compact-empty">
+                        <WalletCards size={22} />
+                        <strong>이 캠페인에 연결된 배송/정산 기록이 없습니다.</strong>
+                        <p>기록 추가를 누르면 이 캠페인이 자동으로 선택됩니다.</p>
+                      </div>
+                    ) : (
+                      campaignModalFulfillment.map((item) => (
+                        <FulfillmentItem
+                          key={item.id}
+                          item={item}
+                          creator={creators.find((creator) => creator.id === item.creatorId)}
+                          campaign={activeCampaignForModal}
+                          onAdvance={() => advanceFulfillmentStatus(item.id)}
+                        />
+                      ))
+                    )}
+                  </div>
+                </section>
               </div>
               <button className="primary-button" type="button" onClick={() => advanceCampaign(activeCampaignForModal.id)}>
                 <TrendingUp size={17} />
