@@ -2453,6 +2453,8 @@ function App() {
     () => campaigns.filter((campaign) => campaign.brandId === activeBrand.id),
     [activeBrand.id, campaigns],
   )
+  const selectedCampaign =
+    brandCampaigns.find((campaign) => campaign.id === selectedCampaignId) ?? brandCampaigns[0]
   const activeCampaignIdSet = useMemo(
     () => new Set(brandCampaigns.map((campaign) => campaign.id)),
     [brandCampaigns],
@@ -2471,12 +2473,19 @@ function App() {
       ),
     [activeBrand.id, activeCampaignIdSet, creators, recommendations, showExampleCreators],
   )
+  const selectedCampaignRecommendations = useMemo(
+    () =>
+      selectedCampaign
+        ? activeRecommendations.filter((recommendation) => recommendation.campaignId === selectedCampaign.id)
+        : activeRecommendations,
+    [activeRecommendations, selectedCampaign],
+  )
   const selectedRecommendations = useMemo(
-    () => activeRecommendations.filter((recommendation) => selectedRecommendationIds.includes(recommendation.id)),
-    [activeRecommendations, selectedRecommendationIds],
+    () => selectedCampaignRecommendations.filter((recommendation) => selectedRecommendationIds.includes(recommendation.id)),
+    [selectedCampaignRecommendations, selectedRecommendationIds],
   )
   const allRecommendationsSelected =
-    activeRecommendations.length > 0 && selectedRecommendations.length === activeRecommendations.length
+    selectedCampaignRecommendations.length > 0 && selectedRecommendations.length === selectedCampaignRecommendations.length
   const activeOutreach = useMemo(
     () => outreach.filter((item) => activeCampaignIdSet.has(item.campaignId)),
     [activeCampaignIdSet, outreach],
@@ -2501,6 +2510,27 @@ function App() {
   const activeTrackedPosts = useMemo(
     () => trackedPosts.filter((post) => activeCampaignIdSet.has(post.campaignId)),
     [activeCampaignIdSet, trackedPosts],
+  )
+  const selectedCampaignOutreach = useMemo(
+    () =>
+      selectedCampaign
+        ? activeOutreach.filter((item) => item.campaignId === selectedCampaign.id)
+        : activeOutreach,
+    [activeOutreach, selectedCampaign],
+  )
+  const selectedCampaignTrackedPosts = useMemo(
+    () =>
+      selectedCampaign
+        ? activeTrackedPosts.filter((post) => post.campaignId === selectedCampaign.id)
+        : activeTrackedPosts,
+    [activeTrackedPosts, selectedCampaign],
+  )
+  const selectedCampaignRecruitedPool = useMemo(
+    () =>
+      selectedCampaign
+        ? activeRecruitedPool.filter((item) => item.campaignId === selectedCampaign.id)
+        : activeRecruitedPool,
+    [activeRecruitedPool, selectedCampaign],
   )
 
   useEffect(() => {
@@ -2564,9 +2594,6 @@ function App() {
   const allDiscoveryCreatorsSelected =
     filteredCreators.length > 0 && selectedDiscoveryCreators.length === filteredCreators.length
 
-  const selectedCampaign =
-    brandCampaigns.find((campaign) => campaign.id === selectedCampaignId) ?? brandCampaigns[0]
-
   const selectedCreatorOutreach = activeOutreach.filter((item) => item.creatorId === selectedCreator?.id)
   const selectedCreatorQuotes = activeQuotes.filter((item) => item.creatorId === selectedCreator?.id)
   const autoOutreachCount = activeOutreach.filter((item) => item.source === '자동').length
@@ -2608,12 +2635,28 @@ function App() {
       ),
     [activeTrackedPosts],
   )
-  const trackedAverageEngagement = useMemo(
+  const selectedCampaignTrackedTotals = useMemo(
     () =>
-      activeTrackedPosts.length
-        ? activeTrackedPosts.reduce((sum, post) => sum + contentEngagementRate(post), 0) / activeTrackedPosts.length
+      selectedCampaignTrackedPosts.reduce(
+        (summary, post) => ({
+          views: summary.views + Number(post.views || 0),
+          likes: summary.likes + Number(post.likes || 0),
+          comments: summary.comments + Number(post.comments || 0),
+          shares: summary.shares + Number(post.shares || 0),
+          saves: summary.saves + Number(post.saves || 0),
+          conversions: summary.conversions + Number(post.conversions || 0),
+        }),
+        { views: 0, likes: 0, comments: 0, shares: 0, saves: 0, conversions: 0 },
+      ),
+    [selectedCampaignTrackedPosts],
+  )
+  const selectedCampaignTrackedAverageEngagement = useMemo(
+    () =>
+      selectedCampaignTrackedPosts.length
+        ? selectedCampaignTrackedPosts.reduce((sum, post) => sum + contentEngagementRate(post), 0) /
+          selectedCampaignTrackedPosts.length
         : 0,
-    [activeTrackedPosts],
+    [selectedCampaignTrackedPosts],
   )
 
   const campaignKpiSummaries = useMemo(
@@ -3702,7 +3745,7 @@ function App() {
   }
 
   const toggleAllRecommendations = () => {
-    setSelectedRecommendationIds(allRecommendationsSelected ? [] : activeRecommendations.map((item) => item.id))
+    setSelectedRecommendationIds(allRecommendationsSelected ? [] : selectedCampaignRecommendations.map((item) => item.id))
   }
 
   const saveSelectedRecommendations = () => {
@@ -3828,7 +3871,7 @@ function App() {
         'conversions',
         'last_checked',
       ],
-      ...activeTrackedPosts.map((post) => {
+      ...selectedCampaignTrackedPosts.map((post) => {
         const campaign = brandCampaigns.find((item) => item.id === post.campaignId)
         const creator = creators.find((item) => item.id === post.creatorId)
         return [
@@ -3857,9 +3900,10 @@ function App() {
       }),
     ]
     const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n')
-    const html = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>CreatorOps Performance Report</title><style>body{font-family:system-ui,sans-serif;margin:32px;color:#15201d}h1{margin-bottom:4px}.sub{color:#66736f;margin:0 0 22px}.metric{display:inline-block;min-width:140px;margin:0 10px 14px 0;padding:12px;border:1px solid #dce4e1;border-radius:8px;background:#f7faf9}.metric strong{display:block;color:#68736f;font-size:12px}.metric span{display:block;margin-top:5px;font-size:22px;font-weight:800}table{border-collapse:collapse;width:100%;font-size:12px}td,th{border:1px solid #dce4e1;padding:8px;text-align:left;vertical-align:top}th{position:sticky;top:0;background:#eef2f1}a{color:#0071e3}</style><h1>CreatorOps 성과 보고서</h1><p class="sub">${activeBrand.name} · 업로드 인플루언서/계정/링크/성과 지표 상세</p><div class="metric"><strong>업로드 콘텐츠</strong><span>${activeTrackedPosts.length}건</span></div><div class="metric"><strong>조회수</strong><span>${compactNumber(trackedTotals.views)}</span></div><div class="metric"><strong>댓글</strong><span>${compactNumber(trackedTotals.comments)}</span></div><div class="metric"><strong>공유</strong><span>${compactNumber(trackedTotals.shares)}</span></div><div class="metric"><strong>전환</strong><span>${compactNumber(trackedTotals.conversions)}</span></div><table><thead><tr>${rows[0].map((cell) => `<th>${escapeXml(cell)}</th>`).join('')}</tr></thead><tbody>${rows.slice(1).map((row) => `<tr>${row.map((cell, index) => index === 9 || index === 11 ? `<td><a href="${escapeXml(cell)}" target="_blank">${escapeXml(cell)}</a></td>` : `<td>${escapeXml(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></html>`
-    exportFile('creatorops-performance-report.csv', 'text/csv;charset=utf-8', csv)
-    exportFile('creatorops-performance-report.html', 'text/html;charset=utf-8', html)
+    const reportName = selectedCampaign?.name ?? activeBrand.name
+    const html = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>CreatorOps Performance Report</title><style>body{font-family:system-ui,sans-serif;margin:32px;color:#15201d}h1{margin-bottom:4px}.sub{color:#66736f;margin:0 0 22px}.metric{display:inline-block;min-width:140px;margin:0 10px 14px 0;padding:12px;border:1px solid #dce4e1;border-radius:8px;background:#f7faf9}.metric strong{display:block;color:#68736f;font-size:12px}.metric span{display:block;margin-top:5px;font-size:22px;font-weight:800}table{border-collapse:collapse;width:100%;font-size:12px}td,th{border:1px solid #dce4e1;padding:8px;text-align:left;vertical-align:top}th{position:sticky;top:0;background:#eef2f1}a{color:#0071e3}</style><h1>CreatorOps 성과 보고서</h1><p class="sub">${activeBrand.name} · ${reportName} · 업로드 인플루언서/계정/링크/성과 지표 상세</p><div class="metric"><strong>업로드 콘텐츠</strong><span>${selectedCampaignTrackedPosts.length}건</span></div><div class="metric"><strong>조회수</strong><span>${compactNumber(selectedCampaignTrackedTotals.views)}</span></div><div class="metric"><strong>댓글</strong><span>${compactNumber(selectedCampaignTrackedTotals.comments)}</span></div><div class="metric"><strong>공유</strong><span>${compactNumber(selectedCampaignTrackedTotals.shares)}</span></div><div class="metric"><strong>전환</strong><span>${compactNumber(selectedCampaignTrackedTotals.conversions)}</span></div><table><thead><tr>${rows[0].map((cell) => `<th>${escapeXml(cell)}</th>`).join('')}</tr></thead><tbody>${rows.slice(1).map((row) => `<tr>${row.map((cell, index) => index === 9 || index === 11 ? `<td><a href="${escapeXml(cell)}" target="_blank">${escapeXml(cell)}</a></td>` : `<td>${escapeXml(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></html>`
+    exportFile(`creatorops-performance-report-${normalizeHandleSegment(reportName)}.csv`, 'text/csv;charset=utf-8', csv)
+    exportFile(`creatorops-performance-report-${normalizeHandleSegment(reportName)}.html`, 'text/html;charset=utf-8', html)
     showToast('성과 CSV와 HTML 보고서를 다운로드했어요.')
   }
 
@@ -3886,7 +3930,7 @@ function App() {
       '캠페인',
       '생성 시점',
     ],
-    ...activeRecommendations.map((recommendation, index) => {
+    ...selectedCampaignRecommendations.map((recommendation, index) => {
       const creator = creators.find((item) => item.id === recommendation.creatorId)
       const campaign = brandCampaigns.find((item) => item.id === recommendation.campaignId)
       const friendlyMessage = creator
@@ -3993,7 +4037,7 @@ function App() {
               campaign: selectedCampaign,
               note: creator.sourceNote || creator.status || '발굴 후보',
             }))
-          : activeRecommendations
+          : selectedCampaignRecommendations
               .map((recommendation) => {
                 const creator = creators.find((creatorItem) => creatorItem.id === recommendation.creatorId)
                 const campaign = brandCampaigns.find((campaignItem) => campaignItem.id === recommendation.campaignId) ?? selectedCampaign
@@ -4774,6 +4818,54 @@ function App() {
           </div>
         </header>
 
+        {['discovery', 'messages', 'report'].includes(activeSection) && (
+          <section className="campaign-context-bar" aria-label="현재 작업 캠페인">
+            <div className="campaign-context-main">
+              <span className="mini-label">Campaign Context</span>
+              <label>
+                <Target size={16} />
+                <select
+                  value={selectedCampaign?.id ?? ''}
+                  onChange={(event) => setSelectedCampaignId(Number(event.target.value))}
+                  disabled={!brandCampaigns.length}
+                >
+                  {brandCampaigns.length === 0 ? (
+                    <option value="">캠페인 없음</option>
+                  ) : (
+                    brandCampaigns.map((campaign) => (
+                      <option value={campaign.id} key={campaign.id}>
+                        {campaign.name}
+                      </option>
+                    ))
+                  )}
+                </select>
+              </label>
+              <p>
+                {selectedCampaign
+                  ? `${selectedCampaign.status} · ${selectedCampaign.owner} · 마감 ${selectedCampaign.deadline}`
+                  : '발굴, 메시지, 리포트를 묶을 캠페인을 먼저 생성해주세요.'}
+              </p>
+            </div>
+            <div className="campaign-context-metrics">
+              <Stat label="AI 추천" value={`${selectedCampaignRecommendations.length}명`} />
+              <Stat label="메시지" value={`${selectedCampaignOutreach.length}건`} />
+              <Stat label="업로드" value={`${selectedCampaignTrackedPosts.length}건`} />
+              <Stat label="섭외완료" value={`${selectedCampaignRecruitedPool.length}명`} />
+            </div>
+            <div className="campaign-context-actions">
+              <button className="secondary-button compact-button" type="button" onClick={() => setModal({ type: 'create' })}>
+                <Plus size={15} />
+                캠페인 생성
+              </button>
+              {selectedCampaign && (
+                <button className="primary-button compact-button" type="button" onClick={() => openCampaign(selectedCampaign)}>
+                  열기
+                </button>
+              )}
+            </div>
+          </section>
+        )}
+
         {activeSection === 'dashboard' && (
           <>
             <section className="workflow-strip" aria-label="인플루언서 운영 흐름">
@@ -5048,14 +5140,14 @@ function App() {
                   className="secondary-button compact-button"
                   type="button"
                   onClick={toggleAllRecommendations}
-                  disabled={!activeRecommendations.length}
+                  disabled={!selectedCampaignRecommendations.length}
                 >
                   {allRecommendationsSelected ? '전체 해제' : '전체 선택'}
                 </button>
-                <span className="result-count">{activeRecommendations.length}명</span>
+                <span className="result-count">{selectedCampaignRecommendations.length}명</span>
               </div>
             </div>
-            {activeRecommendations.length > 0 && (
+            {selectedCampaignRecommendations.length > 0 && (
               <div className="recommendation-selection-bar">
                 <div>
                   <strong>{selectedRecommendations.length}명 선택</strong>
@@ -5084,14 +5176,14 @@ function App() {
               </div>
             )}
             <div className="recommendation-list">
-              {activeRecommendations.length === 0 ? (
+              {selectedCampaignRecommendations.length === 0 ? (
                 <div className="empty-state compact-empty">
                   <Target size={22} />
                   <strong>아직 AI 추천 결과가 없습니다.</strong>
-                  <p>브랜드 조건을 설정하고 AI 매칭을 실행하세요.</p>
+                  <p>현재 선택한 캠페인 기준으로 AI 매칭을 실행하세요.</p>
                 </div>
               ) : (
-                activeRecommendations.map((recommendation) => (
+                selectedCampaignRecommendations.map((recommendation) => (
                   <RecommendationCard
                     key={recommendation.id}
                     recommendation={recommendation}
@@ -5544,8 +5636,8 @@ function App() {
 
             <div className="report-summary">
               <div>
-                <span className="mini-label">예상 전환 매출</span>
-                <strong>{won(totals.revenue)}</strong>
+                <span className="mini-label">선택 캠페인 매출</span>
+                <strong>{won(selectedCampaign?.revenue ?? 0)}</strong>
               </div>
               <BarChart3 size={24} />
             </div>
@@ -5565,18 +5657,18 @@ function App() {
             </div>
 
             <div className="tracking-metrics">
-              <Stat label="추적 콘텐츠" value={`${activeTrackedPosts.length}건`} />
-              <Stat label="조회수" value={compactNumber(trackedTotals.views)} />
-              <Stat label="댓글" value={compactNumber(trackedTotals.comments)} />
-              <Stat label="공유" value={compactNumber(trackedTotals.shares)} />
-              <Stat label="저장" value={compactNumber(trackedTotals.saves)} />
-              <Stat label="전환" value={compactNumber(trackedTotals.conversions)} />
-              <Stat label="평균 참여율" value={percent(trackedAverageEngagement)} />
-              <Stat label="업로드 인플루언서" value={`${new Set(activeTrackedPosts.map((post) => post.creatorId)).size}명`} />
+              <Stat label="추적 콘텐츠" value={`${selectedCampaignTrackedPosts.length}건`} />
+              <Stat label="조회수" value={compactNumber(selectedCampaignTrackedTotals.views)} />
+              <Stat label="댓글" value={compactNumber(selectedCampaignTrackedTotals.comments)} />
+              <Stat label="공유" value={compactNumber(selectedCampaignTrackedTotals.shares)} />
+              <Stat label="저장" value={compactNumber(selectedCampaignTrackedTotals.saves)} />
+              <Stat label="전환" value={compactNumber(selectedCampaignTrackedTotals.conversions)} />
+              <Stat label="평균 참여율" value={percent(selectedCampaignTrackedAverageEngagement)} />
+              <Stat label="업로드 인플루언서" value={`${new Set(selectedCampaignTrackedPosts.map((post) => post.creatorId)).size}명`} />
             </div>
 
             <div className="campaign-kpi-report">
-              {campaignKpiSummaries.map((summary) => {
+              {(selectedCampaignKpi ? [selectedCampaignKpi] : []).map((summary) => {
                 const campaign = brandCampaigns.find((item) => item.id === summary.campaignId)
                 return (
                   <article key={summary.campaignId}>
@@ -5597,7 +5689,7 @@ function App() {
             </div>
 
             <div className="tracked-content-list">
-              {activeTrackedPosts.map((post) => {
+              {selectedCampaignTrackedPosts.map((post) => {
                 const creator = creators.find((item) => item.id === post.creatorId)
                 const campaign = brandCampaigns.find((item) => item.id === post.campaignId)
                 const engagementRate = contentEngagementRate(post)
@@ -5639,7 +5731,7 @@ function App() {
                   </article>
                 )
               })}
-              {!activeTrackedPosts.length && (
+              {!selectedCampaignTrackedPosts.length && (
                 <div className="empty-state compact-empty">
                   <BarChart3 size={22} />
                   <strong>아직 추적 중인 업로드 콘텐츠가 없습니다.</strong>
@@ -5650,7 +5742,7 @@ function App() {
 
             <div className="insight-strip">
               <Target size={18} />
-              <p>현재 쇼트리스트 예상 총 단가 {won(getCreatorsByIds(creators, shortlist).reduce((sum, creator) => sum + creator.price, 0))} · 추적 전환 {compactNumber(trackedTotals.conversions)}</p>
+              <p>현재 쇼트리스트 예상 총 단가 {won(getCreatorsByIds(creators, shortlist).reduce((sum, creator) => sum + creator.price, 0))} · 선택 캠페인 추적 전환 {compactNumber(selectedCampaignTrackedTotals.conversions)}</p>
             </div>
           </section>
           )}
@@ -5681,14 +5773,14 @@ function App() {
               ))}
             </div>
             <div className="record-list">
-              {activeOutreach.length === 0 ? (
+              {selectedCampaignOutreach.length === 0 ? (
                 <div className="empty-state compact-empty">
                   <MessageSquare size={22} />
                   <strong>아직 검토할 제안 메시지가 없습니다.</strong>
-                  <p>AI 추천 후보나 크리에이터 상세에서 제안 메시지를 저장해보세요.</p>
+                  <p>현재 선택한 캠페인의 AI 추천 후보나 크리에이터 상세에서 제안 메시지를 저장해보세요.</p>
                 </div>
               ) : (
-              activeOutreach.map((item) => (
+              selectedCampaignOutreach.map((item) => (
                 <OutreachItem
                   key={item.id}
                   item={item}
