@@ -5619,63 +5619,6 @@ function App() {
           </section>
         </section>
 
-        <section className="panel candidate-pool-panel">
-          <div className="panel-heading">
-            <div>
-              <span className="mini-label">Pre-Outreach Pool</span>
-              <h2>메시지 전 후보 풀</h2>
-            </div>
-            <div className="panel-heading-actions">
-              <span className="result-count">{candidatePoolCreators.length}명</span>
-              <button
-                className="secondary-button compact-button"
-                type="button"
-                onClick={toggleAllCandidatePoolCreators}
-                disabled={!candidatePoolCreators.length}
-              >
-                {allCandidatePoolSelected ? '전체 해제' : '전체 선택'}
-              </button>
-              <button
-                className="primary-button compact-button"
-                type="button"
-                onClick={queueSelectedCandidatePoolCreators}
-                disabled={!selectedCandidatePoolCreators.length}
-              >
-                <Send size={15} />
-                선택 메시지 생성
-              </button>
-            </div>
-          </div>
-          <div className="candidate-pool-summary">
-            <Stat label="저장 후보" value={`${shortlist.length}명`} />
-            <Stat label="메시지 전" value={`${candidatePoolCreators.length}명`} />
-            <Stat label="선택됨" value={`${selectedCandidatePoolCreators.length}명`} />
-            <Stat label="현재 캠페인" value={selectedCampaign?.name ?? '미선택'} />
-          </div>
-          <div className="candidate-pool-list">
-            {candidatePoolCreators.length === 0 ? (
-              <div className="empty-state compact-empty">
-                <UsersRound size={22} />
-                <strong>메시지 전 후보가 없습니다.</strong>
-                <p>발굴 리스트나 AI 추천에서 후보를 저장하면 이곳에 쌓이고, 메시지 검토함으로 보내기 전까지 관리할 수 있습니다.</p>
-              </div>
-            ) : (
-              candidatePoolCreators.map((creator) => (
-                <CreatorRow
-                  key={creator.id}
-                  creator={creator}
-                  active={selectedCreator?.id === creator.id}
-                  saved={shortlist.includes(creator.id)}
-                  checked={selectedCandidatePoolIds.includes(creator.id)}
-                  onSelect={() => setSelectedCreatorId(creator.id)}
-                  onSave={() => toggleShortlist(creator)}
-                  onToggle={() => toggleCandidatePoolSelection(creator.id)}
-                />
-              ))
-            )}
-          </div>
-        </section>
-
         <section className="work-grid">
           <section className="panel discovery-panel" id="discovery">
             <div className="panel-heading">
@@ -6028,6 +5971,63 @@ function App() {
               </div>
             </aside>
           )}
+        </section>
+
+        <section className="panel candidate-pool-panel">
+          <div className="panel-heading">
+            <div>
+              <span className="mini-label">Pre-Outreach Pool</span>
+              <h2>메시지 전 후보 풀</h2>
+            </div>
+            <div className="panel-heading-actions">
+              <span className="result-count">{candidatePoolCreators.length}명</span>
+              <button
+                className="secondary-button compact-button"
+                type="button"
+                onClick={toggleAllCandidatePoolCreators}
+                disabled={!candidatePoolCreators.length}
+              >
+                {allCandidatePoolSelected ? '전체 해제' : '전체 선택'}
+              </button>
+              <button
+                className="primary-button compact-button"
+                type="button"
+                onClick={queueSelectedCandidatePoolCreators}
+                disabled={!selectedCandidatePoolCreators.length}
+              >
+                <Send size={15} />
+                선택 메시지 생성
+              </button>
+            </div>
+          </div>
+          <div className="candidate-pool-summary">
+            <Stat label="저장 후보" value={`${shortlist.length}명`} />
+            <Stat label="메시지 전" value={`${candidatePoolCreators.length}명`} />
+            <Stat label="선택됨" value={`${selectedCandidatePoolCreators.length}명`} />
+            <Stat label="현재 캠페인" value={selectedCampaign?.name ?? '미선택'} />
+          </div>
+          <div className="candidate-pool-list">
+            {candidatePoolCreators.length === 0 ? (
+              <div className="empty-state compact-empty">
+                <UsersRound size={22} />
+                <strong>메시지 전 후보가 없습니다.</strong>
+                <p>발굴 리스트나 AI 추천에서 후보를 저장하면 이곳에 쌓이고, 메시지 검토함으로 보내기 전까지 관리할 수 있습니다.</p>
+              </div>
+            ) : (
+              candidatePoolCreators.map((creator) => (
+                <CreatorRow
+                  key={creator.id}
+                  creator={creator}
+                  active={selectedCreator?.id === creator.id}
+                  saved={shortlist.includes(creator.id)}
+                  checked={selectedCandidatePoolIds.includes(creator.id)}
+                  onSelect={() => setSelectedCreatorId(creator.id)}
+                  onSave={() => toggleShortlist(creator)}
+                  onToggle={() => toggleCandidatePoolSelection(creator.id)}
+                />
+              ))
+            )}
+          </div>
         </section>
           </>
         )}
