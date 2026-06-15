@@ -625,6 +625,41 @@ const defaultFulfillmentRecords = [
 ]
 
 const defaultWorkspace = {
+  team: {
+    id: 'team-miping',
+    name: '미핑기획 CreatorOps 팀',
+    sharedPoolScope: 'team',
+  },
+  accounts: [
+    {
+      id: 'acct-owner',
+      name: '운영 총괄',
+      email: 'owner@miping.co.kr',
+      role: 'Owner',
+      status: '활성',
+      brandIds: [201, 202, 203],
+      lastActive: '오늘',
+    },
+    {
+      id: 'acct-manager',
+      name: '브랜드 매니저',
+      email: 'manager@miping.co.kr',
+      role: 'Manager',
+      status: '활성',
+      brandIds: [201],
+      lastActive: '오늘',
+    },
+    {
+      id: 'acct-client',
+      name: '클라이언트 뷰어',
+      email: 'client@brand.co.kr',
+      role: 'Client',
+      status: '초대됨',
+      brandIds: [201],
+      lastActive: '초대 대기',
+    },
+  ],
+  activeAccountId: 'acct-owner',
   brands: defaultBrands,
   activeBrandId: defaultBrands[0].id,
   creators: defaultCreators,
@@ -702,6 +737,76 @@ const briefPlatformOptions = ['YouTube', 'Instagram', 'TikTok', 'TikTok 셀러']
 const categoryOptions = ['전체', '뷰티', '테크', '푸드', '피트니스', '아웃도어', '펫', '리뷰', '공동구매']
 const campaignStatuses = ['섭외', '콘텐츠 제작', '라이브', '리포트', '완료']
 const campaignTypeOptions = ['제안형', '공개모집', '앰배서더', '커머스/제휴', 'UGC/숏폼', '틱톡 공동구매 셀러']
+
+const teamRoleCatalog = {
+  Owner: {
+    label: 'Owner',
+    description: '팀/계정/권한/전체 브랜드를 관리합니다.',
+    permissions: ['전체 데이터', '권한 부여', '삭제/초기화', '다운로드'],
+  },
+  Admin: {
+    label: 'Admin',
+    description: '브랜드와 캠페인 운영을 관리합니다.',
+    permissions: ['브랜드 관리', '캠페인 관리', '데이터 다운로드'],
+  },
+  Manager: {
+    label: 'Manager',
+    description: '배정된 브랜드의 발굴, 메시지, 리포트를 운영합니다.',
+    permissions: ['발굴', '메시지', '리포트'],
+  },
+  Client: {
+    label: 'Client',
+    description: '배정된 브랜드의 승인용 풀과 리포트를 봅니다.',
+    permissions: ['컨펌 보기', '리포트 보기'],
+  },
+  Analyst: {
+    label: 'Analyst',
+    description: '데이터 품질과 성과 리포트만 확인합니다.',
+    permissions: ['데이터 검토', '리포트 보기'],
+  },
+}
+
+const competitorBenchmarks = [
+  {
+    name: 'NoxInfluencer',
+    strength: '대규모 크리에이터 데이터, 랭킹, 브랜드 인텔리전스, API Data Service',
+    gapToClose: '검색 후보마다 출처/갱신일/검증상태를 남기고 브랜드 협업 흔적을 추적해야 함',
+  },
+  {
+    name: 'Modash',
+    strength: '발굴-관리-트래킹-정산이 연결된 워크플로우, 공개 프로필 기반 검색, Shopify/Gmail 연동',
+    gapToClose: '팀 인박스, 자동 콘텐츠 수집, 커머스 전환 추적 연결이 필요함',
+  },
+  {
+    name: 'HypeAuditor',
+    strength: '오디언스 품질, 진성 팔로워, fraud detection, 캠페인 리포팅',
+    gapToClose: '팔로워 증가 이상치, 참여율 품질, 오디언스 지역/연령 신뢰도 점수를 분리해야 함',
+  },
+  {
+    name: 'Upfluence/GRIN',
+    strength: '커머스/제휴/기프팅/크리에이터 관계관리와 운영 자동화',
+    gapToClose: '배송/샘플/계약/사용권/성과 리포트를 캠페인 단위로 연결해야 함',
+  },
+]
+
+const dataAccuracyRoadmap = [
+  {
+    title: 'Source Ledger',
+    detail: '팔로워, 평균조회수, 참여율마다 수집 URL, 수집일, 수집방식, 신뢰도를 별도 기록',
+  },
+  {
+    title: 'Cross Check',
+    detail: 'YouTube Data API, 공개 프로필 입력, Google Search/CX 결과를 같은 후보에 병합해 차이를 표시',
+  },
+  {
+    title: 'Fraud Signals',
+    detail: '비정상 팔로워 증가, 낮은 댓글 품질, 조회수 대비 참여율 편차를 리스크 점수로 분리',
+  },
+  {
+    title: 'Freshness SLA',
+    detail: '핵심 후보는 24~72시간 내 갱신, 예시/미검증 후보는 검증 대기 배지로 차단',
+  },
+]
 
 function normalizeBrand(brand, index = 0) {
   const fallback = defaultBrands[index] ?? defaultBrands[0]
@@ -924,6 +1029,15 @@ function normalizeWorkspace(saved) {
   return {
     ...defaultWorkspace,
     ...saved,
+    team: {
+      ...defaultWorkspace.team,
+      ...(saved?.team ?? {}),
+    },
+    accounts: saved?.accounts?.length ? saved.accounts : defaultWorkspace.accounts,
+    activeAccountId:
+      saved?.accounts?.some((account) => account.id === saved?.activeAccountId)
+        ? saved.activeAccountId
+        : defaultWorkspace.activeAccountId,
     brands: normalizedBrands,
     activeBrandId,
     creators: normalizedCreators,
@@ -2485,8 +2599,21 @@ function App() {
     fulfillmentRecords,
     trackedPosts,
     activities,
+    team,
+    accounts,
+    activeAccountId,
   } = workspace
 
+  const currentAccount = accounts.find((account) => account.id === activeAccountId) ?? accounts[0] ?? defaultWorkspace.accounts[0]
+  const currentRole = teamRoleCatalog[currentAccount?.role] ?? teamRoleCatalog.Manager
+  const canManagePermissions = currentAccount?.role === 'Owner' || currentAccount?.role === 'Admin'
+  const accessibleBrands = useMemo(
+    () =>
+      currentAccount?.role === 'Owner' || currentAccount?.role === 'Admin'
+        ? brands
+        : brands.filter((brand) => currentAccount?.brandIds?.includes(brand.id)),
+    [brands, currentAccount],
+  )
   const activeBrand = brands.find((brand) => brand.id === activeBrandId) ?? brands[0] ?? defaultBrands[0]
   const brandBrief = activeBrand?.brief ?? defaultBrandBrief
   const brandCampaigns = useMemo(
@@ -2902,6 +3029,77 @@ function App() {
     }))
     setSelectedCampaignId(campaigns.find((campaign) => campaign.brandId === nextBrandId)?.id)
     showToast(`${nextBrand.name} 워크스페이스로 전환했어요.`)
+  }
+
+  const switchAccount = (accountId) => {
+    const nextAccount = accounts.find((account) => account.id === accountId)
+    if (!nextAccount) return
+    const nextBrandId = nextAccount.brandIds?.[0] ?? activeBrandId
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          activeAccountId: nextAccount.id,
+          activeBrandId: nextBrandId,
+        },
+        'team',
+        `${nextAccount.name} 계정으로 권한 컨텍스트 전환`,
+      ),
+    )
+    setSelectedCampaignId(campaigns.find((campaign) => campaign.brandId === nextBrandId)?.id)
+  }
+
+  const updateAccountRole = (accountId, role) => {
+    if (!canManagePermissions) {
+      showToast('Owner 또는 Admin만 계정 권한을 변경할 수 있습니다.')
+      return
+    }
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          accounts: current.accounts.map((account) =>
+            account.id === accountId
+              ? {
+                  ...account,
+                  role,
+                }
+              : account,
+          ),
+        },
+        'team',
+        `${accounts.find((account) => account.id === accountId)?.name ?? '계정'} 권한을 ${role}로 변경`,
+      ),
+    )
+  }
+
+  const toggleAccountBrandAccess = (accountId, brandId) => {
+    if (!canManagePermissions) {
+      showToast('Owner 또는 Admin만 브랜드 접근권한을 변경할 수 있습니다.')
+      return
+    }
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          accounts: current.accounts.map((account) => {
+            if (account.id !== accountId) return account
+            const brandIds = new Set(account.brandIds ?? [])
+            if (brandIds.has(brandId)) brandIds.delete(brandId)
+            else brandIds.add(brandId)
+            return {
+              ...account,
+              brandIds: [...brandIds],
+            }
+          }),
+        },
+        'team',
+        '브랜드 접근권한 업데이트',
+      ),
+    )
   }
 
   const runDataSourceAudit = () => {
@@ -4798,14 +4996,14 @@ function App() {
           <label>
             <span>관리 브랜드</span>
             <select value={activeBrand.id} onChange={(event) => switchBrand(event.target.value)}>
-              {brands.map((brand) => (
+              {accessibleBrands.map((brand) => (
                 <option value={brand.id} key={brand.id}>
                   {brand.name}
                 </option>
               ))}
             </select>
           </label>
-          <p>{brandCampaigns.length}개 캠페인 · {activeRecommendations.length}명 추천</p>
+          <p>{team.name} · {currentAccount.name} · {currentRole.label}</p>
         </div>
 
         <nav className="nav-list" aria-label="주요 메뉴">
@@ -4842,12 +5040,12 @@ function App() {
         </nav>
 
         <div className="team-block">
-          <span className="mini-label">팀 공유 전환 필요</span>
-          <strong>{brands.length}개 브랜드 · 로컬 전용</strong>
+          <span className="mini-label">Team Access</span>
+          <strong>{accounts.length}개 계정 · {accessibleBrands.length}개 브랜드 접근</strong>
           <div className="team-meter">
-            <span style={{ width: `${Math.min(50 + activeOutreach.length * 8 + brandCampaigns.length * 6, 94)}%` }} />
+            <span style={{ width: `${Math.min(40 + accounts.length * 12 + accessibleBrands.length * 8, 94)}%` }} />
           </div>
-          <p>운영 버전은 로그인, 권한, 공유 DB로 전환</p>
+          <p>{currentRole.description}</p>
         </div>
       </aside>
 
@@ -6970,6 +7168,102 @@ function App() {
                 <Stat label="공유 상태" value="로컬 전용" />
                 <Stat label="데이터 신뢰도" value={`${dataCoverage.confidence}%`} />
                 <Stat label="공식 API 대상" value={`${dataCoverage.officialReady}명`} />
+              </div>
+              <div className="team-permission-panel">
+                <div className="team-permission-head">
+                  <div>
+                    <span className="mini-label">Team Permission</span>
+                    <strong>{team.name}</strong>
+                    <p>같은 팀 계정은 같은 크리에이터 풀과 캠페인 데이터를 공유하고, 역할/브랜드 단위로 접근권한을 나눕니다.</p>
+                  </div>
+                  <label>
+                    현재 계정
+                    <select value={currentAccount.id} onChange={(event) => switchAccount(event.target.value)}>
+                      {accounts.map((account) => (
+                        <option value={account.id} key={account.id}>
+                          {account.name} · {account.role}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="team-account-list">
+                  {accounts.map((account) => {
+                    const role = teamRoleCatalog[account.role] ?? teamRoleCatalog.Manager
+                    return (
+                      <article className={account.id === currentAccount.id ? 'active-account-card' : ''} key={account.id}>
+                        <div>
+                          <strong>{account.name}</strong>
+                          <span>{account.email}</span>
+                          <small>{account.status} · 최근 활동 {account.lastActive}</small>
+                        </div>
+                        <select
+                          value={account.role}
+                          onChange={(event) => updateAccountRole(account.id, event.target.value)}
+                          disabled={!canManagePermissions}
+                        >
+                          {Object.keys(teamRoleCatalog).map((roleKey) => (
+                            <option value={roleKey} key={roleKey}>
+                              {roleKey}
+                            </option>
+                          ))}
+                        </select>
+                        <p>{role.description}</p>
+                        <div className="account-brand-access">
+                          {brands.map((brand) => (
+                            <button
+                              className={account.brandIds?.includes(brand.id) ? 'selected' : ''}
+                              type="button"
+                              key={brand.id}
+                              onClick={() => toggleAccountBrandAccess(account.id, brand.id)}
+                              disabled={!canManagePermissions || account.role === 'Owner'}
+                            >
+                              {brand.name}
+                            </button>
+                          ))}
+                        </div>
+                      </article>
+                    )
+                  })}
+                </div>
+                <div className="role-permission-grid">
+                  {Object.values(teamRoleCatalog).map((role) => (
+                    <article key={role.label}>
+                      <strong>{role.label}</strong>
+                      <p>{role.description}</p>
+                      <span>{role.permissions.join(' · ')}</span>
+                    </article>
+                  ))}
+                </div>
+              </div>
+              <div className="benchmark-panel">
+                <div>
+                  <span className="mini-label">Competitive Benchmark</span>
+                  <strong>경쟁사 기준 보완 항목</strong>
+                </div>
+                <div className="benchmark-grid">
+                  {competitorBenchmarks.map((item) => (
+                    <article key={item.name}>
+                      <strong>{item.name}</strong>
+                      <p>{item.strength}</p>
+                      <small>{item.gapToClose}</small>
+                    </article>
+                  ))}
+                </div>
+              </div>
+              <div className="accuracy-roadmap-panel">
+                <div>
+                  <span className="mini-label">Data Accuracy</span>
+                  <strong>데이터 정확도 개선 원칙</strong>
+                </div>
+                <div className="accuracy-roadmap-grid">
+                  {dataAccuracyRoadmap.map((item) => (
+                    <article key={item.title}>
+                      <strong>{item.title}</strong>
+                      <p>{item.detail}</p>
+                    </article>
+                  ))}
+                </div>
               </div>
               <form className="public-profile-form" onSubmit={savePublicProfileSnapshot}>
                 <div>
