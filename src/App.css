@@ -461,6 +461,92 @@
   box-sizing: border-box;
 }
 
+.settings-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.8fr);
+  gap: 16px;
+  align-items: start;
+}
+
+.settings-main-panel {
+  min-height: 520px;
+}
+
+.settings-current-account {
+  margin: 0 18px 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(220px, 0.45fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.settings-current-account strong,
+.settings-current-account p,
+.settings-current-account label {
+  display: block;
+}
+
+.settings-current-account p {
+  margin: 6px 0 0;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.settings-current-account label {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.settings-current-account select {
+  width: 100%;
+  min-height: 38px;
+  margin-top: 6px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 10px;
+  color: var(--text-strong);
+  background: var(--surface-strong);
+  font: inherit;
+}
+
+.settings-account-list {
+  padding: 0 18px 18px;
+}
+
+.settings-side-panel {
+  display: grid;
+  gap: 16px;
+}
+
+.settings-role-grid,
+.settings-accuracy-grid {
+  grid-template-columns: 1fr;
+  padding: 0 18px 18px;
+}
+
+.candidate-pool-panel {
+  margin-bottom: 16px;
+}
+
+.candidate-pool-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  padding: 4px 18px 14px;
+}
+
+.candidate-pool-list {
+  display: grid;
+  gap: 10px;
+  padding: 0 18px 18px;
+}
+
 .metric-icon {
   width: 34px;
   height: 34px;
@@ -3720,6 +3806,7 @@
 
   .work-grid,
   .bottom-grid,
+  .settings-grid,
   .ops-grid {
     grid-template-columns: 1fr;
   }
@@ -3774,7 +3861,7 @@
   }
 
   .nav-list {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
   .nav-item {
@@ -3808,7 +3895,7 @@
   }
 
   .nav-list {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
   }
 
   .nav-item {
@@ -3861,6 +3948,7 @@
   }
 
   .brief-form,
+  .candidate-pool-summary,
   .campaign-context-metrics,
   .learning-import-grid,
   .real-discovery-panel,
@@ -3886,6 +3974,11 @@
   .pool-confirm-body,
   .fulfillment-summary {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .settings-current-account,
+  .team-account-list article {
+    grid-template-columns: 1fr;
   }
 
   .campaign-row {
@@ -3970,6 +4063,10 @@
   }
 
   .performance-filter-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .candidate-pool-summary {
     grid-template-columns: 1fr;
   }
 

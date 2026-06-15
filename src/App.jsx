@@ -23,6 +23,7 @@ import {
   RotateCcw,
   Search,
   Send,
+  Settings,
   ShieldCheck,
   SlidersHorizontal,
   Target,
@@ -2486,6 +2487,7 @@ function App() {
   const [showExampleCreators, setShowExampleCreators] = useState(false)
   const [selectedRecommendationIds, setSelectedRecommendationIds] = useState([])
   const [selectedDiscoveryCreatorIds, setSelectedDiscoveryCreatorIds] = useState([])
+  const [selectedCandidatePoolIds, setSelectedCandidatePoolIds] = useState([])
   const [realDiscoveryDraft, setRealDiscoveryDraft] = useState({
     youtubeApiKey: '',
     googleApiKey: '',
@@ -2699,6 +2701,16 @@ function App() {
         : activeRecruitedPool,
     [activeRecruitedPool, selectedCampaign],
   )
+  const candidatePoolCreators = useMemo(() => {
+    const messagedCreatorIds = new Set(selectedCampaignOutreach.map((item) => item.creatorId))
+    return getCreatorsByIds(creators, shortlist).filter((creator) => !messagedCreatorIds.has(creator.id))
+  }, [creators, selectedCampaignOutreach, shortlist])
+  const selectedCandidatePoolCreators = useMemo(
+    () => candidatePoolCreators.filter((creator) => selectedCandidatePoolIds.includes(creator.id)),
+    [candidatePoolCreators, selectedCandidatePoolIds],
+  )
+  const allCandidatePoolSelected =
+    candidatePoolCreators.length > 0 && selectedCandidatePoolCreators.length === candidatePoolCreators.length
 
   useEffect(() => {
     if (!toast) return undefined
@@ -3005,6 +3017,11 @@ function App() {
       eyebrow: 'Outreach',
       title: '메시지',
       description: '제안 메시지 검토, 발송, 응답 관리',
+    },
+    settings: {
+      eyebrow: 'Workspace Settings',
+      title: '설정',
+      description: '팀 계정, 권한, 데이터 정확도 기준 관리',
     },
   }[activeSection] ?? {
     eyebrow: 'Creator intelligence OS',
@@ -3365,6 +3382,18 @@ function App() {
     setSelectedDiscoveryCreatorIds(allDiscoveryCreatorsSelected ? [] : filteredCreators.map((creator) => creator.id))
   }
 
+  const toggleCandidatePoolSelection = (creatorId) => {
+    setSelectedCandidatePoolIds((current) =>
+      current.includes(creatorId)
+        ? current.filter((id) => id !== creatorId)
+        : [...current, creatorId],
+    )
+  }
+
+  const toggleAllCandidatePoolCreators = () => {
+    setSelectedCandidatePoolIds(allCandidatePoolSelected ? [] : candidatePoolCreators.map((creator) => creator.id))
+  }
+
   const buildCreatorProposalRecord = (creator, campaign, source = '수동') => {
     const message = buildFriendlyProposalMessage(creator, brandBrief, campaign)
     const contactPlan = buildContactPlan(creator, getRecommendedContactChannelId(creator), message, campaign.name)
@@ -3416,12 +3445,43 @@ function App() {
     showToast(`선택한 인플루언서 ${records.length}명의 제안 메시지를 검토함에 저장했어요.`)
   }
 
+  const queueSelectedCandidatePoolCreators = () => {
+    const campaign = selectedCampaign
+
+    if (!campaign) {
+      showToast('후보 풀에서 메시지를 만들려면 캠페인이 필요합니다.')
+      setModal({ type: 'create' })
+      return
+    }
+
+    if (!selectedCandidatePoolCreators.length) {
+      showToast('메시지로 보낼 후보를 먼저 선택하세요.')
+      return
+    }
+
+    const records = selectedCandidatePoolCreators.map((creator) => buildCreatorProposalRecord(creator, campaign, '후보 풀'))
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          outreach: [...records, ...current.outreach],
+        },
+        'outreach',
+        `후보 풀 ${records.length}명 제안 메시지 검토함 저장`,
+      ),
+    )
+    setSelectedCandidatePoolIds([])
+    showToast(`후보 풀 ${records.length}명의 제안 메시지를 검토함에 넣었어요.`)
+  }
+
   const resetSearch = () => {
     setQuery('')
     setPlatform('전체')
     setCategory('전체')
     setDiscoveryFilters(defaultDiscoveryFilters)
     setSelectedDiscoveryCreatorIds([])
+    setSelectedCandidatePoolIds([])
     showToast('검색 조건을 초기화했어요.')
   }
 
@@ -5037,6 +5097,12 @@ function App() {
             label="리포트"
             onClick={() => jumpTo('report')}
           />
+          <NavButton
+            active={activeSection === 'settings'}
+            icon={<Settings size={18} />}
+            label="설정"
+            onClick={() => jumpTo('settings')}
+          />
         </nav>
 
         <div className="team-block">
@@ -5153,6 +5219,112 @@ function App() {
               />
             </section>
           </>
+        )}
+
+        {activeSection === 'settings' && (
+          <section className="settings-grid">
+            <section className="panel settings-main-panel">
+              <div className="panel-heading">
+                <div>
+                  <span className="mini-label">Team Permission</span>
+                  <h2>팀 계정 및 권한</h2>
+                </div>
+                <span className="result-count">{accounts.length}개 계정</span>
+              </div>
+              <div className="settings-current-account">
+                <div>
+                  <strong>{team.name}</strong>
+                  <p>같은 팀 계정은 같은 크리에이터 풀과 캠페인 데이터를 공유하고, 역할과 브랜드 접근권한으로 볼 수 있는 범위를 나눕니다.</p>
+                </div>
+                <label>
+                  현재 계정
+                  <select value={currentAccount.id} onChange={(event) => switchAccount(event.target.value)}>
+                    {accounts.map((account) => (
+                      <option value={account.id} key={account.id}>
+                        {account.name} · {account.role}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              <div className="team-account-list settings-account-list">
+                {accounts.map((account) => {
+                  const role = teamRoleCatalog[account.role] ?? teamRoleCatalog.Manager
+                  return (
+                    <article className={account.id === currentAccount.id ? 'active-account-card' : ''} key={account.id}>
+                      <div>
+                        <strong>{account.name}</strong>
+                        <span>{account.email}</span>
+                        <small>{account.status} · 최근 활동 {account.lastActive}</small>
+                      </div>
+                      <select
+                        value={account.role}
+                        onChange={(event) => updateAccountRole(account.id, event.target.value)}
+                        disabled={!canManagePermissions}
+                      >
+                        {Object.keys(teamRoleCatalog).map((roleKey) => (
+                          <option value={roleKey} key={roleKey}>
+                            {roleKey}
+                          </option>
+                        ))}
+                      </select>
+                      <p>{role.description}</p>
+                      <div className="account-brand-access">
+                        {brands.map((brand) => (
+                          <button
+                            className={account.brandIds?.includes(brand.id) ? 'selected' : ''}
+                            type="button"
+                            key={brand.id}
+                            onClick={() => toggleAccountBrandAccess(account.id, brand.id)}
+                            disabled={!canManagePermissions || account.role === 'Owner'}
+                          >
+                            {brand.name}
+                          </button>
+                        ))}
+                      </div>
+                    </article>
+                  )
+                })}
+              </div>
+            </section>
+
+            <aside className="settings-side-panel">
+              <section className="panel">
+                <div className="panel-heading">
+                  <div>
+                    <span className="mini-label">Role Matrix</span>
+                    <h2>관리 권한</h2>
+                  </div>
+                </div>
+                <div className="role-permission-grid settings-role-grid">
+                  {Object.values(teamRoleCatalog).map((role) => (
+                    <article key={role.label}>
+                      <strong>{role.label}</strong>
+                      <p>{role.description}</p>
+                      <span>{role.permissions.join(' · ')}</span>
+                    </article>
+                  ))}
+                </div>
+              </section>
+
+              <section className="panel">
+                <div className="panel-heading">
+                  <div>
+                    <span className="mini-label">Data Accuracy</span>
+                    <h2>정확도 운영 기준</h2>
+                  </div>
+                </div>
+                <div className="accuracy-roadmap-grid settings-accuracy-grid">
+                  {dataAccuracyRoadmap.map((item) => (
+                    <article key={item.title}>
+                      <strong>{item.title}</strong>
+                      <p>{item.detail}</p>
+                    </article>
+                  ))}
+                </div>
+              </section>
+            </aside>
+          </section>
         )}
 
         {activeSection === 'discovery' && (
@@ -5445,6 +5617,63 @@ function App() {
               )}
             </div>
           </section>
+        </section>
+
+        <section className="panel candidate-pool-panel">
+          <div className="panel-heading">
+            <div>
+              <span className="mini-label">Pre-Outreach Pool</span>
+              <h2>메시지 전 후보 풀</h2>
+            </div>
+            <div className="panel-heading-actions">
+              <span className="result-count">{candidatePoolCreators.length}명</span>
+              <button
+                className="secondary-button compact-button"
+                type="button"
+                onClick={toggleAllCandidatePoolCreators}
+                disabled={!candidatePoolCreators.length}
+              >
+                {allCandidatePoolSelected ? '전체 해제' : '전체 선택'}
+              </button>
+              <button
+                className="primary-button compact-button"
+                type="button"
+                onClick={queueSelectedCandidatePoolCreators}
+                disabled={!selectedCandidatePoolCreators.length}
+              >
+                <Send size={15} />
+                선택 메시지 생성
+              </button>
+            </div>
+          </div>
+          <div className="candidate-pool-summary">
+            <Stat label="저장 후보" value={`${shortlist.length}명`} />
+            <Stat label="메시지 전" value={`${candidatePoolCreators.length}명`} />
+            <Stat label="선택됨" value={`${selectedCandidatePoolCreators.length}명`} />
+            <Stat label="현재 캠페인" value={selectedCampaign?.name ?? '미선택'} />
+          </div>
+          <div className="candidate-pool-list">
+            {candidatePoolCreators.length === 0 ? (
+              <div className="empty-state compact-empty">
+                <UsersRound size={22} />
+                <strong>메시지 전 후보가 없습니다.</strong>
+                <p>발굴 리스트나 AI 추천에서 후보를 저장하면 이곳에 쌓이고, 메시지 검토함으로 보내기 전까지 관리할 수 있습니다.</p>
+              </div>
+            ) : (
+              candidatePoolCreators.map((creator) => (
+                <CreatorRow
+                  key={creator.id}
+                  creator={creator}
+                  active={selectedCreator?.id === creator.id}
+                  saved={shortlist.includes(creator.id)}
+                  checked={selectedCandidatePoolIds.includes(creator.id)}
+                  onSelect={() => setSelectedCreatorId(creator.id)}
+                  onSave={() => toggleShortlist(creator)}
+                  onToggle={() => toggleCandidatePoolSelection(creator.id)}
+                />
+              ))
+            )}
+          </div>
         </section>
 
         <section className="work-grid">
