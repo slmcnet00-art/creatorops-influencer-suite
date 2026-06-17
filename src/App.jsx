@@ -14,6 +14,7 @@ import {
   FileText,
   Filter,
   History,
+  Image as ImageIcon,
   LayoutDashboard,
   MessageSquare,
   MoreHorizontal,
@@ -29,6 +30,7 @@ import {
   Target,
   TrendingUp,
   UsersRound,
+  Video,
   WalletCards,
   X,
 } from 'lucide-react'
@@ -548,6 +550,47 @@ const defaultTrackedPosts = [
   },
 ]
 
+const defaultContentReferences = [
+  {
+    id: 9201,
+    campaignId: 101,
+    mediaType: '영상',
+    platform: 'TikTok',
+    category: '뷰티',
+    title: '첫 3초 가격/효능 훅 릴스',
+    url: 'https://www.tiktok.com/@demo/video/beauty-hook',
+    thumbnailUrl: '',
+    views: 1280000,
+    likes: 84000,
+    comments: 3200,
+    shares: 6100,
+    publishedAt: '최근 7일',
+    hook: '첫 화면에 가격 비교와 사용 전후를 동시에 배치',
+    analysis: '숫자형 훅, 즉시 사용 장면, 댓글 유도 질문이 결합되어 저장/공유가 높음',
+    applyIdea: '캠페인 가이드에 첫 3초 가격/권위/사용 장면 3요소를 필수 컷으로 반영',
+    savedAt: '데모 데이터',
+  },
+  {
+    id: 9202,
+    campaignId: 103,
+    mediaType: '이미지',
+    platform: 'Instagram',
+    category: '펫',
+    title: '사이즈 비교형 캐러셀 썸네일',
+    url: 'https://www.instagram.com/p/demo-pet-carousel/',
+    thumbnailUrl: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=640&q=80',
+    views: 420000,
+    likes: 23800,
+    comments: 940,
+    shares: 1800,
+    publishedAt: '최근 30일',
+    hook: '제품 사이즈표와 실제 사용 사진을 첫 장에서 같이 제시',
+    analysis: '구매 전 의문을 이미지 한 장으로 해결해 댓글 질문을 줄이고 저장률을 높이는 구조',
+    applyIdea: '펫/생활 카테고리 캠페인은 이미지 레퍼런스 기반 사이즈표, 비교컷, 사용컷을 가이드에 포함',
+    savedAt: '데모 데이터',
+  },
+]
+
 const defaultRecommendations = [
   {
     id: 4101,
@@ -711,6 +754,7 @@ const defaultWorkspace = {
   ],
   fulfillmentRecords: defaultFulfillmentRecords,
   trackedPosts: defaultTrackedPosts,
+  contentReferences: defaultContentReferences,
   activities: [
     {
       id: 9001,
@@ -1053,6 +1097,7 @@ function normalizeWorkspace(saved) {
     quotes: saved?.quotes ?? defaultWorkspace.quotes,
     fulfillmentRecords: saved?.fulfillmentRecords ?? defaultWorkspace.fulfillmentRecords,
     trackedPosts: saved?.trackedPosts ?? defaultWorkspace.trackedPosts,
+    contentReferences: saved?.contentReferences ?? defaultWorkspace.contentReferences,
     activities: normalizedActivities,
   }
 }
@@ -2616,6 +2661,22 @@ function App() {
     saves: '',
     conversions: '',
   })
+  const [referenceDraft, setReferenceDraft] = useState({
+    mediaType: '영상',
+    platform: 'TikTok',
+    category: '',
+    title: '',
+    url: '',
+    thumbnailUrl: '',
+    views: '',
+    likes: '',
+    comments: '',
+    shares: '',
+    publishedAt: '',
+    hook: '',
+    analysis: '',
+    applyIdea: '',
+  })
   const [fulfillmentDraft, setFulfillmentDraft] = useState(createEmptyFulfillmentDraft)
 
   const {
@@ -2630,6 +2691,7 @@ function App() {
     quotes,
     fulfillmentRecords,
     trackedPosts,
+    contentReferences,
     activities,
     team,
     accounts,
@@ -2737,6 +2799,26 @@ function App() {
         ? activeRecruitedPool.filter((item) => item.campaignId === selectedCampaign.id)
         : activeRecruitedPool,
     [activeRecruitedPool, selectedCampaign],
+  )
+  const selectedCampaignReferences = useMemo(
+    () =>
+      selectedCampaign
+        ? contentReferences.filter((item) => item.campaignId === selectedCampaign.id)
+        : contentReferences.filter((item) => activeCampaignIdSet.has(item.campaignId)),
+    [activeCampaignIdSet, contentReferences, selectedCampaign],
+  )
+  const referenceTotals = useMemo(
+    () =>
+      selectedCampaignReferences.reduce(
+        (summary, item) => ({
+          views: summary.views + Number(item.views || 0),
+          shares: summary.shares + Number(item.shares || 0),
+          videos: summary.videos + (item.mediaType === '영상' ? 1 : 0),
+          images: summary.images + (item.mediaType === '이미지' ? 1 : 0),
+        }),
+        { views: 0, shares: 0, videos: 0, images: 0 },
+      ),
+    [selectedCampaignReferences],
   )
   const candidatePoolCreators = useMemo(() => {
     const messagedCreatorIds = new Set(selectedCampaignOutreach.map((item) => item.creatorId))
@@ -5083,6 +5165,68 @@ function App() {
     showToast('섭외 완료 인플루언서 풀에 저장했어요.')
   }
 
+  const saveContentReference = (event) => {
+    event.preventDefault()
+
+    if (!selectedCampaign) {
+      showToast('레퍼런스를 묶을 캠페인을 먼저 선택하세요.')
+      return
+    }
+
+    if (!referenceDraft.title.trim() || !referenceDraft.url.trim()) {
+      showToast('레퍼런스 제목과 링크는 필수입니다.')
+      return
+    }
+
+    const nextReference = {
+      id: createId(),
+      campaignId: selectedCampaign.id,
+      mediaType: referenceDraft.mediaType,
+      platform: referenceDraft.platform,
+      category: referenceDraft.category || activeBrand.brief?.categories?.[0] || '',
+      title: referenceDraft.title.trim(),
+      url: referenceDraft.url.trim(),
+      thumbnailUrl: referenceDraft.thumbnailUrl.trim(),
+      views: Number(referenceDraft.views || 0),
+      likes: Number(referenceDraft.likes || 0),
+      comments: Number(referenceDraft.comments || 0),
+      shares: Number(referenceDraft.shares || 0),
+      publishedAt: referenceDraft.publishedAt || '수동 등록',
+      hook: referenceDraft.hook.trim(),
+      analysis: referenceDraft.analysis.trim(),
+      applyIdea: referenceDraft.applyIdea.trim(),
+      savedAt: nowLabel(),
+    }
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          contentReferences: [nextReference, ...(current.contentReferences ?? [])],
+        },
+        'reference',
+        `${selectedCampaign.name} 콘텐츠 레퍼런스 저장 · ${nextReference.mediaType} · ${nextReference.platform}`,
+      ),
+    )
+    setReferenceDraft({
+      mediaType: '영상',
+      platform: 'TikTok',
+      category: '',
+      title: '',
+      url: '',
+      thumbnailUrl: '',
+      views: '',
+      likes: '',
+      comments: '',
+      shares: '',
+      publishedAt: '',
+      hook: '',
+      analysis: '',
+      applyIdea: '',
+    })
+    showToast('콘텐츠 레퍼런스를 저장했어요.')
+  }
+
   const activeCampaignForModal =
     modal?.type === 'campaign'
       ? brandCampaigns.find((campaign) => campaign.id === modal.campaignId)
@@ -6100,6 +6244,184 @@ function App() {
               </div>
             </aside>
           )}
+        </section>
+
+        <section className="panel reference-board-panel">
+          <div className="panel-heading">
+            <div>
+              <span className="mini-label">Content Reference</span>
+              <h2>인기 콘텐츠 레퍼런스</h2>
+            </div>
+            <div className="panel-heading-actions">
+              <span className="result-count">
+                영상 {referenceTotals.videos} · 이미지 {referenceTotals.images}
+              </span>
+            </div>
+          </div>
+
+          <div className="reference-summary">
+            <Stat label="레퍼런스" value={`${selectedCampaignReferences.length}개`} />
+            <Stat label="누적 조회" value={compactNumber(referenceTotals.views)} />
+            <Stat label="누적 공유" value={compactNumber(referenceTotals.shares)} />
+            <Stat label="현재 캠페인" value={selectedCampaign?.name ?? '미선택'} />
+          </div>
+
+          <form className="reference-form" onSubmit={saveContentReference}>
+            <div className="reference-form-grid">
+              <label>
+                <span>미디어</span>
+                <select
+                  value={referenceDraft.mediaType}
+                  onChange={(event) => setReferenceDraft({ ...referenceDraft, mediaType: event.target.value })}
+                >
+                  <option>영상</option>
+                  <option>이미지</option>
+                </select>
+              </label>
+              <label>
+                <span>플랫폼</span>
+                <select
+                  value={referenceDraft.platform}
+                  onChange={(event) => setReferenceDraft({ ...referenceDraft, platform: event.target.value })}
+                >
+                  <option>TikTok</option>
+                  <option>Instagram</option>
+                  <option>YouTube</option>
+                  <option>Blog</option>
+                  <option>Other</option>
+                </select>
+              </label>
+              <label>
+                <span>카테고리</span>
+                <input
+                  value={referenceDraft.category}
+                  onChange={(event) => setReferenceDraft({ ...referenceDraft, category: event.target.value })}
+                  placeholder="뷰티, 펫, 푸드, 공동구매"
+                />
+              </label>
+              <label>
+                <span>조회수</span>
+                <input
+                  inputMode="numeric"
+                  value={referenceDraft.views}
+                  onChange={(event) => setReferenceDraft({ ...referenceDraft, views: event.target.value })}
+                  placeholder="1280000"
+                />
+              </label>
+            </div>
+            <label>
+              <span>제목</span>
+              <input
+                value={referenceDraft.title}
+                onChange={(event) => setReferenceDraft({ ...referenceDraft, title: event.target.value })}
+                placeholder="요즘 조회수 높은 영상/이미지 레퍼런스 제목"
+              />
+            </label>
+            <div className="reference-form-grid two">
+              <label>
+                <span>콘텐츠 링크</span>
+                <input
+                  value={referenceDraft.url}
+                  onChange={(event) => setReferenceDraft({ ...referenceDraft, url: event.target.value })}
+                  placeholder="https://..."
+                />
+              </label>
+              <label>
+                <span>이미지/썸네일 URL</span>
+                <input
+                  value={referenceDraft.thumbnailUrl}
+                  onChange={(event) => setReferenceDraft({ ...referenceDraft, thumbnailUrl: event.target.value })}
+                  placeholder="이미지 레퍼런스 또는 썸네일 URL"
+                />
+              </label>
+            </div>
+            <div className="reference-form-grid four">
+              <label>
+                <span>좋아요</span>
+                <input inputMode="numeric" value={referenceDraft.likes} onChange={(event) => setReferenceDraft({ ...referenceDraft, likes: event.target.value })} />
+              </label>
+              <label>
+                <span>댓글</span>
+                <input inputMode="numeric" value={referenceDraft.comments} onChange={(event) => setReferenceDraft({ ...referenceDraft, comments: event.target.value })} />
+              </label>
+              <label>
+                <span>공유</span>
+                <input inputMode="numeric" value={referenceDraft.shares} onChange={(event) => setReferenceDraft({ ...referenceDraft, shares: event.target.value })} />
+              </label>
+              <label>
+                <span>업로드일</span>
+                <input value={referenceDraft.publishedAt} onChange={(event) => setReferenceDraft({ ...referenceDraft, publishedAt: event.target.value })} placeholder="최근 7일" />
+              </label>
+            </div>
+            <div className="reference-form-grid three">
+              <label>
+                <span>후킹 포인트</span>
+                <textarea value={referenceDraft.hook} onChange={(event) => setReferenceDraft({ ...referenceDraft, hook: event.target.value })} placeholder="첫 3초, 썸네일, 가격/권위/감정 훅" />
+              </label>
+              <label>
+                <span>AI 분석 메모</span>
+                <textarea value={referenceDraft.analysis} onChange={(event) => setReferenceDraft({ ...referenceDraft, analysis: event.target.value })} placeholder="왜 조회수/저장/공유가 나왔는지" />
+              </label>
+              <label>
+                <span>우리 캠페인 적용</span>
+                <textarea value={referenceDraft.applyIdea} onChange={(event) => setReferenceDraft({ ...referenceDraft, applyIdea: event.target.value })} placeholder="가이드에 반영할 컷, 카피, CTA" />
+              </label>
+            </div>
+            <div className="reference-form-actions">
+              <button className="primary-button compact-button" type="submit">
+                <Plus size={15} />
+                레퍼런스 저장
+              </button>
+            </div>
+          </form>
+
+          <div className="reference-list">
+            {selectedCampaignReferences.map((item) => (
+              <article className="reference-card" key={item.id}>
+                <div className="reference-media">
+                  {item.thumbnailUrl ? (
+                    <img src={item.thumbnailUrl} alt="" />
+                  ) : (
+                    <div>
+                      {item.mediaType === '영상' ? <Video size={24} /> : <ImageIcon size={24} />}
+                    </div>
+                  )}
+                </div>
+                <div className="reference-body">
+                  <div className="tracked-post-head">
+                    <span className="type-chip">{item.mediaType}</span>
+                    <span className="type-chip">{item.platform}</span>
+                    <span className="type-chip">{item.category || '카테고리 미입력'}</span>
+                  </div>
+                  <strong>{item.title}</strong>
+                  <p>{item.publishedAt} · 저장 {item.savedAt}</p>
+                  <div className="tracked-account-meta">
+                    <span>조회 {compactNumber(item.views)}</span>
+                    <span>좋아요 {compactNumber(item.likes)}</span>
+                    <span>댓글 {compactNumber(item.comments)}</span>
+                    <span>공유 {compactNumber(item.shares)}</span>
+                  </div>
+                  <div className="reference-insight-grid">
+                    <div>
+                      <span>후킹</span>
+                      <p>{item.hook || '후킹 포인트 미입력'}</p>
+                    </div>
+                    <div>
+                      <span>분석</span>
+                      <p>{item.analysis || '분석 메모 미입력'}</p>
+                    </div>
+                    <div>
+                      <span>적용</span>
+                      <p>{item.applyIdea || '캠페인 적용 아이디어 미입력'}</p>
+                    </div>
+                  </div>
+                </div>
+                <a className="reference-open-link" href={item.url} target="_blank" rel="noreferrer">
+                  <ArrowUpRight size={17} />
+                </a>
+              </article>
+            ))}
+          </div>
         </section>
 
         <section className="panel candidate-pool-panel">
