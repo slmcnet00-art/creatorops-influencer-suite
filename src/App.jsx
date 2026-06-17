@@ -556,7 +556,6 @@ const defaultContentReferences = [
     campaignId: 101,
     mediaType: '영상',
     platform: 'TikTok',
-    category: '뷰티',
     country: 'KR',
     title: '첫 3초 가격/효능 훅 릴스',
     url: 'https://www.tiktok.com/@demo/video/beauty-hook',
@@ -577,7 +576,6 @@ const defaultContentReferences = [
     campaignId: 103,
     mediaType: '이미지',
     platform: 'Instagram',
-    category: '펫',
     country: 'KR',
     title: '사이즈 비교형 캐러셀 썸네일',
     url: 'https://www.instagram.com/p/demo-pet-carousel/',
@@ -590,7 +588,7 @@ const defaultContentReferences = [
     publishedAt: '최근 30일',
     hook: '제품 사이즈표와 실제 사용 사진을 첫 장에서 같이 제시',
     analysis: '구매 전 의문을 이미지 한 장으로 해결해 댓글 질문을 줄이고 저장률을 높이는 구조',
-    applyIdea: '펫/생활 카테고리 캠페인은 이미지 레퍼런스 기반 사이즈표, 비교컷, 사용컷을 가이드에 포함',
+    applyIdea: '이미지 레퍼런스 기반 사이즈표, 비교컷, 사용컷을 가이드에 포함',
     savedAt: '데모 데이터',
   },
 ]
@@ -2675,7 +2673,6 @@ function App() {
   const [referenceDraft, setReferenceDraft] = useState({
     mediaType: '영상',
     platform: 'TikTok',
-    category: '',
     country: 'KR',
     title: '',
     url: '',
@@ -5220,7 +5217,6 @@ function App() {
       campaignId: selectedCampaign.id,
       mediaType: referenceDraft.mediaType,
       platform: referenceDraft.platform,
-      category: referenceDraft.category || activeBrand.brief?.categories?.[0] || '',
       country: referenceDraft.country || 'KR',
       title: referenceDraft.title.trim(),
       url: referenceDraft.url.trim(),
@@ -5250,7 +5246,6 @@ function App() {
     setReferenceDraft({
       mediaType: '영상',
       platform: 'TikTok',
-      category: '',
       country: 'KR',
       title: '',
       url: '',
@@ -6384,14 +6379,6 @@ function App() {
                 </select>
               </label>
               <label>
-                <span>카테고리</span>
-                <input
-                  value={referenceDraft.category}
-                  onChange={(event) => setReferenceDraft({ ...referenceDraft, category: event.target.value })}
-                  placeholder="뷰티, 펫, 푸드, 공동구매"
-                />
-              </label>
-              <label>
                 <span>국가</span>
                 <input
                   value={referenceDraft.country}
@@ -6504,7 +6491,6 @@ function App() {
                     <span className="type-chip">{item.mediaType}</span>
                     <span className="type-chip">{item.platform}</span>
                     <span className="type-chip">{item.country || '국가 미입력'}</span>
-                    <span className="type-chip">{item.category || '카테고리 미입력'}</span>
                   </div>
                   <strong>{item.title}</strong>
                   <p>{item.publishedAt} · 저장 {item.savedAt}</p>
