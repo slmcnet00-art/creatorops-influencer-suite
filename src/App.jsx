@@ -557,10 +557,12 @@ const defaultContentReferences = [
     mediaType: '영상',
     platform: 'TikTok',
     category: '뷰티',
+    country: 'KR',
     title: '첫 3초 가격/효능 훅 릴스',
     url: 'https://www.tiktok.com/@demo/video/beauty-hook',
     thumbnailUrl: '',
     views: 1280000,
+    accountFollowers: 185000,
     likes: 84000,
     comments: 3200,
     shares: 6100,
@@ -576,10 +578,12 @@ const defaultContentReferences = [
     mediaType: '이미지',
     platform: 'Instagram',
     category: '펫',
+    country: 'KR',
     title: '사이즈 비교형 캐러셀 썸네일',
     url: 'https://www.instagram.com/p/demo-pet-carousel/',
     thumbnailUrl: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=640&q=80',
     views: 420000,
+    accountFollowers: 32000,
     likes: 23800,
     comments: 940,
     shares: 1800,
@@ -1708,6 +1712,13 @@ function getCreatorDataQuality(creator) {
   return { score, level, tone, flags }
 }
 
+function getReferenceVirality(reference) {
+  const views = Number(reference?.views || 0)
+  const followers = Number(reference?.accountFollowers || 0)
+  if (!followers) return 0
+  return views / followers
+}
+
 function appendActivity(workspace, type, text) {
   return {
     ...workspace,
@@ -2665,10 +2676,12 @@ function App() {
     mediaType: '영상',
     platform: 'TikTok',
     category: '',
+    country: 'KR',
     title: '',
     url: '',
     thumbnailUrl: '',
     views: '',
+    accountFollowers: '',
     likes: '',
     comments: '',
     shares: '',
@@ -2676,6 +2689,12 @@ function App() {
     hook: '',
     analysis: '',
     applyIdea: '',
+  })
+  const [referenceFilters, setReferenceFilters] = useState({
+    country: '전체',
+    mediaType: '전체',
+    platform: '전체',
+    sort: 'views',
   })
   const [fulfillmentDraft, setFulfillmentDraft] = useState(createEmptyFulfillmentDraft)
 
@@ -2807,9 +2826,27 @@ function App() {
         : contentReferences.filter((item) => activeCampaignIdSet.has(item.campaignId)),
     [activeCampaignIdSet, contentReferences, selectedCampaign],
   )
+  const referenceCountryOptions = useMemo(
+    () => ['전체', ...Array.from(new Set(selectedCampaignReferences.map((item) => item.country).filter(Boolean)))],
+    [selectedCampaignReferences],
+  )
+  const visibleReferences = useMemo(() => {
+    const filtered = selectedCampaignReferences.filter(
+      (item) =>
+        (referenceFilters.country === '전체' || item.country === referenceFilters.country) &&
+        (referenceFilters.mediaType === '전체' || item.mediaType === referenceFilters.mediaType) &&
+        (referenceFilters.platform === '전체' || item.platform === referenceFilters.platform),
+    )
+    return [...filtered].sort((a, b) => {
+      if (referenceFilters.sort === 'virality') return getReferenceVirality(b) - getReferenceVirality(a)
+      if (referenceFilters.sort === 'shares') return Number(b.shares || 0) - Number(a.shares || 0)
+      if (referenceFilters.sort === 'recent') return Number(b.id || 0) - Number(a.id || 0)
+      return Number(b.views || 0) - Number(a.views || 0)
+    })
+  }, [referenceFilters, selectedCampaignReferences])
   const referenceTotals = useMemo(
     () =>
-      selectedCampaignReferences.reduce(
+      visibleReferences.reduce(
         (summary, item) => ({
           views: summary.views + Number(item.views || 0),
           shares: summary.shares + Number(item.shares || 0),
@@ -2818,7 +2855,7 @@ function App() {
         }),
         { views: 0, shares: 0, videos: 0, images: 0 },
       ),
-    [selectedCampaignReferences],
+    [visibleReferences],
   )
   const candidatePoolCreators = useMemo(() => {
     const messagedCreatorIds = new Set(selectedCampaignOutreach.map((item) => item.creatorId))
@@ -5184,10 +5221,12 @@ function App() {
       mediaType: referenceDraft.mediaType,
       platform: referenceDraft.platform,
       category: referenceDraft.category || activeBrand.brief?.categories?.[0] || '',
+      country: referenceDraft.country || 'KR',
       title: referenceDraft.title.trim(),
       url: referenceDraft.url.trim(),
       thumbnailUrl: referenceDraft.thumbnailUrl.trim(),
       views: Number(referenceDraft.views || 0),
+      accountFollowers: Number(referenceDraft.accountFollowers || 0),
       likes: Number(referenceDraft.likes || 0),
       comments: Number(referenceDraft.comments || 0),
       shares: Number(referenceDraft.shares || 0),
@@ -5212,10 +5251,12 @@ function App() {
       mediaType: '영상',
       platform: 'TikTok',
       category: '',
+      country: 'KR',
       title: '',
       url: '',
       thumbnailUrl: '',
       views: '',
+      accountFollowers: '',
       likes: '',
       comments: '',
       shares: '',
@@ -6260,10 +6301,61 @@ function App() {
           </div>
 
           <div className="reference-summary">
-            <Stat label="레퍼런스" value={`${selectedCampaignReferences.length}개`} />
+            <Stat label="레퍼런스" value={`${visibleReferences.length}/${selectedCampaignReferences.length}개`} />
             <Stat label="누적 조회" value={compactNumber(referenceTotals.views)} />
             <Stat label="누적 공유" value={compactNumber(referenceTotals.shares)} />
             <Stat label="현재 캠페인" value={selectedCampaign?.name ?? '미선택'} />
+          </div>
+
+          <div className="reference-filter-bar">
+            <label>
+              <span>국가</span>
+              <select
+                value={referenceFilters.country}
+                onChange={(event) => setReferenceFilters({ ...referenceFilters, country: event.target.value })}
+              >
+                {referenceCountryOptions.map((countryOption) => (
+                  <option key={countryOption}>{countryOption}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>미디어</span>
+              <select
+                value={referenceFilters.mediaType}
+                onChange={(event) => setReferenceFilters({ ...referenceFilters, mediaType: event.target.value })}
+              >
+                <option>전체</option>
+                <option>영상</option>
+                <option>이미지</option>
+              </select>
+            </label>
+            <label>
+              <span>플랫폼</span>
+              <select
+                value={referenceFilters.platform}
+                onChange={(event) => setReferenceFilters({ ...referenceFilters, platform: event.target.value })}
+              >
+                <option>전체</option>
+                <option>TikTok</option>
+                <option>Instagram</option>
+                <option>YouTube</option>
+                <option>Blog</option>
+                <option>Other</option>
+              </select>
+            </label>
+            <label>
+              <span>순위 기준</span>
+              <select
+                value={referenceFilters.sort}
+                onChange={(event) => setReferenceFilters({ ...referenceFilters, sort: event.target.value })}
+              >
+                <option value="views">조회수 순위</option>
+                <option value="virality">팔로워 대비 터진 순위</option>
+                <option value="shares">공유 순위</option>
+                <option value="recent">최근 등록순</option>
+              </select>
+            </label>
           </div>
 
           <form className="reference-form" onSubmit={saveContentReference}>
@@ -6300,12 +6392,31 @@ function App() {
                 />
               </label>
               <label>
+                <span>국가</span>
+                <input
+                  value={referenceDraft.country}
+                  onChange={(event) => setReferenceDraft({ ...referenceDraft, country: event.target.value.toUpperCase() })}
+                  placeholder="KR, US, JP"
+                />
+              </label>
+            </div>
+            <div className="reference-form-grid two">
+              <label>
                 <span>조회수</span>
                 <input
                   inputMode="numeric"
                   value={referenceDraft.views}
                   onChange={(event) => setReferenceDraft({ ...referenceDraft, views: event.target.value })}
                   placeholder="1280000"
+                />
+              </label>
+              <label>
+                <span>계정 팔로워</span>
+                <input
+                  inputMode="numeric"
+                  value={referenceDraft.accountFollowers}
+                  onChange={(event) => setReferenceDraft({ ...referenceDraft, accountFollowers: event.target.value })}
+                  placeholder="185000"
                 />
               </label>
             </div>
@@ -6376,7 +6487,7 @@ function App() {
           </form>
 
           <div className="reference-list">
-            {selectedCampaignReferences.map((item) => (
+            {visibleReferences.map((item, index) => (
               <article className="reference-card" key={item.id}>
                 <div className="reference-media">
                   {item.thumbnailUrl ? (
@@ -6389,14 +6500,18 @@ function App() {
                 </div>
                 <div className="reference-body">
                   <div className="tracked-post-head">
+                    <span className="reference-rank-chip">#{index + 1}</span>
                     <span className="type-chip">{item.mediaType}</span>
                     <span className="type-chip">{item.platform}</span>
+                    <span className="type-chip">{item.country || '국가 미입력'}</span>
                     <span className="type-chip">{item.category || '카테고리 미입력'}</span>
                   </div>
                   <strong>{item.title}</strong>
                   <p>{item.publishedAt} · 저장 {item.savedAt}</p>
                   <div className="tracked-account-meta">
                     <span>조회 {compactNumber(item.views)}</span>
+                    <span>팔로워 {item.accountFollowers ? compactNumber(item.accountFollowers) : '-'}</span>
+                    <span>폭발 {getReferenceVirality(item) ? `${getReferenceVirality(item).toFixed(1)}x` : '-'}</span>
                     <span>좋아요 {compactNumber(item.likes)}</span>
                     <span>댓글 {compactNumber(item.comments)}</span>
                     <span>공유 {compactNumber(item.shares)}</span>
@@ -6421,6 +6536,13 @@ function App() {
                 </a>
               </article>
             ))}
+            {!visibleReferences.length && (
+              <div className="empty-state compact-empty">
+                <Video size={22} />
+                <strong>조건에 맞는 레퍼런스가 없습니다.</strong>
+                <p>국가, 미디어, 플랫폼 필터를 조정하거나 새 영상/이미지 레퍼런스를 저장하세요.</p>
+              </div>
+            )}
           </div>
         </section>
 
