@@ -757,6 +757,7 @@ const defaultWorkspace = {
   fulfillmentRecords: defaultFulfillmentRecords,
   trackedPosts: defaultTrackedPosts,
   contentReferences: defaultContentReferences,
+  savedProductionReferenceIds: [9201],
   activities: [
     {
       id: 9001,
@@ -1100,6 +1101,7 @@ function normalizeWorkspace(saved) {
     fulfillmentRecords: saved?.fulfillmentRecords ?? defaultWorkspace.fulfillmentRecords,
     trackedPosts: saved?.trackedPosts ?? defaultWorkspace.trackedPosts,
     contentReferences: saved?.contentReferences ?? defaultWorkspace.contentReferences,
+    savedProductionReferenceIds: saved?.savedProductionReferenceIds ?? defaultWorkspace.savedProductionReferenceIds,
     activities: normalizedActivities,
   }
 }
@@ -2708,6 +2710,7 @@ function App() {
     fulfillmentRecords,
     trackedPosts,
     contentReferences,
+    savedProductionReferenceIds,
     activities,
     team,
     accounts,
@@ -2841,6 +2844,10 @@ function App() {
       return Number(b.views || 0) - Number(a.views || 0)
     })
   }, [referenceFilters, selectedCampaignReferences])
+  const savedProductionReferences = useMemo(
+    () => selectedCampaignReferences.filter((item) => savedProductionReferenceIds.includes(item.id)),
+    [savedProductionReferenceIds, selectedCampaignReferences],
+  )
   const referenceTotals = useMemo(
     () =>
       visibleReferences.reduce(
@@ -5263,6 +5270,66 @@ function App() {
     showToast('콘텐츠 레퍼런스를 저장했어요.')
   }
 
+  const toggleProductionReference = (referenceId) => {
+    const reference = contentReferences.find((item) => item.id === referenceId)
+    updateWorkspace((current) => {
+      const exists = current.savedProductionReferenceIds?.includes(referenceId)
+      return appendActivity(
+        {
+          ...current,
+          savedProductionReferenceIds: exists
+            ? current.savedProductionReferenceIds.filter((id) => id !== referenceId)
+            : [...(current.savedProductionReferenceIds ?? []), referenceId],
+        },
+        'reference',
+        exists ? `제작 레퍼런스 저장 해제 · ${reference?.title ?? referenceId}` : `제작 레퍼런스 저장 · ${reference?.title ?? referenceId}`,
+      )
+    })
+    showToast(
+      savedProductionReferenceIds.includes(referenceId)
+        ? '제작 레퍼런스 저장을 해제했어요.'
+        : '제작 레퍼런스로 저장했어요.',
+    )
+  }
+
+  const borrowReferenceForGuide = (reference) => {
+    if (!reference) return
+
+    const material = {
+      id: createId(),
+      title: `제작 레퍼런스 · ${reference.title}`,
+      sourceType: '콘텐츠 레퍼런스',
+      sourceName: `${reference.platform} · ${reference.mediaType} · ${reference.country || '국가 미입력'}`,
+      summary: reference.analysis || reference.hook || reference.applyIdea || reference.title,
+      keywords: `${reference.platform}, ${reference.mediaType}, ${reference.country || ''}`.trim(),
+      doSay: [reference.hook, reference.applyIdea].filter(Boolean).join(' / '),
+      dontSay: '',
+      createdAt: nowLabel(),
+    }
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          brands: current.brands.map((brand) =>
+            brand.id === activeBrand.id
+              ? {
+                  ...brand,
+                  brief: {
+                    ...brand.brief,
+                    learningMaterials: [material, ...getLearningMaterials(brand.brief)].slice(0, 80),
+                  },
+                }
+              : brand,
+          ),
+        },
+        'reference',
+        `${reference.title} 제작 레퍼런스를 브랜드 학습자료에 차용`,
+      ),
+    )
+    showToast('제작 레퍼런스를 브랜드 학습자료에 차용했어요.')
+  }
+
   const activeCampaignForModal =
     modal?.type === 'campaign'
       ? brandCampaigns.find((campaign) => campaign.id === modal.campaignId)
@@ -6297,9 +6364,9 @@ function App() {
 
           <div className="reference-summary">
             <Stat label="레퍼런스" value={`${visibleReferences.length}/${selectedCampaignReferences.length}개`} />
+            <Stat label="제작 저장" value={`${savedProductionReferences.length}개`} />
             <Stat label="누적 조회" value={compactNumber(referenceTotals.views)} />
             <Stat label="누적 공유" value={compactNumber(referenceTotals.shares)} />
-            <Stat label="현재 캠페인" value={selectedCampaign?.name ?? '미선택'} />
           </div>
 
           <div className="reference-filter-bar">
@@ -6473,9 +6540,59 @@ function App() {
             </div>
           </form>
 
+          <div className="production-reference-shelf">
+            <div className="production-reference-head">
+              <div>
+                <span className="mini-label">Saved for Production</span>
+                <strong>제작 레퍼런스 저장 리스트</strong>
+              </div>
+              <span>{savedProductionReferences.length}개 저장됨</span>
+            </div>
+            {savedProductionReferences.length === 0 ? (
+              <div className="empty-state compact-empty">
+                <Bookmark size={22} />
+                <strong>아직 저장된 제작 레퍼런스가 없습니다.</strong>
+                <p>아래 영상/이미지 카드에서 저장을 누르면 제작 레퍼런스로 따로 모입니다.</p>
+              </div>
+            ) : (
+              <div className="production-reference-list">
+                {savedProductionReferences.map((item) => (
+                  <article key={item.id}>
+                    <div>
+                      <strong>{item.title}</strong>
+                      <span>{item.mediaType} · {item.platform} · {item.country || '국가 미입력'} · 폭발 {getReferenceVirality(item) ? `${getReferenceVirality(item).toFixed(1)}x` : '-'}</span>
+                    </div>
+                    <div className="production-reference-actions">
+                      <button className="secondary-button compact-button" type="button" onClick={() => borrowReferenceForGuide(item)}>
+                        제작 가이드에 차용
+                      </button>
+                      <button className="icon-button" type="button" title="저장 해제" onClick={() => toggleProductionReference(item.id)}>
+                        <BookmarkCheck size={17} />
+                      </button>
+                    </div>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+
           <div className="reference-list">
             {visibleReferences.map((item, index) => (
               <article className="reference-card" key={item.id}>
+                {(() => {
+                  const isSavedForProduction = savedProductionReferenceIds.includes(item.id)
+                  return (
+                    <button
+                      className={`reference-save-button ${isSavedForProduction ? 'saved' : ''}`}
+                      type="button"
+                      title={isSavedForProduction ? '제작 레퍼런스 저장 해제' : '제작 레퍼런스로 저장'}
+                      onClick={() => toggleProductionReference(item.id)}
+                    >
+                      {isSavedForProduction ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
+                      <span>{isSavedForProduction ? '저장됨' : '저장'}</span>
+                    </button>
+                  )
+                })()}
                 <div className="reference-media">
                   {item.thumbnailUrl ? (
                     <img src={item.thumbnailUrl} alt="" />

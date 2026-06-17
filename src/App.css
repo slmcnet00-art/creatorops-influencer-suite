@@ -658,6 +658,59 @@
   padding: 0 18px 18px;
 }
 
+.production-reference-shelf {
+  display: grid;
+  gap: 10px;
+  margin: 0 18px 16px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(238, 242, 241, 0.66);
+}
+
+.production-reference-head,
+.production-reference-list article,
+.production-reference-actions {
+  display: flex;
+  align-items: center;
+}
+
+.production-reference-head,
+.production-reference-list article {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.production-reference-head strong,
+.production-reference-list strong,
+.production-reference-list span {
+  display: block;
+}
+
+.production-reference-head > span,
+.production-reference-list span {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.production-reference-list {
+  display: grid;
+  gap: 8px;
+}
+
+.production-reference-list article {
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.production-reference-actions {
+  flex-shrink: 0;
+  gap: 8px;
+}
+
 .reference-card {
   position: relative;
   display: grid;
@@ -668,6 +721,29 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   background: var(--surface-muted);
+}
+
+.reference-save-button {
+  position: absolute;
+  top: 12px;
+  right: 56px;
+  min-height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 10px;
+  color: var(--text-strong);
+  background: rgba(255, 255, 255, 0.86);
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.reference-save-button.saved {
+  border-color: rgba(38, 154, 96, 0.3);
+  color: #1f8d54;
+  background: rgba(235, 249, 241, 0.9);
 }
 
 .reference-media {
@@ -4379,6 +4455,18 @@
   .reference-media {
     width: 100%;
     aspect-ratio: 16 / 9;
+  }
+
+  .production-reference-head,
+  .production-reference-list article,
+  .production-reference-actions {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .reference-save-button {
+    top: 10px;
+    right: 10px;
   }
 
   .client-view-grid,
