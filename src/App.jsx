@@ -1633,6 +1633,36 @@ function buildRecommendation(creator, brief, campaign) {
   }
 }
 
+function getCreatorDataQuality(creator) {
+  if (!creator) {
+    return {
+      score: 0,
+      level: 'No data',
+      tone: 'low',
+      flags: ['프로필 미선택'],
+    }
+  }
+
+  const evidence = buildCreatorSourceEvidence(creator)
+  const averageConfidence = evidence.reduce((sum, source) => sum + Number(source.confidence || 0), 0) / Math.max(evidence.length, 1)
+  const pendingPenalty = hasPendingMetrics(creator) || creator.needsVerification ? 12 : 0
+  const fakeRiskPenalty = Math.min(14, Math.round(Number(creator.fakeRisk || 0) * 0.8))
+  const officialBonus = creator.platform === 'YouTube' ? 6 : 0
+  const metricSourceBonus = creator.metricSources?.length ? 4 : 0
+  const score = clampNumber(Math.round(averageConfidence + officialBonus + metricSourceBonus - pendingPenalty - fakeRiskPenalty), 0, 100)
+
+  const level = score >= 86 ? '검증 높음' : score >= 72 ? '운영 가능' : score >= 58 ? '추가 검증' : '보류 권장'
+  const tone = score >= 86 ? 'high' : score >= 72 ? 'medium' : 'low'
+  const flags = [
+    creator.platform === 'YouTube' ? '공식 API 연결 가능' : '공개 프로필 수집',
+    creator.metricSources?.length ? '수집 출처 보유' : '출처 보강 필요',
+    creator.needsVerification ? '팔로워/조회 검증 대기' : '핵심 지표 입력됨',
+    Number(creator.fakeRisk || 0) >= 10 ? '가짜 팔로워 위험 점검' : '위험 낮음',
+  ]
+
+  return { score, level, tone, flags }
+}
+
 function appendActivity(workspace, type, text) {
   return {
     ...workspace,
@@ -2609,6 +2639,13 @@ function App() {
   const currentAccount = accounts.find((account) => account.id === activeAccountId) ?? accounts[0] ?? defaultWorkspace.accounts[0]
   const currentRole = teamRoleCatalog[currentAccount?.role] ?? teamRoleCatalog.Manager
   const canManagePermissions = currentAccount?.role === 'Owner' || currentAccount?.role === 'Admin'
+  const accessibleSectionIds = useMemo(() => {
+    if (currentAccount?.role === 'Client') return ['dashboard', 'campaigns', 'report', 'settings']
+    if (currentAccount?.role === 'Analyst') return ['dashboard', 'report', 'settings']
+    return ['dashboard', 'campaigns', 'discovery', 'messages', 'report', 'settings']
+  }, [currentAccount?.role])
+  const visibleSection = accessibleSectionIds.includes(activeSection) ? activeSection : accessibleSectionIds[0]
+  const canAccessSection = (sectionId) => accessibleSectionIds.includes(sectionId)
   const accessibleBrands = useMemo(
     () =>
       currentAccount?.role === 'Owner' || currentAccount?.role === 'Admin'
@@ -2775,6 +2812,7 @@ function App() {
 
   const selectedCreatorOutreach = activeOutreach.filter((item) => item.creatorId === selectedCreator?.id)
   const selectedCreatorQuotes = activeQuotes.filter((item) => item.creatorId === selectedCreator?.id)
+  const selectedCreatorQuality = getCreatorDataQuality(selectedCreator)
   const autoOutreachCount = activeOutreach.filter((item) => item.source === '자동').length
   const bulkOutreachCount = activeOutreach.filter((item) => item.source === '대량 섭외').length
   const manualOutreachCount = activeOutreach.filter((item) => item.source !== '자동' && item.source !== '대량 섭외').length
@@ -3023,7 +3061,7 @@ function App() {
       title: '설정',
       description: '팀 계정, 권한, 데이터 정확도 기준 관리',
     },
-  }[activeSection] ?? {
+  }[visibleSection] ?? {
     eyebrow: 'Creator intelligence OS',
     title: '인플루언서 마케팅 운영 콘솔',
     description: `${activeBrand.name} · ${brandBrief.product}`,
@@ -3065,6 +3103,9 @@ function App() {
       ),
     )
     setSelectedCampaignId(campaigns.find((campaign) => campaign.brandId === nextBrandId)?.id)
+    setActiveSection(
+      nextAccount.role === 'Client' ? 'campaigns' : nextAccount.role === 'Analyst' ? 'report' : 'dashboard',
+    )
   }
 
   const updateAccountRole = (accountId, role) => {
@@ -3348,6 +3389,10 @@ function App() {
   }
 
   const jumpTo = (section) => {
+    if (!canAccessSection(section)) {
+      showToast('현재 계정 권한으로 접근할 수 없는 화면입니다.')
+      return
+    }
     setActiveSection(section)
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
@@ -4156,6 +4201,7 @@ function App() {
         'followers',
         'creator_average_views',
         'creator_engagement_rate',
+        'creator_data_quality',
         'profile_url',
         'content_title',
         'url',
@@ -4182,6 +4228,7 @@ function App() {
           creator?.followers ?? '',
           creator?.averageViews ?? '',
           creator ? percent(creator.engagement) : '',
+          creator ? `${getCreatorDataQuality(creator).score}% ${getCreatorDataQuality(creator).level}` : '',
           creator?.profileUrl ?? '',
           post.title,
           post.url,
@@ -4199,9 +4246,27 @@ function App() {
     ]
     const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n')
     const reportName = selectedCampaign?.name ?? activeBrand.name
-    const html = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>CreatorOps Performance Report</title><style>body{font-family:system-ui,sans-serif;margin:32px;color:#15201d}h1{margin-bottom:4px}.sub{color:#66736f;margin:0 0 22px}.metric{display:inline-block;min-width:140px;margin:0 10px 14px 0;padding:12px;border:1px solid #dce4e1;border-radius:8px;background:#f7faf9}.metric strong{display:block;color:#68736f;font-size:12px}.metric span{display:block;margin-top:5px;font-size:22px;font-weight:800}table{border-collapse:collapse;width:100%;font-size:12px}td,th{border:1px solid #dce4e1;padding:8px;text-align:left;vertical-align:top}th{position:sticky;top:0;background:#eef2f1}a{color:#0071e3}</style><h1>CreatorOps 성과 보고서</h1><p class="sub">${activeBrand.name} · ${reportName} · 업로드 인플루언서/계정/링크/성과 지표 상세</p><div class="metric"><strong>업로드 콘텐츠</strong><span>${selectedCampaignTrackedPosts.length}건</span></div><div class="metric"><strong>조회수</strong><span>${compactNumber(selectedCampaignTrackedTotals.views)}</span></div><div class="metric"><strong>댓글</strong><span>${compactNumber(selectedCampaignTrackedTotals.comments)}</span></div><div class="metric"><strong>공유</strong><span>${compactNumber(selectedCampaignTrackedTotals.shares)}</span></div><div class="metric"><strong>전환</strong><span>${compactNumber(selectedCampaignTrackedTotals.conversions)}</span></div><table><thead><tr>${rows[0].map((cell) => `<th>${escapeXml(cell)}</th>`).join('')}</tr></thead><tbody>${rows.slice(1).map((row) => `<tr>${row.map((cell, index) => index === 9 || index === 11 ? `<td><a href="${escapeXml(cell)}" target="_blank">${escapeXml(cell)}</a></td>` : `<td>${escapeXml(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></html>`
+    const topPosts = [...selectedCampaignTrackedPosts]
+      .sort((a, b) => Number(b.views || 0) - Number(a.views || 0))
+      .slice(0, 3)
+    const recruitedRows = selectedCampaignRecruitedPool
+      .map((poolItem) => {
+        const creator = creators.find((item) => item.id === poolItem.creatorId)
+        const quality = getCreatorDataQuality(creator)
+        return `<tr><td>${escapeXml(creator?.name ?? '')}</td><td>${escapeXml(creator?.handle ?? '')}</td><td>${escapeXml(creator?.platform ?? '')}</td><td>${escapeXml(creator ? compactNumber(creator.followers) : '-')}</td><td>${escapeXml(creator ? compactNumber(creator.averageViews) : '-')}</td><td>${escapeXml(creator ? percent(creator.engagement) : '-')}</td><td>${quality.score}% ${escapeXml(quality.level)}</td><td>${escapeXml(poolItem.status)}</td></tr>`
+      })
+      .join('')
+    const topPostRows = topPosts
+      .map((post) => {
+        const creator = creators.find((item) => item.id === post.creatorId)
+        return `<tr><td>${escapeXml(post.title)}</td><td>${escapeXml(creator?.name ?? '')}</td><td><a href="${escapeXml(post.url)}" target="_blank">${escapeXml(post.url)}</a></td><td>${escapeXml(compactNumber(post.views))}</td><td>${escapeXml(percent(contentEngagementRate(post)))}</td><td>${escapeXml(compactNumber(post.conversions))}</td></tr>`
+      })
+      .join('')
+    const enrichedSummary = `<section class="block"><h2>Client Summary</h2><div class="metric"><strong>KPI progress</strong><span>${selectedCampaignKpi?.progress ?? 0}%</span></div><div class="metric"><strong>Recruited creators</strong><span>${selectedCampaignRecruitedPool.length}</span></div><div class="metric"><strong>Avg engagement</strong><span>${percent(selectedCampaignTrackedAverageEngagement)}</span></div><p class="sub">Report scope: ${escapeXml(reportName)} campaign. Recruitment, uploads, and performance are grouped by the selected campaign context.</p></section><section class="block"><h2>Approved Creator Pool</h2><table><thead><tr><th>creator</th><th>handle</th><th>platform</th><th>followers</th><th>average_views</th><th>engagement</th><th>data_quality</th><th>status</th></tr></thead><tbody>${recruitedRows || '<tr><td colspan="8">No recruited creator pool yet.</td></tr>'}</tbody></table></section><section class="block"><h2>Top Content</h2><table><thead><tr><th>content</th><th>creator</th><th>url</th><th>views</th><th>engagement</th><th>conversions</th></tr></thead><tbody>${topPostRows || '<tr><td colspan="6">No tracked content yet.</td></tr>'}</tbody></table></section><section class="block"><h2>Next Actions</h2><ul><li>Prioritize creators with high engagement-to-view efficiency for a second post or TikTok seller conversion.</li><li>Re-verify candidates below 72 data quality points with official APIs, profile snapshots, or upload links.</li><li>Before client delivery, fill missing upload links and refresh latest views/comments/shares.</li></ul></section>`
+    const html = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>CreatorOps Performance Report</title><style>body{font-family:system-ui,sans-serif;margin:32px;color:#15201d}h1{margin-bottom:4px}.sub{color:#66736f;margin:0 0 22px}.metric{display:inline-block;min-width:140px;margin:0 10px 14px 0;padding:12px;border:1px solid #dce4e1;border-radius:8px;background:#f7faf9}.metric strong{display:block;color:#68736f;font-size:12px}.metric span{display:block;margin-top:5px;font-size:22px;font-weight:800}table{border-collapse:collapse;width:100%;font-size:12px}td,th{border:1px solid #dce4e1;padding:8px;text-align:left;vertical-align:top}th{position:sticky;top:0;background:#eef2f1}a{color:#0071e3}</style><h1>CreatorOps 성과 보고서</h1><p class="sub">${activeBrand.name} · ${reportName} · 업로드 인플루언서/계정/링크/성과 지표 상세</p><div class="metric"><strong>업로드 콘텐츠</strong><span>${selectedCampaignTrackedPosts.length}건</span></div><div class="metric"><strong>조회수</strong><span>${compactNumber(selectedCampaignTrackedTotals.views)}</span></div><div class="metric"><strong>댓글</strong><span>${compactNumber(selectedCampaignTrackedTotals.comments)}</span></div><div class="metric"><strong>공유</strong><span>${compactNumber(selectedCampaignTrackedTotals.shares)}</span></div><div class="metric"><strong>전환</strong><span>${compactNumber(selectedCampaignTrackedTotals.conversions)}</span></div><table><thead><tr>${rows[0].map((cell) => `<th>${escapeXml(cell)}</th>`).join('')}</tr></thead><tbody>${rows.slice(1).map((row) => `<tr>${row.map((cell, index) => index === 10 || index === 12 ? `<td><a href="${escapeXml(cell)}" target="_blank">${escapeXml(cell)}</a></td>` : `<td>${escapeXml(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></html>`
     exportFile(`creatorops-performance-report-${normalizeHandleSegment(reportName)}.csv`, 'text/csv;charset=utf-8', csv)
-    exportFile(`creatorops-performance-report-${normalizeHandleSegment(reportName)}.html`, 'text/html;charset=utf-8', html)
+    const enrichedHtml = html.replace('<style>', '<style>.block{margin-top:28px}ul{padding-left:20px;line-height:1.7}').replace('</html>', `${enrichedSummary}</html>`)
+    exportFile(`creatorops-performance-report-${normalizeHandleSegment(reportName)}.html`, 'text/html;charset=utf-8', enrichedHtml)
     showToast('성과 CSV와 HTML 보고서를 다운로드했어요.')
   }
 
@@ -5068,37 +5133,45 @@ function App() {
 
         <nav className="nav-list" aria-label="주요 메뉴">
           <NavButton
-            active={activeSection === 'dashboard'}
+            active={visibleSection === 'dashboard'}
             icon={<LayoutDashboard size={18} />}
             label="대시보드"
             onClick={() => jumpTo('dashboard')}
           />
+          {canAccessSection('campaigns') && (
+            <NavButton
+              active={visibleSection === 'campaigns'}
+              icon={<Target size={18} />}
+              label="캠페인"
+              onClick={() => jumpTo('campaigns')}
+            />
+          )}
+          {canAccessSection('discovery') && (
+            <NavButton
+              active={visibleSection === 'discovery'}
+              icon={<UsersRound size={18} />}
+              label="발굴"
+              onClick={() => jumpTo('discovery')}
+            />
+          )}
+          {canAccessSection('messages') && (
+            <NavButton
+              active={visibleSection === 'messages'}
+              icon={<MessageSquare size={18} />}
+              label="메시지"
+              onClick={() => jumpTo('messages')}
+            />
+          )}
+          {canAccessSection('report') && (
+            <NavButton
+              active={visibleSection === 'report'}
+              icon={<BarChart3 size={18} />}
+              label="리포트"
+              onClick={() => jumpTo('report')}
+            />
+          )}
           <NavButton
-            active={activeSection === 'campaigns'}
-            icon={<Target size={18} />}
-            label="캠페인"
-            onClick={() => jumpTo('campaigns')}
-          />
-          <NavButton
-            active={activeSection === 'discovery'}
-            icon={<UsersRound size={18} />}
-            label="발굴"
-            onClick={() => jumpTo('discovery')}
-          />
-          <NavButton
-            active={activeSection === 'messages'}
-            icon={<MessageSquare size={18} />}
-            label="메시지"
-            onClick={() => jumpTo('messages')}
-          />
-          <NavButton
-            active={activeSection === 'report'}
-            icon={<BarChart3 size={18} />}
-            label="리포트"
-            onClick={() => jumpTo('report')}
-          />
-          <NavButton
-            active={activeSection === 'settings'}
+            active={visibleSection === 'settings'}
             icon={<Settings size={18} />}
             label="설정"
             onClick={() => jumpTo('settings')}
@@ -5132,7 +5205,7 @@ function App() {
           </div>
         </header>
 
-        {['discovery', 'messages', 'report'].includes(activeSection) && (
+        {['discovery', 'messages', 'report'].includes(visibleSection) && (
           <section className="campaign-context-bar" aria-label="현재 작업 캠페인">
             <div className="campaign-context-main">
               <span className="mini-label">Campaign Context</span>
@@ -5180,8 +5253,57 @@ function App() {
           </section>
         )}
 
-        {activeSection === 'dashboard' && (
+        {visibleSection === 'dashboard' && (
           <>
+            {currentAccount?.role === 'Client' && (
+              <section className="panel client-view-panel">
+                <div className="panel-heading">
+                  <div>
+                    <span className="mini-label">Client Approval View</span>
+                    <h2>광고주 컨펌 보드</h2>
+                  </div>
+                  <button className="primary-button compact-button" type="button" onClick={() => jumpTo('report')}>
+                    <BarChart3 size={15} />
+                    리포트 확인
+                  </button>
+                </div>
+                <div className="client-view-grid">
+                  <Stat label="선택 캠페인" value={selectedCampaign?.name ?? '캠페인 미선택'} />
+                  <Stat label="섭외 완료" value={`${selectedCampaignRecruitedPool.length}명`} />
+                  <Stat label="업로드 콘텐츠" value={`${selectedCampaignTrackedPosts.length}건`} />
+                  <Stat label="누적 조회" value={compactNumber(selectedCampaignTrackedTotals.views)} />
+                  <Stat label="평균 참여율" value={percent(selectedCampaignTrackedAverageEngagement)} />
+                  <Stat label="KPI 달성률" value={`${selectedCampaignKpi?.progress ?? 0}%`} />
+                </div>
+                <div className="client-approval-list">
+                  {selectedCampaignRecruitedPool.slice(0, 4).map((poolItem) => {
+                    const creator = creators.find((item) => item.id === poolItem.creatorId)
+                    const quality = getCreatorDataQuality(creator)
+                    return (
+                      <article key={poolItem.id}>
+                        <div>
+                          <strong>{creator?.name ?? '크리에이터'}</strong>
+                          <span>{creator?.handle ?? '-'} · {creator?.platform ?? '-'} · {poolItem.status}</span>
+                        </div>
+                        <div>
+                          <span>팔로워 {creator ? compactNumber(creator.followers) : '-'}</span>
+                          <span>평균 조회 {creator ? compactNumber(creator.averageViews) : '-'}</span>
+                          <span>참여율 {creator ? percent(creator.engagement) : '-'}</span>
+                          <span>데이터 {quality.score}</span>
+                        </div>
+                      </article>
+                    )
+                  })}
+                  {!selectedCampaignRecruitedPool.length && (
+                    <div className="empty-state compact-empty">
+                      <UsersRound size={22} />
+                      <strong>아직 컨펌할 섭외 완료 풀이 없습니다.</strong>
+                      <p>캠페인에서 섭외 완료 처리된 인플루언서가 생기면 팔로워, 평균 조회, 참여율, 데이터 신뢰도가 이곳에 표시됩니다.</p>
+                    </div>
+                  )}
+                </div>
+              </section>
+            )}
             <section className="workflow-strip" aria-label="인플루언서 운영 흐름">
               {workflowSignals.map((signal) => (
                 <WorkflowSignal key={signal.label} signal={signal} />
@@ -5221,7 +5343,7 @@ function App() {
           </>
         )}
 
-        {activeSection === 'settings' && (
+        {visibleSection === 'settings' && (
           <section className="settings-grid">
             <section className="panel settings-main-panel">
               <div className="panel-heading">
@@ -5327,7 +5449,7 @@ function App() {
           </section>
         )}
 
-        {activeSection === 'discovery' && (
+        {visibleSection === 'discovery' && (
           <>
         <section className="ai-grid">
           <section className="panel ai-brief-panel">
@@ -5919,6 +6041,8 @@ function App() {
                 <Stat label="평균 조회" value={displayMetric(selectedCreator.averageViews)} />
                 <Stat label="참여율" value={hasPendingMetrics(selectedCreator) ? '수집 필요' : percent(selectedCreator.engagement)} />
                 <Stat label="예상 단가" value={selectedCreator.price ? won(selectedCreator.price) : '산정 전'} />
+                <Stat label="데이터 신뢰도" value={`${selectedCreatorQuality.score}%`} />
+                <Stat label="검증 상태" value={selectedCreatorQuality.level} />
               </div>
 
               <div className="audience-panel">
@@ -5942,6 +6066,11 @@ function App() {
                 <div className="source-ledger-heading">
                   <span className="mini-label">Source Ledger</span>
                   <strong>데이터 출처/신뢰도</strong>
+                </div>
+                <div className="data-quality-flags">
+                  {selectedCreatorQuality.flags.map((flag) => (
+                    <span key={flag}>{flag}</span>
+                  ))}
                 </div>
                 {selectedSourceEvidence.slice(0, 4).map((source) => (
                   <article className="source-ledger-row" key={source.metric}>
@@ -6032,9 +6161,9 @@ function App() {
           </>
         )}
 
-        {(activeSection === 'campaigns' || activeSection === 'report') && (
-          <section className={`bottom-grid ${activeSection === 'report' ? 'single-column-view' : ''}`}>
-          {activeSection === 'campaigns' && (
+        {(visibleSection === 'campaigns' || visibleSection === 'report') && (
+          <section className={`bottom-grid ${visibleSection === 'report' ? 'single-column-view' : ''}`}>
+          {visibleSection === 'campaigns' && (
           <section className="panel campaign-panel" id="campaigns">
             <div className="panel-heading">
               <div>
@@ -6080,7 +6209,7 @@ function App() {
             </div>
           </section>
           )}
-          {activeSection === 'report' && (
+          {visibleSection === 'report' && (
           <section className="panel report-panel" id="report">
             <div className="panel-heading">
               <div>
@@ -6226,9 +6355,9 @@ function App() {
         </section>
         )}
 
-        {(activeSection === 'messages' || activeSection === 'campaigns' || activeSection === 'dashboard') && (
-        <section className={`ops-grid ${activeSection !== 'messages' ? 'single-column-view' : ''}`}>
-          {activeSection === 'messages' && (
+        {(visibleSection === 'messages' || visibleSection === 'campaigns' || visibleSection === 'dashboard') && (
+        <section className={`ops-grid ${visibleSection !== 'messages' ? 'single-column-view' : ''}`}>
+          {visibleSection === 'messages' && (
           <section className="panel" id="messages">
             <div className="panel-heading">
               <div>
@@ -6273,7 +6402,7 @@ function App() {
             </div>
           </section>
           )}
-          {activeSection === 'dashboard' && (
+          {visibleSection === 'dashboard' && (
           <section className="panel wide-log-panel">
             <div className="panel-heading">
               <div>
@@ -7707,6 +7836,7 @@ function SelectPill({ icon, value, options, onChange, label }) {
 
 function CreatorRow({ creator, active, saved, checked, onSelect, onSave, onToggle }) {
   const pendingMetrics = hasPendingMetrics(creator)
+  const dataQuality = getCreatorDataQuality(creator)
   return (
     <article className={`creator-row ${active ? 'active' : ''} ${checked ? 'selected' : ''}`}>
       <label className="recommendation-check creator-check" aria-label={`${creator.name} 선택`}>
@@ -7724,6 +7854,11 @@ function CreatorRow({ creator, active, saved, checked, onSelect, onSave, onToggl
           <p>
             {creator.category} · {creator.city} · {creator.lastPost}
           </p>
+          <div className="creator-quality-row">
+            <span className={`data-quality-chip ${dataQuality.tone}`}>
+              데이터 {dataQuality.score} · {dataQuality.level}
+            </span>
+          </div>
         </div>
       </button>
 
@@ -7757,6 +7892,7 @@ function CreatorRow({ creator, active, saved, checked, onSelect, onSave, onToggl
 function RecommendationCard({ recommendation, creator, checked, onSelect, onToggle, onQueue }) {
   if (!creator) return null
   const pendingMetrics = hasPendingMetrics(creator)
+  const dataQuality = getCreatorDataQuality(creator)
 
   return (
     <article className={`recommendation-card ${checked ? 'selected' : ''}`}>
@@ -7784,6 +7920,7 @@ function RecommendationCard({ recommendation, creator, checked, onSelect, onTogg
         <span>팔로워 {displayMetric(creator.followers)}</span>
         <span>평균 조회 {displayMetric(creator.averageViews)}</span>
         <span>참여율 {pendingMetrics ? '수집 필요' : percent(creator.engagement)}</span>
+        <span>데이터 {dataQuality.score} · {dataQuality.level}</span>
         {creator.needsVerification && <span>공개 수치 검증 대기</span>}
       </div>
       <ul>
