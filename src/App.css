@@ -558,6 +558,33 @@
   padding: 4px 18px 14px;
 }
 
+.reference-search-bar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 8px;
+  padding: 0 18px 12px;
+}
+
+.reference-search-bar label {
+  min-height: 38px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 10px;
+  background: var(--surface-muted);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.reference-search-bar input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  color: var(--text-strong);
+  background: transparent;
+  font: inherit;
+}
+
 .reference-filter-bar {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -4442,6 +4469,7 @@
   }
 
   .reference-summary,
+  .reference-search-bar,
   .reference-filter-bar,
   .reference-form-grid,
   .reference-form-grid.two,

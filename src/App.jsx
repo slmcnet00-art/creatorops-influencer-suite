@@ -2690,6 +2690,8 @@ function App() {
     applyIdea: '',
   })
   const [referenceFilters, setReferenceFilters] = useState({
+    query: '',
+    appliedQuery: '',
     country: '전체',
     mediaType: '전체',
     platform: '전체',
@@ -2721,9 +2723,9 @@ function App() {
   const currentRole = teamRoleCatalog[currentAccount?.role] ?? teamRoleCatalog.Manager
   const canManagePermissions = currentAccount?.role === 'Owner' || currentAccount?.role === 'Admin'
   const accessibleSectionIds = useMemo(() => {
-    if (currentAccount?.role === 'Client') return ['dashboard', 'campaigns', 'references', 'report', 'settings']
+    if (currentAccount?.role === 'Client') return ['dashboard', 'campaigns', 'report', 'references', 'settings']
     if (currentAccount?.role === 'Analyst') return ['dashboard', 'report', 'settings']
-    return ['dashboard', 'campaigns', 'discovery', 'references', 'messages', 'report', 'settings']
+    return ['dashboard', 'campaigns', 'discovery', 'messages', 'report', 'references', 'settings']
   }, [currentAccount?.role])
   const visibleSection = accessibleSectionIds.includes(activeSection) ? activeSection : accessibleSectionIds[0]
   const canAccessSection = (sectionId) => accessibleSectionIds.includes(sectionId)
@@ -2820,22 +2822,26 @@ function App() {
     [activeRecruitedPool, selectedCampaign],
   )
   const selectedCampaignReferences = useMemo(
-    () =>
-      selectedCampaign
-        ? contentReferences.filter((item) => item.campaignId === selectedCampaign.id)
-        : contentReferences.filter((item) => activeCampaignIdSet.has(item.campaignId)),
-    [activeCampaignIdSet, contentReferences, selectedCampaign],
+    () => contentReferences.filter((item) => activeCampaignIdSet.has(item.campaignId)),
+    [activeCampaignIdSet, contentReferences],
   )
   const referenceCountryOptions = useMemo(
     () => ['전체', ...Array.from(new Set(selectedCampaignReferences.map((item) => item.country).filter(Boolean)))],
     [selectedCampaignReferences],
   )
   const visibleReferences = useMemo(() => {
+    const searchTerm = referenceFilters.appliedQuery.trim().toLowerCase()
     const filtered = selectedCampaignReferences.filter(
       (item) =>
         (referenceFilters.country === '전체' || item.country === referenceFilters.country) &&
         (referenceFilters.mediaType === '전체' || item.mediaType === referenceFilters.mediaType) &&
-        (referenceFilters.platform === '전체' || item.platform === referenceFilters.platform),
+        (referenceFilters.platform === '전체' || item.platform === referenceFilters.platform) &&
+        (!searchTerm ||
+          [item.title, item.hook, item.analysis, item.applyIdea, item.platform, item.country]
+            .filter(Boolean)
+            .join(' ')
+            .toLowerCase()
+            .includes(searchTerm)),
     )
     return [...filtered].sort((a, b) => {
       if (referenceFilters.sort === 'virality') return getReferenceVirality(b) - getReferenceVirality(a)
@@ -5275,6 +5281,27 @@ function App() {
     showToast('콘텐츠 레퍼런스를 저장했어요.')
   }
 
+  const applyReferenceSearch = (event) => {
+    event.preventDefault()
+    setReferenceFilters((current) => ({
+      ...current,
+      appliedQuery: current.query,
+    }))
+    showToast(referenceFilters.query.trim() ? '레퍼런스 검색 결과를 적용했어요.' : '전체 레퍼런스를 표시합니다.')
+  }
+
+  const resetReferenceSearch = () => {
+    setReferenceFilters({
+      query: '',
+      appliedQuery: '',
+      country: '전체',
+      mediaType: '전체',
+      platform: '전체',
+      sort: 'views',
+    })
+    showToast('레퍼런스 필터를 초기화했어요.')
+  }
+
   const toggleProductionReference = (referenceId) => {
     const reference = contentReferences.find((item) => item.id === referenceId)
     updateWorkspace((current) => {
@@ -5406,14 +5433,6 @@ function App() {
               onClick={() => jumpTo('discovery')}
             />
           )}
-          {canAccessSection('references') && (
-            <NavButton
-              active={visibleSection === 'references'}
-              icon={<ImageIcon size={18} />}
-              label="레퍼런스"
-              onClick={() => jumpTo('references')}
-            />
-          )}
           {canAccessSection('messages') && (
             <NavButton
               active={visibleSection === 'messages'}
@@ -5428,6 +5447,14 @@ function App() {
               icon={<BarChart3 size={18} />}
               label="리포트"
               onClick={() => jumpTo('report')}
+            />
+          )}
+          {canAccessSection('references') && (
+            <NavButton
+              active={visibleSection === 'references'}
+              icon={<ImageIcon size={18} />}
+              label="레퍼런스"
+              onClick={() => jumpTo('references')}
             />
           )}
           <NavButton
@@ -5465,7 +5492,7 @@ function App() {
           </div>
         </header>
 
-        {['discovery', 'references', 'messages', 'report'].includes(visibleSection) && (
+        {['discovery', 'messages', 'report'].includes(visibleSection) && (
           <section className="campaign-context-bar" aria-label="현재 작업 캠페인">
             <div className="campaign-context-main">
               <span className="mini-label">Campaign Context</span>
@@ -6442,6 +6469,24 @@ function App() {
             <Stat label="누적 공유" value={compactNumber(referenceTotals.shares)} />
           </div>
 
+          <form className="reference-search-bar" onSubmit={applyReferenceSearch}>
+            <label>
+              <Search size={17} />
+              <input
+                value={referenceFilters.query}
+                onChange={(event) => setReferenceFilters({ ...referenceFilters, query: event.target.value })}
+                placeholder="키워드 검색: 제품, 후킹, 썸네일, CTA, 플랫폼"
+              />
+            </label>
+            <button className="primary-button compact-button" type="submit">
+              <Search size={15} />
+              검색하기
+            </button>
+            <button className="secondary-button compact-button" type="button" onClick={resetReferenceSearch}>
+              초기화
+            </button>
+          </form>
+
           <div className="reference-filter-bar">
             <label>
               <span>국가</span>
@@ -6491,6 +6536,78 @@ function App() {
                 <option value="recent">최근 등록순</option>
               </select>
             </label>
+          </div>
+
+          <div className="reference-list">
+            {visibleReferences.map((item, index) => (
+              <article className="reference-card" key={item.id}>
+                {(() => {
+                  const isSavedForProduction = savedProductionReferenceIds.includes(item.id)
+                  return (
+                    <button
+                      className={`reference-save-button ${isSavedForProduction ? 'saved' : ''}`}
+                      type="button"
+                      title={isSavedForProduction ? '제작 레퍼런스 저장 해제' : '제작 레퍼런스로 저장'}
+                      onClick={() => toggleProductionReference(item.id)}
+                    >
+                      {isSavedForProduction ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
+                      <span>{isSavedForProduction ? '저장됨' : '저장'}</span>
+                    </button>
+                  )
+                })()}
+                <div className="reference-media">
+                  {item.thumbnailUrl ? (
+                    <img src={item.thumbnailUrl} alt="" />
+                  ) : (
+                    <div>
+                      {item.mediaType === '영상' ? <Video size={24} /> : <ImageIcon size={24} />}
+                    </div>
+                  )}
+                </div>
+                <div className="reference-body">
+                  <div className="tracked-post-head">
+                    <span className="reference-rank-chip">#{index + 1}</span>
+                    <span className="type-chip">{item.mediaType}</span>
+                    <span className="type-chip">{item.platform}</span>
+                    <span className="type-chip">{item.country || '국가 미입력'}</span>
+                  </div>
+                  <strong>{item.title}</strong>
+                  <p>{item.publishedAt} · 저장 {item.savedAt}</p>
+                  <div className="tracked-account-meta">
+                    <span>조회 {compactNumber(item.views)}</span>
+                    <span>팔로워 {item.accountFollowers ? compactNumber(item.accountFollowers) : '-'}</span>
+                    <span>폭발 {getReferenceVirality(item) ? `${getReferenceVirality(item).toFixed(1)}x` : '-'}</span>
+                    <span>좋아요 {compactNumber(item.likes)}</span>
+                    <span>댓글 {compactNumber(item.comments)}</span>
+                    <span>공유 {compactNumber(item.shares)}</span>
+                  </div>
+                  <div className="reference-insight-grid">
+                    <div>
+                      <span>후킹</span>
+                      <p>{item.hook || '후킹 포인트 미입력'}</p>
+                    </div>
+                    <div>
+                      <span>분석</span>
+                      <p>{item.analysis || '분석 메모 미입력'}</p>
+                    </div>
+                    <div>
+                      <span>적용</span>
+                      <p>{item.applyIdea || '캠페인 적용 아이디어 미입력'}</p>
+                    </div>
+                  </div>
+                </div>
+                <a className="reference-open-link" href={item.url} target="_blank" rel="noreferrer">
+                  <ArrowUpRight size={17} />
+                </a>
+              </article>
+            ))}
+            {!visibleReferences.length && (
+              <div className="empty-state compact-empty">
+                <Video size={22} />
+                <strong>조건에 맞는 레퍼런스가 없습니다.</strong>
+                <p>국가, 미디어, 플랫폼 필터를 조정하거나 새 영상/이미지 레퍼런스를 저장하세요.</p>
+              </div>
+            )}
           </div>
 
           <form className="reference-form" onSubmit={saveContentReference}>
@@ -6649,77 +6766,6 @@ function App() {
             )}
           </div>
 
-          <div className="reference-list">
-            {visibleReferences.map((item, index) => (
-              <article className="reference-card" key={item.id}>
-                {(() => {
-                  const isSavedForProduction = savedProductionReferenceIds.includes(item.id)
-                  return (
-                    <button
-                      className={`reference-save-button ${isSavedForProduction ? 'saved' : ''}`}
-                      type="button"
-                      title={isSavedForProduction ? '제작 레퍼런스 저장 해제' : '제작 레퍼런스로 저장'}
-                      onClick={() => toggleProductionReference(item.id)}
-                    >
-                      {isSavedForProduction ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
-                      <span>{isSavedForProduction ? '저장됨' : '저장'}</span>
-                    </button>
-                  )
-                })()}
-                <div className="reference-media">
-                  {item.thumbnailUrl ? (
-                    <img src={item.thumbnailUrl} alt="" />
-                  ) : (
-                    <div>
-                      {item.mediaType === '영상' ? <Video size={24} /> : <ImageIcon size={24} />}
-                    </div>
-                  )}
-                </div>
-                <div className="reference-body">
-                  <div className="tracked-post-head">
-                    <span className="reference-rank-chip">#{index + 1}</span>
-                    <span className="type-chip">{item.mediaType}</span>
-                    <span className="type-chip">{item.platform}</span>
-                    <span className="type-chip">{item.country || '국가 미입력'}</span>
-                  </div>
-                  <strong>{item.title}</strong>
-                  <p>{item.publishedAt} · 저장 {item.savedAt}</p>
-                  <div className="tracked-account-meta">
-                    <span>조회 {compactNumber(item.views)}</span>
-                    <span>팔로워 {item.accountFollowers ? compactNumber(item.accountFollowers) : '-'}</span>
-                    <span>폭발 {getReferenceVirality(item) ? `${getReferenceVirality(item).toFixed(1)}x` : '-'}</span>
-                    <span>좋아요 {compactNumber(item.likes)}</span>
-                    <span>댓글 {compactNumber(item.comments)}</span>
-                    <span>공유 {compactNumber(item.shares)}</span>
-                  </div>
-                  <div className="reference-insight-grid">
-                    <div>
-                      <span>후킹</span>
-                      <p>{item.hook || '후킹 포인트 미입력'}</p>
-                    </div>
-                    <div>
-                      <span>분석</span>
-                      <p>{item.analysis || '분석 메모 미입력'}</p>
-                    </div>
-                    <div>
-                      <span>적용</span>
-                      <p>{item.applyIdea || '캠페인 적용 아이디어 미입력'}</p>
-                    </div>
-                  </div>
-                </div>
-                <a className="reference-open-link" href={item.url} target="_blank" rel="noreferrer">
-                  <ArrowUpRight size={17} />
-                </a>
-              </article>
-            ))}
-            {!visibleReferences.length && (
-              <div className="empty-state compact-empty">
-                <Video size={22} />
-                <strong>조건에 맞는 레퍼런스가 없습니다.</strong>
-                <p>국가, 미디어, 플랫폼 필터를 조정하거나 새 영상/이미지 레퍼런스를 저장하세요.</p>
-              </div>
-            )}
-          </div>
         </section>
         )}
 
