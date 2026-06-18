@@ -10,10 +10,10 @@ services:
       - key: VITE_CREATOROPS_API_BASE_URL
         fromService:
           type: web
-          name: creatorops-api
+          name: creatorops-suite-api
           envVarKey: RENDER_EXTERNAL_URL
   - type: web
-    name: creatorops-api
+    name: creatorops-suite-api
     runtime: node
     buildCommand: npm install
     startCommand: npm run api:dev
