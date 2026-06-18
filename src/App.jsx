@@ -2721,9 +2721,9 @@ function App() {
   const currentRole = teamRoleCatalog[currentAccount?.role] ?? teamRoleCatalog.Manager
   const canManagePermissions = currentAccount?.role === 'Owner' || currentAccount?.role === 'Admin'
   const accessibleSectionIds = useMemo(() => {
-    if (currentAccount?.role === 'Client') return ['dashboard', 'campaigns', 'report', 'settings']
+    if (currentAccount?.role === 'Client') return ['dashboard', 'campaigns', 'references', 'report', 'settings']
     if (currentAccount?.role === 'Analyst') return ['dashboard', 'report', 'settings']
-    return ['dashboard', 'campaigns', 'discovery', 'messages', 'report', 'settings']
+    return ['dashboard', 'campaigns', 'discovery', 'references', 'messages', 'report', 'settings']
   }, [currentAccount?.role])
   const visibleSection = accessibleSectionIds.includes(activeSection) ? activeSection : accessibleSectionIds[0]
   const canAccessSection = (sectionId) => accessibleSectionIds.includes(sectionId)
@@ -3163,6 +3163,11 @@ function App() {
       eyebrow: 'Creator Discovery',
       title: '크리에이터 발굴',
       description: `${brandBrief.product}에 맞는 후보 추천과 검색`,
+    },
+    references: {
+      eyebrow: 'Content Reference',
+      title: '콘텐츠 레퍼런스',
+      description: `${selectedCampaign?.name ?? activeBrand.name} 제작에 차용할 영상/이미지 레퍼런스`,
     },
     campaigns: {
       eyebrow: 'Campaign Operations',
@@ -5401,6 +5406,14 @@ function App() {
               onClick={() => jumpTo('discovery')}
             />
           )}
+          {canAccessSection('references') && (
+            <NavButton
+              active={visibleSection === 'references'}
+              icon={<ImageIcon size={18} />}
+              label="레퍼런스"
+              onClick={() => jumpTo('references')}
+            />
+          )}
           {canAccessSection('messages') && (
             <NavButton
               active={visibleSection === 'messages'}
@@ -5452,7 +5465,7 @@ function App() {
           </div>
         </header>
 
-        {['discovery', 'messages', 'report'].includes(visibleSection) && (
+        {['discovery', 'references', 'messages', 'report'].includes(visibleSection) && (
           <section className="campaign-context-bar" aria-label="현재 작업 캠페인">
             <div className="campaign-context-main">
               <span className="mini-label">Campaign Context</span>
@@ -6349,6 +6362,66 @@ function App() {
           )}
         </section>
 
+        <section className="panel candidate-pool-panel">
+          <div className="panel-heading">
+            <div>
+              <span className="mini-label">Pre-Outreach Pool</span>
+              <h2>메시지 전 후보 풀</h2>
+            </div>
+            <div className="panel-heading-actions">
+              <span className="result-count">{candidatePoolCreators.length}명</span>
+              <button
+                className="secondary-button compact-button"
+                type="button"
+                onClick={toggleAllCandidatePoolCreators}
+                disabled={!candidatePoolCreators.length}
+              >
+                {allCandidatePoolSelected ? '전체 해제' : '전체 선택'}
+              </button>
+              <button
+                className="primary-button compact-button"
+                type="button"
+                onClick={queueSelectedCandidatePoolCreators}
+                disabled={!selectedCandidatePoolCreators.length}
+              >
+                <Send size={15} />
+                선택 메시지 생성
+              </button>
+            </div>
+          </div>
+          <div className="candidate-pool-summary">
+            <Stat label="저장 후보" value={`${shortlist.length}명`} />
+            <Stat label="메시지 전" value={`${candidatePoolCreators.length}명`} />
+            <Stat label="선택됨" value={`${selectedCandidatePoolCreators.length}명`} />
+            <Stat label="현재 캠페인" value={selectedCampaign?.name ?? '미선택'} />
+          </div>
+          <div className="candidate-pool-list">
+            {candidatePoolCreators.length === 0 ? (
+              <div className="empty-state compact-empty">
+                <UsersRound size={22} />
+                <strong>메시지 전 후보가 없습니다.</strong>
+                <p>발굴 리스트나 AI 추천에서 후보를 저장하면 이곳에 쌓이고, 메시지 검토함으로 보내기 전까지 관리할 수 있습니다.</p>
+              </div>
+            ) : (
+              candidatePoolCreators.map((creator) => (
+                <CreatorRow
+                  key={creator.id}
+                  creator={creator}
+                  active={selectedCreator?.id === creator.id}
+                  saved={shortlist.includes(creator.id)}
+                  checked={selectedCandidatePoolIds.includes(creator.id)}
+                  onSelect={() => setSelectedCreatorId(creator.id)}
+                  onSave={() => toggleShortlist(creator)}
+                  onToggle={() => toggleCandidatePoolSelection(creator.id)}
+                />
+              ))
+            )}
+          </div>
+        </section>
+          </>
+        )}
+
+        {visibleSection === 'references' && (
         <section className="panel reference-board-panel">
           <div className="panel-heading">
             <div>
@@ -6648,64 +6721,6 @@ function App() {
             )}
           </div>
         </section>
-
-        <section className="panel candidate-pool-panel">
-          <div className="panel-heading">
-            <div>
-              <span className="mini-label">Pre-Outreach Pool</span>
-              <h2>메시지 전 후보 풀</h2>
-            </div>
-            <div className="panel-heading-actions">
-              <span className="result-count">{candidatePoolCreators.length}명</span>
-              <button
-                className="secondary-button compact-button"
-                type="button"
-                onClick={toggleAllCandidatePoolCreators}
-                disabled={!candidatePoolCreators.length}
-              >
-                {allCandidatePoolSelected ? '전체 해제' : '전체 선택'}
-              </button>
-              <button
-                className="primary-button compact-button"
-                type="button"
-                onClick={queueSelectedCandidatePoolCreators}
-                disabled={!selectedCandidatePoolCreators.length}
-              >
-                <Send size={15} />
-                선택 메시지 생성
-              </button>
-            </div>
-          </div>
-          <div className="candidate-pool-summary">
-            <Stat label="저장 후보" value={`${shortlist.length}명`} />
-            <Stat label="메시지 전" value={`${candidatePoolCreators.length}명`} />
-            <Stat label="선택됨" value={`${selectedCandidatePoolCreators.length}명`} />
-            <Stat label="현재 캠페인" value={selectedCampaign?.name ?? '미선택'} />
-          </div>
-          <div className="candidate-pool-list">
-            {candidatePoolCreators.length === 0 ? (
-              <div className="empty-state compact-empty">
-                <UsersRound size={22} />
-                <strong>메시지 전 후보가 없습니다.</strong>
-                <p>발굴 리스트나 AI 추천에서 후보를 저장하면 이곳에 쌓이고, 메시지 검토함으로 보내기 전까지 관리할 수 있습니다.</p>
-              </div>
-            ) : (
-              candidatePoolCreators.map((creator) => (
-                <CreatorRow
-                  key={creator.id}
-                  creator={creator}
-                  active={selectedCreator?.id === creator.id}
-                  saved={shortlist.includes(creator.id)}
-                  checked={selectedCandidatePoolIds.includes(creator.id)}
-                  onSelect={() => setSelectedCreatorId(creator.id)}
-                  onSave={() => toggleShortlist(creator)}
-                  onToggle={() => toggleCandidatePoolSelection(creator.id)}
-                />
-              ))
-            )}
-          </div>
-        </section>
-          </>
         )}
 
         {(visibleSection === 'campaigns' || visibleSection === 'report') && (
