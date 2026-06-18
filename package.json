@@ -4,6 +4,7 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
+    "api:dev": "node server/index.js",
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
@@ -11,7 +12,10 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
+    "cors": "^2.8.6",
     "docx": "^9.7.1",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
     "lucide-react": "^1.16.0",
     "pptxgenjs": "^4.0.1",
     "react": "^19.2.6",

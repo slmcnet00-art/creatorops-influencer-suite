@@ -7,3 +7,28 @@ services:
     envVars:
       - key: NODE_VERSION
         value: 22
+      - key: VITE_CREATOROPS_API_BASE_URL
+        fromService:
+          type: web
+          name: creatorops-api
+          envVarKey: RENDER_EXTERNAL_URL
+  - type: web
+    name: creatorops-api
+    runtime: node
+    buildCommand: npm install
+    startCommand: npm run api:dev
+    envVars:
+      - key: NODE_VERSION
+        value: 22
+      - key: CORS_ORIGIN
+        value: https://creatorops-influencer-suite.onrender.com,http://localhost:5173
+      - key: YOUTUBE_DATA_API_KEY
+        sync: false
+      - key: GOOGLE_SEARCH_API_KEY
+        sync: false
+      - key: GOOGLE_SEARCH_CX
+        sync: false
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: OPENAI_MODEL
+        value: gpt-4.1-mini
