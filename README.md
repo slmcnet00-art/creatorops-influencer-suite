@@ -87,3 +87,12 @@ gh repo create creatorops-influencer-suite --public --source . --remote origin -
 git remote add origin https://github.com/USER/REPO.git
 git push -u origin master
 ```
+
+## Production wiring
+
+프론트는 이제 Supabase 공유 저장소와 별도 API 프록시를 옵션으로 지원합니다.
+
+1. `.env.example`을 기준으로 `VITE_SUPABASE_URL`, `VITE_SUPABASE_ANON_KEY`, `VITE_WORKSPACE_ID`를 설정합니다.
+2. Supabase SQL Editor에서 `supabase/schema.sql`을 실행합니다.
+3. API 키를 브라우저에 직접 두지 않으려면 `VITE_CREATOROPS_API_BASE_URL`을 설정하고 `API_INTEGRATION_CONTRACT.md`의 엔드포인트를 백엔드에 구현합니다.
+4. 설정 화면의 `운영 연결 상태`에서 Supabase 저장 여부와 API 프록시 연결 여부를 확인합니다.

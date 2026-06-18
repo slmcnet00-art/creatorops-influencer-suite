@@ -1104,6 +1104,87 @@
   gap: 14px;
 }
 
+.settings-sync-panel {
+  grid-column: 1 / -1;
+}
+
+.sync-status-card {
+  padding: 14px;
+  border: 1px solid rgba(0, 113, 227, 0.18);
+  border-radius: 8px;
+  background: rgba(245, 249, 255, 0.9);
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.sync-status-card.cloud {
+  border-color: rgba(52, 199, 89, 0.24);
+  background: rgba(240, 253, 244, 0.86);
+}
+
+.sync-status-card.error {
+  border-color: rgba(255, 59, 48, 0.24);
+  background: rgba(255, 245, 245, 0.9);
+}
+
+.sync-status-card svg {
+  color: var(--accent);
+}
+
+.sync-status-card strong {
+  display: block;
+  color: var(--text-strong);
+}
+
+.sync-status-card p {
+  margin: 5px 0;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.sync-status-card small {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.integration-checklist {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.integration-checklist article {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-strong);
+}
+
+.integration-checklist article.ready {
+  border-color: rgba(52, 199, 89, 0.22);
+}
+
+.integration-checklist strong,
+.integration-checklist span {
+  display: block;
+}
+
+.integration-checklist strong {
+  color: var(--text-strong);
+  font-size: 13px;
+}
+
+.integration-checklist span {
+  margin-top: 5px;
+  color: var(--text-soft);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
 .team-permission-head {
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(220px, 0.45fr);

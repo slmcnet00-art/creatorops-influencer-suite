@@ -37,6 +37,11 @@ import {
 import { readSheet } from 'read-excel-file/browser'
 import './App.css'
 import {
+  getBackendConfig,
+  loadCloudWorkspace,
+  saveCloudWorkspace,
+} from './backendSync'
+import {
   buildCreatorSourceEvidence,
   calculateDataCoverage,
   dataConnectorBlueprints,
@@ -2557,6 +2562,16 @@ function deriveHandleFromUrl(value) {
 
 function App() {
   const [workspace, setWorkspace] = usePersistentState(STORE_KEY, defaultWorkspace)
+  const backendConfig = useMemo(() => getBackendConfig(), [])
+  const [cloudSyncStatus, setCloudSyncStatus] = useState({
+    mode: backendConfig.hasSupabase ? 'connecting' : 'local',
+    label: backendConfig.hasSupabase ? 'Supabase 연결 확인 중' : '로컬 MVP 저장',
+    detail: backendConfig.hasSupabase
+      ? `워크스페이스 ${backendConfig.workspaceId} 데이터를 불러오는 중입니다.`
+      : 'VITE_SUPABASE_URL과 VITE_SUPABASE_ANON_KEY를 설정하면 팀 공유 DB로 전환됩니다.',
+    updatedAt: '',
+  })
+  const [cloudWorkspaceLoaded, setCloudWorkspaceLoaded] = useState(!backendConfig.hasSupabase)
   const [query, setQuery] = useState('')
   const [platform, setPlatform] = useState('전체')
   const [category, setCategory] = useState('전체')
@@ -3201,10 +3216,108 @@ function App() {
     description: `${activeBrand.name} · ${brandBrief.product}`,
   }
 
+  useEffect(() => {
+    let cancelled = false
+
+    async function hydrateCloudWorkspace() {
+      if (!backendConfig.hasSupabase) return
+
+      try {
+        const result = await loadCloudWorkspace()
+        if (cancelled) return
+
+        if (result.workspace) {
+          setWorkspace(normalizeWorkspace(result.workspace))
+          setCloudSyncStatus({
+            mode: 'cloud',
+            label: 'Supabase 공유 DB 연결됨',
+            detail: `워크스페이스 ${backendConfig.workspaceId} 데이터를 불러왔습니다.`,
+            updatedAt: result.updatedAt || '',
+          })
+        } else {
+          setCloudSyncStatus({
+            mode: 'cloud',
+            label: 'Supabase 공유 DB 준비됨',
+            detail: '아직 저장된 워크스페이스가 없어 현재 로컬 데이터를 첫 스냅샷으로 저장합니다.',
+            updatedAt: '',
+          })
+        }
+      } catch (error) {
+        setCloudSyncStatus({
+          mode: 'error',
+          label: '클라우드 동기화 오류',
+          detail: error instanceof Error ? error.message : 'Supabase 연결을 확인해주세요.',
+          updatedAt: '',
+        })
+      } finally {
+        if (!cancelled) setCloudWorkspaceLoaded(true)
+      }
+    }
+
+    hydrateCloudWorkspace()
+
+    return () => {
+      cancelled = true
+    }
+  }, [backendConfig.hasSupabase, backendConfig.workspaceId, setWorkspace])
+
+  useEffect(() => {
+    if (!backendConfig.hasSupabase || !cloudWorkspaceLoaded) return undefined
+
+    const timeout = window.setTimeout(async () => {
+      try {
+        await saveCloudWorkspace(workspace)
+        setCloudSyncStatus((current) => ({
+          ...current,
+          mode: 'cloud',
+          label: 'Supabase 공유 DB 자동 저장됨',
+          detail: `워크스페이스 ${backendConfig.workspaceId}에 최신 운영 데이터를 저장했습니다.`,
+          updatedAt: new Date().toISOString(),
+        }))
+      } catch (error) {
+        setCloudSyncStatus({
+          mode: 'error',
+          label: '클라우드 저장 오류',
+          detail: error instanceof Error ? error.message : 'Supabase 저장 권한과 테이블 정책을 확인해주세요.',
+          updatedAt: '',
+        })
+      }
+    }, 900)
+
+    return () => window.clearTimeout(timeout)
+  }, [backendConfig.hasSupabase, backendConfig.workspaceId, cloudWorkspaceLoaded, workspace])
+
   const showToast = (message) => setToast(message)
 
   const updateWorkspace = (mutator) => {
     setWorkspace((current) => mutator(current))
+  }
+
+  const syncWorkspaceNow = async () => {
+    if (!backendConfig.hasSupabase) {
+      showToast('Supabase 환경변수를 설정하면 팀 공유 DB에 저장할 수 있어요.')
+      return
+    }
+
+    try {
+      await saveCloudWorkspace(workspace)
+      setCloudSyncStatus({
+        mode: 'cloud',
+        label: 'Supabase 공유 DB 수동 저장됨',
+        detail: `워크스페이스 ${backendConfig.workspaceId}에 현재 데이터를 저장했습니다.`,
+        updatedAt: new Date().toISOString(),
+      })
+      showToast('팀 공유 DB에 현재 워크스페이스를 저장했어요.')
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Supabase 저장 중 오류가 발생했어요.'
+      setCloudSyncStatus({
+        mode: 'error',
+        label: '클라우드 저장 오류',
+        detail: message,
+        updatedAt: '',
+      })
+      showToast(message)
+    }
   }
 
   const switchBrand = (brandId) => {
@@ -5637,6 +5750,42 @@ function App() {
 
         {visibleSection === 'settings' && (
           <section className="settings-grid">
+            <section className="panel settings-sync-panel">
+              <div className="panel-heading">
+                <div>
+                  <span className="mini-label">Production Connection</span>
+                  <h2>운영 연결 상태</h2>
+                </div>
+                <button className="primary-button compact-button" type="button" onClick={syncWorkspaceNow}>
+                  <RefreshCw size={16} />
+                  지금 공유 DB 저장
+                </button>
+              </div>
+              <div className={`sync-status-card ${cloudSyncStatus.mode}`}>
+                <Database size={22} />
+                <div>
+                  <strong>{cloudSyncStatus.label}</strong>
+                  <p>{cloudSyncStatus.detail}</p>
+                  {cloudSyncStatus.updatedAt && (
+                    <small>마지막 동기화 {new Date(cloudSyncStatus.updatedAt).toLocaleString('ko-KR')}</small>
+                  )}
+                </div>
+              </div>
+              <div className="integration-checklist">
+                <article className={backendConfig.hasSupabase ? 'ready' : ''}>
+                  <strong>팀 공유 DB/Auth</strong>
+                  <span>{backendConfig.hasSupabase ? 'Supabase env 연결됨' : 'Supabase env 필요'}</span>
+                </article>
+                <article className={backendConfig.apiBaseUrl ? 'ready' : ''}>
+                  <strong>API 키 서버 보관</strong>
+                  <span>{backendConfig.apiBaseUrl || 'VITE_CREATOROPS_API_BASE_URL 필요'}</span>
+                </article>
+                <article className="ready">
+                  <strong>워크스페이스</strong>
+                  <span>{backendConfig.workspaceId}</span>
+                </article>
+              </div>
+            </section>
             <section className="panel settings-main-panel">
               <div className="panel-heading">
                 <div>

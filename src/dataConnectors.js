@@ -25,6 +25,27 @@ export const competitorDataBlueprints = [
   },
 ]
 
+const CREATOROPS_API_BASE_URL = import.meta.env.VITE_CREATOROPS_API_BASE_URL || ''
+
+async function callCreatorOpsApi(path, body) {
+  if (!CREATOROPS_API_BASE_URL) return null
+
+  const response = await fetch(`${CREATOROPS_API_BASE_URL.replace(/\/$/, '')}${path}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(body),
+  })
+  const payload = await response.json().catch(() => ({}))
+
+  if (!response.ok) {
+    throw new Error(payload?.message || payload?.error || 'CreatorOps API 요청에 실패했습니다.')
+  }
+
+  return payload?.data ?? payload
+}
+
 export const marketBenchmarkBlueprints = [
   {
     market: 'Korea',
@@ -189,6 +210,10 @@ export async function fetchYouTubeChannelSnapshot({ apiKey, lookup }) {
   const cleanKey = String(apiKey || '').trim()
   const cleanLookup = String(lookup || '').trim()
 
+  if (CREATOROPS_API_BASE_URL) {
+    return callCreatorOpsApi('/youtube/channel', { lookup: cleanLookup })
+  }
+
   if (!cleanKey) {
     throw new Error('YouTube API 키가 필요합니다.')
   }
@@ -252,6 +277,13 @@ export async function fetchYouTubeChannelSnapshot({ apiKey, lookup }) {
 export async function searchYouTubeCreatorDiscovery({ apiKey, query, maxResults = 8 }) {
   const cleanKey = String(apiKey || '').trim()
   const cleanQuery = String(query || '').trim()
+
+  if (CREATOROPS_API_BASE_URL) {
+    return callCreatorOpsApi('/discovery/youtube/search', {
+      query: cleanQuery,
+      maxResults,
+    })
+  }
 
   if (!cleanKey) {
     throw new Error('YouTube 실제 검색에는 YouTube Data API 키가 필요합니다.')
@@ -335,6 +367,14 @@ export async function searchGoogleProfileDiscovery({ apiKey, cx, query, platform
   const cleanCx = String(cx || '').trim()
   const cleanQuery = String(query || '').trim()
   const cleanPlatform = platform === '전체' ? '' : platform
+
+  if (CREATOROPS_API_BASE_URL) {
+    return callCreatorOpsApi('/discovery/google-profiles/search', {
+      query: cleanQuery,
+      platform: cleanPlatform || 'all',
+      maxResults,
+    })
+  }
 
   if (!cleanKey || !cleanCx) {
     throw new Error('Instagram/TikTok 실제 웹 검색에는 Google Programmable Search API 키와 CX가 필요합니다.')
