@@ -5457,12 +5457,6 @@ function App() {
               onClick={() => jumpTo('references')}
             />
           )}
-          <NavButton
-            active={visibleSection === 'settings'}
-            icon={<Settings size={18} />}
-            label="설정"
-            onClick={() => jumpTo('settings')}
-          />
         </nav>
 
         <div className="team-block">
@@ -5472,6 +5466,17 @@ function App() {
             <span style={{ width: `${Math.min(40 + accounts.length * 12 + accessibleBrands.length * 8, 94)}%` }} />
           </div>
           <p>{currentRole.description}</p>
+        </div>
+        <div className="sidebar-bottom-actions">
+          <button
+            className={`sidebar-settings-button ${visibleSection === 'settings' ? 'active' : ''}`}
+            type="button"
+            title="??"
+            aria-label="??"
+            onClick={() => jumpTo('settings')}
+          >
+            <Settings size={19} />
+          </button>
         </div>
       </aside>
 
