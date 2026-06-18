@@ -2484,8 +2484,8 @@
   border-radius: 8px;
   background: var(--surface-muted);
   display: grid;
-  grid-template-columns: minmax(260px, 0.9fr) minmax(220px, 0.85fr) minmax(280px, 1.15fr);
-  gap: 14px;
+  grid-template-columns: minmax(300px, 1.1fr) minmax(260px, 0.85fr) minmax(380px, 1.45fr);
+  gap: 18px;
   align-items: stretch;
 }
 
@@ -2533,6 +2533,8 @@
 .campaign-row p {
   margin: 0;
   font-size: 13px;
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 .stage-bars {
@@ -3556,8 +3558,8 @@
 }
 
 .campaign-modal-card {
-  width: min(1180px, calc(100vw - 48px));
-  max-height: min(860px, calc(100vh - 40px));
+  width: min(1480px, calc(100vw - 32px));
+  max-height: min(920px, calc(100vh - 24px));
 }
 
 .campaign-modal-card .modal-stack {

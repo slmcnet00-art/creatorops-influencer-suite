@@ -6775,7 +6775,7 @@ function App() {
         )}
 
         {(visibleSection === 'campaigns' || visibleSection === 'report') && (
-          <section className={`bottom-grid ${visibleSection === 'report' ? 'single-column-view' : ''}`}>
+          <section className={`bottom-grid ${visibleSection === 'campaigns' || visibleSection === 'report' ? 'single-column-view' : ''}`}>
           {visibleSection === 'campaigns' && (
           <section className="panel campaign-panel" id="campaigns">
             <div className="panel-heading">
