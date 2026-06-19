@@ -7235,7 +7235,11 @@ function App() {
       {toast && <div className="toast">{toast}</div>}
 
       {modal && (
-        <Modal title={modalTitle(modal.type)} variant={modal.type === 'campaign' ? 'campaign-modal-card' : ''} onClose={() => setModal(null)}>
+        <Modal
+          title={modalTitle(modal.type)}
+          variant={modal.type === 'campaign' ? 'campaign-modal-card' : modal.type === 'create' ? 'campaign-create-modal' : ''}
+          onClose={() => setModal(null)}
+        >
           {modal.type === 'brand' && (
             <form className="modal-form" onSubmit={createBrand}>
               <label>
@@ -7306,7 +7310,7 @@ function App() {
           )}
 
           {modal.type === 'create' && (
-            <form className="modal-form" onSubmit={createCampaign}>
+            <form className="modal-form campaign-create-form" onSubmit={createCampaign}>
               <div className="quote-box">
                 <Target size={22} />
                 <div>

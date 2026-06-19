@@ -3683,6 +3683,62 @@
   max-height: min(920px, calc(100vh - 24px));
 }
 
+.campaign-create-modal {
+  width: min(1380px, calc(100vw - 28px));
+  max-height: min(1040px, calc(100vh - 24px));
+}
+
+.campaign-create-modal .modal-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  background: var(--surface-strong);
+}
+
+.campaign-create-form {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  padding: 18px;
+}
+
+.campaign-create-form > .quote-box,
+.campaign-create-form > .campaign-schedule-fields,
+.campaign-create-form > .assignment-list,
+.campaign-create-form > label:has(textarea) {
+  grid-column: 1 / -1;
+}
+
+.campaign-create-form > label:first-of-type,
+.campaign-create-form > label:last-of-type {
+  grid-column: span 2;
+}
+
+.campaign-create-form > .campaign-guide-panel {
+  grid-column: span 2;
+  align-content: start;
+}
+
+.campaign-create-form > .modal-two-col {
+  grid-column: span 2;
+}
+
+.campaign-create-form > .campaign-guide-panel .modal-two-col {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.campaign-create-form .content-guide-builder textarea {
+  min-height: 96px;
+}
+
+.campaign-create-form > button[type="submit"] {
+  grid-column: 1 / -1;
+  min-height: 44px;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
+  box-shadow: 0 -12px 24px rgba(255, 255, 255, 0.86);
+}
+
 .campaign-modal-card .modal-stack {
   padding: 22px;
   gap: 16px;
@@ -4407,10 +4463,18 @@
 
   .campaign-modal-card .modal-grid,
   .campaign-modal-card .campaign-playbook,
+  .campaign-create-form,
   .campaign-schedule-fields,
   .campaign-schedule-steps,
   .campaign-ops-detail-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .campaign-create-form > .campaign-guide-panel,
+  .campaign-create-form > .modal-two-col,
+  .campaign-create-form > label:first-of-type,
+  .campaign-create-form > label:last-of-type {
+    grid-column: 1 / -1;
   }
 
   .ai-grid {
@@ -4637,6 +4701,16 @@
 
   .workflow-strip {
     grid-template-columns: 1fr;
+  }
+
+  .campaign-create-form,
+  .campaign-create-form .modal-two-col,
+  .campaign-schedule-fields {
+    grid-template-columns: 1fr;
+  }
+
+  .campaign-create-form > * {
+    grid-column: 1 / -1;
   }
 
   .creator-row {
