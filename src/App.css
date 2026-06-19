@@ -893,6 +893,10 @@
   margin-bottom: 16px;
 }
 
+.client-view-panel-embedded {
+  margin: 0;
+}
+
 .client-view-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
@@ -2976,6 +2980,42 @@
   line-height: 1.35;
 }
 
+.message-bulk-toolbar {
+  margin: 0 18px 12px;
+  padding: 11px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.message-bulk-toolbar span {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.selection-check,
+.record-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-strong);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+.selection-check input,
+.record-select input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--accent);
+}
+
 .record-list,
 .activity-list {
   display: grid;
@@ -2997,6 +3037,11 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
+}
+
+.record-select {
+  align-self: flex-start;
+  padding-top: 4px;
 }
 
 .record-item strong,

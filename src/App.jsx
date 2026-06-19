@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+﻿import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowUpRight,
   BarChart3,
@@ -2623,6 +2623,7 @@ function App() {
   const [selectedRecommendationIds, setSelectedRecommendationIds] = useState([])
   const [selectedDiscoveryCreatorIds, setSelectedDiscoveryCreatorIds] = useState([])
   const [selectedCandidatePoolIds, setSelectedCandidatePoolIds] = useState([])
+  const [selectedOutreachIds, setSelectedOutreachIds] = useState([])
   const [outreachResponseNote, setOutreachResponseNote] = useState('')
   const [realDiscoveryDraft, setRealDiscoveryDraft] = useState({
     youtubeApiKey: '',
@@ -2874,6 +2875,12 @@ function App() {
         : activeOutreach,
     [activeOutreach, selectedCampaign],
   )
+  const selectedOutreachItems = useMemo(
+    () => selectedCampaignOutreach.filter((item) => selectedOutreachIds.includes(item.id)),
+    [selectedCampaignOutreach, selectedOutreachIds],
+  )
+  const allOutreachSelected =
+    selectedCampaignOutreach.length > 0 && selectedOutreachItems.length === selectedCampaignOutreach.length
   const selectedCampaignTrackedPosts = useMemo(
     () =>
       selectedCampaign
@@ -5319,6 +5326,44 @@ function App() {
     showToast('메시지를 발송 완료로 기록했어요.')
   }
 
+  const toggleOutreachSelection = (itemId) => {
+    setSelectedOutreachIds((current) =>
+      current.includes(itemId)
+        ? current.filter((id) => id !== itemId)
+        : [...current, itemId],
+    )
+  }
+
+  const toggleAllOutreachItems = () => {
+    setSelectedOutreachIds(allOutreachSelected ? [] : selectedCampaignOutreach.map((item) => item.id))
+  }
+
+  const markSelectedOutreachSent = () => {
+    if (!selectedOutreachItems.length) {
+      showToast('발송 완료로 처리할 메시지를 먼저 선택해주세요.')
+      return
+    }
+
+    const selectedIds = new Set(selectedOutreachItems.map((item) => item.id))
+    const eventTime = nowLabel()
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          outreach: current.outreach.map((item) =>
+            selectedIds.has(item.id)
+              ? { ...item, status: '발송 완료', sentAt: item.sentAt || eventTime }
+              : item,
+          ),
+        },
+        'outreach',
+        `선택 메시지 ${selectedIds.size}건 발송 완료 처리`,
+      ),
+    )
+    setSelectedOutreachIds([])
+    showToast(`선택한 메시지 ${selectedIds.size}건을 발송 완료로 기록했어요.`)
+  }
+
   const markOutreachResponse = (itemId) => {
     updateWorkspace((current) =>
       appendActivity(
@@ -5587,6 +5632,23 @@ function App() {
     (sum, item) => sum + Number(item.paymentAmount || 0),
     0,
   )
+  const campaignModalTrackedPosts = activeCampaignForModal
+    ? activeTrackedPosts.filter((post) => post.campaignId === activeCampaignForModal.id)
+    : []
+  const campaignModalTrackedTotals = campaignModalTrackedPosts.reduce(
+    (summary, post) => ({
+      views: summary.views + Number(post.views || 0),
+      likes: summary.likes + Number(post.likes || 0),
+      comments: summary.comments + Number(post.comments || 0),
+      shares: summary.shares + Number(post.shares || 0),
+    }),
+    { views: 0, likes: 0, comments: 0, shares: 0 },
+  )
+  const campaignModalAverageEngagement = campaignModalTrackedTotals.views
+    ? (campaignModalTrackedTotals.likes + campaignModalTrackedTotals.comments + campaignModalTrackedTotals.shares) /
+      campaignModalTrackedTotals.views
+    : 0
+  const campaignModalKpi = campaignKpiSummaries.find((summary) => summary.campaignId === activeCampaignForModal?.id)
 
   return (
     <div className="app-shell">
@@ -5758,61 +5820,6 @@ function App() {
 
         {visibleSection === 'dashboard' && (
           <>
-            {selectedCampaign && (
-              <section className="panel client-view-panel">
-                <div className="panel-heading">
-                  <div>
-                    <span className="mini-label">Client Approval View</span>
-                    <h2>광고주 컨펌 보드</h2>
-                  </div>
-                  <button className="primary-button compact-button" type="button" onClick={() => jumpTo('report')}>
-                    <BarChart3 size={15} />
-                    리포트 확인
-                  </button>
-                </div>
-                <div className="client-view-grid">
-                  <Stat label="선택 캠페인" value={selectedCampaign?.name ?? '캠페인 미선택'} />
-                  <Stat label="섭외 완료" value={`${selectedCampaignRecruitedPool.length}명`} />
-                  <Stat label="업로드 콘텐츠" value={`${selectedCampaignTrackedPosts.length}건`} />
-                  <Stat label="누적 조회" value={compactNumber(selectedCampaignTrackedTotals.views)} />
-                  <Stat label="평균 참여율" value={percent(selectedCampaignTrackedAverageEngagement)} />
-                  <Stat label="KPI 달성률" value={`${selectedCampaignKpi?.progress ?? 0}%`} />
-                </div>
-                <div className="client-approval-list">
-                  {selectedCampaignRecruitedPool.slice(0, 4).map((poolItem) => {
-                    const creator = creators.find((item) => item.id === poolItem.creatorId)
-                    const quality = getCreatorDataQuality(creator)
-                    return (
-                      <article key={poolItem.id}>
-                        <div>
-                          <strong>{creator?.name ?? '크리에이터'}</strong>
-                          <span>{creator?.handle ?? '-'} · {creator?.platform ?? '-'} · {poolItem.status}</span>
-                        </div>
-                        <div>
-                          <span>팔로워 {creator ? compactNumber(creator.followers) : '-'}</span>
-                          <span>평균 조회 {creator ? compactNumber(creator.averageViews) : '-'}</span>
-                          <span>참여율 {creator ? percent(creator.engagement) : '-'}</span>
-                          <span>데이터 {quality.score}</span>
-                        </div>
-                        <div className="client-approval-proof">
-                          <span>예상 비용 {creator ? won(creator.price) : '-'}</span>
-                          <span>브랜드 핏 {creator?.fit ?? '-'}점</span>
-                          <span>가짜 팔로워 위험 {creator?.fakeRisk ?? '-'}%</span>
-                          <p>{poolItem.note || creator?.sourceNote || '브랜드 적합도, 콘텐츠 톤, 최근 성과 기준으로 컨펌 검토가 필요합니다.'}</p>
-                        </div>
-                      </article>
-                    )
-                  })}
-                  {!selectedCampaignRecruitedPool.length && (
-                    <div className="empty-state compact-empty">
-                      <UsersRound size={22} />
-                      <strong>아직 컨펌할 섭외 완료 풀이 없습니다.</strong>
-                      <p>캠페인에서 섭외 완료 처리된 인플루언서가 생기면 팔로워, 평균 조회, 참여율, 데이터 신뢰도가 이곳에 표시됩니다.</p>
-                    </div>
-                  )}
-                </div>
-              </section>
-            )}
             <section className="workflow-strip" aria-label="인플루언서 운영 흐름">
               {workflowSignals.map((signal) => (
                 <WorkflowSignal key={signal.label} signal={signal} />
@@ -7264,6 +7271,27 @@ function App() {
                 <p>이메일, DM, 수동 채널 분리</p>
               </article>
             </div>
+            <div className="message-bulk-toolbar">
+              <label className="selection-check">
+                <input
+                  type="checkbox"
+                  checked={allOutreachSelected}
+                  disabled={!selectedCampaignOutreach.length}
+                  onChange={toggleAllOutreachItems}
+                />
+                전체 선택
+              </label>
+              <span>{selectedOutreachItems.length}건 선택</span>
+              <button
+                className="primary-button compact-button"
+                type="button"
+                disabled={!selectedOutreachItems.length}
+                onClick={markSelectedOutreachSent}
+              >
+                <Send size={15} />
+                선택 메시지 발송 완료
+              </button>
+            </div>
             <div className="record-list">
               {selectedCampaignOutreach.length === 0 ? (
                 <div className="empty-state compact-empty">
@@ -7278,6 +7306,8 @@ function App() {
                   item={item}
                   creator={creators.find((creator) => creator.id === item.creatorId)}
                   campaign={brandCampaigns.find((campaign) => campaign.id === item.campaignId)}
+                  selected={selectedOutreachIds.includes(item.id)}
+                  onToggleSelect={() => toggleOutreachSelection(item.id)}
                   onCopy={() => copyOutreachMessage(item.message)}
                   onOpenDetail={() => openOutreachDetail(item.id)}
                   onMarkSent={() => markOutreachSent(item.id)}
@@ -8271,6 +8301,19 @@ function App() {
                   <span key={creator.id}>{creator.name}</span>
                 ))}
               </div>
+              <ClientApprovalBoard
+                campaign={activeCampaignForModal}
+                poolItems={campaignModalPool}
+                creators={creators}
+                trackedPosts={campaignModalTrackedPosts}
+                trackedTotals={campaignModalTrackedTotals}
+                averageEngagement={campaignModalAverageEngagement}
+                kpi={campaignModalKpi}
+                onReport={() => {
+                  setModal(null)
+                  jumpTo('report')
+                }}
+              />
               <div className="campaign-ops-detail-grid">
                 <section className="campaign-ops-detail">
                   <div className="campaign-ops-detail-head">
@@ -8467,6 +8510,8 @@ function App() {
                     item={item}
                     creator={creators.find((creator) => creator.id === item.creatorId)}
                     campaign={brandCampaigns.find((campaign) => campaign.id === item.campaignId)}
+                    selected={selectedOutreachIds.includes(item.id)}
+                    onToggleSelect={() => toggleOutreachSelection(item.id)}
                     onCopy={() => copyOutreachMessage(item.message)}
                     onOpenDetail={() => openOutreachDetail(item.id)}
                     onMarkSent={() => markOutreachSent(item.id)}
@@ -8984,7 +9029,18 @@ function CampaignCard({ campaign, creators, kpiSummary, onOpen }) {
   )
 }
 
-function OutreachItem({ item, creator, campaign, onCopy, onOpenDetail, onMarkSent, onMarkResponse, onComplete }) {
+function OutreachItem({
+  item,
+  creator,
+  campaign,
+  selected = false,
+  onToggleSelect,
+  onCopy,
+  onOpenDetail,
+  onMarkSent,
+  onMarkResponse,
+  onComplete,
+}) {
   const awaitingApproval = item.status === '승인 대기'
   const canComplete = item.status === '응답' || item.status === '발송 완료'
   const sourceTone = item.source === '자동' ? 'auto-source' : item.source === '대량 섭외' ? 'bulk-source' : 'manual-source'
@@ -8992,6 +9048,11 @@ function OutreachItem({ item, creator, campaign, onCopy, onOpenDetail, onMarkSen
 
   return (
     <article className="record-item">
+      {onToggleSelect && (
+        <label className="record-select" aria-label={`${creator?.name ?? '메시지'} 선택`}>
+          <input type="checkbox" checked={selected} onChange={onToggleSelect} />
+        </label>
+      )}
       <div>
         <span className={`status-chip ${item.status === '응답' || item.status === '발송 완료' ? 'success-chip' : ''}`}>{item.status}</span>
         <span className={`source-chip ${sourceTone}`}>{item.source ?? '수동'}</span>
@@ -9153,6 +9214,77 @@ function PoolItem({ item, creator, campaign }) {
   )
 }
 
+function ClientApprovalBoard({
+  campaign,
+  poolItems,
+  creators,
+  trackedPosts,
+  trackedTotals,
+  averageEngagement,
+  kpi,
+  onReport,
+}) {
+  if (!campaign) return null
+
+  return (
+    <section className="panel client-view-panel client-view-panel-embedded">
+      <div className="panel-heading">
+        <div>
+          <span className="mini-label">Client Approval View</span>
+          <h2>광고주 컨펌 보드</h2>
+        </div>
+        {onReport && (
+          <button className="primary-button compact-button" type="button" onClick={onReport}>
+            <BarChart3 size={15} />
+            리포트 확인
+          </button>
+        )}
+      </div>
+      <div className="client-view-grid">
+        <Stat label="선택 캠페인" value={campaign.name ?? '캠페인 미선택'} />
+        <Stat label="섭외 완료" value={`${poolItems.length}명`} />
+        <Stat label="업로드 콘텐츠" value={`${trackedPosts.length}건`} />
+        <Stat label="누적 조회" value={compactNumber(trackedTotals.views)} />
+        <Stat label="평균 참여율" value={percent(averageEngagement)} />
+        <Stat label="KPI 달성률" value={`${kpi?.progress ?? 0}%`} />
+      </div>
+      <div className="client-approval-list">
+        {poolItems.slice(0, 6).map((poolItem) => {
+          const creator = creators.find((item) => item.id === poolItem.creatorId)
+          const quality = getCreatorDataQuality(creator)
+          return (
+            <article key={poolItem.id}>
+              <div>
+                <strong>{creator?.name ?? '크리에이터'}</strong>
+                <span>{creator?.handle ?? '-'} · {creator?.platform ?? '-'} · {poolItem.status}</span>
+              </div>
+              <div>
+                <span>팔로워 {creator ? compactNumber(creator.followers) : '-'}</span>
+                <span>평균 조회 {creator ? compactNumber(creator.averageViews) : '-'}</span>
+                <span>참여율 {creator ? percent(creator.engagement) : '-'}</span>
+                <span>데이터 {quality.score}</span>
+              </div>
+              <div className="client-approval-proof">
+                <span>예상 비용 {creator ? won(creator.price) : '-'}</span>
+                <span>브랜드 핏 {creator?.fit ?? '-'}점</span>
+                <span>가짜 팔로워 위험 {creator?.fakeRisk ?? '-'}%</span>
+                <p>{poolItem.note || creator?.sourceNote || '브랜드 적합도, 콘텐츠 톤, 최근 성과 기준으로 컨펌 검토가 필요합니다.'}</p>
+              </div>
+            </article>
+          )
+        })}
+        {!poolItems.length && (
+          <div className="empty-state compact-empty">
+            <UsersRound size={22} />
+            <strong>아직 컨펌할 섭외 완료 풀이 없습니다.</strong>
+            <p>메시지 화면에서 섭외 완료 저장을 누르면 이 캠페인 상세에 컨펌 후보가 쌓입니다.</p>
+          </div>
+        )}
+      </div>
+    </section>
+  )
+}
+
 function Stat({ label, value }) {
   return (
     <div>
@@ -9185,3 +9317,4 @@ function Modal({ title, children, onClose, variant = '' }) {
 }
 
 export default App
+
