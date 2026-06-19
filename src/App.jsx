@@ -186,7 +186,7 @@ const contactChannelCatalog = {
 const contactChannelOptions = Object.values(contactChannelCatalog)
 
 const seedingTypeOptions = ['무가시딩', '유가시딩', '공동구매 셀러', '모집형 체험단']
-const contentGuideChannelOptions = ['Instagram Reels', 'TikTok', 'YouTube Shorts', 'YouTube Longform', 'Blog', 'Multi Channel']
+const contentGuideChannelOptions = ['Instagram Reels', 'TikTok', 'YouTube Shorts', 'YouTube Longform', 'Multi Channel']
 
 const defaultCreators = [
   {
@@ -1532,10 +1532,8 @@ function buildInfluencerContentGuide({ brand, brief, campaign, creators = [] }) 
       '검색/추천 유입을 고려해 제목형 첫 문장과 명확한 결론이 필요하다. 30-60초 안에 문제, 사용, 판단, CTA를 닫는다.',
     'YouTube Longform':
       '상세 리뷰, 비교, 사용 전후 맥락을 충분히 설명한다. 챕터형 구성과 고정댓글 링크/쿠폰 안내를 포함한다.',
-    Blog:
-      '검색형 키워드, 사진 컷, 사용 조건, 장단점, 구매 정보가 중요하다. 제목/소제목/표 형태로 제품 정보를 정리한다.',
     'Multi Channel':
-      '릴스/틱톡/쇼츠는 첫 3초 후킹과 사용 장면, 블로그/롱폼은 정보 구조와 비교 포인트를 강화한다.',
+      '릴스/틱톡/쇼츠는 첫 3초 후킹과 사용 장면, YouTube 롱폼은 정보 구조와 비교 포인트를 강화한다.',
   }[channel]
 
   return `# ${brand.name} ${campaignName} 인플루언서 콘텐츠 가이드
@@ -1609,7 +1607,7 @@ ${keywordList(`${brief.product}, ${brief.keywords}`).slice(0, 8).map((keyword) =
 ## 13. 채널별 체크리스트
 - Instagram Reels/TikTok/Shorts: 9:16, 첫 3초 자막, 제품 사용 장면, 짧은 CTA
 - YouTube Longform: 챕터, 장단점, 링크/쿠폰 고정댓글, 상세 사용 조건
-- Blog: 제목 키워드, 사진 8장 이상, 장단점 표, 구매 정보, 협찬 고지
+- Multi Channel: 숏폼은 후킹/사용 장면, 롱폼은 상세 비교/구매 정보, 전 채널 협찬 고지
 
 ## 14. 검수/제출
 - 초안 제출: ${campaign.approvalFlow || '브리프 전달 → 초안 검수 → 수정 반영 → 게시 확인'}
@@ -6695,7 +6693,6 @@ function App() {
                 <option>TikTok</option>
                 <option>Instagram</option>
                 <option>YouTube</option>
-                <option>Blog</option>
                 <option>Other</option>
               </select>
             </label>
@@ -6806,7 +6803,6 @@ function App() {
                   <option>TikTok</option>
                   <option>Instagram</option>
                   <option>YouTube</option>
-                  <option>Blog</option>
                   <option>Other</option>
                 </select>
               </label>

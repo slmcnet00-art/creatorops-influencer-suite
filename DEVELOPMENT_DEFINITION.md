@@ -84,7 +84,7 @@ CreatorOps는 브랜드에 맞는 인플루언서를 발굴하고, 섭외 메시
 - 캠페인 생성 시 인플루언서 브랜드 가이드 양식을 다운로드할 수 있다.
 - `.docx`, `.md`, `.txt`, `.csv`, `.tsv`, `.xlsx` 가이드 파일을 첨부할 수 있다.
 - 무가시딩, 유가시딩, 공동구매 셀러, 모집형 체험단 등 작업 유형을 선택한다.
-- Instagram Reels, TikTok, YouTube Shorts, YouTube Longform, Blog, Multi Channel 등 채널을 선택한다.
+- Instagram Reels, TikTok, YouTube Shorts, YouTube Longform, Multi Channel 등 채널을 선택한다.
 - 콘텐츠 원메시지와 후킹포인트를 입력하면 전달용 콘텐츠 가이드를 생성할 수 있다.
 - 생성된 가이드는 DOCX, PPT, Google 문서 열기 형태로 내보낼 수 있다.
 
