@@ -2794,6 +2794,23 @@ function App() {
     () => outreach.filter((item) => activeCampaignIdSet.has(item.campaignId)),
     [activeCampaignIdSet, outreach],
   )
+  const activeOutreachDetail = modal?.type === 'outreachDetail'
+    ? activeOutreach.find((item) => item.id === modal.itemId)
+    : null
+  const activeOutreachDetailCreator = activeOutreachDetail
+    ? creators.find((creator) => creator.id === activeOutreachDetail.creatorId)
+    : null
+  const activeOutreachDetailCampaign = activeOutreachDetail
+    ? campaigns.find((campaign) => campaign.id === activeOutreachDetail.campaignId)
+    : null
+  const activeOutreachDetailPlan = activeOutreachDetail
+    ? buildContactPlan(
+        activeOutreachDetailCreator,
+        activeOutreachDetail.channel,
+        activeOutreachDetail.message,
+        activeOutreachDetailCampaign?.name,
+      )
+    : null
   const activeRecruitedPool = useMemo(
     () => recruitedPool.filter((item) => activeCampaignIdSet.has(item.campaignId)),
     [activeCampaignIdSet, recruitedPool],
@@ -5283,6 +5300,10 @@ function App() {
     showToast('응답 상태를 저장했어요.')
   }
 
+  const openOutreachDetail = (itemId) => {
+    setModal({ type: 'outreachDetail', itemId })
+  }
+
   const completeRecruitment = (itemId) => {
     updateWorkspace((current) => {
       const outreachItem = current.outreach.find((item) => item.id === itemId)
@@ -7140,6 +7161,28 @@ function App() {
                 </article>
               ))}
             </div>
+            <div className="message-stage-board" aria-label="메시지 운영 상태">
+              <article>
+                <span>검토함</span>
+                <strong>{selectedCampaignOutreach.filter((item) => item.status === '승인 대기').length}건</strong>
+                <p>문구 확인 후 발송 처리</p>
+              </article>
+              <article>
+                <span>발송완료</span>
+                <strong>{selectedCampaignOutreach.filter((item) => item.status === '발송 완료').length}건</strong>
+                <p>응답 대기 및 후속 확인</p>
+              </article>
+              <article>
+                <span>응답</span>
+                <strong>{selectedCampaignOutreach.filter((item) => item.status === '응답').length}건</strong>
+                <p>조건 확인 후 섭외 완료</p>
+              </article>
+              <article>
+                <span>연락 채널</span>
+                <strong>{new Set(selectedCampaignOutreach.map((item) => item.channel || 'manual_other')).size}개</strong>
+                <p>이메일, DM, 수동 채널 분리</p>
+              </article>
+            </div>
             <div className="record-list">
               {selectedCampaignOutreach.length === 0 ? (
                 <div className="empty-state compact-empty">
@@ -7155,6 +7198,7 @@ function App() {
                   creator={creators.find((creator) => creator.id === item.creatorId)}
                   campaign={brandCampaigns.find((campaign) => campaign.id === item.campaignId)}
                   onCopy={() => copyOutreachMessage(item.message)}
+                  onOpenDetail={() => openOutreachDetail(item.id)}
                   onMarkSent={() => markOutreachSent(item.id)}
                   onMarkResponse={() => markOutreachResponse(item.id)}
                   onComplete={() => completeRecruitment(item.id)}
@@ -8229,6 +8273,65 @@ function App() {
             </div>
           )}
 
+          {modal.type === 'outreachDetail' && activeOutreachDetail && (
+            <div className="modal-stack outreach-detail-modal">
+              <div className="outreach-detail-hero">
+                <div>
+                  <span className={`status-chip ${activeOutreachDetail.status === '응답' || activeOutreachDetail.status === '발송 완료' ? 'success-chip' : ''}`}>
+                    {activeOutreachDetail.status}
+                  </span>
+                  <span className={`channel-chip ${activeOutreachDetailPlan?.tone ?? 'manual-channel'}`}>
+                    {activeOutreachDetailPlan?.shortLabel ?? '수동'}
+                  </span>
+                </div>
+                <strong>{activeOutreachDetailCreator?.name ?? '크리에이터 정보 없음'}</strong>
+                <p>{activeOutreachDetailCampaign?.name ?? '캠페인 없음'} · {activeOutreachDetail.createdAt}</p>
+              </div>
+              <div className="outreach-detail-grid">
+                <article>
+                  <span>연락 방식</span>
+                  <strong>{activeOutreachDetailPlan?.label ?? '수동 확인'}</strong>
+                  <p>{activeOutreachDetailPlan?.description}</p>
+                </article>
+                <article>
+                  <span>추천/발송 근거</span>
+                  <strong>{activeOutreachDetail.source ?? '수동'}</strong>
+                  <p>{activeOutreachDetail.reason || '캠페인 조건에 맞춰 생성한 제안 메시지입니다.'}</p>
+                </article>
+              </div>
+              <div className="outreach-message-preview">
+                <span>제안 메시지 전문</span>
+                <pre>{activeOutreachDetail.message}</pre>
+              </div>
+              <div className="outreach-detail-actions">
+                <button className="secondary-button compact-button" type="button" onClick={() => copyOutreachMessage(activeOutreachDetail.message)}>
+                  복사
+                </button>
+                {activeOutreachDetailPlan?.url && (
+                  <a className="secondary-button compact-button" href={activeOutreachDetailPlan.url} target="_blank" rel="noreferrer">
+                    <ArrowUpRight size={14} />
+                    연락 채널 열기
+                  </a>
+                )}
+                {activeOutreachDetail.status === '승인 대기' && (
+                  <button className="secondary-button compact-button" type="button" onClick={() => markOutreachSent(activeOutreachDetail.id)}>
+                    발송 완료
+                  </button>
+                )}
+                {activeOutreachDetail.status !== '응답' && (
+                  <button className="secondary-button compact-button" type="button" onClick={() => markOutreachResponse(activeOutreachDetail.id)}>
+                    응답 처리
+                  </button>
+                )}
+                {(activeOutreachDetail.status === '응답' || activeOutreachDetail.status === '발송 완료') && (
+                  <button className="primary-button compact-button" type="button" onClick={() => completeRecruitment(activeOutreachDetail.id)}>
+                    섭외 완료 풀 저장
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+
           {modal.type === 'messages' && (
             <div className="modal-stack">
               <div className="contact-policy-note">
@@ -8251,6 +8354,7 @@ function App() {
                     creator={creators.find((creator) => creator.id === item.creatorId)}
                     campaign={brandCampaigns.find((campaign) => campaign.id === item.campaignId)}
                     onCopy={() => copyOutreachMessage(item.message)}
+                    onOpenDetail={() => openOutreachDetail(item.id)}
                     onMarkSent={() => markOutreachSent(item.id)}
                     onMarkResponse={() => markOutreachResponse(item.id)}
                     onComplete={() => completeRecruitment(item.id)}
@@ -8542,6 +8646,7 @@ function modalTitle(type) {
     campaign: '캠페인 상세',
     campaignSummary: '캠페인 요약',
     messages: '메시지 검토함',
+    outreachDetail: '제안 메시지 상세',
     data: '데이터 관리',
   }[type]
 }
@@ -8765,7 +8870,7 @@ function CampaignCard({ campaign, creators, kpiSummary, onOpen }) {
   )
 }
 
-function OutreachItem({ item, creator, campaign, onCopy, onMarkSent, onMarkResponse, onComplete }) {
+function OutreachItem({ item, creator, campaign, onCopy, onOpenDetail, onMarkSent, onMarkResponse, onComplete }) {
   const awaitingApproval = item.status === '승인 대기'
   const canComplete = item.status === '응답' || item.status === '발송 완료'
   const sourceTone = item.source === '자동' ? 'auto-source' : item.source === '대량 섭외' ? 'bulk-source' : 'manual-source'
@@ -8783,13 +8888,16 @@ function OutreachItem({ item, creator, campaign, onCopy, onMarkSent, onMarkRespo
         {item.reason && <p>{item.reason}</p>}
       </div>
       <div className="record-actions">
+        <button className="primary-button compact-button" type="button" onClick={onOpenDetail}>
+          상세 보기
+        </button>
         <button className="secondary-button compact-button" type="button" onClick={onCopy}>
           복사
         </button>
         {contactPlan.url && (
           <a className="secondary-button compact-button" href={contactPlan.url} target="_blank" rel="noreferrer">
             <ArrowUpRight size={14} />
-            열기
+            연락 채널 열기
           </a>
         )}
         {awaitingApproval && (
