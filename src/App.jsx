@@ -1012,6 +1012,42 @@ function buildContactPlan(creator, channelId, message = '', campaignName = '') {
   }
 }
 
+function buildOutreachTimeline(item = {}) {
+  const events = [
+    {
+      label: '메시지 생성',
+      detail: item.reason || item.source || '후보에게 보낼 제안 메시지를 만들었습니다.',
+      createdAt: item.createdAt || '-',
+    },
+  ]
+
+  if (item.sentAt) {
+    events.push({
+      label: '발송 완료',
+      detail: item.deliveryMode || '발송 완료로 기록했습니다.',
+      createdAt: item.sentAt,
+    })
+  }
+
+  if (item.responseAt || item.responseNote || item.status === '?묐떟') {
+    events.push({
+      label: '응답 확인',
+      detail: item.responseNote || '응답 상태로 기록했습니다.',
+      createdAt: item.responseAt || item.updatedAt || '-',
+    })
+  }
+
+  if (item.recruitedAt || item.status === '??쇅 ?꾨즺') {
+    events.push({
+      label: '섭외 완료',
+      detail: item.recruitmentNote || '섭외 완료 풀에 저장했습니다.',
+      createdAt: item.recruitedAt || item.updatedAt || '-',
+    })
+  }
+
+  return [...events, ...(item.outreachEvents ?? [])]
+}
+
 function normalizeCreator(creator) {
   const fallback =
     defaultCreators.find((item) => item.id === creator.id) ??
@@ -2587,6 +2623,7 @@ function App() {
   const [selectedRecommendationIds, setSelectedRecommendationIds] = useState([])
   const [selectedDiscoveryCreatorIds, setSelectedDiscoveryCreatorIds] = useState([])
   const [selectedCandidatePoolIds, setSelectedCandidatePoolIds] = useState([])
+  const [outreachResponseNote, setOutreachResponseNote] = useState('')
   const [realDiscoveryDraft, setRealDiscoveryDraft] = useState({
     youtubeApiKey: '',
     googleApiKey: '',
@@ -5298,7 +5335,49 @@ function App() {
     showToast('응답 상태를 저장했어요.')
   }
 
+  const saveOutreachResponseNote = (itemId) => {
+    const note = outreachResponseNote.trim()
+    if (!note) {
+      showToast('저장할 응답 메모를 입력해주세요.')
+      return
+    }
+
+    const eventTime = nowLabel()
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          outreach: current.outreach.map((item) =>
+            item.id === itemId
+              ? {
+                  ...item,
+                  responseNote: note,
+                  responseAt: item.responseAt || eventTime,
+                  updatedAt: eventTime,
+                  outreachEvents: [
+                    ...(item.outreachEvents ?? []),
+                    {
+                      id: createId(),
+                      type: 'note',
+                      label: '응답 메모',
+                      detail: note,
+                      createdAt: eventTime,
+                    },
+                  ],
+                }
+              : item,
+          ),
+        },
+        'outreach',
+        '인플루언서 응답 메모 저장',
+      ),
+    )
+    showToast('응답 메모와 로그를 저장했어요.')
+  }
+
   const openOutreachDetail = (itemId) => {
+    const item = activeOutreach.find((outreachItem) => outreachItem.id === itemId)
+    setOutreachResponseNote(item?.responseNote ?? '')
     setModal({ type: 'outreachDetail', itemId })
   }
 
@@ -5679,7 +5758,7 @@ function App() {
 
         {visibleSection === 'dashboard' && (
           <>
-            {currentAccount?.role === 'Client' && (
+            {selectedCampaign && (
               <section className="panel client-view-panel">
                 <div className="panel-heading">
                   <div>
@@ -5714,6 +5793,12 @@ function App() {
                           <span>평균 조회 {creator ? compactNumber(creator.averageViews) : '-'}</span>
                           <span>참여율 {creator ? percent(creator.engagement) : '-'}</span>
                           <span>데이터 {quality.score}</span>
+                        </div>
+                        <div className="client-approval-proof">
+                          <span>예상 비용 {creator ? won(creator.price) : '-'}</span>
+                          <span>브랜드 핏 {creator?.fit ?? '-'}점</span>
+                          <span>가짜 팔로워 위험 {creator?.fakeRisk ?? '-'}%</span>
+                          <p>{poolItem.note || creator?.sourceNote || '브랜드 적합도, 콘텐츠 톤, 최근 성과 기준으로 컨펌 검토가 필요합니다.'}</p>
                         </div>
                       </article>
                     )
@@ -8298,6 +8383,35 @@ function App() {
                   <strong>{activeOutreachDetail.source ?? '수동'}</strong>
                   <p>{activeOutreachDetail.reason || '캠페인 조건에 맞춰 생성한 제안 메시지입니다.'}</p>
                 </article>
+              </div>
+              <div className="outreach-timeline-panel">
+                <div className="timeline-heading">
+                  <span>발송/응답 로그</span>
+                  <strong>{buildOutreachTimeline(activeOutreachDetail).length}건 기록</strong>
+                </div>
+                <div className="outreach-timeline-list">
+                  {buildOutreachTimeline(activeOutreachDetail).map((event, index) => (
+                    <article key={`${event.label}-${event.createdAt}-${index}`}>
+                      <span>{event.createdAt}</span>
+                      <strong>{event.label}</strong>
+                      <p>{event.detail}</p>
+                    </article>
+                  ))}
+                </div>
+              </div>
+              <div className="response-note-panel">
+                <label>
+                  응답 메모
+                  <textarea
+                    rows={3}
+                    value={outreachResponseNote}
+                    onChange={(event) => setOutreachResponseNote(event.target.value)}
+                    placeholder="예: 단가 문의, 샘플 수령 가능, 일정 조율 필요, 거절 사유 등"
+                  />
+                </label>
+                <button className="secondary-button compact-button" type="button" onClick={() => saveOutreachResponseNote(activeOutreachDetail.id)}>
+                  응답 메모 저장
+                </button>
               </div>
               <div className="outreach-message-preview">
                 <span>제안 메시지 전문</span>
