@@ -4081,38 +4081,75 @@
 }
 
 .campaign-create-form {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
   padding: 18px;
 }
 
-.campaign-create-form > .quote-box,
+.campaign-form-section,
+.campaign-form-section-head,
 .campaign-create-form > .campaign-schedule-fields,
 .campaign-create-form > .assignment-list,
 .campaign-create-form > label:has(textarea) {
   grid-column: 1 / -1;
 }
 
-.campaign-create-form > label:first-of-type,
-.campaign-create-form > label:last-of-type {
-  grid-column: span 2;
-}
-
 .campaign-create-form > .campaign-guide-panel {
-  grid-column: span 2;
+  grid-column: 1 / -1;
   align-content: start;
 }
 
 .campaign-create-form > .modal-two-col {
-  grid-column: span 2;
+  grid-column: 1 / -1;
 }
 
 .campaign-create-form > .campaign-guide-panel .modal-two-col {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.campaign-create-form .content-guide-builder textarea {
-  min-height: 96px;
+.campaign-form-section {
+  padding: 14px;
+  border: 1px solid rgba(0, 113, 227, 0.13);
+  border-radius: 8px;
+  background: rgba(245, 249, 255, 0.68);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.campaign-form-section > div:first-child,
+.campaign-form-section .quote-box,
+.campaign-form-section > label,
+.campaign-form-section > .modal-two-col {
+  grid-column: 1 / -1;
+}
+
+.campaign-form-section-head {
+  padding: 12px 14px;
+  border: 1px solid rgba(0, 113, 227, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.campaign-form-section strong,
+.campaign-form-section p,
+.campaign-form-section-head strong,
+.campaign-form-section-head p {
+  display: block;
+}
+
+.campaign-form-section strong,
+.campaign-form-section-head strong {
+  margin-top: 3px;
+  color: var(--text-strong);
+}
+
+.campaign-form-section p,
+.campaign-form-section-head p {
+  margin: 5px 0 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .campaign-create-form > button[type="submit"] {
@@ -4165,7 +4202,8 @@
   gap: 12px;
 }
 
-.campaign-schedule-fields > .mini-label {
+.campaign-schedule-fields > .mini-label,
+.campaign-schedule-fields > .campaign-form-section-head {
   grid-column: 1 / -1;
 }
 
@@ -5196,6 +5234,7 @@
   }
 
   .campaign-create-form,
+  .campaign-form-section,
   .campaign-create-form .modal-two-col,
   .campaign-schedule-fields {
     grid-template-columns: 1fr;

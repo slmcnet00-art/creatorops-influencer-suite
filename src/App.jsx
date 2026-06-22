@@ -7587,24 +7587,57 @@ function App() {
 
           {modal.type === 'create' && (
             <form className="modal-form campaign-create-form" onSubmit={createCampaign}>
-              <div className="quote-box">
-                <Target size={22} />
+              <div className="campaign-form-section campaign-form-intro">
                 <div>
-                  <strong>{activeBrand.name}</strong>
-                  <span>현재 선택된 브랜드에 캠페인을 생성합니다.</span>
+                  <span className="mini-label">Step 1</span>
+                  <strong>기본 정보</strong>
+                  <p>캠페인 이름과 목적을 먼저 정리합니다.</p>
+                </div>
+                <div className="quote-box">
+                  <Target size={22} />
+                  <div>
+                    <strong>{activeBrand.name}</strong>
+                    <span>현재 선택된 브랜드에 캠페인을 생성합니다.</span>
+                  </div>
+                </div>
+                <label>
+                  캠페인명
+                  <input
+                    value={campaignDraft.name}
+                    onChange={(event) => setCampaignDraft({ ...campaignDraft, name: event.target.value })}
+                    placeholder="예: 여름 신제품 런칭"
+                  />
+                </label>
+                <div className="modal-two-col">
+                  <label>
+                    목표
+                    <select
+                      value={campaignDraft.objective}
+                      onChange={(event) => setCampaignDraft({ ...campaignDraft, objective: event.target.value })}
+                    >
+                      <option>브랜드 인지도</option>
+                      <option>구매 전환</option>
+                      <option>공동구매 전환</option>
+                      <option>예약 판매</option>
+                      <option>앱 설치</option>
+                    </select>
+                  </label>
+                  <label>
+                    캠페인 타입
+                    <select
+                      value={campaignDraft.campaignType}
+                      onChange={(event) => setCampaignDraft({ ...campaignDraft, campaignType: event.target.value })}
+                    >
+                      {campaignTypeOptions.map((option) => (
+                        <option key={option}>{option}</option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
               </div>
-              <label>
-                캠페인명
-                <input
-                  value={campaignDraft.name}
-                  onChange={(event) => setCampaignDraft({ ...campaignDraft, name: event.target.value })}
-                  placeholder="예: 여름 신제품 런칭"
-                />
-              </label>
               <div className="campaign-guide-panel campaign-condition-panel">
                 <div>
-                  <span className="mini-label">Campaign Targeting</span>
+                  <span className="mini-label">Step 2 · Campaign Targeting</span>
                   <strong>캠페인별 발굴 조건</strong>
                   <p>이번 캠페인에서만 달라지는 타깃, 검색 키워드, 후보 규모와 단가 조건입니다. 비워두면 브랜드 공통 프로필의 기본값을 사용합니다.</p>
                 </div>
@@ -7700,6 +7733,11 @@ function App() {
                   </div>
                 )}
               </div>
+              <div className="campaign-form-section-head campaign-budget-head">
+                <span className="mini-label">Step 3</span>
+                <strong>예산과 KPI</strong>
+                <p>리포트 기준이 되는 목표 숫자와 예산입니다.</p>
+              </div>
               <label>
                 예산
                 <input
@@ -7710,30 +7748,6 @@ function App() {
                 />
               </label>
               <label>
-                목표
-                <select
-                  value={campaignDraft.objective}
-                  onChange={(event) => setCampaignDraft({ ...campaignDraft, objective: event.target.value })}
-                >
-                  <option>브랜드 인지도</option>
-                  <option>구매 전환</option>
-                  <option>공동구매 전환</option>
-                  <option>예약 판매</option>
-                  <option>앱 설치</option>
-                </select>
-              </label>
-              <label>
-                캠페인 타입
-                <select
-                  value={campaignDraft.campaignType}
-                  onChange={(event) => setCampaignDraft({ ...campaignDraft, campaignType: event.target.value })}
-                >
-                  {campaignTypeOptions.map((option) => (
-                    <option key={option}>{option}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
                 마감일
                 <input
                   value={campaignDraft.deadline}
@@ -7742,7 +7756,11 @@ function App() {
                 />
               </label>
               <div className="campaign-schedule-fields">
-                <span className="mini-label">Campaign Schedule</span>
+                <div className="campaign-form-section-head">
+                  <span className="mini-label">Step 4 · Campaign Schedule</span>
+                  <strong>일정</strong>
+                  <p>모집부터 업로드, 보고 완료까지의 기준일입니다.</p>
+                </div>
                 <label>
                   모집 시작일
                   <input
@@ -7834,6 +7852,11 @@ function App() {
                     placeholder="70000000"
                   />
                 </label>
+              </div>
+              <div className="campaign-form-section-head campaign-ops-head">
+                <span className="mini-label">Step 5</span>
+                <strong>운영 조건</strong>
+                <p>섭외 후 전달할 미션, 리워드, 검수 흐름입니다.</p>
               </div>
               <label>
                 미션/가이드라인
