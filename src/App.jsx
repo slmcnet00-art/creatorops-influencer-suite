@@ -186,9 +186,6 @@ const contactChannelCatalog = {
 
 const contactChannelOptions = Object.values(contactChannelCatalog)
 
-const seedingTypeOptions = ['무가시딩', '유가시딩', '공동구매 셀러', '모집형 체험단']
-const contentGuideChannelOptions = ['Instagram Reels', 'TikTok', 'YouTube Shorts', 'YouTube Longform', 'Multi Channel']
-
 const defaultCreators = [
   {
     id: 1,
@@ -4145,61 +4142,6 @@ function App() {
     ].slice(0, 80),
   })
 
-  const buildCampaignContentGuideFromDraft = (draft = campaignDraft) =>
-    buildInfluencerContentGuide({
-      brand: activeBrand,
-      brief: buildCampaignBriefFromDraft(draft),
-      campaign: draft,
-      creators: getCreatorsByIds(creators, shortlist),
-    })
-
-  const generateCampaignContentGuide = () => {
-    const nextGuide = buildCampaignContentGuideFromDraft()
-    setCampaignDraft((current) => ({
-      ...current,
-      generatedContentGuide: nextGuide,
-    }))
-    showToast('인플루언서 전달용 콘텐츠 가이드를 생성했어요.')
-  }
-
-  const generateCampaignInfluencerStrategy = () => {
-    const draftBrief = buildCampaignBriefFromDraft()
-    const strategy = buildInfluencerStrategy({
-      brand: activeBrand,
-      brief: draftBrief,
-      campaign: { ...selectedCampaign, ...campaignDraft },
-      creators,
-      recommendations: activeRecommendations,
-      learningMaterials: draftBrief.learningMaterials,
-    })
-    setCampaignDraft((current) => ({
-      ...current,
-      influencerStrategy: strategy,
-    }))
-    showToast('캠페인 기준 인플루언서 전략을 생성했어요.')
-  }
-
-  const downloadGeneratedCampaignContentGuide = async (format = 'docx') => {
-    const guide = campaignDraft.generatedContentGuide || buildCampaignContentGuideFromDraft()
-    const filenameBase = `creatorops-${safeFilePart(activeBrand.name || 'brand')}-${safeFilePart(campaignDraft.name || 'campaign')}-content-guide`
-
-    if (format === 'pptx') {
-      await exportGuidePptx(filenameBase, guide)
-    } else if (format === 'google') {
-      await openGuideGoogleDraft(guide)
-    } else {
-      await exportGuideDocx(filenameBase, guide)
-    }
-
-    if (!campaignDraft.generatedContentGuide) {
-      setCampaignDraft((current) => ({
-        ...current,
-        generatedContentGuide: guide,
-      }))
-    }
-    showToast(format === 'google' ? '가이드 본문을 복사하고 Google 문서를 열었어요.' : `콘텐츠 가이드를 ${format === 'pptx' ? 'PPT' : 'DOCX'}로 다운로드했어요.`)
-  }
-
   const attachCampaignGuideFile = async (event) => {
     const file = event.target.files?.[0]
     if (!file) return
@@ -4965,10 +4907,73 @@ function App() {
     campaign?.generatedContentGuide ||
     buildInfluencerContentGuide({
       brand: activeBrand,
-      brief: brandBrief,
+      brief: buildCampaignBriefFromCampaign(campaign),
       campaign,
       creators: getCreatorsByIds(creators, campaign?.creatorIds ?? []),
     })
+
+  const buildCampaignBriefFromCampaign = (campaign = {}) => ({
+    ...brandBrief,
+    product: campaign.product || brandBrief.product,
+    persona: campaign.targetPersona || brandBrief.persona,
+    keywords: campaign.searchKeywords || brandBrief.keywords,
+    exclusions: campaign.exclusionKeywords || brandBrief.exclusions,
+    minFollowers: campaign.minFollowers || brandBrief.minFollowers,
+    maxPrice: campaign.maxCreatorFee || brandBrief.maxPrice,
+    platforms: campaign.preferredPlatforms ? keywordList(campaign.preferredPlatforms) : brandBrief.platforms,
+    learningMaterials: getLearningMaterials(brandBrief),
+  })
+
+  const generateCampaignStrategyForDetail = (campaign) => {
+    if (!campaign) return
+    const campaignBrief = buildCampaignBriefFromCampaign(campaign)
+    const strategy = buildInfluencerStrategy({
+      brand: activeBrand,
+      brief: campaignBrief,
+      campaign,
+      creators,
+      recommendations: activeRecommendations,
+      learningMaterials: campaignBrief.learningMaterials,
+    })
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          campaigns: current.campaigns.map((item) =>
+            item.id === campaign.id ? { ...item, influencerStrategy: strategy } : item,
+          ),
+        },
+        'campaign',
+        `${campaign.name} 인플루언서 전략 생성`,
+      ),
+    )
+    showToast(`${campaign.name} 인플루언서 전략을 생성했어요.`)
+  }
+
+  const generateCampaignGuideForDetail = (campaign) => {
+    if (!campaign) return
+    const guide = buildInfluencerContentGuide({
+      brand: activeBrand,
+      brief: buildCampaignBriefFromCampaign(campaign),
+      campaign,
+      creators: getCreatorsByIds(creators, campaign.creatorIds ?? []),
+    })
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          campaigns: current.campaigns.map((item) =>
+            item.id === campaign.id ? { ...item, generatedContentGuide: guide } : item,
+          ),
+        },
+        'campaign',
+        `${campaign.name} 인플루언서 가이드 생성`,
+      ),
+    )
+    showToast(`${campaign.name} 인플루언서 가이드를 생성했어요.`)
+  }
 
   const downloadCampaignContentGuide = async (campaign, format = 'docx') => {
     if (!campaign) return
@@ -5023,7 +5028,6 @@ function App() {
     const estimatedCost = assignedCreators.reduce((sum, creator) => sum + creator.price, 0)
     const budget = Number(campaignDraft.budget) || Math.max(estimatedCost, 15000000)
     const campaignBrief = buildCampaignBriefFromDraft(campaignDraft)
-    const generatedContentGuide = campaignDraft.generatedContentGuide || buildCampaignContentGuideFromDraft(campaignDraft)
     const nextCampaign = {
       id: createId(),
       brandId: activeBrand.id,
@@ -5067,7 +5071,7 @@ function App() {
       oneMessage: campaignDraft.oneMessage,
       hookPoints: campaignDraft.hookPoints,
       influencerStrategy: campaignDraft.influencerStrategy,
-      generatedContentGuide,
+      generatedContentGuide: campaignDraft.generatedContentGuide,
       progress: 12,
       creatorIds: [...shortlist],
       stages: [Math.max(18, shortlist.length * 8), 8, 3, 1],
@@ -7696,115 +7700,6 @@ function App() {
                   </div>
                 )}
               </div>
-              <div className="campaign-guide-panel">
-                <div>
-                  <span className="mini-label">Influencer Strategy</span>
-                  <strong>인플루언서 전략 짜기</strong>
-                  <p>제품/서비스, 타깃, 키워드, 예산, KPI, 학습자료를 기준으로 캠페인용 캐스팅 믹스와 콘텐츠 방향을 생성합니다.</p>
-                </div>
-                <div className="campaign-guide-actions">
-                  <button className="primary-button compact-button" type="button" onClick={generateCampaignInfluencerStrategy}>
-                    <Target size={16} />
-                    전략 생성
-                  </button>
-                  {campaignDraft.influencerStrategy && (
-                    <button
-                      className="secondary-button compact-button"
-                      type="button"
-                      onClick={() => exportFile(
-                        `creatorops-${safeFilePart(activeBrand.name || 'brand')}-${safeFilePart(campaignDraft.name || 'campaign')}-influencer-strategy.md`,
-                        'text/markdown;charset=utf-8',
-                        campaignDraft.influencerStrategy,
-                      )}
-                    >
-                      <Download size={16} />
-                      다운로드
-                    </button>
-                  )}
-                </div>
-                {campaignDraft.influencerStrategy ? (
-                  <div className="content-guide-preview">
-                    <span>생성된 전략 미리보기</span>
-                    <pre>{campaignDraft.influencerStrategy.slice(0, 900)}</pre>
-                  </div>
-                ) : (
-                  <div className="strategy-empty">
-                    <FileText size={18} />
-                    <span>전략을 생성하면 캠페인 후보 발굴 기준과 메시지 방향이 함께 정리됩니다.</span>
-                  </div>
-                )}
-              </div>
-              <div className="campaign-guide-panel content-guide-builder">
-                <div>
-                  <span className="mini-label">Content Guide Generator</span>
-                  <strong>인플루언서 가이드 생성하기</strong>
-                  <p>무가시딩/유가시딩/공동구매 유형과 채널 특성에 맞춰 원메시지, 후킹포인트, 필수 컷, 금지 표현을 전달용 가이드로 작성합니다.</p>
-                </div>
-                <div className="modal-two-col">
-                  <label>
-                    협업 유형
-                    <select
-                      value={campaignDraft.guideSeedType}
-                      onChange={(event) => setCampaignDraft({ ...campaignDraft, guideSeedType: event.target.value })}
-                    >
-                      {seedingTypeOptions.map((option) => (
-                        <option key={option}>{option}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    전달 채널
-                    <select
-                      value={campaignDraft.guideChannel}
-                      onChange={(event) => setCampaignDraft({ ...campaignDraft, guideChannel: event.target.value })}
-                    >
-                      {contentGuideChannelOptions.map((option) => (
-                        <option key={option}>{option}</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <label>
-                  콘텐츠 원메시지
-                  <input
-                    value={campaignDraft.oneMessage}
-                    onChange={(event) => setCampaignDraft({ ...campaignDraft, oneMessage: event.target.value })}
-                    placeholder="예: 이 제품은 실제 사용 상황에서 가격보다 안정감이 설득 포인트다."
-                  />
-                </label>
-                <label>
-                  후킹포인트
-                  <textarea
-                    value={campaignDraft.hookPoints}
-                    onChange={(event) => setCampaignDraft({ ...campaignDraft, hookPoints: event.target.value })}
-                    placeholder={'예: 첫 3초 가격/혜택 자막\n실제 사용 장면\n비교 포인트\n댓글 유도 질문'}
-                  />
-                </label>
-                <div className="campaign-guide-actions">
-                  <button className="secondary-button compact-button" type="button" onClick={generateCampaignContentGuide}>
-                    <FileText size={16} />
-                    생성하기
-                  </button>
-                  <button className="primary-button compact-button" type="button" onClick={() => downloadGeneratedCampaignContentGuide('docx')}>
-                    <Download size={16} />
-                    DOCX
-                  </button>
-                  <button className="secondary-button compact-button" type="button" onClick={() => downloadGeneratedCampaignContentGuide('pptx')}>
-                    <Download size={16} />
-                    PPT
-                  </button>
-                  <button className="secondary-button compact-button" type="button" onClick={() => downloadGeneratedCampaignContentGuide('google')}>
-                    <FileText size={16} />
-                    Google 문서
-                  </button>
-                </div>
-                {campaignDraft.generatedContentGuide && (
-                  <div className="content-guide-preview">
-                    <span>생성된 가이드 미리보기</span>
-                    <pre>{campaignDraft.generatedContentGuide.slice(0, 900)}</pre>
-                  </div>
-                )}
-              </div>
               <label>
                 예산
                 <input
@@ -8537,6 +8432,41 @@ function App() {
                   <p>{activeCampaignForModal.commerceMetric ?? '조회/댓글/공유와 전환 링크'}</p>
                 </article>
               </div>
+              <div className="campaign-guide-detail">
+                <span className="mini-label">Influencer Strategy</span>
+                <strong>인플루언서 전략</strong>
+                <p>캠페인 조건, 후보 풀, KPI를 바탕으로 캐스팅 믹스와 메시지 방향을 생성합니다.</p>
+                <div className="campaign-guide-actions">
+                  <button
+                    className="primary-button compact-button"
+                    type="button"
+                    onClick={() => generateCampaignStrategyForDetail(activeCampaignForModal)}
+                  >
+                    <Target size={16} />
+                    전략 생성
+                  </button>
+                  {activeCampaignForModal.influencerStrategy && (
+                    <button
+                      className="secondary-button compact-button"
+                      type="button"
+                      onClick={() => exportFile(
+                        `creatorops-${safeFilePart(activeBrand.name || 'brand')}-${safeFilePart(activeCampaignForModal.name || 'campaign')}-influencer-strategy.md`,
+                        'text/markdown;charset=utf-8',
+                        activeCampaignForModal.influencerStrategy,
+                      )}
+                    >
+                      <Download size={16} />
+                      전략 다운로드
+                    </button>
+                  )}
+                </div>
+                {activeCampaignForModal.influencerStrategy && (
+                  <div className="content-guide-preview">
+                    <span>전략 미리보기</span>
+                    <pre>{activeCampaignForModal.influencerStrategy.slice(0, 900)}</pre>
+                  </div>
+                )}
+              </div>
               {(activeCampaignForModal.brandGuideAttachments ?? []).length > 0 && (
                 <div className="campaign-guide-detail">
                   <span className="mini-label">Brand Guide Attachments</span>
@@ -8558,6 +8488,14 @@ function App() {
                   {activeCampaignForModal.guideSeedType ?? '무가시딩'} · {activeCampaignForModal.guideChannel ?? 'Instagram Reels'} · 원메시지/후킹포인트 기반
                 </p>
                 <div className="campaign-guide-actions">
+                  <button
+                    className="secondary-button compact-button"
+                    type="button"
+                    onClick={() => generateCampaignGuideForDetail(activeCampaignForModal)}
+                  >
+                    <FileText size={16} />
+                    가이드 생성
+                  </button>
                   <button
                     className="primary-button compact-button"
                     type="button"
