@@ -4917,6 +4917,8 @@ function App() {
       '예상 단가',
       '브랜드 안정성',
       '가짜 팔로워 위험',
+      '프로필 링크',
+      '연락 링크',
       '권장 연락 채널',
       '발송 방식',
       '데이터 상태',
@@ -4924,7 +4926,9 @@ function App() {
       '현재 캠페인',
     ],
     ...candidatePoolCreators.map((creator) => {
-      const contactPlan = buildContactPlan(creator)
+      const channelId = getRecommendedContactChannelId(creator)
+      const profileUrl = getCreatorProfileUrl(creator, channelId)
+      const contactPlan = buildContactPlan(creator, channelId, '', selectedCampaign?.name)
       return [
         creator.name,
         creator.handle,
@@ -4937,6 +4941,8 @@ function App() {
         creator.price || '산정 전',
         creator.brandSafety,
         creator.fakeRisk,
+        profileUrl || '링크 없음',
+        contactPlan.url || profileUrl || '링크 없음',
         contactPlan.label,
         contactPlan.deliveryMode,
         creator.needsVerification ? '공개 수치 검증 대기' : '확인 데이터',
@@ -6880,18 +6886,28 @@ function App() {
                 <p>발굴 리스트나 AI 추천에서 후보를 저장하면 이곳에 쌓이고, 메시지 검토함으로 보내기 전까지 관리할 수 있습니다.</p>
               </div>
             ) : (
-              candidatePoolCreators.map((creator) => (
-                <CreatorRow
-                  key={creator.id}
-                  creator={creator}
-                  active={selectedCreator?.id === creator.id}
-                  saved={shortlist.includes(creator.id)}
-                  checked={selectedCandidatePoolIds.includes(creator.id)}
-                  onSelect={() => setSelectedCreatorId(creator.id)}
-                  onSave={() => toggleShortlist(creator)}
-                  onToggle={() => toggleCandidatePoolSelection(creator.id)}
-                />
-              ))
+              candidatePoolCreators.map((creator) => {
+                const channelId = getRecommendedContactChannelId(creator)
+                const profileUrl = getCreatorProfileUrl(creator, channelId)
+                const contactPlan = buildContactPlan(creator, channelId, '', selectedCampaign?.name)
+
+                return (
+                  <CreatorRow
+                    key={creator.id}
+                    creator={creator}
+                    active={selectedCreator?.id === creator.id}
+                    saved={shortlist.includes(creator.id)}
+                    checked={selectedCandidatePoolIds.includes(creator.id)}
+                    showChannelLink
+                    profileUrl={profileUrl}
+                    contactUrl={contactPlan.url}
+                    contactLabel={contactPlan.shortLabel || contactPlan.label}
+                    onSelect={() => setSelectedCreatorId(creator.id)}
+                    onSave={() => toggleShortlist(creator)}
+                    onToggle={() => toggleCandidatePoolSelection(creator.id)}
+                  />
+                )
+              })
             )}
           </div>
         </section>
@@ -9072,11 +9088,25 @@ function SelectPill({ icon, value, options, onChange, label }) {
   )
 }
 
-function CreatorRow({ creator, active, saved, checked, onSelect, onSave, onToggle }) {
+function CreatorRow({
+  creator,
+  active,
+  saved,
+  checked,
+  showChannelLink = false,
+  profileUrl,
+  contactUrl,
+  contactLabel,
+  onSelect,
+  onSave,
+  onToggle,
+}) {
   const pendingMetrics = hasPendingMetrics(creator)
   const dataQuality = getCreatorDataQuality(creator)
+  const creatorProfileUrl = profileUrl || getCreatorProfileUrl(creator, getRecommendedContactChannelId(creator))
+  const creatorContactUrl = contactUrl || creatorProfileUrl
   return (
-    <article className={`creator-row ${active ? 'active' : ''} ${checked ? 'selected' : ''}`}>
+    <article className={`creator-row ${showChannelLink ? 'with-channel-link' : ''} ${active ? 'active' : ''} ${checked ? 'selected' : ''}`}>
       <label className="recommendation-check creator-check" aria-label={`${creator.name} 선택`}>
         <input type="checkbox" checked={checked} onChange={onToggle} />
         <span />
@@ -9114,6 +9144,20 @@ function CreatorRow({ creator, active, saved, checked, onSelect, onSave, onToggl
         <span style={{ width: `${creator.fit}%` }} />
         <strong>{creator.fit}</strong>
       </div>
+
+      {showChannelLink && creatorContactUrl && (
+        <a
+          className="creator-link-button"
+          href={creatorContactUrl}
+          target={creatorContactUrl.startsWith('mailto:') ? undefined : '_blank'}
+          rel={creatorContactUrl.startsWith('mailto:') ? undefined : 'noreferrer'}
+          title={`${creator.name} 채널 열기`}
+          onClick={(event) => event.stopPropagation()}
+        >
+          <ArrowUpRight size={15} />
+          <span>{contactLabel || '채널'}</span>
+        </a>
+      )}
 
       <button
         className="icon-button save-button"

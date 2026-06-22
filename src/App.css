@@ -2250,6 +2250,10 @@
   box-sizing: border-box;
 }
 
+.creator-row.with-channel-link {
+  grid-template-columns: 28px minmax(260px, 1fr) 172px 94px 112px 50px;
+}
+
 .creator-row:last-child {
   border-bottom: 0;
 }
@@ -2389,6 +2393,34 @@
   display: grid;
   place-items: center;
   font-size: 13px;
+}
+
+.creator-link-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  height: 34px;
+  padding: 0 11px;
+  border: 1px solid rgba(0, 122, 255, 0.18);
+  border-radius: 8px;
+  color: #0068d8;
+  background: rgba(0, 122, 255, 0.08);
+  font-size: 12px;
+  font-weight: 800;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.creator-link-button:hover {
+  border-color: rgba(0, 122, 255, 0.34);
+  background: rgba(0, 122, 255, 0.13);
+}
+
+.creator-link-button span {
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .save-button {
@@ -4882,6 +4914,19 @@
     grid-template-columns: 28px minmax(0, 1fr) 74px 44px;
   }
 
+  .creator-row.with-channel-link {
+    grid-template-columns: 28px minmax(0, 1fr) 74px 44px 44px;
+  }
+
+  .creator-link-button {
+    width: 34px;
+    padding: 0;
+  }
+
+  .creator-link-button span {
+    display: none;
+  }
+
   .creator-numbers {
     display: none;
   }
@@ -4972,6 +5017,10 @@
     grid-template-columns: 28px minmax(0, 1fr) 42px;
     gap: 8px;
     padding: 12px;
+  }
+
+  .creator-row.with-channel-link {
+    grid-template-columns: 28px minmax(0, 1fr) 36px 42px;
   }
 
   .match-cell {
