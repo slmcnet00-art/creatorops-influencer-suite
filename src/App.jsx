@@ -2627,6 +2627,7 @@ function App() {
   const [selectedDiscoveryCreatorIds, setSelectedDiscoveryCreatorIds] = useState([])
   const [selectedCandidatePoolIds, setSelectedCandidatePoolIds] = useState([])
   const [selectedOutreachIds, setSelectedOutreachIds] = useState([])
+  const [outreachStatusFilter, setOutreachStatusFilter] = useState('전체')
   const [outreachResponseNote, setOutreachResponseNote] = useState('')
   const [realDiscoveryDraft, setRealDiscoveryDraft] = useState({
     youtubeApiKey: '',
@@ -2878,12 +2879,49 @@ function App() {
         : activeOutreach,
     [activeOutreach, selectedCampaign],
   )
+  const outreachStatusFilters = useMemo(
+    () => [
+      {
+        key: '전체',
+        label: '전체',
+        count: selectedCampaignOutreach.length,
+        helper: '전체 메시지',
+      },
+      {
+        key: '승인 대기',
+        label: '검토함',
+        count: selectedCampaignOutreach.filter((item) => item.status === '승인 대기').length,
+        helper: '문구 확인 후 발송 처리',
+      },
+      {
+        key: '발송 완료',
+        label: '발송완료',
+        count: selectedCampaignOutreach.filter((item) => item.status === '발송 완료').length,
+        helper: '응답 대기 및 후속 확인',
+      },
+      {
+        key: '응답',
+        label: '응답',
+        count: selectedCampaignOutreach.filter((item) => item.status === '응답').length,
+        helper: '조건 확인 후 섭외 완료',
+      },
+    ],
+    [selectedCampaignOutreach],
+  )
+  const filteredCampaignOutreach = useMemo(
+    () =>
+      outreachStatusFilter === '전체'
+        ? selectedCampaignOutreach
+        : selectedCampaignOutreach.filter((item) => item.status === outreachStatusFilter),
+    [outreachStatusFilter, selectedCampaignOutreach],
+  )
   const selectedOutreachItems = useMemo(
     () => selectedCampaignOutreach.filter((item) => selectedOutreachIds.includes(item.id)),
     [selectedCampaignOutreach, selectedOutreachIds],
   )
   const allOutreachSelected =
-    selectedCampaignOutreach.length > 0 && selectedOutreachItems.length === selectedCampaignOutreach.length
+    filteredCampaignOutreach.length > 0 &&
+    filteredCampaignOutreach.every((item) => selectedOutreachIds.includes(item.id))
   const selectedCampaignTrackedPosts = useMemo(
     () =>
       selectedCampaign
@@ -4866,6 +4904,53 @@ function App() {
     showToast('크리에이터 발굴 리스트를 엑셀로 다운로드했어요.')
   }
 
+  const getCandidatePoolRows = () => [
+    [
+      '이름',
+      '핸들',
+      '플랫폼',
+      '카테고리',
+      '팔로워',
+      '평균 조회',
+      '참여율',
+      '매칭 점수',
+      '예상 단가',
+      '브랜드 안정성',
+      '가짜 팔로워 위험',
+      '권장 연락 채널',
+      '발송 방식',
+      '데이터 상태',
+      '수집 메모',
+      '현재 캠페인',
+    ],
+    ...candidatePoolCreators.map((creator) => {
+      const contactPlan = buildContactPlan(creator)
+      return [
+        creator.name,
+        creator.handle,
+        creator.platform,
+        creator.category,
+        hasPendingMetrics(creator) ? '수집 필요' : creator.followers,
+        hasPendingMetrics(creator) ? '수집 필요' : creator.averageViews,
+        hasPendingMetrics(creator) ? '수집 필요' : creator.engagement,
+        creator.fit,
+        creator.price || '산정 전',
+        creator.brandSafety,
+        creator.fakeRisk,
+        contactPlan.label,
+        contactPlan.deliveryMode,
+        creator.needsVerification ? '공개 수치 검증 대기' : '확인 데이터',
+        creator.sourceNote ?? creator.status ?? '',
+        selectedCampaign?.name ?? '캠페인 미선택',
+      ]
+    }),
+  ]
+
+  const exportCandidatePoolExcel = () => {
+    exportExcelFile('creatorops-pre-outreach-pool.xls', '메시지 전 후보 풀', getCandidatePoolRows())
+    showToast('메시지 전 후보 풀을 엑셀로 다운로드했어요.')
+  }
+
   const sendDiscoveryToSheets = () => {
     sendRowsToGoogleSheets(getDiscoveryRows(), '크리에이터 발굴')
   }
@@ -5395,7 +5480,12 @@ function App() {
   }
 
   const toggleAllOutreachItems = () => {
-    setSelectedOutreachIds(allOutreachSelected ? [] : selectedCampaignOutreach.map((item) => item.id))
+    const visibleIds = filteredCampaignOutreach.map((item) => item.id)
+    setSelectedOutreachIds((current) =>
+      allOutreachSelected
+        ? current.filter((id) => !visibleIds.includes(id))
+        : Array.from(new Set([...current, ...visibleIds])),
+    )
   }
 
   const markSelectedOutreachSent = () => {
@@ -6751,6 +6841,15 @@ function App() {
               <button
                 className="secondary-button compact-button"
                 type="button"
+                onClick={exportCandidatePoolExcel}
+                disabled={!candidatePoolCreators.length}
+              >
+                <Download size={16} />
+                엑셀
+              </button>
+              <button
+                className="secondary-button compact-button"
+                type="button"
                 onClick={toggleAllCandidatePoolCreators}
                 disabled={!candidatePoolCreators.length}
               >
@@ -7351,21 +7450,18 @@ function App() {
               ))}
             </div>
             <div className="message-stage-board" aria-label="메시지 운영 상태">
-              <article>
-                <span>검토함</span>
-                <strong>{selectedCampaignOutreach.filter((item) => item.status === '승인 대기').length}건</strong>
-                <p>문구 확인 후 발송 처리</p>
-              </article>
-              <article>
-                <span>발송완료</span>
-                <strong>{selectedCampaignOutreach.filter((item) => item.status === '발송 완료').length}건</strong>
-                <p>응답 대기 및 후속 확인</p>
-              </article>
-              <article>
-                <span>응답</span>
-                <strong>{selectedCampaignOutreach.filter((item) => item.status === '응답').length}건</strong>
-                <p>조건 확인 후 섭외 완료</p>
-              </article>
+              {outreachStatusFilters.map((filter) => (
+                <button
+                  className={outreachStatusFilter === filter.key ? 'active' : ''}
+                  type="button"
+                  key={filter.key}
+                  onClick={() => setOutreachStatusFilter(filter.key)}
+                >
+                  <span>{filter.label}</span>
+                  <strong>{filter.count}건</strong>
+                  <p>{filter.helper}</p>
+                </button>
+              ))}
               <article>
                 <span>연락 채널</span>
                 <strong>{new Set(selectedCampaignOutreach.map((item) => item.channel || 'manual_other')).size}개</strong>
@@ -7377,7 +7473,7 @@ function App() {
                 <input
                   type="checkbox"
                   checked={allOutreachSelected}
-                  disabled={!selectedCampaignOutreach.length}
+                  disabled={!filteredCampaignOutreach.length}
                   onChange={toggleAllOutreachItems}
                 />
                 전체 선택
@@ -7394,14 +7490,14 @@ function App() {
               </button>
             </div>
             <div className="record-list">
-              {selectedCampaignOutreach.length === 0 ? (
+              {filteredCampaignOutreach.length === 0 ? (
                 <div className="empty-state compact-empty">
                   <MessageSquare size={22} />
-                  <strong>아직 검토할 제안 메시지가 없습니다.</strong>
-                  <p>현재 선택한 캠페인의 AI 추천 후보나 크리에이터 상세에서 제안 메시지를 저장해보세요.</p>
+                  <strong>현재 필터에 해당하는 메시지가 없습니다.</strong>
+                  <p>상단 상태 필터를 전체로 바꾸거나 후보를 메시지 검토함으로 보내세요.</p>
                 </div>
               ) : (
-              selectedCampaignOutreach.map((item) => (
+              filteredCampaignOutreach.map((item) => (
                 <OutreachItem
                   key={item.id}
                   item={item}
@@ -7449,7 +7545,15 @@ function App() {
       {modal && (
         <Modal
           title={modalTitle(modal.type)}
-          variant={modal.type === 'campaign' ? 'campaign-modal-card' : modal.type === 'create' ? 'campaign-create-modal' : ''}
+          variant={
+            modal.type === 'campaign'
+              ? 'campaign-modal-card'
+              : modal.type === 'create'
+                ? 'campaign-create-modal'
+                : modal.type === 'outreachDetail'
+                  ? 'outreach-detail-card'
+                  : ''
+          }
           onClose={() => setModal(null)}
         >
           {modal.type === 'brand' && (
