@@ -429,6 +429,11 @@ export async function refreshContentMetrics(posts) {
   })
 }
 
+export async function fetchPublicProfileSnapshot(url) {
+  if (!CREATOROPS_API_BASE_URL) return null
+  return callCreatorOpsApi('/public/profile-snapshot', { url })
+}
+
 function getPlatformSiteQuery(platform) {
   if (platform === 'Instagram') return 'site:instagram.com'
   if (platform === 'TikTok') return 'site:tiktok.com/@'

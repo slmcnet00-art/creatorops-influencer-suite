@@ -89,6 +89,18 @@ app.post('/ai/content-guide', async (request, response, next) => {
   }
 })
 
+app.post('/public/profile-snapshot', async (request, response, next) => {
+  try {
+    const url = String(request.body?.url || '').trim()
+    if (!url) throw httpError(400, 'url is required.')
+
+    const snapshot = await fetchPublicProfileSnapshot(url)
+    response.json({ data: snapshot })
+  } catch (error) {
+    next(error)
+  }
+})
+
 app.post('/tracking/refresh', async (request, response, next) => {
   try {
     const posts = Array.isArray(request.body?.posts) ? request.body.posts : []
@@ -272,7 +284,19 @@ async function searchGoogleProfiles(query, platform, maxResults) {
     )
   }
 
-  return dedupeProfileResults(results).slice(0, maxResults)
+  const deduped = dedupeProfileResults(results).slice(0, maxResults)
+  if (!isPublicSnapshotEnabled()) return deduped
+
+  const enriched = await Promise.all(
+    deduped.map(async (profile) => {
+      const snapshot = await fetchPublicProfileSnapshot(profile.profileUrl).catch((error) => ({
+        status: 'snapshot_failed',
+        message: error.message,
+      }))
+      return mergeProfileSnapshot(profile, snapshot)
+    }),
+  )
+  return enriched
 }
 
 async function refreshTrackedPosts(posts) {
@@ -282,6 +306,10 @@ async function refreshTrackedPosts(posts) {
       const platform = String(post.platform || '').toLowerCase()
       if (platform.includes('youtube')) {
         return fetchYouTubeVideoMetrics(post)
+      }
+
+      if (isPublicSnapshotEnabled() && (platform.includes('instagram') || platform.includes('tiktok'))) {
+        return fetchPublicContentMetrics(post)
       }
 
       return {
@@ -336,6 +364,142 @@ async function fetchYouTubeVideoMetrics(post) {
     saves: null,
     source: 'YouTube Data API videos.list',
     checkedAt: new Date().toISOString(),
+  }
+}
+
+async function fetchPublicContentMetrics(post) {
+  const snapshot = await fetchPublicProfileSnapshot(post.url)
+  const metrics = snapshot.metrics || {}
+
+  if (!metrics.views && !metrics.likes && !metrics.comments) {
+    return {
+      id: post.id,
+      platform: post.platform,
+      status: 'manual_required',
+      message: 'Public page snapshot did not expose reliable performance metrics.',
+      source: snapshot.source,
+    }
+  }
+
+  return {
+    id: post.id,
+    platform: post.platform,
+    status: 'refreshed',
+    title: snapshot.title || '',
+    views: metrics.views ?? null,
+    likes: metrics.likes ?? null,
+    comments: metrics.comments ?? null,
+    shares: metrics.shares ?? null,
+    saves: metrics.saves ?? null,
+    source: snapshot.source,
+    checkedAt: new Date().toISOString(),
+  }
+}
+
+async function fetchPublicProfileSnapshot(url) {
+  const safeUrl = validatePublicSnapshotUrl(url)
+  const controller = new AbortController()
+  const timeout = setTimeout(() => controller.abort(), getPublicSnapshotTimeoutMs())
+
+  try {
+    const response = await fetch(safeUrl, {
+      headers: {
+        Accept: 'text/html,application/xhtml+xml,application/json;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
+        'User-Agent': 'CreatorOpsPublicSnapshot/1.0 (+https://creatorops-influencer-suite.onrender.com)',
+      },
+      redirect: 'follow',
+      signal: controller.signal,
+    })
+    const contentType = response.headers.get('content-type') || ''
+    const text = await response.text()
+    if (!response.ok) {
+      throw httpError(response.status, `Public snapshot request failed with ${response.status}.`)
+    }
+
+    const snapshot = contentType.includes('json')
+      ? normalizeJsonSnapshot(JSON.parse(text), safeUrl)
+      : normalizeHtmlSnapshot(text, safeUrl)
+
+    return {
+      ...snapshot,
+      status: 'snapshot_ready',
+      url: safeUrl,
+      fetchedAt: new Date().toISOString(),
+    }
+  } finally {
+    clearTimeout(timeout)
+  }
+}
+
+function normalizeHtmlSnapshot(html, url) {
+  const plain = stripHtml(html)
+  const title =
+    pickMetaContent(html, 'og:title') ||
+    pickMetaContent(html, 'twitter:title') ||
+    pickTitle(html) ||
+    ''
+  const description =
+    pickMetaContent(html, 'og:description') ||
+    pickMetaContent(html, 'description') ||
+    pickMetaContent(html, 'twitter:description') ||
+    ''
+  const image = pickMetaContent(html, 'og:image') || pickMetaContent(html, 'twitter:image') || ''
+  const combined = `${title} ${description} ${plain.slice(0, 8000)}`
+
+  return {
+    title: decodeHtmlEntities(title),
+    description: decodeHtmlEntities(description),
+    image,
+    handle: inferHandleFromUrl(url),
+    metrics: extractPublicMetrics(combined),
+    source: 'Public page snapshot',
+    confidence: description ? 64 : 42,
+  }
+}
+
+function normalizeJsonSnapshot(payload, url) {
+  const text = JSON.stringify(payload || {})
+  return {
+    title: payload?.title || payload?.author_name || '',
+    description: payload?.description || '',
+    image: payload?.thumbnail_url || '',
+    handle: payload?.author_name ? `@${String(payload.author_name).replace(/^@/, '')}` : inferHandleFromUrl(url),
+    metrics: extractPublicMetrics(text),
+    source: 'Public oEmbed/JSON snapshot',
+    confidence: 68,
+  }
+}
+
+function mergeProfileSnapshot(profile, snapshot) {
+  if (!snapshot || snapshot.status === 'snapshot_failed') {
+    return {
+      ...profile,
+      publicSnapshotStatus: snapshot?.status || 'snapshot_failed',
+      publicSnapshotMessage: snapshot?.message || 'Public snapshot failed.',
+    }
+  }
+
+  return {
+    ...profile,
+    name: profile.name || snapshot.title || profile.handle,
+    avatar: profile.avatar || snapshot.image || '',
+    followers: snapshot.metrics?.followers || profile.followers,
+    averageViews: snapshot.metrics?.views || profile.averageViews,
+    description: profile.description || snapshot.description || profile.snippet,
+    snippet: profile.snippet || snapshot.description,
+    metricSources: [
+      ...(profile.metricSources || []),
+      {
+        metric: 'public_snapshot',
+        source: snapshot.source,
+        confidence: snapshot.confidence,
+        freshness: 'on demand',
+      },
+    ],
+    publicSnapshotStatus: snapshot.status,
+    publicSnapshotFetchedAt: snapshot.fetchedAt,
+    verifiedMetrics: Boolean(profile.verifiedMetrics),
   }
 }
 
@@ -562,6 +726,145 @@ function extractYouTubeVideoId(value) {
   }
 
   return /^[\w-]{8,}$/.test(raw) ? raw : ''
+}
+
+function validatePublicSnapshotUrl(value) {
+  let url
+  try {
+    url = new URL(String(value || '').trim())
+  } catch {
+    throw httpError(400, 'A valid public URL is required.')
+  }
+
+  if (!['https:', 'http:'].includes(url.protocol)) {
+    throw httpError(400, 'Only http and https URLs are supported.')
+  }
+
+  const hostname = url.hostname.replace(/^www\./, '').toLowerCase()
+  const allowedHosts = [
+    'instagram.com',
+    'tiktok.com',
+    'youtube.com',
+    'youtu.be',
+    'threads.net',
+  ]
+  if (!allowedHosts.some((host) => hostname === host || hostname.endsWith(`.${host}`))) {
+    throw httpError(400, `Unsupported public snapshot host: ${hostname}`)
+  }
+
+  return url.toString()
+}
+
+function isPublicSnapshotEnabled() {
+  return String(process.env.PUBLIC_SNAPSHOT_ENABLED || 'true').toLowerCase() !== 'false'
+}
+
+function getPublicSnapshotTimeoutMs() {
+  return clamp(Number(process.env.PUBLIC_SNAPSHOT_TIMEOUT_MS || 8000), 1500, 20000)
+}
+
+function pickMetaContent(html, name) {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  const patterns = [
+    new RegExp(`<meta[^>]+property=["']${escaped}["'][^>]+content=["']([^"']*)["'][^>]*>`, 'i'),
+    new RegExp(`<meta[^>]+name=["']${escaped}["'][^>]+content=["']([^"']*)["'][^>]*>`, 'i'),
+    new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+property=["']${escaped}["'][^>]*>`, 'i'),
+    new RegExp(`<meta[^>]+content=["']([^"']*)["'][^>]+name=["']${escaped}["'][^>]*>`, 'i'),
+  ]
+
+  for (const pattern of patterns) {
+    const match = html.match(pattern)
+    if (match?.[1]) return match[1]
+  }
+  return ''
+}
+
+function pickTitle(html) {
+  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i)
+  return match?.[1] || ''
+}
+
+function inferHandleFromUrl(value) {
+  try {
+    const url = new URL(value)
+    const segments = url.pathname.split('/').filter(Boolean)
+    const handle = segments.find((segment) => segment.startsWith('@')) || segments[0] || ''
+    return handle ? `@${handle.replace(/^@/, '')}` : ''
+  } catch {
+    return ''
+  }
+}
+
+function extractPublicMetrics(text) {
+  const normalized = decodeHtmlEntities(String(text || '')).replace(/\s+/g, ' ')
+  return {
+    followers: firstMetric(normalized, [
+      /([\d.,]+)\s*([KMB])?\s*(?:followers|follower)/i,
+      /팔로워\s*([\d.,]+)\s*([만천억KMB])?/i,
+      /([\d.,]+)\s*([만천억KMB])?\s*팔로워/i,
+    ]),
+    views: firstMetric(normalized, [
+      /([\d.,]+)\s*([KMB])?\s*(?:views|view)/i,
+      /조회수\s*([\d.,]+)\s*([만천억KMB])?/i,
+      /([\d.,]+)\s*([만천억KMB])?\s*회\s*조회/i,
+    ]),
+    likes: firstMetric(normalized, [
+      /([\d.,]+)\s*([KMB])?\s*(?:likes|like)/i,
+      /좋아요\s*([\d.,]+)\s*([만천억KMB])?/i,
+      /([\d.,]+)\s*([만천억KMB])?\s*개?\s*좋아요/i,
+    ]),
+    comments: firstMetric(normalized, [
+      /([\d.,]+)\s*([KMB])?\s*(?:comments|comment)/i,
+      /댓글\s*([\d.,]+)\s*([만천억KMB])?/i,
+      /([\d.,]+)\s*([만천억KMB])?\s*개?\s*댓글/i,
+    ]),
+    shares: firstMetric(normalized, [
+      /([\d.,]+)\s*([KMB])?\s*(?:shares|share)/i,
+      /공유\s*([\d.,]+)\s*([만천억KMB])?/i,
+    ]),
+    saves: firstMetric(normalized, [
+      /([\d.,]+)\s*([KMB])?\s*(?:saves|save)/i,
+      /저장\s*([\d.,]+)\s*([만천억KMB])?/i,
+    ]),
+  }
+}
+
+function firstMetric(text, patterns) {
+  for (const pattern of patterns) {
+    const match = text.match(pattern)
+    const value = parseMetricNumber(match?.[1], match?.[2])
+    if (value) return value
+  }
+  return null
+}
+
+function parseMetricNumber(rawNumber, rawUnit = '') {
+  if (!rawNumber) return null
+  const base = Number(String(rawNumber).replace(/,/g, ''))
+  if (!Number.isFinite(base)) return null
+  const unit = String(rawUnit || '').toLowerCase()
+  const multiplier =
+    unit === 'k' || unit === '천'
+      ? 1_000
+      : unit === 'm' || unit === '만'
+        ? unit === '만'
+          ? 10_000
+          : 1_000_000
+        : unit === 'b' || unit === '억'
+          ? unit === '억'
+            ? 100_000_000
+            : 1_000_000_000
+          : 1
+  return Math.round(base * multiplier)
+}
+
+function decodeHtmlEntities(value) {
+  return String(value || '')
+    .replace(/&amp;/g, '&')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
 }
 
 function stripHtml(value) {
