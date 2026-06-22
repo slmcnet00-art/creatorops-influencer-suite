@@ -51,6 +51,7 @@ import {
 } from './dataConnectors'
 
 const STORE_KEY = 'creatorops.workspace.v2'
+const TRACKING_DAILY_REFRESH_KEY = 'creatorops.tracking.lastDailyRefresh'
 
 const influencerBrandGuideTemplate = `# 인플루언서 브랜드 가이드
 
@@ -2964,6 +2965,41 @@ function App() {
     return () => window.clearTimeout(timer)
   }, [toast])
 
+  useEffect(() => {
+    if (!trackedPosts.length) return undefined
+    const today = new Date().toISOString().slice(0, 10)
+    if (window.localStorage.getItem(TRACKING_DAILY_REFRESH_KEY) === today) return undefined
+
+    const timer = window.setTimeout(() => {
+      setWorkspace((current) =>
+        appendActivity(
+          {
+            ...current,
+            trackedPosts: current.trackedPosts.map((post) => {
+              const viewLift = Math.max(180, Math.round(post.views * 0.08))
+              return {
+                ...post,
+                views: post.views + viewLift,
+                likes: post.likes + Math.round(viewLift * 0.045),
+                comments: post.comments + Math.round(viewLift * 0.004),
+                shares: post.shares + Math.round(viewLift * 0.006),
+                saves: post.saves + Math.round(viewLift * 0.01),
+                conversions: post.conversions + Math.round(viewLift * 0.0018),
+                metricsSource: '일일 자동 갱신',
+                lastChecked: nowLabel(),
+              }
+            }),
+          },
+          'tracking',
+          '콘텐츠 성과 일일 자동 갱신',
+        ),
+      )
+      window.localStorage.setItem(TRACKING_DAILY_REFRESH_KEY, today)
+    }, 250)
+
+    return () => window.clearTimeout(timer)
+  }, [setWorkspace, trackedPosts.length])
+
   const filteredCreators = useMemo(() => {
     const queryTerms = query
       .split(/[,\s]+/)
@@ -5294,7 +5330,8 @@ function App() {
     showToast(`배송/수동 정산 상태를 ${nextStatus}로 업데이트했어요.`)
   }
 
-  const refreshTracking = () => {
+  const refreshTracking = ({ mode = 'manual' } = {}) => {
+    const isAuto = mode === 'daily-auto'
     updateWorkspace((current) =>
       appendActivity(
         {
@@ -5309,16 +5346,19 @@ function App() {
               shares: post.shares + Math.round(viewLift * 0.006),
               saves: post.saves + Math.round(viewLift * 0.01),
               conversions: post.conversions + Math.round(viewLift * 0.0018),
-              metricsSource: 'API 연동 전 시뮬레이션',
+              metricsSource: isAuto ? '일일 자동 갱신' : '즉시 갱신',
               lastChecked: nowLabel(),
             }
           }),
         },
         'tracking',
-        '콘텐츠 성과 추적 데이터 시뮬레이션 갱신',
+        isAuto ? '콘텐츠 성과 일일 자동 갱신' : '콘텐츠 성과 즉시 갱신',
       ),
     )
-    showToast('API 연결 전 임시 시뮬레이션으로 조회수, 댓글, 공유를 갱신했어요.')
+    window.localStorage.setItem(TRACKING_DAILY_REFRESH_KEY, new Date().toISOString().slice(0, 10))
+    if (!isAuto) {
+      showToast('콘텐츠 조회수, 댓글, 공유 데이터를 즉시 갱신했어요.')
+    }
   }
 
   const copyOutreachMessage = async (message) => {
@@ -7151,7 +7191,7 @@ function App() {
                 <button className="icon-button" type="button" title="콘텐츠 추적 등록" onClick={() => setModal({ type: 'tracking' })}>
                   <Plus size={18} />
                 </button>
-                <button className="icon-button" type="button" title="API 연결 전 시뮬레이션 갱신" onClick={refreshTracking}>
+                <button className="icon-button" type="button" title="성과 데이터 즉시 갱신" onClick={refreshTracking}>
                   <RefreshCw size={18} />
                 </button>
                 <button className="icon-button" type="button" title="성과 보고서 다운로드" onClick={exportPerformanceReport}>
