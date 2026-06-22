@@ -3729,7 +3729,8 @@
 }
 
 .tracked-account-meta span,
-.tracked-links a {
+.tracked-links a,
+.tracking-source-chip {
   min-height: 24px;
   padding: 0 8px;
   border-radius: 999px;
@@ -3748,6 +3749,11 @@
   color: var(--accent);
   background: var(--accent-soft);
   text-decoration: none;
+}
+
+.tracking-source-chip {
+  color: #7a4a00;
+  background: #fff4d8;
 }
 
 .post-metrics {

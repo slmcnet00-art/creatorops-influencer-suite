@@ -5166,14 +5166,26 @@ function App() {
       showToast('추적할 캠페인과 크리에이터를 먼저 선택해주세요.')
       return
     }
+    if (!trackingDraft.url.trim()) {
+      showToast('자동 추적을 위해 업로드 링크는 반드시 입력해주세요.')
+      return
+    }
+    const hasManualMetrics = [
+      trackingDraft.views,
+      trackingDraft.likes,
+      trackingDraft.comments,
+      trackingDraft.shares,
+      trackingDraft.saves,
+      trackingDraft.conversions,
+    ].some((value) => String(value || '').trim())
     const nextPost = {
       id: createId(),
       campaignId,
       creatorId,
       platform: trackingDraft.platform,
       title: trackingDraft.title || '신규 캠페인 콘텐츠',
-      url: trackingDraft.url || 'https://example.com/content',
-      status: '추적 중',
+      url: trackingDraft.url.trim(),
+      status: hasManualMetrics ? '추적 중' : '자동 갱신 대기',
       publishedAt: nowLabel(),
       views: Number(trackingDraft.views) || 0,
       likes: Number(trackingDraft.likes) || 0,
@@ -5181,7 +5193,8 @@ function App() {
       shares: Number(trackingDraft.shares) || 0,
       saves: Number(trackingDraft.saves) || 0,
       conversions: Number(trackingDraft.conversions) || 0,
-      lastChecked: nowLabel(),
+      metricsSource: hasManualMetrics ? '수동 입력' : '업로드 링크 등록',
+      lastChecked: hasManualMetrics ? nowLabel() : '자동 갱신 대기',
     }
 
     updateWorkspace((current) =>
@@ -5296,15 +5309,16 @@ function App() {
               shares: post.shares + Math.round(viewLift * 0.006),
               saves: post.saves + Math.round(viewLift * 0.01),
               conversions: post.conversions + Math.round(viewLift * 0.0018),
+              metricsSource: 'API 연동 전 시뮬레이션',
               lastChecked: nowLabel(),
             }
           }),
         },
         'tracking',
-        '콘텐츠 성과 추적 데이터 갱신',
+        '콘텐츠 성과 추적 데이터 시뮬레이션 갱신',
       ),
     )
-    showToast('콘텐츠 조회수, 댓글, 공유 데이터를 갱신했어요.')
+    showToast('API 연결 전 임시 시뮬레이션으로 조회수, 댓글, 공유를 갱신했어요.')
   }
 
   const copyOutreachMessage = async (message) => {
@@ -7137,7 +7151,7 @@ function App() {
                 <button className="icon-button" type="button" title="콘텐츠 추적 등록" onClick={() => setModal({ type: 'tracking' })}>
                   <Plus size={18} />
                 </button>
-                <button className="icon-button" type="button" title="추적 데이터 갱신" onClick={refreshTracking}>
+                <button className="icon-button" type="button" title="API 연결 전 시뮬레이션 갱신" onClick={refreshTracking}>
                   <RefreshCw size={18} />
                 </button>
                 <button className="icon-button" type="button" title="성과 보고서 다운로드" onClick={exportPerformanceReport}>
@@ -7231,10 +7245,11 @@ function App() {
                         <span>계정 참여율 {creator ? percent(creator.engagement) : '-'}</span>
                         <span>{creator?.category ?? '카테고리 미입력'}</span>
                       </div>
-                      <div className="tracked-links">
-                        {creator?.profileUrl && (
-                          <a href={creator.profileUrl} target="_blank" rel="noreferrer">
-                            계정 보기
+                    <div className="tracked-links">
+                      <span className="tracking-source-chip">{post.metricsSource || post.status || '추적 중'}</span>
+                      {creator?.profileUrl && (
+                        <a href={creator.profileUrl} target="_blank" rel="noreferrer">
+                          계정 보기
                           </a>
                         )}
                         <a href={post.url} target="_blank" rel="noreferrer">
@@ -7258,7 +7273,7 @@ function App() {
                 <div className="empty-state compact-empty">
                   <BarChart3 size={22} />
                   <strong>아직 추적 중인 업로드 콘텐츠가 없습니다.</strong>
-                  <p>콘텐츠 추적 등록에서 인플루언서, 업로드 링크, 조회수/댓글/공유 데이터를 추가하면 상세 보고서가 생성됩니다.</p>
+                  <p>콘텐츠 추적 등록에서 인플루언서와 업로드 링크를 먼저 저장하세요. 조회수/댓글/공유는 자동 갱신 또는 수동 보정으로 누적합니다.</p>
                 </div>
               )}
             </div>
@@ -7944,6 +7959,13 @@ function App() {
 
           {modal.type === 'tracking' && (
             <form className="modal-form" onSubmit={createTrackedPost}>
+              <div className="quote-box">
+                <BarChart3 size={22} />
+                <div>
+                  <strong>업로드 링크 기준으로 추적합니다</strong>
+                  <span>조회수, 좋아요, 댓글, 공유는 매일 바뀌므로 필수값이 아닙니다. 링크를 먼저 저장하고 API/수동 갱신으로 최신화합니다.</span>
+                </div>
+              </div>
               <label>
                 캠페인
                 <select
@@ -7975,11 +7997,11 @@ function App() {
                 />
               </label>
               <label>
-                콘텐츠 URL
+                콘텐츠 URL · 필수
                 <input
                   value={trackingDraft.url}
                   onChange={(event) => setTrackingDraft({ ...trackingDraft, url: event.target.value })}
-                  placeholder="https://..."
+                  placeholder="https://www.youtube.com/watch?v=... 또는 Instagram/TikTok 업로드 링크"
                 />
               </label>
               <div className="modal-two-col">
@@ -7995,32 +8017,32 @@ function App() {
                   </select>
                 </label>
                 <label>
-                  조회수
+                  조회수 · 선택
                   <input inputMode="numeric" value={trackingDraft.views} onChange={(event) => setTrackingDraft({ ...trackingDraft, views: event.target.value })} placeholder="120000" />
                 </label>
               </div>
               <div className="modal-two-col">
                 <label>
-                  좋아요
+                  좋아요 · 선택
                   <input inputMode="numeric" value={trackingDraft.likes} onChange={(event) => setTrackingDraft({ ...trackingDraft, likes: event.target.value })} placeholder="5400" />
                 </label>
                 <label>
-                  댓글
+                  댓글 · 선택
                   <input inputMode="numeric" value={trackingDraft.comments} onChange={(event) => setTrackingDraft({ ...trackingDraft, comments: event.target.value })} placeholder="320" />
                 </label>
               </div>
               <div className="modal-two-col">
                 <label>
-                  공유
+                  공유 · 선택
                   <input inputMode="numeric" value={trackingDraft.shares} onChange={(event) => setTrackingDraft({ ...trackingDraft, shares: event.target.value })} placeholder="180" />
                 </label>
                 <label>
-                  저장
+                  저장 · 선택
                   <input inputMode="numeric" value={trackingDraft.saves} onChange={(event) => setTrackingDraft({ ...trackingDraft, saves: event.target.value })} placeholder="900" />
                 </label>
               </div>
               <label>
-                전환
+                전환 · 선택
                 <input inputMode="numeric" value={trackingDraft.conversions} onChange={(event) => setTrackingDraft({ ...trackingDraft, conversions: event.target.value })} placeholder="80" />
               </label>
               <button className="primary-button" type="submit">

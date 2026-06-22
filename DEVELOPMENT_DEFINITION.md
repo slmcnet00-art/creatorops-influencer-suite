@@ -141,6 +141,8 @@ CreatorOps는 브랜드에 맞는 인플루언서를 발굴하고, 섭외 메시
 ### 4.10 리포트
 
 - 업로드한 인플루언서, 계정 정보, 업로드 링크, 조회수, 좋아요, 댓글, 공유, 저장, 전환을 기록한다.
+- 콘텐츠 추적 등록 시 캠페인, 크리에이터, 업로드 링크를 필수로 보고, 조회수/좋아요/댓글/공유/저장/전환은 선택 입력으로 둔다.
+- 성과 수치가 비어 있으면 `자동 갱신 대기` 상태로 저장하고, API 연결 또는 수동 보정으로 최신화한다.
 - 캠페인별 콘텐츠 성과와 KPI 달성률을 확인한다.
 - CSV와 HTML 보고서를 다운로드할 수 있다.
 - 보고서에는 섭외 완료 풀, 상위 콘텐츠, KPI 진행률, 다음 액션이 포함된다.
@@ -182,7 +184,7 @@ CreatorOps는 브랜드에 맞는 인플루언서를 발굴하고, 섭외 메시
 | outreach | id, creatorId, campaignId, source, channel, deliveryMode, complianceNote, status, message, reason, sentAt, createdAt |
 | recruitedPool | id, creatorId, campaignId, source, channel, status, note, createdAt |
 | fulfillmentRecord | id, campaignId, creatorId, recipient, handle, phone, address, bank, accountNumber, accountHolder, paymentAmount, courier, trackingNumber, deliveryStatus, memo |
-| trackedPost | id, campaignId, creatorId, platform, title, url, views, likes, comments, shares, saves, conversions, lastChecked |
+| trackedPost | id, campaignId, creatorId, platform, title, url, status, views, likes, comments, shares, saves, conversions, metricsSource, lastChecked |
 | contentReference | id, campaignId, mediaType, platform, country, title, url, thumbnailUrl, views, accountFollowers, likes, comments, shares, publishedAt, hook, analysis, applyIdea |
 | workspace | team, accounts, activeAccountId, brands, campaigns, creators, recommendations, outreach, recruitedPool, fulfillmentRecords, trackedPosts, contentReferences, activities |
 | workspaceSnapshot | workspace_id, payload, updated_at, created_at |
