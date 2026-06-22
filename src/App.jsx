@@ -7443,9 +7443,9 @@ function App() {
         )}
 
         {(visibleSection === 'messages' || visibleSection === 'campaigns' || visibleSection === 'dashboard') && (
-        <section className={`ops-grid ${visibleSection !== 'messages' ? 'single-column-view' : ''}`}>
+        <section className={`ops-grid ${visibleSection !== 'messages' ? 'single-column-view' : 'messages-workspace'}`}>
           {visibleSection === 'messages' && (
-          <section className="panel" id="messages">
+          <section className="panel message-panel" id="messages">
             <div className="panel-heading">
               <div>
                 <span className="mini-label">Outreach</span>
