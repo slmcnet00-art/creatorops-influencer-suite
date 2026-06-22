@@ -6009,6 +6009,29 @@ function App() {
 
         {visibleSection === 'discovery' && (
           <>
+        <section className="discovery-pool-switcher" aria-label="발굴 풀 보기 전환">
+          <button
+            className={activeDiscoveryPoolView === 'search' ? 'active' : ''}
+            type="button"
+            onClick={() => setActiveDiscoveryPoolView('search')}
+          >
+            <Search size={15} />
+            발굴 서치 풀
+            <span>{filteredCreators.length}명</span>
+          </button>
+          <button
+            className={activeDiscoveryPoolView === 'candidate' ? 'active' : ''}
+            type="button"
+            onClick={() => setActiveDiscoveryPoolView('candidate')}
+          >
+            <BookmarkCheck size={15} />
+            메시지 전 후보 풀
+            <span>{candidatePoolCreators.length}명</span>
+          </button>
+        </section>
+
+        {activeDiscoveryPoolView === 'search' && (
+          <>
         <section className="ai-grid">
           <section className="panel ai-brief-panel">
             <div className="panel-heading">
@@ -6299,28 +6322,6 @@ function App() {
           </section>
         </section>
 
-        <section className="discovery-pool-switcher" aria-label="발굴 풀 보기 전환">
-          <button
-            className={activeDiscoveryPoolView === 'search' ? 'active' : ''}
-            type="button"
-            onClick={() => setActiveDiscoveryPoolView('search')}
-          >
-            <Search size={15} />
-            발굴 서치 풀
-            <span>{filteredCreators.length}명</span>
-          </button>
-          <button
-            className={activeDiscoveryPoolView === 'candidate' ? 'active' : ''}
-            type="button"
-            onClick={() => setActiveDiscoveryPoolView('candidate')}
-          >
-            <BookmarkCheck size={15} />
-            메시지 전 후보 풀
-            <span>{candidatePoolCreators.length}명</span>
-          </button>
-        </section>
-
-        {activeDiscoveryPoolView === 'search' && (
         <section className="work-grid">
           <section className="panel discovery-panel" id="discovery">
             <div className="panel-heading">
@@ -6681,6 +6682,7 @@ function App() {
             </aside>
           )}
         </section>
+          </>
         )}
 
         {activeDiscoveryPoolView === 'candidate' && (
