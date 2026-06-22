@@ -70,13 +70,7 @@ app.post('/discovery/google-profiles/search', async (request, response, next) =>
 app.post('/ai/outreach-message', async (request, response, next) => {
   try {
     const { creator, brand, campaign } = request.body || {}
-    const prompt = [
-      '한국어로 친근하고 성의 있는 인플루언서 협업 제안 메시지를 작성해줘.',
-      '답장이 오기 쉽도록 구체적인 칭찬, 브랜드 적합 이유, 협업 조건 확인 질문을 포함해.',
-      `Creator: ${JSON.stringify(creator || {})}`,
-      `Brand: ${JSON.stringify(brand || {})}`,
-      `Campaign: ${JSON.stringify(campaign || {})}`,
-    ].join('\n')
+    const prompt = buildOutreachMessagePrompt(creator, brand, campaign)
     const message = await callOpenAIText(prompt)
     response.json({ data: { message } })
   } catch (error) {
@@ -87,15 +81,7 @@ app.post('/ai/outreach-message', async (request, response, next) => {
 app.post('/ai/content-guide', async (request, response, next) => {
   try {
     const { brand, campaign, seedingType, channel, references } = request.body || {}
-    const prompt = [
-      '인플루언서에게 전달할 콘텐츠 가이드를 한국어로 작성해줘.',
-      '구성: 원메시지, 후킹포인트, 촬영 시나리오, 채널별 주의사항, 금지표현, 검수 체크리스트.',
-      `Brand: ${JSON.stringify(brand || {})}`,
-      `Campaign: ${JSON.stringify(campaign || {})}`,
-      `Seeding type: ${seedingType || ''}`,
-      `Channel: ${channel || ''}`,
-      `References: ${JSON.stringify(references || [])}`,
-    ].join('\n')
+    const prompt = buildContentGuidePrompt({ brand, campaign, seedingType, channel, references })
     const guide = await callOpenAIText(prompt)
     response.json({ data: { guide } })
   } catch (error) {
@@ -197,6 +183,44 @@ async function searchGoogleProfiles(query, platform, maxResults) {
   }
 
   return dedupeProfileResults(results).slice(0, maxResults)
+}
+
+function buildOutreachMessagePrompt(creator = {}, brand = {}, campaign = {}) {
+  return [
+    '한국어로 친근하고 성의 있는 인플루언서 협업 제안 메시지를 작성해주세요.',
+    '목표는 답장을 받는 것입니다. 너무 딱딱한 영업 문구보다, 실제 담당자가 정중하게 보낸 DM/이메일처럼 작성하세요.',
+    '반드시 포함할 내용:',
+    '- 크리에이터 콘텐츠를 실제로 보고 고른 듯한 구체적인 칭찬 1개',
+    '- 브랜드/제품과 크리에이터 페르소나가 맞는 이유',
+    '- 캠페인 핵심 제안, 보상/제품 제공/일정이 있으면 자연스럽게 언급',
+    '- 가능 여부와 조건을 편하게 회신해달라는 질문',
+    '- 광고/협찬 표기와 가이드 준수 안내',
+    '피해야 할 내용: 과장된 성과 보장, 허위 후기 요청, 강압적인 표현, 지나치게 긴 소개.',
+    `Creator: ${JSON.stringify(creator || {})}`,
+    `Brand: ${JSON.stringify(brand || {})}`,
+    `Campaign: ${JSON.stringify(campaign || {})}`,
+  ].join('\n')
+}
+
+function buildContentGuidePrompt({ brand = {}, campaign = {}, seedingType = '', channel = '', references = [] } = {}) {
+  return [
+    '인플루언서에게 전달할 콘텐츠 가이드를 한국어로 작성해주세요.',
+    '브랜드 담당자가 바로 공유할 수 있도록 문서형 구조로 작성하되, 크리에이터가 촬영하기 쉽게 구체화하세요.',
+    '반드시 포함할 섹션:',
+    '1. 캠페인 목표와 원메시지',
+    '2. 콘텐츠 후킹 포인트 5개 이상',
+    '3. 채널별 촬영 시나리오와 컷 구성',
+    '4. 필수 노출 요소와 선택 요소',
+    '5. 자막/멘트 예시',
+    '6. 금지 표현과 광고/협찬 표기 안내',
+    '7. 제출물 체크리스트와 업로드 후 성과 추적 항목',
+    '무가시딩, 유가시딩, 공동구매/셀러형 캠페인 여부에 따라 보상, CTA, 전환 추적 안내를 현실적으로 조정하세요.',
+    `Brand: ${JSON.stringify(brand || {})}`,
+    `Campaign: ${JSON.stringify(campaign || {})}`,
+    `Seeding type: ${seedingType || ''}`,
+    `Channel: ${channel || ''}`,
+    `References: ${JSON.stringify(references || [])}`,
+  ].join('\n')
 }
 
 async function callOpenAIText(prompt) {

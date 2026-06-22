@@ -2607,6 +2607,11 @@ function App() {
       : 'VITE_SUPABASE_URL과 VITE_SUPABASE_ANON_KEY를 설정하면 팀 공유 DB로 전환됩니다.',
     updatedAt: '',
   })
+  const [apiTestStatus, setApiTestStatus] = useState({
+    running: false,
+    checkedAt: '',
+    results: [],
+  })
   const [cloudWorkspaceLoaded, setCloudWorkspaceLoaded] = useState(!backendConfig.hasSupabase)
   const [query, setQuery] = useState('')
   const [platform, setPlatform] = useState('전체')
@@ -3459,6 +3464,116 @@ function App() {
     }
   }
 
+  const testProductionApis = async () => {
+    if (!backendConfig.apiBaseUrl) {
+      showToast('VITE_CREATOROPS_API_BASE_URL을 먼저 연결해야 API 서버 테스트가 가능해요.')
+      setApiTestStatus({
+        running: false,
+        checkedAt: new Date().toISOString(),
+        results: [
+          {
+            key: 'api-base',
+            label: 'CreatorOps API 서버',
+            detail: '프론트 환경변수 VITE_CREATOROPS_API_BASE_URL',
+            status: 'fail',
+            result: 'API 서버 URL이 비어 있습니다.',
+          },
+        ],
+      })
+      return
+    }
+
+    const apiBaseUrl = backendConfig.apiBaseUrl.replace(/\/$/, '')
+    const postJson = async (path, body) => {
+      const response = await fetch(`${apiBaseUrl}${path}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) {
+        throw new Error(payload?.message || payload?.error || `${path} 요청 실패`)
+      }
+      return payload
+    }
+    const checks = [
+      {
+        key: 'health',
+        label: 'API 서버',
+        detail: 'Render 백엔드 /health',
+        run: async () => {
+          const response = await fetch(`${apiBaseUrl}/health`)
+          const payload = await response.json().catch(() => ({}))
+          if (!response.ok || !payload.ok) throw new Error(payload?.message || '서버 health 응답 실패')
+          return `정상 · ${payload.service || 'creatorops-api'}`
+        },
+      },
+      {
+        key: 'youtube',
+        label: 'YouTube Data API',
+        detail: '채널 검색/통계 조회',
+        run: async () => {
+          const payload = await postJson('/discovery/youtube/search', {
+            query: '반려견 켄넬 크리에이터',
+            maxResults: 1,
+          })
+          return `${payload?.data?.length || 0}건 응답`
+        },
+      },
+      {
+        key: 'google-search',
+        label: 'Google Search/CX',
+        detail: 'Instagram/TikTok 공개 프로필 검색',
+        run: async () => {
+          const payload = await postJson('/discovery/google-profiles/search', {
+            query: 'pet influencer Korea',
+            platform: 'TikTok',
+            maxResults: 1,
+          })
+          return `${payload?.data?.length || 0}건 응답`
+        },
+      },
+      {
+        key: 'openai',
+        label: 'OpenAI',
+        detail: '제안 메시지 생성',
+        run: async () => {
+          const payload = await postJson('/ai/outreach-message', {
+            creator: { name: '테스트 크리에이터', platform: 'TikTok', category: '반려동물' },
+            brand: { brandName: 'CreatorOps Test', product: '이동식 켄넬' },
+            campaign: { name: 'API 연결 테스트', oneMessage: '안전하고 편한 이동식 켄넬' },
+          })
+          return payload?.data?.message ? '메시지 생성 성공' : '응답은 왔지만 메시지가 비어 있음'
+        },
+      },
+    ]
+
+    setApiTestStatus({ running: true, checkedAt: '', results: [] })
+
+    const results = []
+    for (const check of checks) {
+      try {
+        const result = await check.run()
+        results.push({ ...check, status: 'success', result })
+      } catch (error) {
+        results.push({
+          ...check,
+          status: 'fail',
+          result: error instanceof Error ? error.message : '연결 실패',
+        })
+      }
+      setApiTestStatus({ running: true, checkedAt: '', results: [...results] })
+    }
+
+    const failedCount = results.filter((item) => item.status === 'fail').length
+    setApiTestStatus({
+      running: false,
+      checkedAt: new Date().toISOString(),
+      results,
+    })
+    showToast(failedCount ? `API 테스트 완료 · ${failedCount}개 확인 필요` : 'API 테스트가 모두 통과했어요.')
+  }
+
   const switchBrand = (brandId) => {
     const nextBrandId = Number(brandId)
     const nextBrand = brands.find((brand) => brand.id === nextBrandId)
@@ -4254,10 +4369,11 @@ function App() {
       .trim()
     const maxResults = Math.min(Math.max(Number(realDiscoveryDraft.maxResults) || 8, 1), 20)
     const youtubeApiKey = realDiscoveryDraft.youtubeApiKey.trim() || youtubeDraft.apiKey.trim()
-    const hasGoogleSearch = realDiscoveryDraft.googleApiKey.trim() && realDiscoveryDraft.googleCx.trim()
+    const hasServerApi = Boolean(backendConfig.apiBaseUrl)
+    const hasGoogleSearch = hasServerApi || (realDiscoveryDraft.googleApiKey.trim() && realDiscoveryDraft.googleCx.trim())
 
-    if (!youtubeApiKey && !hasGoogleSearch) {
-      showToast('실제 발굴은 YouTube Data API 키 또는 Google Search API 키/CX를 연결해야 합니다.')
+    if (!hasServerApi && !youtubeApiKey && !hasGoogleSearch) {
+      showToast('실제 발굴은 CreatorOps API 서버 또는 YouTube/Google API 키를 연결해야 합니다.')
       return
     }
 
@@ -4267,7 +4383,7 @@ function App() {
       const results = []
       const wantsYouTube = platform === '전체' || platform === 'YouTube'
 
-      if (wantsYouTube && youtubeApiKey) {
+      if (wantsYouTube && (hasServerApi || youtubeApiKey)) {
         results.push(
           ...(await searchYouTubeCreatorDiscovery({
             apiKey: youtubeApiKey,
@@ -6023,10 +6139,21 @@ function App() {
                   <span className="mini-label">Production Connection</span>
                   <h2>운영 연결 상태</h2>
                 </div>
-                <button className="primary-button compact-button" type="button" onClick={syncWorkspaceNow}>
-                  <RefreshCw size={16} />
-                  지금 공유 DB 저장
-                </button>
+                <div className="panel-heading-actions">
+                  <button
+                    className="secondary-button compact-button"
+                    type="button"
+                    onClick={testProductionApis}
+                    disabled={apiTestStatus.running}
+                  >
+                    <ShieldCheck size={16} />
+                    {apiTestStatus.running ? '테스트 중' : 'API 연결 테스트'}
+                  </button>
+                  <button className="primary-button compact-button" type="button" onClick={syncWorkspaceNow}>
+                    <RefreshCw size={16} />
+                    지금 공유 DB 저장
+                  </button>
+                </div>
               </div>
               <div className={`sync-status-card ${cloudSyncStatus.mode}`}>
                 <Database size={22} />
@@ -6051,6 +6178,41 @@ function App() {
                   <strong>워크스페이스</strong>
                   <span>{backendConfig.workspaceId}</span>
                 </article>
+              </div>
+              <div className="api-test-panel">
+                <div>
+                  <strong>실제 발굴/AI 생성 테스트</strong>
+                  <p>
+                    API 서버, YouTube, Google Search/CX, OpenAI를 순서대로 확인합니다.
+                    OpenAI 테스트는 짧은 제안 메시지 1건을 생성합니다.
+                  </p>
+                  {apiTestStatus.checkedAt && (
+                    <small>마지막 테스트 {new Date(apiTestStatus.checkedAt).toLocaleString('ko-KR')}</small>
+                  )}
+                </div>
+                <div className="api-test-grid">
+                  {apiTestStatus.results.length ? (
+                    apiTestStatus.results.map((result) => (
+                      <article className={result.status === 'success' ? 'ready' : 'error'} key={result.key}>
+                        {result.status === 'success' ? <CheckCircle2 size={17} /> : <X size={17} />}
+                        <div>
+                          <strong>{result.label}</strong>
+                          <span>{result.detail}</span>
+                          <small>{result.result}</small>
+                        </div>
+                      </article>
+                    ))
+                  ) : (
+                    <article>
+                      <Database size={17} />
+                      <div>
+                        <strong>대기 중</strong>
+                        <span>Render 환경변수를 입력한 뒤 API 연결 테스트를 누르세요.</span>
+                        <small>{backendConfig.apiBaseUrl || 'API 서버 URL 미연결'}</small>
+                      </div>
+                    </article>
+                  )}
+                </div>
               </div>
             </section>
             <section className="panel settings-main-panel">
