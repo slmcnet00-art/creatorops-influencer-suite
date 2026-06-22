@@ -1619,6 +1619,21 @@
   font-weight: 800;
 }
 
+.brief-form-section {
+  grid-column: 1 / -1;
+  padding: 10px 12px;
+  border: 1px solid rgba(0, 113, 227, 0.12);
+  border-radius: 8px;
+  background: rgba(245, 249, 255, 0.68);
+}
+
+.brief-form-section strong {
+  display: block;
+  margin-top: 3px;
+  color: var(--text-strong);
+  font-size: 13px;
+}
+
 .brief-form input {
   min-height: 38px;
   border: 1px solid var(--border);

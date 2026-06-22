@@ -2659,6 +2659,11 @@ function App() {
     reportDueDate: '',
     objective: '브랜드 인지도',
     campaignType: '제안형',
+    targetPersona: '',
+    searchKeywords: '',
+    minFollowers: '',
+    maxCreatorFee: '',
+    preferredPlatforms: '',
     mission: '',
     reward: '',
     approvalFlow: '',
@@ -4472,14 +4477,19 @@ function App() {
   }
 
   const runAiDiscovery = () => {
+    const campaignMinFollowers = Number(selectedCampaign?.minFollowers || brandBrief.minFollowers)
+    const campaignMaxCreatorFee = Number(selectedCampaign?.maxCreatorFee || brandBrief.maxPrice)
+    const campaignPlatforms = selectedCampaign?.preferredPlatforms
+      ? keywordList(selectedCampaign.preferredPlatforms)
+      : brandBrief.platforms
     const eligibleCreators = creators.filter(
       (creator) => {
         const pendingMetrics = hasPendingMetrics(creator)
         return (
           !isExampleCreator(creator) &&
-          (pendingMetrics || creator.followers >= Number(brandBrief.minFollowers)) &&
-          (pendingMetrics || creator.price <= Number(brandBrief.maxPrice)) &&
-          matchesBriefPlatform(creator, brandBrief.platforms)
+          (pendingMetrics || creator.followers >= campaignMinFollowers) &&
+          (pendingMetrics || creator.price <= campaignMaxCreatorFee) &&
+          matchesBriefPlatform(creator, campaignPlatforms)
         )
       },
     )
@@ -4499,10 +4509,10 @@ function App() {
           shortlist: Array.from(new Set([...current.shortlist, ...ranked.slice(0, 3).map((item) => item.creatorId)])),
         },
         'ai',
-        `${activeBrand.name} 조건으로 AI 후보 ${ranked.length}명 추출`,
+        `${selectedCampaign?.name ?? activeBrand.name} 조건으로 AI 후보 ${ranked.length}명 추출`,
       ),
     )
-    showToast(`AI가 브랜드 페르소나 기준으로 후보 ${ranked.length}명을 추출했어요.`)
+    showToast(`AI가 캠페인 조건 기준으로 후보 ${ranked.length}명을 추출했어요.`)
   }
 
   const generateInfluencerStrategy = () => {
@@ -5180,6 +5190,11 @@ function App() {
       },
       objective: campaignDraft.objective,
       campaignType: campaignDraft.campaignType || '제안형',
+      targetPersona: campaignDraft.targetPersona || brandBrief.persona,
+      searchKeywords: campaignDraft.searchKeywords || brandBrief.keywords,
+      minFollowers: normalizeNumericTarget(campaignDraft.minFollowers) || Number(brandBrief.minFollowers) || 0,
+      maxCreatorFee: normalizeNumericTarget(campaignDraft.maxCreatorFee) || Number(brandBrief.maxPrice) || 0,
+      preferredPlatforms: campaignDraft.preferredPlatforms || brandBrief.platforms.join(', '),
       mission:
         campaignDraft.mission ||
         `${brandBrief.product}를 ${brandBrief.persona}에게 자연스럽게 소개하는 콘텐츠`,
@@ -5244,6 +5259,11 @@ function App() {
       reportDueDate: '',
       objective: '브랜드 인지도',
       campaignType: '제안형',
+      targetPersona: '',
+      searchKeywords: '',
+      minFollowers: '',
+      maxCreatorFee: '',
+      preferredPlatforms: '',
       mission: '',
       reward: '',
       approvalFlow: '',
@@ -6349,7 +6369,7 @@ function App() {
             <div className="panel-heading">
               <div>
                 <span className="mini-label">AI Discovery</span>
-                <h2>브랜드 조건 설정</h2>
+                <h2>브랜드 공통 프로필</h2>
               </div>
               <div className="panel-heading-actions">
                 <button className="primary-button compact-button" type="button" onClick={runAiDiscovery}>
@@ -6362,8 +6382,8 @@ function App() {
               <div className="brief-auto-head">
                 <div>
                   <span className="mini-label">AI Brief Setup</span>
-                  <strong>브리프 붙여넣기 + 조건 세팅</strong>
-                  <p>제품, 후킹포인트, 희망 인플루언서 조건을 붙여넣으면 실제 검색에 쓸 브랜드 조건과 발굴 필터를 세팅합니다.</p>
+                  <strong>브리프 붙여넣기 + 초안 세팅</strong>
+                  <p>제품/타깃/키워드 같은 브랜드 공통값을 빠르게 채웁니다. 예산, KPI, 원메시지, 후킹포인트는 캠페인 생성에서 캠페인별로 관리합니다.</p>
                 </div>
                 <button className="primary-button compact-button" type="button" onClick={applyAiBriefAutoSetup}>
                   조건 세팅
@@ -6384,6 +6404,10 @@ function App() {
               )}
             </div>
             <div className="brief-form">
+              <div className="brief-form-section">
+                <span className="mini-label">Brand Core</span>
+                <strong>브랜드마다 거의 바뀌지 않는 정보</strong>
+              </div>
               <label>
                 브랜드
                 <input value={brandBrief.brandName} onChange={(event) => updateBrandBrief('brandName', event.target.value)} />
@@ -6396,22 +6420,6 @@ function App() {
                 타깃 페르소나
                 <input value={brandBrief.persona} onChange={(event) => updateBrandBrief('persona', event.target.value)} />
               </label>
-              <label>
-                최소 팔로워
-                <input
-                  inputMode="numeric"
-                  value={brandBrief.minFollowers}
-                  onChange={(event) => updateBrandBrief('minFollowers', event.target.value)}
-                />
-              </label>
-              <label>
-                최대 단가
-                <input
-                  inputMode="numeric"
-                  value={brandBrief.maxPrice}
-                  onChange={(event) => updateBrandBrief('maxPrice', event.target.value)}
-                />
-              </label>
               <label className="wide-field">
                 포함 키워드
                 <input value={brandBrief.keywords} onChange={(event) => updateBrandBrief('keywords', event.target.value)} />
@@ -6419,6 +6427,26 @@ function App() {
               <label className="wide-field">
                 제외 키워드
                 <input value={brandBrief.exclusions} onChange={(event) => updateBrandBrief('exclusions', event.target.value)} />
+              </label>
+              <div className="brief-form-section">
+                <span className="mini-label">Default Discovery Filter</span>
+                <strong>캠페인 조건이 없을 때 쓰는 기본 후보 필터</strong>
+              </div>
+              <label>
+                기본 최소 팔로워
+                <input
+                  inputMode="numeric"
+                  value={brandBrief.minFollowers}
+                  onChange={(event) => updateBrandBrief('minFollowers', event.target.value)}
+                />
+              </label>
+              <label>
+                기본 최대 단가
+                <input
+                  inputMode="numeric"
+                  value={brandBrief.maxPrice}
+                  onChange={(event) => updateBrandBrief('maxPrice', event.target.value)}
+                />
               </label>
             </div>
             <div className="brief-toggles">
@@ -6456,7 +6484,7 @@ function App() {
                 <div>
                   <span className="mini-label">Influencer Strategy</span>
                   <strong>인플루언서 전략 짜기</strong>
-                  <p>브랜드, 제품, 타깃, KPI, 예산, 학습자료를 기준으로 캐스팅 믹스와 콘텐츠 후킹, KPI 운영안을 먼저 정리합니다.</p>
+                  <p>선택된 캠페인 조건과 브랜드 공통 학습자료를 기준으로 캐스팅 믹스, 콘텐츠 후킹, KPI 운영안을 정리합니다.</p>
                 </div>
                 <div className="strategy-actions">
                   <button className="primary-button compact-button" type="button" onClick={generateInfluencerStrategy}>
@@ -7820,6 +7848,59 @@ function App() {
                   placeholder="예: 여름 신제품 런칭"
                 />
               </label>
+              <div className="campaign-guide-panel campaign-condition-panel">
+                <div>
+                  <span className="mini-label">Campaign Targeting</span>
+                  <strong>캠페인별 발굴 조건</strong>
+                  <p>이번 캠페인에서만 달라지는 타깃, 검색 키워드, 후보 규모와 단가 조건입니다. 비워두면 브랜드 공통 프로필의 기본값을 사용합니다.</p>
+                </div>
+                <div className="modal-two-col">
+                  <label>
+                    이번 캠페인 타깃
+                    <input
+                      value={campaignDraft.targetPersona}
+                      onChange={(event) => setCampaignDraft({ ...campaignDraft, targetPersona: event.target.value })}
+                      placeholder={brandBrief.persona || '예: 반려견과 여행을 자주 하는 20-40대 보호자'}
+                    />
+                  </label>
+                  <label>
+                    캠페인 검색 키워드
+                    <input
+                      value={campaignDraft.searchKeywords}
+                      onChange={(event) => setCampaignDraft({ ...campaignDraft, searchKeywords: event.target.value })}
+                      placeholder={brandBrief.keywords || '예: 펫 여행, 켄넬, 차량 이동, 항공 이동'}
+                    />
+                  </label>
+                </div>
+                <div className="modal-two-col">
+                  <label>
+                    후보 최소 팔로워
+                    <input
+                      inputMode="numeric"
+                      value={campaignDraft.minFollowers}
+                      onChange={(event) => setCampaignDraft({ ...campaignDraft, minFollowers: event.target.value })}
+                      placeholder={String(brandBrief.minFollowers || '5000')}
+                    />
+                  </label>
+                  <label>
+                    후보 최대 단가
+                    <input
+                      inputMode="numeric"
+                      value={campaignDraft.maxCreatorFee}
+                      onChange={(event) => setCampaignDraft({ ...campaignDraft, maxCreatorFee: event.target.value })}
+                      placeholder={String(brandBrief.maxPrice || '1500000')}
+                    />
+                  </label>
+                </div>
+                <label>
+                  우선 발굴 플랫폼
+                  <input
+                    value={campaignDraft.preferredPlatforms}
+                    onChange={(event) => setCampaignDraft({ ...campaignDraft, preferredPlatforms: event.target.value })}
+                    placeholder={brandBrief.platforms.join(', ') || 'YouTube, Instagram, TikTok'}
+                  />
+                </label>
+              </div>
               <div className="campaign-guide-panel">
                 <div>
                   <span className="mini-label">Creator Delivery Assets</span>
@@ -8617,6 +8698,18 @@ function App() {
                 </div>
               )}
               <div className="campaign-playbook">
+                <article>
+                  <span>캠페인별 발굴 조건</span>
+                  <p>
+                    {[
+                      activeCampaignForModal.targetPersona,
+                      activeCampaignForModal.searchKeywords,
+                      activeCampaignForModal.preferredPlatforms,
+                      activeCampaignForModal.minFollowers ? `최소 ${compactNumber(activeCampaignForModal.minFollowers)} 팔로워` : '',
+                      activeCampaignForModal.maxCreatorFee ? `최대 ${won(activeCampaignForModal.maxCreatorFee)}` : '',
+                    ].filter(Boolean).join(' · ') || '브랜드 공통 프로필의 기본 발굴 조건 사용'}
+                  </p>
+                </article>
                 <article>
                   <span>KPI 목표</span>
                   <p>{activeCampaignForModal.kpiGoal ?? '조회수/전환 KPI 미정'}</p>
