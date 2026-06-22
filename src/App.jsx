@@ -788,6 +788,7 @@ const defaultWorkspace = {
 const platformOptions = ['전체', 'YouTube', 'Instagram', 'TikTok']
 const briefPlatformOptions = ['YouTube', 'Instagram', 'TikTok', 'TikTok 셀러']
 const categoryOptions = ['전체', '뷰티', '테크', '푸드', '피트니스', '아웃도어', '펫', '리뷰', '공동구매']
+const referenceCountryPresets = ['전체', 'KR', 'US', 'JP', 'CN', 'SEA', 'EU']
 const campaignStatuses = ['섭외', '콘텐츠 제작', '라이브', '리포트', '완료']
 const campaignTypeOptions = ['제안형', '공개모집', '앰배서더', '커머스/제휴', 'UGC/숏폼', '틱톡 공동구매 셀러']
 
@@ -2901,7 +2902,11 @@ function App() {
     [activeCampaignIdSet, contentReferences],
   )
   const referenceCountryOptions = useMemo(
-    () => ['전체', ...Array.from(new Set(selectedCampaignReferences.map((item) => item.country).filter(Boolean)))],
+    () => [
+      ...referenceCountryPresets,
+      ...Array.from(new Set(selectedCampaignReferences.map((item) => item.country).filter(Boolean)))
+        .filter((country) => !referenceCountryPresets.includes(country)),
+    ],
     [selectedCampaignReferences],
   )
   const visibleReferences = useMemo(() => {
@@ -6758,6 +6763,19 @@ function App() {
             <Stat label="제작 저장" value={`${savedProductionReferences.length}개`} />
             <Stat label="누적 조회" value={compactNumber(referenceTotals.views)} />
             <Stat label="누적 공유" value={compactNumber(referenceTotals.shares)} />
+          </div>
+
+          <div className="reference-country-tabs" aria-label="레퍼런스 국가 빠른 필터">
+            {referenceCountryOptions.map((countryOption) => (
+              <button
+                className={referenceFilters.country === countryOption ? 'active' : ''}
+                type="button"
+                key={countryOption}
+                onClick={() => setReferenceFilters({ ...referenceFilters, country: countryOption })}
+              >
+                {countryOption}
+              </button>
+            ))}
           </div>
 
           <form className="reference-search-bar" onSubmit={applyReferenceSearch}>

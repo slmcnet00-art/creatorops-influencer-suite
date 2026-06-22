@@ -630,6 +630,32 @@
   padding: 4px 18px 14px;
 }
 
+.reference-country-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 18px 12px;
+}
+
+.reference-country-tabs button {
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-soft);
+  background: rgba(255, 255, 255, 0.78);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.reference-country-tabs button.active {
+  color: var(--accent);
+  border-color: rgba(0, 113, 227, 0.2);
+  background: var(--accent-soft);
+}
+
 .reference-search-bar {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto auto;
