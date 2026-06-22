@@ -2610,6 +2610,7 @@ function App() {
   const [platform, setPlatform] = useState('전체')
   const [category, setCategory] = useState('전체')
   const [discoveryFilters, setDiscoveryFilters] = useState(defaultDiscoveryFilters)
+  const [activeDiscoveryPoolView, setActiveDiscoveryPoolView] = useState('search')
   const [selectedCreatorId, setSelectedCreatorId] = useState(workspace.creators[0]?.id)
   const [selectedCampaignId, setSelectedCampaignId] = useState(
     workspace.campaigns.find((campaign) => campaign.brandId === workspace.activeBrandId)?.id ?? workspace.campaigns[0]?.id,
@@ -6293,6 +6294,28 @@ function App() {
           </section>
         </section>
 
+        <section className="discovery-pool-switcher" aria-label="발굴 풀 보기 전환">
+          <button
+            className={activeDiscoveryPoolView === 'search' ? 'active' : ''}
+            type="button"
+            onClick={() => setActiveDiscoveryPoolView('search')}
+          >
+            <Search size={15} />
+            발굴 서치 풀
+            <span>{filteredCreators.length}명</span>
+          </button>
+          <button
+            className={activeDiscoveryPoolView === 'candidate' ? 'active' : ''}
+            type="button"
+            onClick={() => setActiveDiscoveryPoolView('candidate')}
+          >
+            <BookmarkCheck size={15} />
+            메시지 전 후보 풀
+            <span>{candidatePoolCreators.length}명</span>
+          </button>
+        </section>
+
+        {activeDiscoveryPoolView === 'search' && (
         <section className="work-grid">
           <section className="panel discovery-panel" id="discovery">
             <div className="panel-heading">
@@ -6653,7 +6676,9 @@ function App() {
             </aside>
           )}
         </section>
+        )}
 
+        {activeDiscoveryPoolView === 'candidate' && (
         <section className="panel candidate-pool-panel">
           <div className="panel-heading">
             <div>
@@ -6710,6 +6735,7 @@ function App() {
             )}
           </div>
         </section>
+        )}
           </>
         )}
 
