@@ -1290,6 +1290,52 @@
   font-weight: 800;
 }
 
+.auth-connect-card {
+  margin: 14px 18px 0;
+  padding: 14px;
+  border: 1px solid rgba(0, 113, 227, 0.14);
+  border-radius: 8px;
+  background: rgba(245, 249, 255, 0.82);
+  display: flex;
+  justify-content: space-between;
+  gap: 14px;
+  align-items: center;
+}
+
+.auth-connect-card strong,
+.auth-connect-card p {
+  display: block;
+}
+
+.auth-connect-card strong {
+  margin-top: 4px;
+  color: var(--text-strong);
+}
+
+.auth-connect-card p {
+  margin: 5px 0 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.auth-connect-actions {
+  min-width: min(420px, 100%);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 8px;
+}
+
+.auth-connect-actions input {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 11px;
+  color: var(--text-strong);
+  background: var(--surface-strong);
+  font: inherit;
+}
+
 .api-test-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

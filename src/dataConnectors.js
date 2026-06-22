@@ -417,6 +417,18 @@ export async function searchGoogleProfileDiscovery({ apiKey, cx, query, platform
   return dedupeProfileResults(results).slice(0, Number(maxResults) || 8)
 }
 
+export async function refreshContentMetrics(posts) {
+  if (!CREATOROPS_API_BASE_URL) return null
+
+  return callCreatorOpsApi('/tracking/refresh', {
+    posts: (posts || []).map((post) => ({
+      id: post.id,
+      platform: post.platform,
+      url: post.url,
+    })),
+  })
+}
+
 function getPlatformSiteQuery(platform) {
   if (platform === 'Instagram') return 'site:instagram.com'
   if (platform === 'TikTok') return 'site:tiktok.com/@'

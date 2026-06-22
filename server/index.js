@@ -89,12 +89,102 @@ app.post('/ai/content-guide', async (request, response, next) => {
   }
 })
 
+app.post('/tracking/refresh', async (request, response, next) => {
+  try {
+    const posts = Array.isArray(request.body?.posts) ? request.body.posts : []
+    const refreshed = await refreshTrackedPosts(posts)
+    response.json({ data: { posts: refreshed } })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/oauth/google/auth-url', (request, response, next) => {
+  try {
+    const clientId = requireEnv('GMAIL_CLIENT_ID')
+    const redirectUri = requireEnv('GOOGLE_OAUTH_REDIRECT_URI')
+    const state = String(request.query?.state || 'creatorops')
+    const scopes = [
+      'https://www.googleapis.com/auth/gmail.send',
+      'https://www.googleapis.com/auth/userinfo.email',
+    ]
+    const params = new URLSearchParams({
+      client_id: clientId,
+      redirect_uri: redirectUri,
+      response_type: 'code',
+      access_type: 'offline',
+      prompt: 'consent',
+      scope: scopes.join(' '),
+      state,
+    })
+    response.json({ data: { url: `https://accounts.google.com/o/oauth2/v2/auth?${params}` } })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/oauth/google/callback', (request, response, next) => {
+  try {
+    const frontendUrl = process.env.FRONTEND_URL || 'https://creatorops-influencer-suite.onrender.com'
+    const params = new URLSearchParams()
+    if (request.query?.code) params.set('code', String(request.query.code))
+    if (request.query?.state) params.set('state', String(request.query.state))
+    if (request.query?.error) params.set('error', String(request.query.error))
+    response.redirect(`${frontendUrl.replace(/\/$/, '')}/?google_oauth=1&${params}`)
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/oauth/google/token', async (request, response, next) => {
+  try {
+    const code = String(request.body?.code || '').trim()
+    if (!code) throw httpError(400, 'code is required.')
+
+    const payload = await fetchJson('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        code,
+        client_id: requireEnv('GMAIL_CLIENT_ID'),
+        client_secret: requireEnv('GMAIL_CLIENT_SECRET'),
+        redirect_uri: requireEnv('GOOGLE_OAUTH_REDIRECT_URI'),
+        grant_type: 'authorization_code',
+      }),
+    })
+    response.json({
+      data: {
+        accessToken: payload.access_token,
+        refreshToken: payload.refresh_token,
+        expiresIn: payload.expires_in,
+        scope: payload.scope,
+        tokenType: payload.token_type,
+      },
+    })
+  } catch (error) {
+    next(error)
+  }
+})
+
 app.post('/outreach/gmail/send', async (request, response, next) => {
   try {
-    if (!process.env.GMAIL_CLIENT_ID || !process.env.GMAIL_CLIENT_SECRET) {
-      throw httpError(501, 'Gmail OAuth is not configured. Use manual approval/copy flow until OAuth is connected.')
-    }
-    throw httpError(501, 'Gmail send requires per-user OAuth token storage. Endpoint contract is reserved.')
+    const accessToken = String(request.body?.accessToken || '').trim()
+    const to = String(request.body?.to || '').trim()
+    const subject = String(request.body?.subject || 'CreatorOps collaboration proposal').trim()
+    const message = String(request.body?.message || '').trim()
+    if (!accessToken) throw httpError(401, 'Google accessToken is required.')
+    if (!to || !message) throw httpError(400, 'to and message are required.')
+
+    const raw = buildGmailRawMessage({ to, subject, message })
+    const payload = await fetchJson('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ raw }),
+    })
+    response.json({ data: { id: payload.id, threadId: payload.threadId } })
   } catch (error) {
     next(error)
   }
@@ -185,6 +275,70 @@ async function searchGoogleProfiles(query, platform, maxResults) {
   return dedupeProfileResults(results).slice(0, maxResults)
 }
 
+async function refreshTrackedPosts(posts) {
+  const safePosts = posts.slice(0, 50)
+  return Promise.all(
+    safePosts.map(async (post) => {
+      const platform = String(post.platform || '').toLowerCase()
+      if (platform.includes('youtube')) {
+        return fetchYouTubeVideoMetrics(post)
+      }
+
+      return {
+        id: post.id,
+        platform: post.platform,
+        status: 'manual_required',
+        message: `${post.platform || 'This platform'} metrics require creator authorization or manual verification.`,
+      }
+    }),
+  )
+}
+
+async function fetchYouTubeVideoMetrics(post) {
+  const key = requireEnv('YOUTUBE_DATA_API_KEY')
+  const videoId = extractYouTubeVideoId(post.url)
+  if (!videoId) {
+    return {
+      id: post.id,
+      platform: post.platform || 'YouTube',
+      status: 'manual_required',
+      message: 'YouTube video ID could not be parsed from the upload URL.',
+    }
+  }
+
+  const params = new URLSearchParams({
+    part: 'snippet,statistics',
+    id: videoId,
+    key,
+  })
+  const payload = await fetchJson(`https://www.googleapis.com/youtube/v3/videos?${params}`)
+  const item = payload.items?.[0]
+  if (!item) {
+    return {
+      id: post.id,
+      platform: 'YouTube',
+      status: 'manual_required',
+      message: 'YouTube video was not found or is not publicly accessible.',
+    }
+  }
+
+  const statistics = item.statistics || {}
+  return {
+    id: post.id,
+    platform: 'YouTube',
+    status: 'refreshed',
+    videoId,
+    title: item.snippet?.title || '',
+    views: Number(statistics.viewCount || 0),
+    likes: Number(statistics.likeCount || 0),
+    comments: Number(statistics.commentCount || 0),
+    shares: null,
+    saves: null,
+    source: 'YouTube Data API videos.list',
+    checkedAt: new Date().toISOString(),
+  }
+}
+
 function buildOutreachMessagePrompt(creator = {}, brand = {}, campaign = {}) {
   return [
     'Write a warm, sincere influencer collaboration proposal message in Korean.',
@@ -221,6 +375,25 @@ function buildContentGuidePrompt({ brand = {}, campaign = {}, seedingType = '', 
     `Channel: ${channel || ''}`,
     `References: ${JSON.stringify(references || [])}`,
   ].join('\\n')
+}
+
+function buildGmailRawMessage({ to, subject, message }) {
+  const headers = [
+    `To: ${to}`,
+    `Subject: ${encodeMimeHeader(subject)}`,
+    'Content-Type: text/plain; charset="UTF-8"',
+    'MIME-Version: 1.0',
+  ]
+  const raw = `${headers.join('\r\n')}\r\n\r\n${message}`
+  return Buffer.from(raw, 'utf8')
+    .toString('base64')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_')
+    .replace(/=+$/, '')
+}
+
+function encodeMimeHeader(value) {
+  return `=?UTF-8?B?${Buffer.from(String(value || ''), 'utf8').toString('base64')}?=`
 }
 
 async function callOpenAIText(prompt) {
@@ -365,6 +538,30 @@ function parseYouTubeLookup(value) {
     type: 'handle',
     value: value.startsWith('@') ? value : `@${value}`,
   }
+}
+
+function extractYouTubeVideoId(value) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+
+  try {
+    const url = new URL(raw)
+    if (url.hostname.includes('youtu.be')) {
+      return url.pathname.split('/').filter(Boolean)[0] || ''
+    }
+    if (url.hostname.includes('youtube.com')) {
+      const watchId = url.searchParams.get('v')
+      if (watchId) return watchId
+      const segments = url.pathname.split('/').filter(Boolean)
+      const shortIndex = segments.findIndex((segment) => ['shorts', 'embed', 'live'].includes(segment))
+      if (shortIndex >= 0) return segments[shortIndex + 1] || ''
+    }
+  } catch {
+    const match = raw.match(/(?:v=|youtu\.be\/|shorts\/|embed\/)([\w-]{8,})/)
+    if (match) return match[1]
+  }
+
+  return /^[\w-]{8,}$/.test(raw) ? raw : ''
 }
 
 function stripHtml(value) {

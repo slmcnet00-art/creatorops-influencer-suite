@@ -22,6 +22,8 @@ services:
         value: 22
       - key: CORS_ORIGIN
         value: https://creatorops-influencer-suite.onrender.com,http://localhost:5173
+      - key: FRONTEND_URL
+        value: https://creatorops-influencer-suite.onrender.com
       - key: YOUTUBE_DATA_API_KEY
         sync: false
       - key: GOOGLE_SEARCH_API_KEY
@@ -32,3 +34,11 @@ services:
         sync: false
       - key: OPENAI_MODEL
         value: gpt-4.1-mini
+      - key: GMAIL_CLIENT_ID
+        sync: false
+      - key: GMAIL_CLIENT_SECRET
+        sync: false
+      - key: GOOGLE_OAUTH_REDIRECT_URI
+        sync: false
+      - key: CRON_SECRET
+        sync: false

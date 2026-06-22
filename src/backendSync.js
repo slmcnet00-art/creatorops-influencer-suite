@@ -27,10 +27,91 @@ export function getSupabaseClient() {
   return supabaseClient
 }
 
+export async function getAuthSession() {
+  const supabase = getSupabaseClient()
+  if (!supabase) return null
+  const { data, error } = await supabase.auth.getSession()
+  if (error) throw error
+  return data.session
+}
+
+export async function signInWithEmail(email) {
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    return { status: 'local', message: 'Supabase env is not configured.' }
+  }
+
+  const { error } = await supabase.auth.signInWithOtp({
+    email,
+    options: {
+      emailRedirectTo: window.location.origin,
+    },
+  })
+  if (error) throw error
+  return { status: 'sent' }
+}
+
+export async function signOut() {
+  const supabase = getSupabaseClient()
+  if (!supabase) return { status: 'local' }
+  const { error } = await supabase.auth.signOut()
+  if (error) throw error
+  return { status: 'signed_out' }
+}
+
+export function onAuthStateChange(callback) {
+  const supabase = getSupabaseClient()
+  if (!supabase) return () => {}
+  const { data } = supabase.auth.onAuthStateChange((event, session) => callback(event, session))
+  return () => data.subscription.unsubscribe()
+}
+
+async function ensureWorkspaceMembership(supabase, workspace) {
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+  if (sessionError) throw sessionError
+  const user = sessionData.session?.user
+  if (!user) return { status: 'anonymous' }
+
+  const workspaceName = workspace?.team?.name || workspace?.brands?.[0]?.name || WORKSPACE_ID
+  const { error: workspaceError } = await supabase
+    .from('workspaces')
+    .upsert(
+      {
+        id: WORKSPACE_ID,
+        name: workspaceName,
+        owner_id: user.id,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' },
+    )
+  if (workspaceError) throw workspaceError
+
+  const { error: memberError } = await supabase
+    .from('workspace_members')
+    .upsert(
+      {
+        workspace_id: WORKSPACE_ID,
+        user_id: user.id,
+        role: 'Owner',
+        invited_email: user.email,
+        status: 'active',
+      },
+      { onConflict: 'workspace_id,user_id' },
+    )
+  if (memberError) throw memberError
+
+  return { status: 'ready', user }
+}
+
 export async function loadCloudWorkspace() {
   const supabase = getSupabaseClient()
   if (!supabase) {
     return { status: 'local', workspace: null, message: 'Supabase env is not configured.' }
+  }
+
+  const membership = await ensureWorkspaceMembership(supabase)
+  if (membership.status === 'anonymous') {
+    return { status: 'auth_required', workspace: null, message: 'Sign in to load the shared workspace.' }
   }
 
   const { data, error } = await supabase
@@ -51,6 +132,11 @@ export async function saveCloudWorkspace(workspace) {
   const supabase = getSupabaseClient()
   if (!supabase) {
     return { status: 'local', message: 'Supabase env is not configured.' }
+  }
+
+  const membership = await ensureWorkspaceMembership(supabase, workspace)
+  if (membership.status === 'anonymous') {
+    return { status: 'auth_required', message: 'Sign in to save the shared workspace.' }
   }
 
   const { error } = await supabase

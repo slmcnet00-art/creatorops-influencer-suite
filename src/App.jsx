@@ -38,14 +38,19 @@ import { readSheet } from 'read-excel-file/browser'
 import './App.css'
 import {
   getBackendConfig,
+  getAuthSession,
   loadCloudWorkspace,
+  onAuthStateChange,
   saveCloudWorkspace,
+  signInWithEmail,
+  signOut,
 } from './backendSync'
 import {
   buildCreatorSourceEvidence,
   calculateDataCoverage,
   dataConnectorBlueprints,
   fetchYouTubeChannelSnapshot,
+  refreshContentMetrics,
   searchGoogleProfileDiscovery,
   searchYouTubeCreatorDiscovery,
 } from './dataConnectors'
@@ -2570,6 +2575,8 @@ function App() {
     checkedAt: '',
     results: [],
   })
+  const [authSession, setAuthSession] = useState(null)
+  const [authEmail, setAuthEmail] = useState('')
   const [cloudWorkspaceLoaded, setCloudWorkspaceLoaded] = useState(!backendConfig.hasSupabase)
   const [query, setQuery] = useState('')
   const [platform, setPlatform] = useState('전체')
@@ -2971,39 +2978,42 @@ function App() {
   }, [toast])
 
   useEffect(() => {
+    if (!backendConfig.hasSupabase) return undefined
+
+    let cancelled = false
+    getAuthSession()
+      .then((session) => {
+        if (!cancelled) setAuthSession(session)
+      })
+      .catch(() => {
+        if (!cancelled) setAuthSession(null)
+      })
+
+    const unsubscribe = onAuthStateChange((event, session) => {
+      setAuthSession(session)
+      if (event === 'SIGNED_IN') showToast('팀 공유 DB 로그인 세션이 연결됐어요.')
+      if (event === 'SIGNED_OUT') showToast('팀 공유 DB에서 로그아웃했어요.')
+    })
+
+    return () => {
+      cancelled = true
+      unsubscribe()
+    }
+  }, [backendConfig.hasSupabase])
+
+  useEffect(() => {
     if (!trackedPosts.length) return undefined
     const today = new Date().toISOString().slice(0, 10)
     if (window.localStorage.getItem(TRACKING_DAILY_REFRESH_KEY) === today) return undefined
 
     const timer = window.setTimeout(() => {
-      setWorkspace((current) =>
-        appendActivity(
-          {
-            ...current,
-            trackedPosts: current.trackedPosts.map((post) => {
-              const viewLift = Math.max(180, Math.round(post.views * 0.08))
-              return {
-                ...post,
-                views: post.views + viewLift,
-                likes: post.likes + Math.round(viewLift * 0.045),
-                comments: post.comments + Math.round(viewLift * 0.004),
-                shares: post.shares + Math.round(viewLift * 0.006),
-                saves: post.saves + Math.round(viewLift * 0.01),
-                conversions: post.conversions + Math.round(viewLift * 0.0018),
-                metricsSource: '일일 자동 갱신',
-                lastChecked: nowLabel(),
-              }
-            }),
-          },
-          'tracking',
-          '콘텐츠 성과 일일 자동 갱신',
-        ),
-      )
-      window.localStorage.setItem(TRACKING_DAILY_REFRESH_KEY, today)
+      refreshTracking({ mode: 'daily-auto' })
     }, 250)
 
     return () => window.clearTimeout(timer)
-  }, [setWorkspace, trackedPosts.length])
+    // Daily refresh is gated by TRACKING_DAILY_REFRESH_KEY; adding refreshTracking retriggers this on every render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [trackedPosts.length])
 
   const filteredCreators = useMemo(() => {
     const queryTerms = query
@@ -3422,6 +3432,30 @@ function App() {
         updatedAt: '',
       })
       showToast(message)
+    }
+  }
+
+  const requestAuthLink = async () => {
+    const email = authEmail.trim()
+    if (!email) {
+      showToast('로그인 링크를 받을 이메일을 입력해주세요.')
+      return
+    }
+
+    try {
+      await signInWithEmail(email)
+      showToast(`${email}로 로그인 링크를 보냈어요.`)
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '로그인 링크 발송에 실패했어요.')
+    }
+  }
+
+  const disconnectAuth = async () => {
+    try {
+      await signOut()
+      setAuthSession(null)
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '로그아웃에 실패했어요.')
     }
   }
 
@@ -5510,26 +5544,77 @@ function App() {
     showToast(`배송/수동 정산 상태를 ${nextStatus}로 업데이트했어요.`)
   }
 
-  const refreshTracking = ({ mode = 'manual' } = {}) => {
+  function applyEstimatedTrackingRefresh(post, isAuto) {
+    const viewLift = Math.max(180, Math.round(post.views * 0.08))
+    return {
+      ...post,
+      views: post.views + viewLift,
+      likes: post.likes + Math.round(viewLift * 0.045),
+      comments: post.comments + Math.round(viewLift * 0.004),
+      shares: post.shares + Math.round(viewLift * 0.006),
+      saves: post.saves + Math.round(viewLift * 0.01),
+      conversions: post.conversions + Math.round(viewLift * 0.0018),
+      metricsSource: isAuto ? '일일 추정 갱신' : '즉시 추정 갱신',
+      lastChecked: nowLabel(),
+    }
+  }
+
+  async function refreshTracking({ mode = 'manual' } = {}) {
     const isAuto = mode === 'daily-auto'
+    const targetPosts = selectedCampaignTrackedPosts.length ? selectedCampaignTrackedPosts : trackedPosts
+
+    if (backendConfig.apiBaseUrl && targetPosts.length) {
+      try {
+        const payload = await refreshContentMetrics(targetPosts)
+        const refreshed = Array.isArray(payload?.posts) ? payload.posts : []
+        const refreshedById = new Map(refreshed.map((post) => [post.id, post]))
+
+        updateWorkspace((current) =>
+          appendActivity(
+            {
+              ...current,
+              trackedPosts: current.trackedPosts.map((post) => {
+                const next = refreshedById.get(post.id)
+                if (!next || next.status === 'manual_required' || next.status === 'unsupported') {
+                  return {
+                    ...post,
+                    metricsSource: next?.message || post.metricsSource || '수동 확인 필요',
+                    lastChecked: nowLabel(),
+                  }
+                }
+                return {
+                  ...post,
+                  views: Number(next.views ?? post.views),
+                  likes: Number(next.likes ?? post.likes),
+                  comments: Number(next.comments ?? post.comments),
+                  shares: Number(next.shares ?? post.shares),
+                  saves: Number(next.saves ?? post.saves),
+                  metricsSource: next.source || '공식 API 갱신',
+                  lastChecked: nowLabel(),
+                }
+              }),
+            },
+            'tracking',
+            isAuto ? '콘텐츠 성과 일일 공식 API 갱신' : '콘텐츠 성과 공식 API 즉시 갱신',
+          ),
+        )
+        window.localStorage.setItem(TRACKING_DAILY_REFRESH_KEY, new Date().toISOString().slice(0, 10))
+        if (!isAuto) {
+          showToast(`성과 데이터 ${refreshed.length}건을 갱신했어요. Instagram/TikTok은 수동 확인이 필요할 수 있어요.`)
+        }
+        return
+      } catch (error) {
+        if (!isAuto) {
+          showToast(error instanceof Error ? `API 갱신 실패: ${error.message}` : 'API 갱신 실패로 추정 갱신을 적용합니다.')
+        }
+      }
+    }
+
     updateWorkspace((current) =>
       appendActivity(
         {
           ...current,
-          trackedPosts: current.trackedPosts.map((post) => {
-            const viewLift = Math.max(180, Math.round(post.views * 0.08))
-            return {
-              ...post,
-              views: post.views + viewLift,
-              likes: post.likes + Math.round(viewLift * 0.045),
-              comments: post.comments + Math.round(viewLift * 0.004),
-              shares: post.shares + Math.round(viewLift * 0.006),
-              saves: post.saves + Math.round(viewLift * 0.01),
-              conversions: post.conversions + Math.round(viewLift * 0.0018),
-              metricsSource: isAuto ? '일일 자동 갱신' : '즉시 갱신',
-              lastChecked: nowLabel(),
-            }
-          }),
+          trackedPosts: current.trackedPosts.map((post) => applyEstimatedTrackingRefresh(post, isAuto)),
         },
         'tracking',
         isAuto ? '콘텐츠 성과 일일 자동 갱신' : '콘텐츠 성과 즉시 갱신',
@@ -6138,10 +6223,44 @@ function App() {
                   )}
                 </div>
               </div>
+              {backendConfig.hasSupabase && (
+                <div className="auth-connect-card">
+                  <div>
+                    <span className="mini-label">Supabase Auth</span>
+                    <strong>{authSession?.user?.email || '팀 공유 DB 로그인 필요'}</strong>
+                    <p>
+                      같은 팀이 같은 후보 풀과 캠페인 데이터를 보려면 Supabase Auth 세션이 필요합니다.
+                    </p>
+                  </div>
+                  {authSession ? (
+                    <button className="secondary-button compact-button" type="button" onClick={disconnectAuth}>
+                      로그아웃
+                    </button>
+                  ) : (
+                    <div className="auth-connect-actions">
+                      <input
+                        value={authEmail}
+                        onChange={(event) => setAuthEmail(event.target.value)}
+                        placeholder="team@example.com"
+                        type="email"
+                      />
+                      <button className="primary-button compact-button" type="button" onClick={requestAuthLink}>
+                        로그인 링크 발송
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="integration-checklist">
                 <article className={backendConfig.hasSupabase ? 'ready' : ''}>
                   <strong>팀 공유 DB/Auth</strong>
-                  <span>{backendConfig.hasSupabase ? 'Supabase env 연결됨' : 'Supabase env 필요'}</span>
+                  <span>
+                    {backendConfig.hasSupabase
+                      ? authSession
+                        ? 'Supabase Auth 로그인됨'
+                        : 'Supabase env 연결됨 · 로그인 필요'
+                      : 'Supabase env 필요'}
+                  </span>
                 </article>
                 <article className={backendConfig.apiBaseUrl ? 'ready' : ''}>
                   <strong>API 키 서버 보관</strong>
