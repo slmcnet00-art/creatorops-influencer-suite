@@ -1383,27 +1383,6 @@ function buildLearningContext(brief) {
     .join('\n')
 }
 
-function parseDelimitedLine(line, delimiter) {
-  const cells = []
-  let current = ''
-  let quoted = false
-
-  for (const char of line) {
-    if (char === '"') {
-      quoted = !quoted
-      continue
-    }
-    if (char === delimiter && !quoted) {
-      cells.push(current.trim())
-      current = ''
-      continue
-    }
-    current += char
-  }
-  cells.push(current.trim())
-  return cells
-}
-
 function pickLearningCell(row, headers, names) {
   for (const name of names) {
     const index = headers.findIndex((header) => header.replace(/\s/g, '').toLowerCase() === name.replace(/\s/g, '').toLowerCase())
@@ -1450,16 +1429,6 @@ function buildLearningMaterialsFromRows(rawRows, sourceType, sourceName = '') {
   })
 }
 
-function parseLearningText(text, sourceType, sourceName = '') {
-  const clean = String(text || '').trim()
-  if (!clean) return []
-
-  const lines = clean.split(/\r?\n/).map((line) => line.trim()).filter(Boolean)
-  const delimiter = clean.includes('\t') ? '\t' : ','
-  const rows = lines.map((line) => parseDelimitedLine(line, delimiter))
-  return buildLearningMaterialsFromRows(rows, sourceType, sourceName)
-}
-
 function buildGuideLearningMaterial(text, sourceName = '') {
   const clean = String(text || '').trim()
   if (!clean) return null
@@ -1487,14 +1456,6 @@ function buildGuideLearningMaterial(text, sourceName = '') {
     dontSay,
     createdAt: nowLabel(),
   }
-}
-
-function googleSheetCsvUrl(value) {
-  const url = String(value || '').trim()
-  const match = url.match(/\/spreadsheets\/d\/([^/]+)/)
-  if (!match) return url
-  const gid = url.match(/[?&#]gid=(\d+)/)?.[1] ?? '0'
-  return `https://docs.google.com/spreadsheets/d/${match[1]}/export?format=csv&gid=${gid}`
 }
 
 function buildFriendlyProposalMessage(creator, brief, campaign) {
@@ -2644,7 +2605,6 @@ function App() {
     rawText: '',
     result: null,
   })
-  const [influencerStrategy, setInfluencerStrategy] = useState('')
   const [proposalText, setProposalText] = useState(
     buildFriendlyProposalMessage(defaultCreators[0], defaultBrandBrief, defaultCampaigns[0]),
   )
@@ -2657,10 +2617,12 @@ function App() {
     recruitEndDate: '',
     uploadDueDate: '',
     reportDueDate: '',
+    product: '',
     objective: '브랜드 인지도',
     campaignType: '제안형',
     targetPersona: '',
     searchKeywords: '',
+    exclusionKeywords: '',
     minFollowers: '',
     maxCreatorFee: '',
     preferredPlatforms: '',
@@ -2680,6 +2642,7 @@ function App() {
     guideChannel: 'Instagram Reels',
     oneMessage: '',
     hookPoints: '',
+    influencerStrategy: '',
     generatedContentGuide: '',
   })
   const [brandDraft, setBrandDraft] = useState({
@@ -2719,10 +2682,6 @@ function App() {
     followers: '',
     averageViews: '',
     note: '',
-  })
-  const [learningDraft, setLearningDraft] = useState({
-    sheetUrl: '',
-    pasteText: '',
   })
   const [trackingDraft, setTrackingDraft] = useState({
     campaignId: '',
@@ -3114,7 +3073,6 @@ function App() {
     () => buildCreatorSourceEvidence(selectedCreator),
     [selectedCreator],
   )
-  const activeLearningMaterials = getLearningMaterials(brandBrief)
   const tikTokSellerCandidates = useMemo(
     () =>
       creators
@@ -4124,30 +4082,6 @@ function App() {
     showToast('현재 검색 필터를 운영 기록에 저장했어요.')
   }
 
-  const updateBrandBrief = (field, value) => {
-    updateWorkspace((current) => ({
-      ...current,
-      brandBrief: current.activeBrandId === current.brands[0]?.id
-        ? {
-            ...current.brandBrief,
-            [field]: value,
-          }
-        : current.brandBrief,
-      brands: current.brands.map((brand) =>
-        brand.id === current.activeBrandId
-          ? {
-              ...brand,
-              name: field === 'brandName' ? value : brand.name,
-              brief: {
-                ...brand.brief,
-                [field]: value,
-              },
-            }
-          : brand,
-      ),
-    }))
-  }
-
   const toggleBriefList = (field, value) => {
     updateWorkspace((current) => {
       const currentBrand = current.brands.find((brand) => brand.id === current.activeBrandId) ?? current.brands[0]
@@ -4179,88 +4113,6 @@ function App() {
     })
   }
 
-  const saveLearningMaterials = (materials, sourceLabel) => {
-    if (!materials.length) {
-      showToast('저장할 브랜드 학습자료가 없습니다. 시트 내용을 확인해주세요.')
-      return
-    }
-
-    updateWorkspace((current) => {
-      const nextBrands = current.brands.map((brand) => {
-        if (brand.id !== current.activeBrandId) return brand
-        const currentMaterials = getLearningMaterials(brand.brief)
-        return {
-          ...brand,
-          brief: {
-            ...brand.brief,
-            learningMaterials: [...materials, ...currentMaterials].slice(0, 80),
-          },
-        }
-      })
-      const activeBrandForUpdate = nextBrands.find((brand) => brand.id === current.activeBrandId)
-
-      return appendActivity(
-        {
-          ...current,
-          brands: nextBrands,
-          brandBrief:
-            current.activeBrandId === current.brands[0]?.id && activeBrandForUpdate
-              ? activeBrandForUpdate.brief
-              : current.brandBrief,
-        },
-        'brand',
-        `${activeBrand.name} 브랜드 학습자료 ${materials.length}건 저장 · ${sourceLabel}`,
-      )
-    })
-    showToast(`브랜드 학습자료 ${materials.length}건을 저장했어요.`)
-  }
-
-  const importLearningPaste = () => {
-    const materials = parseLearningText(learningDraft.pasteText, 'Google Sheets 붙여넣기', '붙여넣기')
-    saveLearningMaterials(materials, 'Google Sheets 붙여넣기')
-    if (materials.length) setLearningDraft((draft) => ({ ...draft, pasteText: '' }))
-  }
-
-  const importLearningSheetUrl = async () => {
-    const url = googleSheetCsvUrl(learningDraft.sheetUrl)
-    if (!url) {
-      showToast('Google Sheet 공개 CSV URL 또는 공유 링크를 입력해주세요.')
-      return
-    }
-
-    try {
-      const response = await fetch(url)
-      if (!response.ok) throw new Error('시트 데이터를 가져오지 못했습니다.')
-      const text = await response.text()
-      const materials = parseLearningText(text, 'Google Sheets URL', learningDraft.sheetUrl)
-      saveLearningMaterials(materials, 'Google Sheets URL')
-    } catch {
-      showToast('공개 CSV/게시 링크만 자동 가져올 수 있어요. 비공개 시트는 범위를 복사해 붙여넣어주세요.')
-    }
-  }
-
-  const importLearningFile = async (event) => {
-    const file = event.target.files?.[0]
-    if (!file) return
-
-    if (/\.xls$/i.test(file.name)) {
-      showToast('구형 .xls 파일은 .xlsx 또는 CSV/TSV로 저장한 뒤 업로드해주세요.')
-      event.target.value = ''
-      return
-    }
-
-    try {
-      const materials = /\.xlsx$/i.test(file.name)
-        ? buildLearningMaterialsFromRows(await readSheet(file), '엑셀 업로드', file.name)
-        : parseLearningText(await file.text(), '엑셀/CSV 업로드', file.name)
-      saveLearningMaterials(materials, file.name)
-    } catch {
-      showToast('파일을 읽지 못했어요. .xlsx, CSV 또는 TSV 형식인지 확인해주세요.')
-    } finally {
-      event.target.value = ''
-    }
-  }
-
   const downloadCampaignGuideTemplate = () => {
     const filledTemplate = influencerBrandGuideTemplate
       .replace('- 브랜드명:', `- 브랜드명: ${activeBrand.name}`)
@@ -4278,10 +4130,25 @@ function App() {
     showToast('인플루언서 브랜드 가이드 양식을 다운로드했어요.')
   }
 
+  const buildCampaignBriefFromDraft = (draft = campaignDraft) => ({
+    ...brandBrief,
+    product: draft.product || brandBrief.product,
+    persona: draft.targetPersona || brandBrief.persona,
+    keywords: draft.searchKeywords || brandBrief.keywords,
+    exclusions: draft.exclusionKeywords || brandBrief.exclusions,
+    minFollowers: draft.minFollowers || brandBrief.minFollowers,
+    maxPrice: draft.maxCreatorFee || brandBrief.maxPrice,
+    platforms: draft.preferredPlatforms ? keywordList(draft.preferredPlatforms) : brandBrief.platforms,
+    learningMaterials: [
+      ...(draft.campaignGuideMaterials ?? []),
+      ...getLearningMaterials(brandBrief),
+    ].slice(0, 80),
+  })
+
   const buildCampaignContentGuideFromDraft = (draft = campaignDraft) =>
     buildInfluencerContentGuide({
       brand: activeBrand,
-      brief: brandBrief,
+      brief: buildCampaignBriefFromDraft(draft),
       campaign: draft,
       creators: getCreatorsByIds(creators, shortlist),
     })
@@ -4293,6 +4160,23 @@ function App() {
       generatedContentGuide: nextGuide,
     }))
     showToast('인플루언서 전달용 콘텐츠 가이드를 생성했어요.')
+  }
+
+  const generateCampaignInfluencerStrategy = () => {
+    const draftBrief = buildCampaignBriefFromDraft()
+    const strategy = buildInfluencerStrategy({
+      brand: activeBrand,
+      brief: draftBrief,
+      campaign: { ...selectedCampaign, ...campaignDraft },
+      creators,
+      recommendations: activeRecommendations,
+      learningMaterials: draftBrief.learningMaterials,
+    })
+    setCampaignDraft((current) => ({
+      ...current,
+      influencerStrategy: strategy,
+    }))
+    showToast('캠페인 기준 인플루언서 전략을 생성했어요.')
   }
 
   const downloadGeneratedCampaignContentGuide = async (format = 'docx') => {
@@ -4513,39 +4397,6 @@ function App() {
       ),
     )
     showToast(`AI가 캠페인 조건 기준으로 후보 ${ranked.length}명을 추출했어요.`)
-  }
-
-  const generateInfluencerStrategy = () => {
-    const strategy = buildInfluencerStrategy({
-      brand: activeBrand,
-      brief: brandBrief,
-      campaign: selectedCampaign,
-      creators,
-      recommendations: activeRecommendations,
-      learningMaterials: activeLearningMaterials,
-    })
-    setInfluencerStrategy(strategy)
-    showToast('브랜드 조건 기반 인플루언서 전략을 생성했어요.')
-  }
-
-  const downloadInfluencerStrategy = () => {
-    const strategy =
-      influencerStrategy ||
-      buildInfluencerStrategy({
-        brand: activeBrand,
-        brief: brandBrief,
-        campaign: selectedCampaign,
-        creators,
-        recommendations: activeRecommendations,
-        learningMaterials: activeLearningMaterials,
-      })
-    exportFile(
-      `creatorops-${safeFilePart(activeBrand.name || brandBrief.brandName)}-influencer-strategy.md`,
-      'text/markdown;charset=utf-8',
-      strategy,
-    )
-    if (!influencerStrategy) setInfluencerStrategy(strategy)
-    showToast('인플루언서 전략 문서를 다운로드했어요.')
   }
 
   const buildRecommendationOutreachRecord = (recommendation, creator, campaign) => {
@@ -5171,6 +5022,7 @@ function App() {
     const assignedCreators = getCreatorsByIds(creators, shortlist)
     const estimatedCost = assignedCreators.reduce((sum, creator) => sum + creator.price, 0)
     const budget = Number(campaignDraft.budget) || Math.max(estimatedCost, 15000000)
+    const campaignBrief = buildCampaignBriefFromDraft(campaignDraft)
     const generatedContentGuide = campaignDraft.generatedContentGuide || buildCampaignContentGuideFromDraft(campaignDraft)
     const nextCampaign = {
       id: createId(),
@@ -5188,16 +5040,18 @@ function App() {
         uploadDue: campaignDraft.uploadDueDate,
         reportDue: campaignDraft.reportDueDate,
       },
+      product: campaignBrief.product,
       objective: campaignDraft.objective,
       campaignType: campaignDraft.campaignType || '제안형',
-      targetPersona: campaignDraft.targetPersona || brandBrief.persona,
-      searchKeywords: campaignDraft.searchKeywords || brandBrief.keywords,
-      minFollowers: normalizeNumericTarget(campaignDraft.minFollowers) || Number(brandBrief.minFollowers) || 0,
-      maxCreatorFee: normalizeNumericTarget(campaignDraft.maxCreatorFee) || Number(brandBrief.maxPrice) || 0,
-      preferredPlatforms: campaignDraft.preferredPlatforms || brandBrief.platforms.join(', '),
+      targetPersona: campaignBrief.persona,
+      searchKeywords: campaignBrief.keywords,
+      exclusionKeywords: campaignBrief.exclusions,
+      minFollowers: normalizeNumericTarget(campaignBrief.minFollowers),
+      maxCreatorFee: normalizeNumericTarget(campaignBrief.maxPrice),
+      preferredPlatforms: campaignBrief.platforms.join(', '),
       mission:
         campaignDraft.mission ||
-        `${brandBrief.product}를 ${brandBrief.persona}에게 자연스럽게 소개하는 콘텐츠`,
+        `${campaignBrief.product}를 ${campaignBrief.persona}에게 자연스럽게 소개하는 콘텐츠`,
       reward: campaignDraft.reward || '제품 제공 + 협의 리워드',
       approvalFlow: campaignDraft.approvalFlow || '브리프 전달 → 콘텐츠 검수 → 게시 확인 → 성과 리포트',
       commerceMetric: campaignDraft.commerceMetric || '조회/댓글/공유와 전환 링크',
@@ -5212,6 +5066,7 @@ function App() {
       guideChannel: campaignDraft.guideChannel,
       oneMessage: campaignDraft.oneMessage,
       hookPoints: campaignDraft.hookPoints,
+      influencerStrategy: campaignDraft.influencerStrategy,
       generatedContentGuide,
       progress: 12,
       creatorIds: [...shortlist],
@@ -5257,10 +5112,12 @@ function App() {
       recruitEndDate: '',
       uploadDueDate: '',
       reportDueDate: '',
+      product: '',
       objective: '브랜드 인지도',
       campaignType: '제안형',
       targetPersona: '',
       searchKeywords: '',
+      exclusionKeywords: '',
       minFollowers: '',
       maxCreatorFee: '',
       preferredPlatforms: '',
@@ -5280,6 +5137,7 @@ function App() {
       guideChannel: 'Instagram Reels',
       oneMessage: '',
       hookPoints: '',
+      influencerStrategy: '',
       generatedContentGuide: '',
     })
     setModal(null)
@@ -6403,51 +6261,29 @@ function App() {
                 </div>
               )}
             </div>
-            <div className="brief-form">
-              <div className="brief-form-section">
-                <span className="mini-label">Brand Core</span>
-                <strong>브랜드마다 거의 바뀌지 않는 정보</strong>
+            <div className="campaign-brief-summary">
+              <div>
+                <span className="mini-label">Campaign Brief</span>
+                <strong>{selectedCampaign?.name ?? '캠페인을 먼저 선택하세요'}</strong>
+                <p>제품, 타깃, 키워드, 학습자료, 인플루언서 전략은 캠페인 생성에서 관리하고 발굴 화면에서는 선택 캠페인 기준으로 후보를 찾습니다.</p>
               </div>
-              <label>
-                브랜드
-                <input value={brandBrief.brandName} onChange={(event) => updateBrandBrief('brandName', event.target.value)} />
-              </label>
-              <label>
-                제품/서비스
-                <input value={brandBrief.product} onChange={(event) => updateBrandBrief('product', event.target.value)} />
-              </label>
-              <label className="wide-field">
-                타깃 페르소나
-                <input value={brandBrief.persona} onChange={(event) => updateBrandBrief('persona', event.target.value)} />
-              </label>
-              <label className="wide-field">
-                포함 키워드
-                <input value={brandBrief.keywords} onChange={(event) => updateBrandBrief('keywords', event.target.value)} />
-              </label>
-              <label className="wide-field">
-                제외 키워드
-                <input value={brandBrief.exclusions} onChange={(event) => updateBrandBrief('exclusions', event.target.value)} />
-              </label>
-              <div className="brief-form-section">
-                <span className="mini-label">Default Discovery Filter</span>
-                <strong>캠페인 조건이 없을 때 쓰는 기본 후보 필터</strong>
+              <div className="campaign-brief-summary-grid">
+                <Stat label="제품/서비스" value={selectedCampaign?.product || brandBrief.product || '-'} />
+                <Stat label="타깃" value={selectedCampaign?.targetPersona || brandBrief.persona || '-'} />
+                <Stat label="키워드" value={selectedCampaign?.searchKeywords || brandBrief.keywords || '-'} />
+                <Stat label="후보 조건" value={`${compactNumber(selectedCampaign?.minFollowers || brandBrief.minFollowers)}+ · ${won(selectedCampaign?.maxCreatorFee || brandBrief.maxPrice)}`} />
               </div>
-              <label>
-                기본 최소 팔로워
-                <input
-                  inputMode="numeric"
-                  value={brandBrief.minFollowers}
-                  onChange={(event) => updateBrandBrief('minFollowers', event.target.value)}
-                />
-              </label>
-              <label>
-                기본 최대 단가
-                <input
-                  inputMode="numeric"
-                  value={brandBrief.maxPrice}
-                  onChange={(event) => updateBrandBrief('maxPrice', event.target.value)}
-                />
-              </label>
+              <div className="campaign-brief-actions">
+                <button className="secondary-button compact-button" type="button" onClick={() => setModal({ type: 'create' })}>
+                  <Plus size={15} />
+                  캠페인 생성
+                </button>
+                {selectedCampaign && (
+                  <button className="primary-button compact-button" type="button" onClick={() => openCampaign(selectedCampaign)}>
+                    캠페인 상세
+                  </button>
+                )}
+              </div>
             </div>
             <div className="brief-toggles">
               <div>
@@ -6477,92 +6313,6 @@ function App() {
                       {option}
                     </button>
                   ))}
-              </div>
-            </div>
-            <div className="strategy-builder">
-              <div className="strategy-builder-head">
-                <div>
-                  <span className="mini-label">Influencer Strategy</span>
-                  <strong>인플루언서 전략 짜기</strong>
-                  <p>선택된 캠페인 조건과 브랜드 공통 학습자료를 기준으로 캐스팅 믹스, 콘텐츠 후킹, KPI 운영안을 정리합니다.</p>
-                </div>
-                <div className="strategy-actions">
-                  <button className="primary-button compact-button" type="button" onClick={generateInfluencerStrategy}>
-                    <Target size={16} />
-                    전략 생성
-                  </button>
-                  <button className="secondary-button compact-button" type="button" onClick={downloadInfluencerStrategy}>
-                    <Download size={16} />
-                    다운로드
-                  </button>
-                </div>
-              </div>
-              {influencerStrategy ? (
-                <div className="strategy-preview">
-                  <span>생성된 전략 미리보기</span>
-                  <pre>{influencerStrategy.slice(0, 1600)}</pre>
-                </div>
-              ) : (
-                <div className="strategy-empty">
-                  <FileText size={18} />
-                  <span>전략을 생성하면 추천 후보를 고르기 전 캐스팅 기준과 콘텐츠 방향이 이곳에 정리됩니다.</span>
-                </div>
-              )}
-            </div>
-            <div className="learning-materials">
-              <div className="learning-head">
-                <div>
-                  <span className="mini-label">Brand Learning</span>
-                  <strong>브랜드/제품 학습자료</strong>
-                  <p>제품 브리프, 상세페이지 문구, 금지표현, 기존 성과를 엑셀 파일 또는 Google Sheets로 넣으면 추천 이유와 제안 메시지에 반영합니다.</p>
-                </div>
-                <span className="result-count">{activeLearningMaterials.length}건</span>
-              </div>
-
-              <div className="learning-import-grid">
-                <label className="learning-file-input">
-                  엑셀/CSV 업로드
-                  <input accept=".csv,.tsv,.txt,.xlsx" type="file" onChange={importLearningFile} />
-                  <small>.xlsx, CSV, TSV 지원</small>
-                </label>
-                <label>
-                  Google Sheet URL
-                  <input
-                    value={learningDraft.sheetUrl}
-                    onChange={(event) => setLearningDraft({ ...learningDraft, sheetUrl: event.target.value })}
-                    placeholder="공개 시트 URL 또는 CSV 게시 링크"
-                  />
-                </label>
-                <button className="secondary-button compact-button" type="button" onClick={importLearningSheetUrl}>
-                  시트 가져오기
-                </button>
-              </div>
-
-              <label className="learning-paste">
-                Google Sheets 범위 붙여넣기
-                <textarea
-                  value={learningDraft.pasteText}
-                  onChange={(event) => setLearningDraft({ ...learningDraft, pasteText: event.target.value })}
-                  placeholder="제목\t내용\t키워드\t권장표현\t금지표현"
-                />
-              </label>
-              <button className="secondary-button compact-button learning-save-button" type="button" onClick={importLearningPaste}>
-                붙여넣기 저장
-              </button>
-
-              <div className="learning-list">
-                {activeLearningMaterials.length === 0 ? (
-                  <p>아직 등록된 학습자료가 없습니다.</p>
-                ) : (
-                  activeLearningMaterials.slice(0, 4).map((item) => (
-                    <article key={item.id}>
-                      <span>{item.sourceType}</span>
-                      <strong>{item.title}</strong>
-                      <p>{item.summary || item.keywords || '내용 미입력'}</p>
-                      {item.dontSay && <small>주의: {item.dontSay}</small>}
-                    </article>
-                  ))
-                )}
               </div>
             </div>
           </section>
@@ -7856,6 +7606,14 @@ function App() {
                 </div>
                 <div className="modal-two-col">
                   <label>
+                    제품/서비스
+                    <input
+                      value={campaignDraft.product}
+                      onChange={(event) => setCampaignDraft({ ...campaignDraft, product: event.target.value })}
+                      placeholder={brandBrief.product || '예: 이동식 켄넬'}
+                    />
+                  </label>
+                  <label>
                     이번 캠페인 타깃
                     <input
                       value={campaignDraft.targetPersona}
@@ -7863,12 +7621,22 @@ function App() {
                       placeholder={brandBrief.persona || '예: 반려견과 여행을 자주 하는 20-40대 보호자'}
                     />
                   </label>
+                </div>
+                <div className="modal-two-col">
                   <label>
                     캠페인 검색 키워드
                     <input
                       value={campaignDraft.searchKeywords}
                       onChange={(event) => setCampaignDraft({ ...campaignDraft, searchKeywords: event.target.value })}
                       placeholder={brandBrief.keywords || '예: 펫 여행, 켄넬, 차량 이동, 항공 이동'}
+                    />
+                  </label>
+                  <label>
+                    제외 키워드/주의 표현
+                    <input
+                      value={campaignDraft.exclusionKeywords}
+                      onChange={(event) => setCampaignDraft({ ...campaignDraft, exclusionKeywords: event.target.value })}
+                      placeholder={brandBrief.exclusions || '예: 과장 광고, 비교 브랜드 실명 언급'}
                     />
                   </label>
                 </div>
@@ -7904,8 +7672,8 @@ function App() {
               <div className="campaign-guide-panel">
                 <div>
                   <span className="mini-label">Creator Delivery Assets</span>
-                  <strong>브랜드 가이드 첨부/양식</strong>
-                  <p>캠페인 원메시지, USP, 금지/주의 표현처럼 크리에이터에게 전달할 자료만 이곳에서 관리합니다.</p>
+                  <strong>브랜드/제품 학습자료</strong>
+                  <p>이번 캠페인의 상세페이지, USP, 금지/주의 표현, 기존 성과 자료를 첨부하면 가이드와 메시지에 반영합니다.</p>
                 </div>
                 <div className="campaign-guide-actions">
                   <button className="secondary-button compact-button" type="button" onClick={downloadCampaignGuideTemplate}>
@@ -7925,6 +7693,44 @@ function App() {
                         {item.learningMaterialCount ? ` · 학습자료 ${item.learningMaterialCount}건` : ''}
                       </span>
                     ))}
+                  </div>
+                )}
+              </div>
+              <div className="campaign-guide-panel">
+                <div>
+                  <span className="mini-label">Influencer Strategy</span>
+                  <strong>인플루언서 전략 짜기</strong>
+                  <p>제품/서비스, 타깃, 키워드, 예산, KPI, 학습자료를 기준으로 캠페인용 캐스팅 믹스와 콘텐츠 방향을 생성합니다.</p>
+                </div>
+                <div className="campaign-guide-actions">
+                  <button className="primary-button compact-button" type="button" onClick={generateCampaignInfluencerStrategy}>
+                    <Target size={16} />
+                    전략 생성
+                  </button>
+                  {campaignDraft.influencerStrategy && (
+                    <button
+                      className="secondary-button compact-button"
+                      type="button"
+                      onClick={() => exportFile(
+                        `creatorops-${safeFilePart(activeBrand.name || 'brand')}-${safeFilePart(campaignDraft.name || 'campaign')}-influencer-strategy.md`,
+                        'text/markdown;charset=utf-8',
+                        campaignDraft.influencerStrategy,
+                      )}
+                    >
+                      <Download size={16} />
+                      다운로드
+                    </button>
+                  )}
+                </div>
+                {campaignDraft.influencerStrategy ? (
+                  <div className="content-guide-preview">
+                    <span>생성된 전략 미리보기</span>
+                    <pre>{campaignDraft.influencerStrategy.slice(0, 900)}</pre>
+                  </div>
+                ) : (
+                  <div className="strategy-empty">
+                    <FileText size={18} />
+                    <span>전략을 생성하면 캠페인 후보 발굴 기준과 메시지 방향이 함께 정리됩니다.</span>
                   </div>
                 )}
               </div>
