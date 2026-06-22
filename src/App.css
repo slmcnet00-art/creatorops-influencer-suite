@@ -4252,6 +4252,19 @@
   gap: 10px;
 }
 
+.campaign-edit-actions {
+  margin-top: 4px;
+  padding-top: 14px;
+  border-top: 1px solid rgba(0, 113, 227, 0.12);
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.campaign-kpi-head {
+  background: rgba(245, 249, 255, 0.9);
+}
+
 .campaign-modal-card .modal-grid {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }

@@ -7826,8 +7826,8 @@ function App() {
               </div>
               <div className="campaign-form-section-head campaign-budget-head">
                 <span className="mini-label">Step 3</span>
-                <strong>예산과 KPI</strong>
-                <p>리포트 기준이 되는 목표 숫자와 예산입니다.</p>
+                <strong>예산과 마감</strong>
+                <p>섭외 가능 범위와 최종 마감 기준을 먼저 정합니다.</p>
               </div>
               <label>
                 예산
@@ -7884,6 +7884,11 @@ function App() {
                     placeholder="예: 6월 28일"
                   />
                 </label>
+              </div>
+              <div className="campaign-form-section-head campaign-kpi-head">
+                <span className="mini-label">Step 5</span>
+                <strong>KPI 목표</strong>
+                <p>리포트 기준이 되는 조회수, 전환, 주문, 매출 목표입니다.</p>
               </div>
               <div className="modal-two-col">
                 <label>
@@ -7945,7 +7950,7 @@ function App() {
                 </label>
               </div>
               <div className="campaign-form-section-head campaign-ops-head">
-                <span className="mini-label">Step 5</span>
+                <span className="mini-label">Step 6</span>
                 <strong>운영 조건</strong>
                 <p>섭외 후 전달할 미션, 리워드, 검수 흐름입니다.</p>
               </div>
@@ -8628,6 +8633,15 @@ function App() {
                     검수/승인 플로우
                     <input value={campaignEditDraft.approvalFlow} onChange={(event) => updateCampaignEditField('approvalFlow', event.target.value)} />
                   </label>
+                  <div className="campaign-edit-actions">
+                    <button className="primary-button compact-button" type="button" onClick={saveCampaignEdit}>
+                      <CheckCircle2 size={16} />
+                      수정 저장
+                    </button>
+                    <button className="secondary-button compact-button" type="button" onClick={() => setCampaignEditDraft(null)}>
+                      취소
+                    </button>
+                  </div>
                 </div>
               )}
               <div className="modal-grid">
