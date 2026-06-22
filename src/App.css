@@ -4187,6 +4187,71 @@
   line-height: 1.55;
 }
 
+.campaign-detail-actions {
+  margin-top: 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.campaign-edit-panel {
+  padding: 16px;
+  border: 1px solid rgba(0, 113, 227, 0.16);
+  border-radius: 8px;
+  background: rgba(245, 249, 255, 0.72);
+  display: grid;
+  gap: 12px;
+}
+
+.campaign-edit-panel strong,
+.campaign-edit-panel p {
+  display: block;
+}
+
+.campaign-edit-panel strong {
+  margin-top: 3px;
+  color: var(--text-strong);
+}
+
+.campaign-edit-panel p {
+  margin: 5px 0 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.campaign-edit-panel label,
+.campaign-edit-schedule-grid label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.campaign-edit-panel input,
+.campaign-edit-panel select,
+.campaign-edit-panel textarea {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 11px;
+  color: var(--text-strong);
+  background: var(--surface-strong);
+  font: inherit;
+}
+
+.campaign-edit-panel textarea {
+  min-height: 92px;
+  resize: vertical;
+}
+
+.campaign-edit-schedule-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
 .campaign-modal-card .modal-grid {
   grid-template-columns: repeat(5, minmax(0, 1fr));
 }
@@ -4964,6 +5029,7 @@
 
   .campaign-modal-card .modal-grid,
   .campaign-modal-card .campaign-playbook,
+  .campaign-edit-schedule-grid,
   .campaign-create-form,
   .campaign-schedule-fields,
   .campaign-schedule-steps,
@@ -5235,6 +5301,7 @@
 
   .campaign-create-form,
   .campaign-form-section,
+  .campaign-edit-schedule-grid,
   .campaign-create-form .modal-two-col,
   .campaign-schedule-fields {
     grid-template-columns: 1fr;

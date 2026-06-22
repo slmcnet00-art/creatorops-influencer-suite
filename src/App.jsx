@@ -2642,6 +2642,7 @@ function App() {
     influencerStrategy: '',
     generatedContentGuide: '',
   })
+  const [campaignEditDraft, setCampaignEditDraft] = useState(null)
   const [brandDraft, setBrandDraft] = useState({
     name: '',
     owner: '',
@@ -4900,7 +4901,97 @@ function App() {
 
   const openCampaign = (campaign) => {
     setSelectedCampaignId(campaign.id)
+    setCampaignEditDraft(null)
     setModal({ type: 'campaign', campaignId: campaign.id })
+  }
+
+  const buildCampaignEditDraft = (campaign = {}) => ({
+    name: campaign.name || '',
+    product: campaign.product || '',
+    objective: campaign.objective || '브랜드 인지도',
+    campaignType: campaign.campaignType || '제안형',
+    targetPersona: campaign.targetPersona || '',
+    searchKeywords: campaign.searchKeywords || '',
+    exclusionKeywords: campaign.exclusionKeywords || '',
+    preferredPlatforms: campaign.preferredPlatforms || '',
+    minFollowers: campaign.minFollowers ? String(campaign.minFollowers) : '',
+    maxCreatorFee: campaign.maxCreatorFee ? String(campaign.maxCreatorFee) : '',
+    budget: campaign.budget ? String(campaign.budget) : '',
+    deadline: campaign.deadline || '',
+    recruitStartDate: campaign.schedule?.recruitStart || '',
+    recruitEndDate: campaign.schedule?.recruitEnd || '',
+    uploadDueDate: campaign.schedule?.uploadDue || '',
+    reportDueDate: campaign.schedule?.reportDue || '',
+    kpiGoal: campaign.kpiGoal || '',
+    sellerRecruitTarget: campaign.sellerRecruitTarget ? String(campaign.sellerRecruitTarget) : '',
+    targetViews: campaign.targetViews ? String(campaign.targetViews) : '',
+    targetConversions: campaign.targetConversions ? String(campaign.targetConversions) : '',
+    targetOrders: campaign.targetOrders ? String(campaign.targetOrders) : '',
+    targetRevenue: campaign.targetRevenue ? String(campaign.targetRevenue) : '',
+    mission: campaign.mission || '',
+    reward: campaign.reward || '',
+    approvalFlow: campaign.approvalFlow || '',
+    commerceMetric: campaign.commerceMetric || '',
+  })
+
+  const updateCampaignEditField = (field, value) => {
+    setCampaignEditDraft((current) => ({
+      ...(current || buildCampaignEditDraft(activeCampaignForModal)),
+      [field]: value,
+    }))
+  }
+
+  const saveCampaignEdit = () => {
+    if (!activeCampaignForModal || !campaignEditDraft) return
+
+    const nextBudget = Number(campaignEditDraft.budget) || activeCampaignForModal.budget
+    const nextCampaign = {
+      ...activeCampaignForModal,
+      name: campaignEditDraft.name || activeCampaignForModal.name,
+      product: campaignEditDraft.product || activeCampaignForModal.product,
+      objective: campaignEditDraft.objective,
+      campaignType: campaignEditDraft.campaignType,
+      targetPersona: campaignEditDraft.targetPersona,
+      searchKeywords: campaignEditDraft.searchKeywords,
+      exclusionKeywords: campaignEditDraft.exclusionKeywords,
+      preferredPlatforms: campaignEditDraft.preferredPlatforms,
+      minFollowers: normalizeNumericTarget(campaignEditDraft.minFollowers),
+      maxCreatorFee: normalizeNumericTarget(campaignEditDraft.maxCreatorFee),
+      budget: nextBudget,
+      spend: Math.min(activeCampaignForModal.spend || 0, nextBudget),
+      deadline: campaignEditDraft.recruitEndDate || campaignEditDraft.deadline || activeCampaignForModal.deadline,
+      schedule: {
+        recruitStart: campaignEditDraft.recruitStartDate,
+        recruitEnd: campaignEditDraft.recruitEndDate || campaignEditDraft.deadline,
+        uploadDue: campaignEditDraft.uploadDueDate,
+        reportDue: campaignEditDraft.reportDueDate,
+      },
+      kpiGoal: campaignEditDraft.kpiGoal,
+      sellerRecruitTarget: Number(campaignEditDraft.sellerRecruitTarget) || 0,
+      targetViews: normalizeNumericTarget(campaignEditDraft.targetViews),
+      targetConversions: normalizeNumericTarget(campaignEditDraft.targetConversions),
+      targetOrders: normalizeNumericTarget(campaignEditDraft.targetOrders),
+      targetRevenue: normalizeNumericTarget(campaignEditDraft.targetRevenue),
+      mission: campaignEditDraft.mission,
+      reward: campaignEditDraft.reward,
+      approvalFlow: campaignEditDraft.approvalFlow,
+      commerceMetric: campaignEditDraft.commerceMetric,
+    }
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          campaigns: current.campaigns.map((campaign) =>
+            campaign.id === activeCampaignForModal.id ? nextCampaign : campaign,
+          ),
+        },
+        'campaign',
+        `${nextCampaign.name} 캠페인 상세 수정`,
+      ),
+    )
+    setCampaignEditDraft(null)
+    showToast(`${nextCampaign.name} 캠페인 정보를 수정했어요.`)
   }
 
   const getCampaignContentGuide = (campaign) =>
@@ -8375,7 +8466,170 @@ function App() {
                 </div>
                 <h3>{activeCampaignForModal.name}</h3>
                 <p>{activeCampaignForModal.objective}</p>
+                <div className="campaign-detail-actions">
+                  {campaignEditDraft ? (
+                    <>
+                      <button className="primary-button compact-button" type="button" onClick={saveCampaignEdit}>
+                        <CheckCircle2 size={16} />
+                        수정 저장
+                      </button>
+                      <button className="secondary-button compact-button" type="button" onClick={() => setCampaignEditDraft(null)}>
+                        취소
+                      </button>
+                    </>
+                  ) : (
+                    <button
+                      className="secondary-button compact-button"
+                      type="button"
+                      onClick={() => setCampaignEditDraft(buildCampaignEditDraft(activeCampaignForModal))}
+                    >
+                      <SlidersHorizontal size={16} />
+                      캠페인 수정
+                    </button>
+                  )}
+                </div>
               </div>
+              {campaignEditDraft && (
+                <div className="campaign-edit-panel">
+                  <div>
+                    <span className="mini-label">Edit Campaign</span>
+                    <strong>캠페인 입력값 수정</strong>
+                    <p>저장하면 상세, 발굴 조건, 리포트 KPI 기준에 바로 반영됩니다.</p>
+                  </div>
+                  <div className="modal-two-col">
+                    <label>
+                      캠페인명
+                      <input value={campaignEditDraft.name} onChange={(event) => updateCampaignEditField('name', event.target.value)} />
+                    </label>
+                    <label>
+                      제품/서비스
+                      <input value={campaignEditDraft.product} onChange={(event) => updateCampaignEditField('product', event.target.value)} />
+                    </label>
+                  </div>
+                  <div className="modal-two-col">
+                    <label>
+                      목표
+                      <select value={campaignEditDraft.objective} onChange={(event) => updateCampaignEditField('objective', event.target.value)}>
+                        <option>브랜드 인지도</option>
+                        <option>구매 전환</option>
+                        <option>공동구매 전환</option>
+                        <option>예약 판매</option>
+                        <option>앱 설치</option>
+                      </select>
+                    </label>
+                    <label>
+                      캠페인 타입
+                      <select value={campaignEditDraft.campaignType} onChange={(event) => updateCampaignEditField('campaignType', event.target.value)}>
+                        {campaignTypeOptions.map((option) => (
+                          <option key={option}>{option}</option>
+                        ))}
+                      </select>
+                    </label>
+                  </div>
+                  <label>
+                    이번 캠페인 타깃
+                    <input value={campaignEditDraft.targetPersona} onChange={(event) => updateCampaignEditField('targetPersona', event.target.value)} />
+                  </label>
+                  <div className="modal-two-col">
+                    <label>
+                      검색 키워드
+                      <input value={campaignEditDraft.searchKeywords} onChange={(event) => updateCampaignEditField('searchKeywords', event.target.value)} />
+                    </label>
+                    <label>
+                      제외 키워드/주의 표현
+                      <input value={campaignEditDraft.exclusionKeywords} onChange={(event) => updateCampaignEditField('exclusionKeywords', event.target.value)} />
+                    </label>
+                  </div>
+                  <div className="modal-two-col">
+                    <label>
+                      후보 최소 팔로워
+                      <input inputMode="numeric" value={campaignEditDraft.minFollowers} onChange={(event) => updateCampaignEditField('minFollowers', event.target.value)} />
+                    </label>
+                    <label>
+                      후보 최대 단가
+                      <input inputMode="numeric" value={campaignEditDraft.maxCreatorFee} onChange={(event) => updateCampaignEditField('maxCreatorFee', event.target.value)} />
+                    </label>
+                  </div>
+                  <label>
+                    우선 발굴 플랫폼
+                    <input value={campaignEditDraft.preferredPlatforms} onChange={(event) => updateCampaignEditField('preferredPlatforms', event.target.value)} />
+                  </label>
+                  <div className="modal-two-col">
+                    <label>
+                      예산
+                      <input inputMode="numeric" value={campaignEditDraft.budget} onChange={(event) => updateCampaignEditField('budget', event.target.value)} />
+                    </label>
+                    <label>
+                      마감일
+                      <input value={campaignEditDraft.deadline} onChange={(event) => updateCampaignEditField('deadline', event.target.value)} />
+                    </label>
+                  </div>
+                  <div className="campaign-edit-schedule-grid">
+                    <label>
+                      모집 시작일
+                      <input value={campaignEditDraft.recruitStartDate} onChange={(event) => updateCampaignEditField('recruitStartDate', event.target.value)} />
+                    </label>
+                    <label>
+                      모집 마감일
+                      <input value={campaignEditDraft.recruitEndDate} onChange={(event) => updateCampaignEditField('recruitEndDate', event.target.value)} />
+                    </label>
+                    <label>
+                      업로드 완료일
+                      <input value={campaignEditDraft.uploadDueDate} onChange={(event) => updateCampaignEditField('uploadDueDate', event.target.value)} />
+                    </label>
+                    <label>
+                      보고 완료일
+                      <input value={campaignEditDraft.reportDueDate} onChange={(event) => updateCampaignEditField('reportDueDate', event.target.value)} />
+                    </label>
+                  </div>
+                  <div className="modal-two-col">
+                    <label>
+                      KPI 목표
+                      <input value={campaignEditDraft.kpiGoal} onChange={(event) => updateCampaignEditField('kpiGoal', event.target.value)} />
+                    </label>
+                    <label>
+                      셀러 섭외 목표
+                      <input inputMode="numeric" value={campaignEditDraft.sellerRecruitTarget} onChange={(event) => updateCampaignEditField('sellerRecruitTarget', event.target.value)} />
+                    </label>
+                  </div>
+                  <div className="campaign-edit-schedule-grid">
+                    <label>
+                      목표 조회수
+                      <input inputMode="numeric" value={campaignEditDraft.targetViews} onChange={(event) => updateCampaignEditField('targetViews', event.target.value)} />
+                    </label>
+                    <label>
+                      목표 전환
+                      <input inputMode="numeric" value={campaignEditDraft.targetConversions} onChange={(event) => updateCampaignEditField('targetConversions', event.target.value)} />
+                    </label>
+                    <label>
+                      목표 주문
+                      <input inputMode="numeric" value={campaignEditDraft.targetOrders} onChange={(event) => updateCampaignEditField('targetOrders', event.target.value)} />
+                    </label>
+                    <label>
+                      목표 매출
+                      <input inputMode="numeric" value={campaignEditDraft.targetRevenue} onChange={(event) => updateCampaignEditField('targetRevenue', event.target.value)} />
+                    </label>
+                  </div>
+                  <label>
+                    미션/가이드라인
+                    <textarea value={campaignEditDraft.mission} onChange={(event) => updateCampaignEditField('mission', event.target.value)} />
+                  </label>
+                  <div className="modal-two-col">
+                    <label>
+                      리워드/지급 기준
+                      <input value={campaignEditDraft.reward} onChange={(event) => updateCampaignEditField('reward', event.target.value)} />
+                    </label>
+                    <label>
+                      커머스/성과 지표
+                      <input value={campaignEditDraft.commerceMetric} onChange={(event) => updateCampaignEditField('commerceMetric', event.target.value)} />
+                    </label>
+                  </div>
+                  <label>
+                    검수/승인 플로우
+                    <input value={campaignEditDraft.approvalFlow} onChange={(event) => updateCampaignEditField('approvalFlow', event.target.value)} />
+                  </label>
+                </div>
+              )}
               <div className="modal-grid">
                 <Stat label="예산" value={won(activeCampaignForModal.budget)} />
                 <Stat label="집행" value={won(activeCampaignForModal.spend)} />
@@ -8423,16 +8677,31 @@ function App() {
               )}
               <div className="campaign-playbook">
                 <article>
-                  <span>캠페인별 발굴 조건</span>
+                  <span>제품/서비스</span>
+                  <p>{activeCampaignForModal.product || brandBrief.product || '제품/서비스 미입력'}</p>
+                </article>
+                <article>
+                  <span>타깃/검색 키워드</span>
                   <p>
                     {[
                       activeCampaignForModal.targetPersona,
                       activeCampaignForModal.searchKeywords,
+                    ].filter(Boolean).join(' · ') || '타깃/키워드 미입력'}
+                  </p>
+                </article>
+                <article>
+                  <span>후보 조건</span>
+                  <p>
+                    {[
                       activeCampaignForModal.preferredPlatforms,
                       activeCampaignForModal.minFollowers ? `최소 ${compactNumber(activeCampaignForModal.minFollowers)} 팔로워` : '',
                       activeCampaignForModal.maxCreatorFee ? `최대 ${won(activeCampaignForModal.maxCreatorFee)}` : '',
                     ].filter(Boolean).join(' · ') || '브랜드 공통 프로필의 기본 발굴 조건 사용'}
                   </p>
+                </article>
+                <article>
+                  <span>제외 키워드/주의 표현</span>
+                  <p>{activeCampaignForModal.exclusionKeywords || brandBrief.exclusions || '제외 조건 없음'}</p>
                 </article>
                 <article>
                   <span>KPI 목표</span>
