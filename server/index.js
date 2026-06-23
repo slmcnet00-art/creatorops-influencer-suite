@@ -278,12 +278,39 @@ async function searchYouTubeCreators(query, maxResults) {
 }
 
 async function searchContentReferences({ query, country, platform, sort, maxResults }) {
-  const normalizedPlatform = platform && platform !== '전체' && platform !== 'all' ? platform : 'YouTube'
-  if (normalizedPlatform !== 'YouTube') {
-    throw httpError(501, `${normalizedPlatform} reference search needs an official partner API or approved data provider.`)
+  const normalizedPlatform = normalizeReferencePlatform(platform)
+  const targetPlatforms = normalizedPlatform === 'all'
+    ? ['YouTube', 'Instagram', 'TikTok']
+    : [normalizedPlatform]
+  const perPlatformLimit = Math.max(1, Math.ceil(maxResults / targetPlatforms.length))
+  const results = []
+
+  for (const targetPlatform of targetPlatforms) {
+    if (targetPlatform === 'YouTube') {
+      const youtubeResults = await searchYouTubeVideoReferences({
+        query,
+        country,
+        sort,
+        maxResults: perPlatformLimit,
+      })
+      results.push(...youtubeResults)
+      continue
+    }
+
+    if (!process.env.BRAVE_SEARCH_API_KEY && normalizedPlatform === 'all') {
+      continue
+    }
+
+    const webResults = await searchWebContentReferences({
+      query,
+      country,
+      platform: targetPlatform,
+      maxResults: perPlatformLimit,
+    })
+    results.push(...webResults)
   }
 
-  return searchYouTubeVideoReferences({ query, country, sort, maxResults })
+  return sortContentReferences(dedupeContentReferences(results), sort).slice(0, maxResults)
 }
 
 async function searchYouTubeVideoReferences({ query, country, sort, maxResults }) {
@@ -379,6 +406,138 @@ function buildReferenceHook(title, description) {
   const cleanDescription = String(description || '').replace(/\s+/g, ' ').trim()
   if (cleanTitle) return cleanTitle.length > 72 ? `${cleanTitle.slice(0, 72)}...` : cleanTitle
   return cleanDescription.length > 72 ? `${cleanDescription.slice(0, 72)}...` : cleanDescription
+}
+
+async function searchWebContentReferences({ query, country, platform, maxResults }) {
+  const key = requireEnv('BRAVE_SEARCH_API_KEY')
+  const siteQuery = getReferenceSiteQuery(platform)
+  const params = new URLSearchParams({
+    q: `${siteQuery} ${query}`.trim(),
+    count: String(Math.min(Math.max(maxResults, 1), 20)),
+    safesearch: 'moderate',
+    freshness: 'pm',
+  })
+  const regionCode = normalizeRegionCode(country)
+  if (regionCode) params.set('country', regionCode)
+
+  const payload = await fetchJson(`https://api.search.brave.com/res/v1/web/search?${params}`, {
+    headers: {
+      Accept: 'application/json',
+      'X-Subscription-Token': key,
+    },
+  })
+  const items = payload.web?.results || []
+  const normalized = items
+    .map((item) => normalizeWebReferenceSearchItem(item, platform, regionCode || country || 'GLOBAL'))
+    .filter(Boolean)
+
+  if (!isPublicSnapshotEnabled()) return normalized
+
+  return Promise.all(
+    normalized.map(async (item) => {
+      const snapshot = await fetchPublicProfileSnapshot(item.url).catch(() => null)
+      if (!snapshot) return item
+      const metrics = snapshot.metrics || {}
+      return {
+        ...item,
+        title: item.title || snapshot.title,
+        thumbnailUrl: item.thumbnailUrl || snapshot.image || '',
+        views: metrics.views ?? item.views,
+        accountFollowers: metrics.followers ?? item.accountFollowers,
+        likes: metrics.likes ?? item.likes,
+        comments: metrics.comments ?? item.comments,
+        shares: metrics.shares ?? item.shares,
+        analysis: snapshot.description || item.analysis,
+        source: `${item.source} + ${snapshot.source}`,
+        confidence: Math.max(item.confidence, snapshot.confidence || 0),
+      }
+    }),
+  )
+}
+
+function normalizeWebReferenceSearchItem(item, platform, country) {
+  const url = item.url || item.link || ''
+  if (!url) return null
+  const inferredPlatform = platform === 'all' ? inferReferencePlatform(url) : platform
+  if (!['Instagram', 'TikTok'].includes(inferredPlatform)) return null
+
+  const title = stripHtml(item.title || '')
+  const description = stripHtml(item.description || item.snippet || '')
+  return {
+    id: `webref:${inferredPlatform}:${url}`,
+    mediaType: inferReferenceMediaType(url, inferredPlatform),
+    platform: inferredPlatform,
+    country: country || 'GLOBAL',
+    title: title || `${inferredPlatform} reference`,
+    url,
+    thumbnailUrl: item.thumbnail?.src || item.profile?.img || '',
+    views: null,
+    accountFollowers: null,
+    likes: null,
+    comments: null,
+    shares: null,
+    publishedAt: 'public search result',
+    hook: buildReferenceHook(title, description),
+    analysis: description || 'Brave Search public web result. Performance metrics need platform API, creator authorization, or public snapshot verification.',
+    applyIdea: 'Use the hook, thumbnail structure, caption angle, and comment-driving question as a production reference.',
+    source: 'Brave Search API',
+    confidence: 72,
+  }
+}
+
+function normalizeReferencePlatform(value) {
+  const platform = String(value || '').trim()
+  if (!platform || platform === '전체' || platform === 'all') return 'all'
+  if (/instagram/i.test(platform)) return 'Instagram'
+  if (/tiktok/i.test(platform)) return 'TikTok'
+  if (/youtube/i.test(platform)) return 'YouTube'
+  return platform
+}
+
+function getReferenceSiteQuery(platform) {
+  if (platform === 'Instagram') return '(site:instagram.com/reel/ OR site:instagram.com/p/)'
+  if (platform === 'TikTok') return 'site:tiktok.com/@ inurl:/video/'
+  return '(site:instagram.com/reel/ OR site:instagram.com/p/ OR site:tiktok.com/@ inurl:/video/)'
+}
+
+function inferReferencePlatform(value) {
+  try {
+    const hostname = new URL(value).hostname.replace(/^www\./, '').toLowerCase()
+    if (hostname.includes('instagram.com')) return 'Instagram'
+    if (hostname.includes('tiktok.com')) return 'TikTok'
+    if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) return 'YouTube'
+  } catch {
+    return 'Other'
+  }
+  return 'Other'
+}
+
+function inferReferenceMediaType(value, platform) {
+  if (platform === 'Instagram' && /\/p\//i.test(value)) return '이미지'
+  return '영상'
+}
+
+function dedupeContentReferences(results) {
+  const seen = new Set()
+  return results.filter((item) => {
+    const key = String(item.url || item.id || '').toLowerCase()
+    if (!key || seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function sortContentReferences(results, sort) {
+  return [...results].sort((a, b) => {
+    if (sort === 'recent') return String(b.publishedAt || '').localeCompare(String(a.publishedAt || ''))
+    if (sort === 'virality') {
+      const aRatio = Number(a.views || 0) / Math.max(Number(a.accountFollowers || 0), 1)
+      const bRatio = Number(b.views || 0) / Math.max(Number(b.accountFollowers || 0), 1)
+      return bRatio - aRatio
+    }
+    if (sort === 'shares') return Number(b.shares || 0) - Number(a.shares || 0)
+    return Number(b.views || 0) - Number(a.views || 0)
+  })
 }
 
 async function searchGoogleProfiles(query, platform, maxResults) {

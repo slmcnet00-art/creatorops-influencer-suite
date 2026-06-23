@@ -5931,7 +5931,7 @@ function App() {
       const payload = await searchContentReferences({
         query,
         country: referenceFilters.country === '전체' ? activeBrand.country || 'KR' : referenceFilters.country,
-        platform: referenceFilters.platform === '전체' ? 'YouTube' : referenceFilters.platform,
+        platform: referenceFilters.platform === '전체' ? 'all' : referenceFilters.platform,
         sort: referenceFilters.sort,
         maxResults: 12,
       })

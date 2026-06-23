@@ -203,6 +203,7 @@ API 상세 계약은 `API_INTEGRATION_CONTRACT.md`에 별도로 정리되어 있
 | POST `/youtube/channel` | 구현 | YouTube 채널 ID 또는 핸들로 채널 지표 조회 |
 | POST `/discovery/youtube/search` | 구현 | YouTube 채널 검색 및 지표 수집 |
 | POST `/discovery/google-profiles/search` | 구현 | Google Programmable Search 기반 공개 프로필 URL 검색 |
+| POST `/references/search` | 구현 | YouTube Data API 및 Brave Search 기반 콘텐츠/광고 레퍼런스 검색 |
 | POST `/ai/outreach-message` | 구현 | OpenAI 기반 섭외 제안 메시지 생성 |
 | POST `/ai/content-guide` | 구현 | OpenAI 기반 콘텐츠 가이드 생성 |
 | POST `/outreach/gmail/send` | 예약 | Gmail OAuth 토큰 저장소 연결 전까지 501 반환 |
@@ -216,6 +217,7 @@ API 상세 계약은 `API_INTEGRATION_CONTRACT.md`에 별도로 정리되어 있
 - `YOUTUBE_DATA_API_KEY`
 - `GOOGLE_SEARCH_API_KEY`
 - `GOOGLE_SEARCH_CX`
+- `BRAVE_SEARCH_API_KEY`
 - `OPENAI_API_KEY`
 - `OPENAI_MODEL`
 - `GMAIL_CLIENT_ID`

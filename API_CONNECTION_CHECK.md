@@ -15,6 +15,7 @@ The app is ready for credential-level API testing. The implementation already ha
 - `POST /youtube/channel`
 - `POST /discovery/youtube/search`
 - `POST /discovery/google-profiles/search`
+- `POST /references/search`
 - `POST /ai/outreach-message`
 - `POST /ai/content-guide`
 - `POST /public/profile-snapshot`
@@ -38,6 +39,7 @@ Data and discovery:
 - `YOUTUBE_DATA_API_KEY`
 - `GOOGLE_SEARCH_API_KEY`
 - `GOOGLE_SEARCH_CX`
+- `BRAVE_SEARCH_API_KEY`
 - `PUBLIC_SNAPSHOT_ENABLED`
 - `PUBLIC_SNAPSHOT_TIMEOUT_MS`
 
@@ -84,6 +86,7 @@ Missing-key behavior is correct:
 
 - `/youtube/channel` returns `YOUTUBE_DATA_API_KEY is not configured.`
 - `/discovery/google-profiles/search` returns `GOOGLE_SEARCH_API_KEY is not configured.`
+- `/references/search` returns `BRAVE_SEARCH_API_KEY is not configured.` when Instagram/TikTok reference search is requested without Brave Search.
 - `/ai/outreach-message` returns `OPENAI_API_KEY is not configured.`
 - `/oauth/google/auth-url` returns `GMAIL_CLIENT_ID is not configured.`
 
@@ -106,10 +109,20 @@ Verified:
 2. Confirm `GET /health`.
 3. Test YouTube channel lookup with a known public channel.
 4. Test YouTube discovery search with a narrow Korean query.
-5. Test Google profile discovery for Instagram and TikTok URLs.
-6. Test OpenAI outreach message generation.
-7. Test Gmail OAuth auth URL, then token exchange, then one internal test send.
-8. Enable Supabase workspace sync after API discovery is stable.
+5. Test `/references/search` with `platform=YouTube`.
+6. Add `BRAVE_SEARCH_API_KEY`, then test `/references/search` with `platform=Instagram`, `platform=TikTok`, and `platform=all`.
+7. Test Google profile discovery only if the Google Custom Search project has legacy access.
+8. Test OpenAI outreach message generation.
+9. Test Gmail OAuth auth URL, then token exchange, then one internal test send.
+10. Enable Supabase workspace sync after API discovery is stable.
+
+## Media API Notes
+
+- YouTube: official Data API is used for reference search, creator discovery, channel stats, and video performance.
+- Instagram/TikTok reference search: Brave Search API is used for public URL discovery, then public snapshot enrichment is attempted. Hidden platform metrics remain blank unless the platform exposes them publicly or a creator/API authorization path is added.
+- Instagram official path: Meta Instagram Graph API hashtag search can support public hashtag media for approved business/creator accounts, but it is not a full arbitrary competitor database.
+- TikTok official path: TikTok Research API can query public videos/accounts for eligible approved researchers. It is not a general commercial discovery API for every advertiser account.
+- Google Ads Transparency Center: Google does not currently expose a general official API for the transparency center; use a third-party provider only if its terms are acceptable.
 
 ## Operating Rule
 
