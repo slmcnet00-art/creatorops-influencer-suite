@@ -10,7 +10,8 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "production:check": "node scripts/check-production.mjs",
-    "render:create-api": "node scripts/render-create-api.mjs"
+    "render:create-api": "node scripts/render-create-api.mjs",
+    "render:sync-env": "node scripts/render-sync-env.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
