@@ -50,6 +50,7 @@ import {
   calculateDataCoverage,
   dataConnectorBlueprints,
   fetchYouTubeChannelSnapshot,
+  fetchPublicProfileSnapshot,
   refreshContentMetrics,
   searchGoogleProfileDiscovery,
   searchYouTubeCreatorDiscovery,
@@ -5867,6 +5868,40 @@ function App() {
     showToast('콘텐츠 레퍼런스를 저장했어요.')
   }
 
+  const importReferenceSnapshot = async () => {
+    const url = referenceDraft.url.trim()
+    if (!url) {
+      showToast('값을 가져올 레퍼런스 링크를 먼저 입력해주세요.')
+      return
+    }
+
+    try {
+      const snapshot = await fetchPublicProfileSnapshot(url)
+      if (!snapshot) {
+        showToast('API 서버가 연결되어야 공개 레퍼런스 값을 가져올 수 있어요.')
+        return
+      }
+
+      const metrics = snapshot.metrics || {}
+      setReferenceDraft((current) => ({
+        ...current,
+        title: current.title || snapshot.title || current.title,
+        thumbnailUrl: current.thumbnailUrl || snapshot.image || current.thumbnailUrl,
+        views: current.views || (metrics.views ? String(metrics.views) : ''),
+        accountFollowers: current.accountFollowers || (metrics.followers ? String(metrics.followers) : ''),
+        likes: current.likes || (metrics.likes ? String(metrics.likes) : ''),
+        comments: current.comments || (metrics.comments ? String(metrics.comments) : ''),
+        shares: current.shares || (metrics.shares ? String(metrics.shares) : ''),
+        analysis: current.analysis || snapshot.description || current.analysis,
+        publishedAt: current.publishedAt || '공개 스냅샷 수집',
+      }))
+
+      showToast('공개 레퍼런스 값을 가져왔어요. 공개되지 않은 지표는 비워둘게요.')
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '레퍼런스 값을 가져오지 못했어요.')
+    }
+  }
+
   const applyReferenceSearch = (event) => {
     event.preventDefault()
     setReferenceFilters((current) => ({
@@ -7321,6 +7356,13 @@ function App() {
                   placeholder="이미지 레퍼런스 또는 썸네일 URL"
                 />
               </label>
+            </div>
+            <div className="reference-import-row">
+              <button className="secondary-button compact-button" type="button" onClick={importReferenceSnapshot}>
+                <RefreshCw size={15} />
+                링크에서 값 가져오기
+              </button>
+              <span>공개 메타데이터 기준으로 제목, 썸네일, 조회/좋아요/댓글을 채웁니다.</span>
             </div>
             <div className="reference-form-grid four">
               <label>
