@@ -398,6 +398,11 @@ async function fetchPublicContentMetrics(post) {
 
 async function fetchPublicProfileSnapshot(url) {
   const safeUrl = validatePublicSnapshotUrl(url)
+  const youtubeVideoId = extractYouTubeVideoId(safeUrl)
+  if (youtubeVideoId && process.env.YOUTUBE_DATA_API_KEY) {
+    return fetchYouTubeReferenceSnapshot(safeUrl, youtubeVideoId)
+  }
+
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), getPublicSnapshotTimeoutMs())
 
@@ -429,6 +434,51 @@ async function fetchPublicProfileSnapshot(url) {
     }
   } finally {
     clearTimeout(timeout)
+  }
+}
+
+async function fetchYouTubeReferenceSnapshot(url, videoId) {
+  const key = requireEnv('YOUTUBE_DATA_API_KEY')
+  const params = new URLSearchParams({
+    part: 'snippet,statistics',
+    id: videoId,
+    key,
+  })
+  const payload = await fetchJson(`https://www.googleapis.com/youtube/v3/videos?${params}`)
+  const item = payload.items?.[0]
+  if (!item) {
+    throw httpError(404, 'YouTube video was not found or is not publicly accessible.')
+  }
+
+  const snippet = item.snippet || {}
+  const statistics = item.statistics || {}
+  const thumbnails = snippet.thumbnails || {}
+  const image =
+    thumbnails.maxres?.url ||
+    thumbnails.standard?.url ||
+    thumbnails.high?.url ||
+    thumbnails.medium?.url ||
+    thumbnails.default?.url ||
+    ''
+
+  return {
+    title: snippet.title || '',
+    description: snippet.description || '',
+    image,
+    handle: snippet.channelTitle ? `@${snippet.channelTitle}` : inferHandleFromUrl(url),
+    metrics: {
+      followers: null,
+      views: Number(statistics.viewCount || 0),
+      likes: Number(statistics.likeCount || 0),
+      comments: Number(statistics.commentCount || 0),
+      shares: null,
+      saves: null,
+    },
+    source: 'YouTube Data API videos.list',
+    confidence: 96,
+    status: 'snapshot_ready',
+    url,
+    fetchedAt: new Date().toISOString(),
   }
 }
 
