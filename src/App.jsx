@@ -1725,6 +1725,24 @@ function getReferenceVirality(reference) {
   return views / followers
 }
 
+function inferPlatformFromUrl(value) {
+  try {
+    const hostname = new URL(String(value || '')).hostname.replace(/^www\./, '').toLowerCase()
+    if (hostname.includes('youtube.com') || hostname.includes('youtu.be')) return 'YouTube'
+    if (hostname.includes('instagram.com')) return 'Instagram'
+    if (hostname.includes('tiktok.com')) return 'TikTok'
+  } catch {
+    return ''
+  }
+  return ''
+}
+
+function inferMediaTypeFromUrl(value, platform) {
+  const raw = String(value || '')
+  if (platform === 'Instagram' && /\/p\//i.test(raw)) return '이미지'
+  return platform ? '영상' : ''
+}
+
 function appendActivity(workspace, type, text) {
   return {
     ...workspace,
@@ -5810,7 +5828,7 @@ function App() {
     showToast('섭외 완료 인플루언서 풀에 저장했어요.')
   }
 
-  const saveContentReference = (event) => {
+  const saveContentReference = async (event) => {
     event.preventDefault()
 
     if (!selectedCampaign) {
@@ -5818,29 +5836,44 @@ function App() {
       return
     }
 
-    if (!referenceDraft.title.trim() || !referenceDraft.url.trim()) {
-      showToast('레퍼런스 제목과 링크는 필수입니다.')
+    if (!referenceDraft.url.trim()) {
+      showToast('저장할 레퍼런스 링크를 먼저 입력해주세요.')
       return
     }
+
+    let snapshot = null
+    try {
+      snapshot = await fetchPublicProfileSnapshot(referenceDraft.url.trim())
+    } catch (error) {
+      showToast(error instanceof Error ? `자동 수집 실패: ${error.message}` : '자동 수집에 실패했지만 입력값으로 저장합니다.')
+    }
+
+    const metrics = snapshot?.metrics || {}
+    const autoTitle = snapshot?.title || ''
+    const autoDescription = snapshot?.description || ''
+    const autoPlatform = inferPlatformFromUrl(referenceDraft.url) || referenceDraft.platform
+    const autoMediaType = inferMediaTypeFromUrl(referenceDraft.url, autoPlatform) || referenceDraft.mediaType
 
     const nextReference = {
       id: createId(),
       campaignId: selectedCampaign.id,
-      mediaType: referenceDraft.mediaType,
-      platform: referenceDraft.platform,
+      mediaType: autoMediaType,
+      platform: autoPlatform,
       country: referenceDraft.country || 'KR',
-      title: referenceDraft.title.trim(),
+      title: referenceDraft.title.trim() || autoTitle || '링크 저장 레퍼런스',
       url: referenceDraft.url.trim(),
-      thumbnailUrl: referenceDraft.thumbnailUrl.trim(),
-      views: Number(referenceDraft.views || 0),
-      accountFollowers: Number(referenceDraft.accountFollowers || 0),
-      likes: Number(referenceDraft.likes || 0),
-      comments: Number(referenceDraft.comments || 0),
-      shares: Number(referenceDraft.shares || 0),
-      publishedAt: referenceDraft.publishedAt || '수동 등록',
+      thumbnailUrl: referenceDraft.thumbnailUrl.trim() || snapshot?.image || '',
+      views: Number(referenceDraft.views || metrics.views || 0),
+      accountFollowers: Number(referenceDraft.accountFollowers || metrics.followers || 0),
+      likes: Number(referenceDraft.likes || metrics.likes || 0),
+      comments: Number(referenceDraft.comments || metrics.comments || 0),
+      shares: Number(referenceDraft.shares || metrics.shares || 0),
+      publishedAt: referenceDraft.publishedAt || (snapshot ? '자동 수집' : '링크 저장'),
       hook: referenceDraft.hook.trim(),
-      analysis: referenceDraft.analysis.trim(),
+      analysis: referenceDraft.analysis.trim() || autoDescription,
       applyIdea: referenceDraft.applyIdea.trim(),
+      source: snapshot?.source || 'Manual link save',
+      confidence: snapshot?.confidence || 40,
       savedAt: nowLabel(),
     }
 
@@ -5871,7 +5904,7 @@ function App() {
       analysis: '',
       applyIdea: '',
     })
-    showToast('콘텐츠 레퍼런스를 저장했어요.')
+    showToast(snapshot ? '링크 정보를 자동 수집해서 레퍼런스로 저장했어요.' : '자동 수집 없이 입력값으로 레퍼런스를 저장했어요.')
   }
 
   const importReferenceSnapshot = async () => {
@@ -7369,7 +7402,7 @@ function App() {
             <div>
               <span className="mini-label">Save Link</span>
               <strong>레퍼런스 링크 저장</strong>
-              <p>검색 결과가 아니라, 내가 따로 저장하고 싶은 영상/이미지 URL이 있을 때만 열어서 등록합니다.</p>
+              <p>저장하고 싶은 URL만 넣으면 제목, 썸네일, 조회수, 좋아요, 댓글을 먼저 자동 수집한 뒤 저장합니다.</p>
             </div>
             <button
               className="secondary-button compact-button"
@@ -7463,9 +7496,9 @@ function App() {
             <div className="reference-import-row">
               <button className="secondary-button compact-button" type="button" onClick={importReferenceSnapshot}>
                 <RefreshCw size={15} />
-                링크에서 값 가져오기
+                미리 가져오기
               </button>
-              <span>공개 메타데이터 기준으로 제목, 썸네일, 조회/좋아요/댓글을 채웁니다.</span>
+              <span>저장 버튼을 눌러도 자동 수집됩니다. 이 버튼은 저장 전 미리 채워볼 때만 사용하세요.</span>
             </div>
             <div className="reference-form-grid four">
               <label>
