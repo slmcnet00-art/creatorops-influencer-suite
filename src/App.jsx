@@ -5912,7 +5912,7 @@ function App() {
     const query = referenceFilters.query.trim()
     setReferenceFilters((current) => ({
       ...current,
-      appliedQuery: query,
+      appliedQuery: '',
     }))
 
     if (!query) {
