@@ -561,46 +561,6 @@ const defaultTrackedPosts = [
 ]
 
 const defaultContentReferences = [
-  {
-    id: 9201,
-    campaignId: 101,
-    mediaType: '영상',
-    platform: 'TikTok',
-    country: 'KR',
-    title: '첫 3초 가격/효능 훅 릴스',
-    url: 'https://www.tiktok.com/@demo/video/beauty-hook',
-    thumbnailUrl: '',
-    views: 1280000,
-    accountFollowers: 185000,
-    likes: 84000,
-    comments: 3200,
-    shares: 6100,
-    publishedAt: '최근 7일',
-    hook: '첫 화면에 가격 비교와 사용 전후를 동시에 배치',
-    analysis: '숫자형 훅, 즉시 사용 장면, 댓글 유도 질문이 결합되어 저장/공유가 높음',
-    applyIdea: '캠페인 가이드에 첫 3초 가격/권위/사용 장면 3요소를 필수 컷으로 반영',
-    savedAt: '데모 데이터',
-  },
-  {
-    id: 9202,
-    campaignId: 103,
-    mediaType: '이미지',
-    platform: 'Instagram',
-    country: 'KR',
-    title: '사이즈 비교형 캐러셀 썸네일',
-    url: 'https://www.instagram.com/p/demo-pet-carousel/',
-    thumbnailUrl: 'https://images.unsplash.com/photo-1548199973-03cce0bbc87b?auto=format&fit=crop&w=640&q=80',
-    views: 420000,
-    accountFollowers: 32000,
-    likes: 23800,
-    comments: 940,
-    shares: 1800,
-    publishedAt: '최근 30일',
-    hook: '제품 사이즈표와 실제 사용 사진을 첫 장에서 같이 제시',
-    analysis: '구매 전 의문을 이미지 한 장으로 해결해 댓글 질문을 줄이고 저장률을 높이는 구조',
-    applyIdea: '이미지 레퍼런스 기반 사이즈표, 비교컷, 사용컷을 가이드에 포함',
-    savedAt: '데모 데이터',
-  },
 ]
 
 const defaultRecommendations = [
@@ -767,7 +727,7 @@ const defaultWorkspace = {
   fulfillmentRecords: defaultFulfillmentRecords,
   trackedPosts: defaultTrackedPosts,
   contentReferences: defaultContentReferences,
-  savedProductionReferenceIds: [9201],
+  savedProductionReferenceIds: [],
   activities: [
     {
       id: 9001,
@@ -2936,7 +2896,10 @@ function App() {
     [activeRecruitedPool, selectedCampaign],
   )
   const selectedCampaignReferences = useMemo(
-    () => contentReferences.filter((item) => activeCampaignIdSet.has(item.campaignId)),
+    () =>
+      contentReferences.filter(
+        (item) => activeCampaignIdSet.has(item.campaignId) && item.savedAt !== '데모 데이터',
+      ),
     [activeCampaignIdSet, contentReferences],
   )
   const referenceCountryOptions = useMemo(
