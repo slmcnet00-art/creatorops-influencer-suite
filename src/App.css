@@ -712,6 +712,27 @@
   background: rgba(255, 244, 242, 0.88);
 }
 
+.reference-filter-heading {
+  margin: 0 18px 8px;
+  padding: 0 2px;
+}
+
+.reference-filter-heading strong,
+.reference-filter-heading p {
+  display: block;
+}
+
+.reference-filter-heading strong {
+  color: var(--text-strong);
+}
+
+.reference-filter-heading p {
+  margin: 3px 0 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .reference-filter-bar {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

@@ -7233,6 +7233,14 @@ function App() {
             </div>
           )}
 
+          <div className="reference-filter-heading">
+            <div>
+              <span className="mini-label">Result Filter</span>
+              <strong>검색 결과 필터</strong>
+              <p>위 검색으로 추가된 레퍼런스와 저장된 레퍼런스를 국가, 미디어, 플랫폼, 순위 기준으로 좁혀봅니다.</p>
+            </div>
+          </div>
+
           <div className="reference-filter-bar">
             <label>
               <span>국가</span>
@@ -7352,23 +7360,23 @@ function App() {
               <div className="empty-state compact-empty">
                 <Video size={22} />
                 <strong>조건에 맞는 레퍼런스가 없습니다.</strong>
-                <p>국가, 미디어, 플랫폼 필터를 조정하거나 새 영상/이미지 레퍼런스를 저장하세요.</p>
+                <p>검색 결과 필터를 조정하거나 새 키워드로 레퍼런스를 검색하세요.</p>
               </div>
             )}
           </div>
 
           <div className="reference-manual-toggle">
             <div>
-              <span className="mini-label">Manual Reference</span>
-              <strong>직접 URL 또는 이미지 레퍼런스 등록</strong>
-              <p>검색에 안 잡힌 영상/이미지, 광고주가 준 참고 링크, 썸네일 이미지를 수동으로 저장할 때만 사용합니다.</p>
+              <span className="mini-label">Save Link</span>
+              <strong>레퍼런스 링크 저장</strong>
+              <p>검색 결과가 아니라, 내가 따로 저장하고 싶은 영상/이미지 URL이 있을 때만 열어서 등록합니다.</p>
             </div>
             <button
               className="secondary-button compact-button"
               type="button"
               onClick={() => setIsReferenceManualFormOpen((current) => !current)}
             >
-              {isReferenceManualFormOpen ? '접기' : '수동 등록 열기'}
+              {isReferenceManualFormOpen ? '링크 저장 닫기' : '링크 저장 열기'}
             </button>
           </div>
 
