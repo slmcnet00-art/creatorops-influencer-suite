@@ -2732,6 +2732,7 @@ function App() {
     mode: 'idle',
     message: '',
   })
+  const [isReferenceManualFormOpen, setIsReferenceManualFormOpen] = useState(false)
   const [fulfillmentDraft, setFulfillmentDraft] = useState(createEmptyFulfillmentDraft)
 
   const {
@@ -7303,8 +7304,10 @@ function App() {
                   {item.thumbnailUrl ? (
                     <img src={item.thumbnailUrl} alt="" />
                   ) : (
-                    <div>
+                    <div className="reference-media-placeholder">
                       {item.mediaType === '영상' ? <Video size={24} /> : <ImageIcon size={24} />}
+                      <span>{item.platform}</span>
+                      <small>썸네일 없음</small>
                     </div>
                   )}
                 </div>
@@ -7354,6 +7357,22 @@ function App() {
             )}
           </div>
 
+          <div className="reference-manual-toggle">
+            <div>
+              <span className="mini-label">Manual Reference</span>
+              <strong>직접 URL 또는 이미지 레퍼런스 등록</strong>
+              <p>검색에 안 잡힌 영상/이미지, 광고주가 준 참고 링크, 썸네일 이미지를 수동으로 저장할 때만 사용합니다.</p>
+            </div>
+            <button
+              className="secondary-button compact-button"
+              type="button"
+              onClick={() => setIsReferenceManualFormOpen((current) => !current)}
+            >
+              {isReferenceManualFormOpen ? '접기' : '수동 등록 열기'}
+            </button>
+          </div>
+
+          {isReferenceManualFormOpen && (
           <form className="reference-form" onSubmit={saveContentReference}>
             <div className="reference-form-grid">
               <label>
@@ -7479,6 +7498,7 @@ function App() {
               </button>
             </div>
           </form>
+          )}
 
           <div className="production-reference-shelf">
             <div className="production-reference-head">

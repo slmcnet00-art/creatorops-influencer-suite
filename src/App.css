@@ -822,6 +822,34 @@
   justify-content: flex-end;
 }
 
+.reference-manual-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0 18px 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.reference-manual-toggle strong,
+.reference-manual-toggle p {
+  display: block;
+}
+
+.reference-manual-toggle strong {
+  color: var(--text-strong);
+}
+
+.reference-manual-toggle p {
+  margin: 4px 0 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .reference-list {
   display: grid;
   gap: 10px;
@@ -937,6 +965,33 @@
   display: grid;
   place-items: center;
   color: var(--accent);
+}
+
+.reference-media-placeholder {
+  gap: 4px;
+  padding: 12px;
+  color: var(--text-soft);
+  background:
+    linear-gradient(135deg, rgba(0, 113, 227, 0.1), rgba(52, 199, 89, 0.09)),
+    var(--surface-strong);
+  text-align: center;
+}
+
+.reference-media-placeholder span,
+.reference-media-placeholder small {
+  display: block;
+}
+
+.reference-media-placeholder span {
+  color: var(--text-strong);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.reference-media-placeholder small {
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 800;
 }
 
 .reference-body {
@@ -5519,6 +5574,7 @@
   }
 
   .production-reference-head,
+  .reference-manual-toggle,
   .production-reference-list article,
   .production-reference-actions {
     align-items: flex-start;
