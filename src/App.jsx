@@ -7376,8 +7376,25 @@ function App() {
             </button>
           </div>
 
-          {isReferenceManualFormOpen && (
+{isReferenceManualFormOpen && (
           <form className="reference-form" onSubmit={saveContentReference}>
+            <div className="reference-url-check-row">
+              <label>
+                <span>레퍼런스 URL</span>
+                <input
+                  value={referenceDraft.url}
+                  onChange={(event) => setReferenceDraft({ ...referenceDraft, url: event.target.value })}
+                  placeholder="저장할 영상/이미지 링크를 붙여넣으세요"
+                />
+              </label>
+              <button className="secondary-button compact-button" type="button" onClick={importReferenceSnapshot}>
+                <RefreshCw size={15} />
+                확인하기
+              </button>
+            </div>
+            <div className="reference-import-row">
+              <span>URL 확인 후 공개 데이터로 제목, 썸네일, 조회수, 좋아요, 댓글을 채웁니다. 채워진 값은 아래에서 수정할 수 있어요.</span>
+            </div>
             <div className="reference-form-grid">
               <label>
                 <span>미디어</span>
@@ -7438,31 +7455,14 @@ function App() {
                 placeholder="요즘 조회수 높은 영상/이미지 레퍼런스 제목"
               />
             </label>
-            <div className="reference-form-grid two">
-              <label>
-                <span>콘텐츠 링크</span>
-                <input
-                  value={referenceDraft.url}
-                  onChange={(event) => setReferenceDraft({ ...referenceDraft, url: event.target.value })}
-                  placeholder="https://..."
-                />
-              </label>
-              <label>
-                <span>이미지/썸네일 URL</span>
-                <input
-                  value={referenceDraft.thumbnailUrl}
-                  onChange={(event) => setReferenceDraft({ ...referenceDraft, thumbnailUrl: event.target.value })}
-                  placeholder="이미지 레퍼런스 또는 썸네일 URL"
-                />
-              </label>
-            </div>
-            <div className="reference-import-row">
-              <button className="secondary-button compact-button" type="button" onClick={importReferenceSnapshot}>
-                <RefreshCw size={15} />
-                미리 가져오기
-              </button>
-              <span>저장 버튼을 눌러도 자동 수집됩니다. 이 버튼은 저장 전 미리 채워볼 때만 사용하세요.</span>
-            </div>
+            <label>
+              <span>이미지/썸네일 URL</span>
+              <input
+                value={referenceDraft.thumbnailUrl}
+                onChange={(event) => setReferenceDraft({ ...referenceDraft, thumbnailUrl: event.target.value })}
+                placeholder="자동 수집되며, 필요하면 직접 수정"
+              />
+            </label>
             <div className="reference-form-grid four">
               <label>
                 <span>좋아요</span>
