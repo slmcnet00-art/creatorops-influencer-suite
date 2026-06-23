@@ -67,6 +67,22 @@ app.post('/discovery/google-profiles/search', async (request, response, next) =>
   }
 })
 
+app.post('/references/search', async (request, response, next) => {
+  try {
+    const query = String(request.body?.query || '').trim()
+    const country = String(request.body?.country || 'KR').trim()
+    const platform = String(request.body?.platform || 'YouTube').trim()
+    const sort = String(request.body?.sort || 'views').trim()
+    const maxResults = clamp(Number(request.body?.maxResults || 12), 1, 25)
+    if (!query) throw httpError(400, 'query is required.')
+
+    const references = await searchContentReferences({ query, country, platform, sort, maxResults })
+    response.json({ data: { references } })
+  } catch (error) {
+    next(error)
+  }
+})
+
 app.post('/ai/outreach-message', async (request, response, next) => {
   try {
     const { creator, brand, campaign } = request.body || {}
@@ -259,6 +275,110 @@ async function searchYouTubeCreators(query, maxResults) {
   })
   const channelPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/channels?${channelParams}`)
   return (channelPayload.items || []).map((channel) => normalizeYouTubeChannel(channel))
+}
+
+async function searchContentReferences({ query, country, platform, sort, maxResults }) {
+  const normalizedPlatform = platform && platform !== '전체' && platform !== 'all' ? platform : 'YouTube'
+  if (normalizedPlatform !== 'YouTube') {
+    throw httpError(501, `${normalizedPlatform} reference search needs an official partner API or approved data provider.`)
+  }
+
+  return searchYouTubeVideoReferences({ query, country, sort, maxResults })
+}
+
+async function searchYouTubeVideoReferences({ query, country, sort, maxResults }) {
+  const key = requireEnv('YOUTUBE_DATA_API_KEY')
+  const searchParams = new URLSearchParams({
+    part: 'snippet',
+    type: 'video',
+    q: query,
+    maxResults: String(maxResults),
+    order: sort === 'recent' ? 'date' : sort === 'shares' ? 'rating' : 'viewCount',
+    safeSearch: 'none',
+    videoEmbeddable: 'true',
+    key,
+  })
+  const regionCode = normalizeRegionCode(country)
+  if (regionCode) searchParams.set('regionCode', regionCode)
+  if (regionCode === 'KR') searchParams.set('relevanceLanguage', 'ko')
+  if (regionCode === 'JP') searchParams.set('relevanceLanguage', 'ja')
+  if (regionCode === 'US') searchParams.set('relevanceLanguage', 'en')
+
+  const searchPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/search?${searchParams}`)
+  const videoIds = [...new Set((searchPayload.items || []).map((item) => item.id?.videoId).filter(Boolean))]
+  if (!videoIds.length) return []
+
+  const videoParams = new URLSearchParams({
+    part: 'snippet,statistics',
+    id: videoIds.join(','),
+    key,
+  })
+  const videoPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/videos?${videoParams}`)
+  const videos = videoPayload.items || []
+  const channelIds = [...new Set(videos.map((item) => item.snippet?.channelId).filter(Boolean))]
+  const channelMap = await fetchYouTubeChannelStatsMap(channelIds)
+
+  return videos.map((item) => normalizeYouTubeReference(item, channelMap, regionCode || country || 'GLOBAL'))
+}
+
+async function fetchYouTubeChannelStatsMap(channelIds) {
+  if (!channelIds.length) return new Map()
+  const key = requireEnv('YOUTUBE_DATA_API_KEY')
+  const params = new URLSearchParams({
+    part: 'snippet,statistics',
+    id: channelIds.join(','),
+    key,
+  })
+  const payload = await fetchJson(`https://www.googleapis.com/youtube/v3/channels?${params}`)
+  return new Map((payload.items || []).map((channel) => [channel.id, normalizeYouTubeChannel(channel)]))
+}
+
+function normalizeYouTubeReference(item, channelMap, country) {
+  const snippet = item.snippet || {}
+  const statistics = item.statistics || {}
+  const channel = channelMap.get(snippet.channelId) || {}
+  const thumbnails = snippet.thumbnails || {}
+  const views = Number(statistics.viewCount || 0)
+  const likes = Number(statistics.likeCount || 0)
+  const comments = Number(statistics.commentCount || 0)
+  const followers = Number(channel.followers || 0)
+  const virality = followers ? views / followers : 0
+  const publishedDate = snippet.publishedAt ? snippet.publishedAt.slice(0, 10) : ''
+
+  return {
+    id: `ytref:${item.id}`,
+    mediaType: '영상',
+    platform: 'YouTube',
+    country: country || 'GLOBAL',
+    title: snippet.title || 'YouTube reference',
+    url: `https://www.youtube.com/watch?v=${item.id}`,
+    thumbnailUrl:
+      thumbnails.maxres?.url ||
+      thumbnails.standard?.url ||
+      thumbnails.high?.url ||
+      thumbnails.medium?.url ||
+      thumbnails.default?.url ||
+      '',
+    views,
+    accountFollowers: followers,
+    likes,
+    comments,
+    shares: null,
+    publishedAt: publishedDate || '업로드일 미확인',
+    hook: buildReferenceHook(snippet.title, snippet.description),
+    analysis: `YouTube 인기 영상 검색 결과입니다. 조회 ${views.toLocaleString('ko-KR')}회, 좋아요 ${likes.toLocaleString('ko-KR')}개, 댓글 ${comments.toLocaleString('ko-KR')}개${virality ? `, 팔로워 대비 ${virality.toFixed(1)}x` : ''}.`,
+    applyIdea: '썸네일 구도, 첫 문장, 댓글을 만든 질문 구조를 캠페인 가이드에 차용',
+    channelTitle: snippet.channelTitle || channel.name || '',
+    source: 'YouTube Data API search.list + videos.list',
+    confidence: 96,
+  }
+}
+
+function buildReferenceHook(title, description) {
+  const cleanTitle = String(title || '').replace(/\s+/g, ' ').trim()
+  const cleanDescription = String(description || '').replace(/\s+/g, ' ').trim()
+  if (cleanTitle) return cleanTitle.length > 72 ? `${cleanTitle.slice(0, 72)}...` : cleanTitle
+  return cleanDescription.length > 72 ? `${cleanDescription.slice(0, 72)}...` : cleanDescription
 }
 
 async function searchGoogleProfiles(query, platform, maxResults) {
@@ -811,6 +931,12 @@ function isPublicSnapshotEnabled() {
 
 function getPublicSnapshotTimeoutMs() {
   return clamp(Number(process.env.PUBLIC_SNAPSHOT_TIMEOUT_MS || 8000), 1500, 20000)
+}
+
+function normalizeRegionCode(value) {
+  const clean = String(value || '').trim().toUpperCase()
+  if (!clean || clean === '전체' || clean === 'ALL' || clean === 'GLOBAL') return ''
+  return /^[A-Z]{2}$/.test(clean) ? clean : ''
 }
 
 function pickMetaContent(html, name) {

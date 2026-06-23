@@ -683,6 +683,35 @@
   font: inherit;
 }
 
+.reference-search-status {
+  margin: 0 18px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text-soft);
+  background: rgba(255, 255, 255, 0.64);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.reference-search-status.loading {
+  border-color: rgba(0, 113, 227, 0.22);
+  color: var(--accent);
+  background: rgba(245, 249, 255, 0.86);
+}
+
+.reference-search-status.success {
+  border-color: rgba(52, 199, 89, 0.24);
+  color: #1f7a3f;
+  background: rgba(238, 252, 243, 0.86);
+}
+
+.reference-search-status.error {
+  border-color: rgba(255, 59, 48, 0.24);
+  color: #b42318;
+  background: rgba(255, 244, 242, 0.88);
+}
+
 .reference-filter-bar {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

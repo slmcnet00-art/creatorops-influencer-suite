@@ -434,6 +434,17 @@ export async function fetchPublicProfileSnapshot(url) {
   return callCreatorOpsApi('/public/profile-snapshot', { url })
 }
 
+export async function searchContentReferences({ query, country, platform, sort, maxResults = 12 }) {
+  if (!CREATOROPS_API_BASE_URL) return null
+  return callCreatorOpsApi('/references/search', {
+    query,
+    country,
+    platform,
+    sort,
+    maxResults,
+  })
+}
+
 function getPlatformSiteQuery(platform) {
   if (platform === 'Instagram') return 'site:instagram.com'
   if (platform === 'TikTok') return 'site:tiktok.com/@'

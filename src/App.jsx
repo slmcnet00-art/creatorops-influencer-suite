@@ -52,6 +52,7 @@ import {
   fetchYouTubeChannelSnapshot,
   fetchPublicProfileSnapshot,
   refreshContentMetrics,
+  searchContentReferences,
   searchGoogleProfileDiscovery,
   searchYouTubeCreatorDiscovery,
 } from './dataConnectors'
@@ -2726,6 +2727,10 @@ function App() {
     mediaType: '전체',
     platform: '전체',
     sort: 'views',
+  })
+  const [referenceSearchStatus, setReferenceSearchStatus] = useState({
+    mode: 'idle',
+    message: '',
   })
   const [fulfillmentDraft, setFulfillmentDraft] = useState(createEmptyFulfillmentDraft)
 
@@ -5902,13 +5907,78 @@ function App() {
     }
   }
 
-  const applyReferenceSearch = (event) => {
+  const applyReferenceSearch = async (event) => {
     event.preventDefault()
+    const query = referenceFilters.query.trim()
     setReferenceFilters((current) => ({
       ...current,
-      appliedQuery: current.query,
+      appliedQuery: query,
     }))
-    showToast(referenceFilters.query.trim() ? '레퍼런스 검색 결과를 적용했어요.' : '전체 레퍼런스를 표시합니다.')
+
+    if (!query) {
+      setReferenceSearchStatus({ mode: 'idle', message: '' })
+      showToast('전체 레퍼런스를 표시합니다.')
+      return
+    }
+
+    if (!selectedCampaign) {
+      showToast('레퍼런스를 저장할 캠페인을 먼저 선택하세요.')
+      return
+    }
+
+    try {
+      setReferenceSearchStatus({ mode: 'loading', message: '인기 콘텐츠 레퍼런스를 검색 중입니다.' })
+      const payload = await searchContentReferences({
+        query,
+        country: referenceFilters.country === '전체' ? activeBrand.country || 'KR' : referenceFilters.country,
+        platform: referenceFilters.platform === '전체' ? 'YouTube' : referenceFilters.platform,
+        sort: referenceFilters.sort,
+        maxResults: 12,
+      })
+
+      if (!payload) {
+        setReferenceSearchStatus({
+          mode: 'error',
+          message: 'API 서버 연결 후 실제 레퍼런스 검색을 실행할 수 있어요.',
+        })
+        return
+      }
+
+      const incoming = (payload.references || []).map((item, index) => ({
+        ...item,
+        id: item.id || `reference-${createId()}-${index}`,
+        campaignId: selectedCampaign.id,
+        country: item.country || referenceFilters.country || activeBrand.country || 'KR',
+        mediaType: item.mediaType || '영상',
+        platform: item.platform || 'YouTube',
+        savedAt: nowLabel(),
+      }))
+      const existingUrls = new Set((contentReferences ?? []).map((item) => String(item.url || '').toLowerCase()))
+      const newCount = incoming.filter((item) => !existingUrls.has(String(item.url || '').toLowerCase())).length
+
+      updateWorkspace((current) => {
+        const existingUrls = new Set((current.contentReferences ?? []).map((item) => String(item.url || '').toLowerCase()))
+        const freshReferences = incoming.filter((item) => !existingUrls.has(String(item.url || '').toLowerCase()))
+        return appendActivity(
+          {
+            ...current,
+            contentReferences: [...freshReferences, ...(current.contentReferences ?? [])],
+          },
+          'reference',
+          `${selectedCampaign.name} 레퍼런스 검색 · ${query} · ${freshReferences.length}개 추가`,
+        )
+      })
+
+      setReferenceSearchStatus({
+        mode: 'success',
+        message: `${incoming.length}개 검색, 중복 제외 후 ${newCount}개 새 레퍼런스를 추가했습니다.`,
+      })
+      showToast(`${incoming.length}개 레퍼런스를 검색했어요. 새로 추가된 항목은 ${newCount}개입니다.`)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '레퍼런스 검색에 실패했어요.'
+      setReferenceSearchStatus({ mode: 'error', message })
+      showToast(message)
+    }
   }
 
   const resetReferenceSearch = () => {
@@ -5920,6 +5990,7 @@ function App() {
       platform: '전체',
       sort: 'views',
     })
+    setReferenceSearchStatus({ mode: 'idle', message: '' })
     showToast('레퍼런스 필터를 초기화했어요.')
   }
 
@@ -7147,14 +7218,19 @@ function App() {
                 placeholder="키워드 검색: 제품, 후킹, 썸네일, CTA, 플랫폼"
               />
             </label>
-            <button className="primary-button compact-button" type="submit">
-              <Search size={15} />
-              검색하기
+            <button className="primary-button compact-button" type="submit" disabled={referenceSearchStatus.mode === 'loading'}>
+              {referenceSearchStatus.mode === 'loading' ? <RefreshCw size={15} /> : <Search size={15} />}
+              {referenceSearchStatus.mode === 'loading' ? '검색 중' : '검색하기'}
             </button>
             <button className="secondary-button compact-button" type="button" onClick={resetReferenceSearch}>
               초기화
             </button>
           </form>
+          {referenceSearchStatus.message && (
+            <div className={`reference-search-status ${referenceSearchStatus.mode}`}>
+              {referenceSearchStatus.message}
+            </div>
+          )}
 
           <div className="reference-filter-bar">
             <label>
