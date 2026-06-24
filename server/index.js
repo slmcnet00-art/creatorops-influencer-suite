@@ -413,7 +413,7 @@ async function searchWebContentReferences({ query, country, platform, maxResults
   const siteQuery = getReferenceSiteQuery(platform)
   const params = new URLSearchParams({
     q: `${siteQuery} ${query}`.trim(),
-    count: String(Math.min(Math.max(maxResults, 1), 20)),
+    count: String(Math.min(Math.max(maxResults * 5, 10), 20)),
     safesearch: 'moderate',
   })
   const regionCode = normalizeRegionCode(country)
@@ -429,6 +429,7 @@ async function searchWebContentReferences({ query, country, platform, maxResults
   const normalized = items
     .map((item) => normalizeWebReferenceSearchItem(item, platform, regionCode || country || 'GLOBAL'))
     .filter(Boolean)
+    .slice(0, maxResults)
 
   if (!isPublicSnapshotEnabled()) return normalized
 
@@ -440,7 +441,7 @@ async function searchWebContentReferences({ query, country, platform, maxResults
       return {
         ...item,
         title: item.title || snapshot.title,
-        thumbnailUrl: item.thumbnailUrl || snapshot.image || '',
+        thumbnailUrl: selectReferenceThumbnail(item.thumbnailUrl, snapshot.image),
         views: metrics.views ?? item.views,
         accountFollowers: metrics.followers ?? item.accountFollowers,
         likes: metrics.likes ?? item.likes,
@@ -459,9 +460,10 @@ function normalizeWebReferenceSearchItem(item, platform, country) {
   if (!url) return null
   const inferredPlatform = platform === 'all' ? inferReferencePlatform(url) : platform
   if (!['Instagram', 'TikTok'].includes(inferredPlatform)) return null
+  if (!isSupportedReferenceContentUrl(url, inferredPlatform)) return null
 
-  const title = stripHtml(item.title || '')
-  const description = stripHtml(item.description || item.snippet || '')
+  const title = cleanReferenceText(item.title || '')
+  const description = cleanReferenceText(item.description || item.snippet || '')
   return {
     id: `webref:${inferredPlatform}:${url}`,
     mediaType: inferReferenceMediaType(url, inferredPlatform),
@@ -469,7 +471,7 @@ function normalizeWebReferenceSearchItem(item, platform, country) {
     country: country || 'GLOBAL',
     title: title || `${inferredPlatform} reference`,
     url,
-    thumbnailUrl: item.thumbnail?.src || item.profile?.img || '',
+    thumbnailUrl: selectReferenceThumbnail(item.thumbnail?.src, item.profile?.img),
     views: null,
     accountFollowers: null,
     likes: null,
@@ -494,9 +496,9 @@ function normalizeReferencePlatform(value) {
 }
 
 function getReferenceSiteQuery(platform) {
-  if (platform === 'Instagram') return 'site:instagram.com/reel'
+  if (platform === 'Instagram') return '(site:instagram.com/reel OR site:instagram.com/p)'
   if (platform === 'TikTok') return 'site:tiktok.com'
-  return '(site:instagram.com/reel OR site:tiktok.com)'
+  return '((site:instagram.com/reel OR site:instagram.com/p) OR site:tiktok.com)'
 }
 
 function inferReferencePlatform(value) {
@@ -514,6 +516,34 @@ function inferReferencePlatform(value) {
 function inferReferenceMediaType(value, platform) {
   if (platform === 'Instagram' && /\/p\//i.test(value)) return '이미지'
   return '영상'
+}
+
+function isSupportedReferenceContentUrl(value, platform) {
+  try {
+    const url = new URL(value)
+    const segments = url.pathname.split('/').filter(Boolean)
+    if (platform === 'TikTok') {
+      return segments[0]?.startsWith('@') && segments[1] === 'video' && Boolean(segments[2])
+    }
+    if (platform === 'Instagram') {
+      return ['reel', 'p'].includes(segments[0]) && Boolean(segments[1])
+    }
+  } catch {
+    return false
+  }
+  return false
+}
+
+function selectReferenceThumbnail(...candidates) {
+  return candidates.find((candidate) => {
+    const value = String(candidate || '')
+    if (!value) return false
+    return !/(instagram\.com\/static|static\.cdninstagram\.com|tiktokcdn.*logo|tiktok.*logo|favicon|apple-touch-icon)/i.test(value)
+  }) || ''
+}
+
+function cleanReferenceText(value) {
+  return decodeHtmlEntities(stripHtml(value)).replace(/\s+/g, ' ').trim()
 }
 
 function dedupeContentReferences(results) {
@@ -1199,6 +1229,8 @@ function parseMetricNumber(rawNumber, rawUnit = '') {
 
 function decodeHtmlEntities(value) {
   return String(value || '')
+    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+    .replace(/&#(\d+);/g, (_, decimal) => String.fromCodePoint(parseInt(decimal, 10)))
     .replace(/&amp;/g, '&')
     .replace(/&quot;/g, '"')
     .replace(/&#39;/g, "'")
