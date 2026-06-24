@@ -4224,10 +4224,10 @@ function App() {
     const maxResults = Math.min(Math.max(Number(realDiscoveryDraft.maxResults) || 8, 1), 20)
     const youtubeApiKey = realDiscoveryDraft.youtubeApiKey.trim() || youtubeDraft.apiKey.trim()
     const hasServerApi = Boolean(backendConfig.apiBaseUrl)
-    const hasGoogleSearch = hasServerApi || (realDiscoveryDraft.googleApiKey.trim() && realDiscoveryDraft.googleCx.trim())
+    const hasProfileSearch = hasServerApi || (realDiscoveryDraft.googleApiKey.trim() && realDiscoveryDraft.googleCx.trim())
 
-    if (!hasServerApi && !youtubeApiKey && !hasGoogleSearch) {
-      showToast('실제 발굴은 CreatorOps API 서버 또는 YouTube/Google API 키를 연결해야 합니다.')
+    if (!hasServerApi && !youtubeApiKey && !hasProfileSearch) {
+      showToast('실제 발굴은 CreatorOps API 서버 또는 YouTube/프로필 검색 API 키를 연결해야 합니다.')
       return
     }
 
@@ -4247,7 +4247,7 @@ function App() {
         )
       }
 
-      if (hasGoogleSearch) {
+      if (hasProfileSearch && platform !== 'YouTube') {
         results.push(
           ...(await searchGoogleProfileDiscovery({
             apiKey: realDiscoveryDraft.googleApiKey,
@@ -4350,6 +4350,16 @@ function App() {
       .sort((a, b) => b.score - a.score)
       .slice(0, 8)
 
+    if (!ranked.length) {
+      const realCreatorCount = creators.filter((creator) => !isExampleCreator(creator)).length
+      showToast(
+        realCreatorCount
+          ? '현재 캠페인 조건에 맞는 후보가 없습니다. 팔로워/단가/플랫폼 조건을 조정해보세요.'
+          : '먼저 아래 실제 웹 발굴을 실행해서 후보를 모아주세요.',
+      )
+      return
+    }
+
     updateWorkspace((current) =>
       appendActivity(
         {
@@ -4361,7 +4371,7 @@ function App() {
         `${selectedCampaign?.name ?? activeBrand.name} 조건으로 AI 후보 ${ranked.length}명 추출`,
       ),
     )
-    showToast(`AI가 캠페인 조건 기준으로 후보 ${ranked.length}명을 추출했어요.`)
+    showToast(`캠페인 조건 기준으로 후보 ${ranked.length}명을 추천했어요.`)
   }
 
   const buildRecommendationOutreachRecord = (recommendation, creator, campaign) => {
@@ -6553,7 +6563,7 @@ function App() {
               <div className="panel-heading-actions">
                 <button className="primary-button compact-button" type="button" onClick={runAiDiscovery}>
                   <Target size={16} />
-                  AI 매칭 실행
+                  후보 매칭 실행
                 </button>
               </div>
             </div>
@@ -6577,7 +6587,7 @@ function App() {
                 <div className="brief-auto-result">
                   <span>{briefAutoDraft.result.platformSummary}</span>
                   <strong>{briefAutoDraft.result.targetSummary || '희망 인플루언서 조건 분석 완료'}</strong>
-                  <small>목표 후보 {briefAutoDraft.result.candidateTargetCount}명 조건 세팅 · 실제 후보는 아래 실제 웹 발굴로 수집</small>
+                  <small>목표 후보 {briefAutoDraft.result.candidateTargetCount}명 조건 세팅 · 아래 실제 웹 발굴 후 후보 매칭으로 추천</small>
                   <p>{briefAutoDraft.result.hookSummary || '후킹포인트를 학습자료에 반영했습니다.'}</p>
                 </div>
               )}
@@ -6714,7 +6724,7 @@ function App() {
                 <div className="empty-state compact-empty">
                   <Target size={22} />
                   <strong>아직 AI 추천 결과가 없습니다.</strong>
-                  <p>현재 선택한 캠페인 기준으로 AI 매칭을 실행하세요.</p>
+                  <p>아래 실제 웹 발굴로 후보를 먼저 모은 뒤 후보 매칭을 실행하세요.</p>
                 </div>
               ) : (
                 selectedCampaignRecommendations.map((recommendation) => (
@@ -6810,45 +6820,53 @@ function App() {
               <div className="real-discovery-copy">
                 <span className="mini-label">Live Discovery</span>
                 <strong>예시 후보 숨김 · 실제 공개 검색 결과만 저장</strong>
-                <p>YouTube는 공식 Data API로 채널과 구독자/평균 조회를 가져오고, Instagram/TikTok은 Google Programmable Search로 실제 프로필 URL을 가져온 뒤 수치를 검증 대기로 남깁니다.</p>
+                <p>YouTube는 공식 Data API로 채널과 구독자/평균 조회를 가져오고, Instagram/TikTok은 Brave Search로 공개 프로필 URL을 찾은 뒤 수치를 검증 대기로 남깁니다.</p>
               </div>
-              <div className="real-discovery-fields">
-                <label>
-                  YouTube API Key
-                  <input
-                    type="password"
-                    value={realDiscoveryDraft.youtubeApiKey}
-                    onChange={(event) => setRealDiscoveryDraft({ ...realDiscoveryDraft, youtubeApiKey: event.target.value })}
-                    placeholder="YouTube Data API 키"
-                  />
-                </label>
-                <label>
-                  Google Search Key
-                  <input
-                    type="password"
-                    value={realDiscoveryDraft.googleApiKey}
-                    onChange={(event) => setRealDiscoveryDraft({ ...realDiscoveryDraft, googleApiKey: event.target.value })}
-                    placeholder="Programmable Search API 키"
-                  />
-                </label>
-                <label>
-                  Search CX
-                  <input
-                    value={realDiscoveryDraft.googleCx}
-                    onChange={(event) => setRealDiscoveryDraft({ ...realDiscoveryDraft, googleCx: event.target.value })}
-                    placeholder="검색엔진 ID"
-                  />
-                </label>
-                <label>
-                  가져올 수
-                  <input
-                    inputMode="numeric"
-                    value={realDiscoveryDraft.maxResults}
-                    onChange={(event) => setRealDiscoveryDraft({ ...realDiscoveryDraft, maxResults: event.target.value })}
-                    placeholder="8"
-                  />
-                </label>
-              </div>
+              {backendConfig.apiBaseUrl ? (
+                <div className="real-discovery-server-card">
+                  <span>서버 API 연결됨</span>
+                  <strong>YouTube · Instagram · TikTok 실제 검색 사용 가능</strong>
+                  <p>API 키는 Render 환경변수에서 관리되므로 화면에 입력하지 않아도 됩니다.</p>
+                </div>
+              ) : (
+                <div className="real-discovery-fields">
+                  <label>
+                    YouTube API Key
+                    <input
+                      type="password"
+                      value={realDiscoveryDraft.youtubeApiKey}
+                      onChange={(event) => setRealDiscoveryDraft({ ...realDiscoveryDraft, youtubeApiKey: event.target.value })}
+                      placeholder="YouTube Data API 키"
+                    />
+                  </label>
+                  <label>
+                    Search API Key
+                    <input
+                      type="password"
+                      value={realDiscoveryDraft.googleApiKey}
+                      onChange={(event) => setRealDiscoveryDraft({ ...realDiscoveryDraft, googleApiKey: event.target.value })}
+                      placeholder="프로필 검색 API 키"
+                    />
+                  </label>
+                  <label>
+                    Search CX
+                    <input
+                      value={realDiscoveryDraft.googleCx}
+                      onChange={(event) => setRealDiscoveryDraft({ ...realDiscoveryDraft, googleCx: event.target.value })}
+                      placeholder="Google CSE 사용 시 검색엔진 ID"
+                    />
+                  </label>
+                  <label>
+                    가져올 수
+                    <input
+                      inputMode="numeric"
+                      value={realDiscoveryDraft.maxResults}
+                      onChange={(event) => setRealDiscoveryDraft({ ...realDiscoveryDraft, maxResults: event.target.value })}
+                      placeholder="8"
+                    />
+                  </label>
+                </div>
+              )}
               <div className="real-discovery-actions">
                 <button className="primary-button compact-button" type="button" onClick={runRealDiscoverySearch} disabled={realDiscoverySearching}>
                   <Search size={16} />
@@ -6966,7 +6984,7 @@ function App() {
                 <div className="empty-state">
                   <Search size={22} />
                   <strong>실제 발굴 후보가 없습니다.</strong>
-                  <p>API 키를 연결하고 `실제 웹 발굴`을 실행하면 공개 검색 결과가 이 리스트에 저장됩니다.</p>
+                  <p>선택한 캠페인/검색어 기준으로 `실제 웹 발굴`을 실행하면 공개 검색 결과가 이 리스트에 저장됩니다.</p>
                   <button type="button" onClick={resetSearch}>
                     전체 후보 보기
                   </button>

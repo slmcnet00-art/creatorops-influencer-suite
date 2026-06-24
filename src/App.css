@@ -2466,6 +2466,42 @@
   font: inherit;
 }
 
+.real-discovery-server-card {
+  display: grid;
+  gap: 4px;
+  min-height: 62px;
+  align-content: center;
+  border: 1px solid rgba(52, 199, 89, 0.22);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: rgba(238, 252, 243, 0.84);
+}
+
+.real-discovery-server-card span,
+.real-discovery-server-card strong,
+.real-discovery-server-card p {
+  display: block;
+}
+
+.real-discovery-server-card span {
+  color: #1f7a3f;
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.real-discovery-server-card strong {
+  color: var(--text-strong);
+  font-size: 13px;
+}
+
+.real-discovery-server-card p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .real-discovery-actions {
   display: flex;
   align-items: center;

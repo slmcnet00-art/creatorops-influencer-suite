@@ -56,7 +56,7 @@ app.post('/discovery/youtube/search', async (request, response, next) => {
 app.post('/discovery/google-profiles/search', async (request, response, next) => {
   try {
     const query = String(request.body?.query || '').trim()
-    const platform = String(request.body?.platform || 'all')
+    const platform = normalizeProfileDiscoveryPlatform(request.body?.platform || 'all')
     const maxResults = clamp(Number(request.body?.maxResults || 8), 1, 10)
     if (!query) throw httpError(400, 'query is required.')
 
@@ -254,6 +254,24 @@ async function fetchYouTubeChannelSnapshot(lookup) {
 }
 
 async function searchYouTubeCreators(query, maxResults) {
+  const results = []
+  const seen = new Set()
+
+  for (const searchQuery of buildCreatorDiscoveryQueries(query)) {
+    const creators = await fetchYouTubeCreatorsForQuery(searchQuery, maxResults)
+    for (const creator of creators) {
+      const key = creator.channelId || creator.id || creator.profileUrl
+      if (!key || seen.has(key)) continue
+      seen.add(key)
+      results.push(creator)
+      if (results.length >= maxResults) return results
+    }
+  }
+
+  return results
+}
+
+async function fetchYouTubeCreatorsForQuery(query, maxResults) {
   const key = requireEnv('YOUTUBE_DATA_API_KEY')
   const searchParams = new URLSearchParams({
     part: 'snippet',
@@ -275,6 +293,27 @@ async function searchYouTubeCreators(query, maxResults) {
   })
   const channelPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/channels?${channelParams}`)
   return (channelPayload.items || []).map((channel) => normalizeYouTubeChannel(channel))
+}
+
+function buildCreatorDiscoveryQueries(query) {
+  const cleanQuery = String(query || '').replace(/\s+/g, ' ').trim()
+  const queries = [cleanQuery]
+  const lower = cleanQuery.toLowerCase()
+
+  if (/화장품|뷰티|메이크업|스킨케어|코스메틱|올리브영|beauty|makeup|skincare|cosmetic/.test(lower)) {
+    queries.push('Korean beauty review', 'beauty review Korea', 'K beauty creator')
+  }
+  if (/반려|강아지|고양이|펫|켄넬|애견|pet|dog|cat|kennel/.test(lower)) {
+    queries.push('Korean pet channel', 'dog product review Korea', 'pet creator Korea')
+  }
+  if (/푸드|음식|먹방|간식|맛집|food|snack/.test(lower)) {
+    queries.push('Korean food review', 'food creator Korea')
+  }
+  if (/패션|룩북|의류|fashion|lookbook/.test(lower)) {
+    queries.push('Korean fashion creator', 'fashion review Korea')
+  }
+
+  return [...new Set(queries.filter(Boolean))].slice(0, 4)
 }
 
 async function searchContentReferences({ query, country, platform, sort, maxResults }) {
@@ -570,9 +609,83 @@ function sortContentReferences(results, sort) {
 }
 
 async function searchGoogleProfiles(query, platform, maxResults) {
+  if (process.env.BRAVE_SEARCH_API_KEY) {
+    return searchBraveProfiles(query, platform, maxResults)
+  }
+
+  return searchGoogleCseProfiles(query, platform, maxResults)
+}
+
+async function searchBraveProfiles(query, platform, maxResults) {
+  const key = requireEnv('BRAVE_SEARCH_API_KEY')
+  const platforms = getProfileDiscoveryPlatforms(platform)
+  const platformTarget = Math.max(1, Math.ceil(maxResults / platforms.length))
+  const perPlatformCount = Math.max(10, Math.ceil(maxResults * 2))
+  const results = []
+
+  for (const itemPlatform of platforms) {
+    const platformResults = []
+    for (const profileQuery of buildBraveProfileSearchQueries(itemPlatform, query)) {
+      const params = new URLSearchParams({
+        q: profileQuery,
+        count: String(Math.min(Math.max(perPlatformCount, 1), 20)),
+        safesearch: 'moderate',
+        country: 'KR',
+      })
+      const payload = await fetchJson(`https://api.search.brave.com/res/v1/web/search?${params}`, {
+        headers: {
+          Accept: 'application/json',
+          'X-Subscription-Token': key,
+        },
+      })
+      platformResults.push(
+        ...dedupeProfileResults(
+          (payload.web?.results || [])
+            .map((item) => normalizeProfileSearchItem(item, itemPlatform, 'Brave Search API'))
+            .filter(Boolean),
+        ),
+      )
+      if (dedupeProfileResults(platformResults).length >= platformTarget) break
+    }
+    results.push(...dedupeProfileResults(platformResults).slice(0, platformTarget))
+  }
+
+  return enrichProfileResults(dedupeProfileResults(results).slice(0, maxResults))
+}
+
+function buildBraveProfileSearchQueries(platform, query) {
+  const cleanQuery = String(query || '').replace(/\s+/g, ' ').trim()
+  const queries = []
+  const lower = cleanQuery.toLowerCase()
+
+  if (platform === 'Instagram') {
+    queries.push(`site:instagram.com "${cleanQuery}" "@" -inurl:/p/ -inurl:/reel/ -inurl:/stories/`)
+    if (/화장품|뷰티|메이크업|스킨케어|beauty|makeup|skincare/.test(lower)) {
+      queries.push('site:instagram.com "뷰티 리뷰" "@" -inurl:/p/ -inurl:/reel/ -inurl:/stories/')
+    }
+    if (/반려|강아지|고양이|펫|켄넬|pet|dog|cat/.test(lower)) {
+      queries.push('site:instagram.com "펫스타그램" "@" -inurl:/p/ -inurl:/reel/ -inurl:/stories/')
+    }
+  } else if (platform === 'TikTok') {
+    queries.push(`site:tiktok.com/@ ${cleanQuery}`)
+    if (/화장품|뷰티|메이크업|스킨케어|beauty|makeup|skincare/.test(lower)) {
+      queries.push('site:tiktok.com/@ 뷰티 리뷰')
+    }
+    if (/반려|강아지|고양이|펫|켄넬|pet|dog|cat/.test(lower)) {
+      queries.push('site:tiktok.com/@ 강아지 펫')
+    }
+  } else {
+    queries.push(`${getPlatformSiteQuery(platform)} ${cleanQuery}`.trim())
+  }
+
+  return [...new Set(queries.filter(Boolean))].slice(0, 3)
+}
+
+async function searchGoogleCseProfiles(query, platform, maxResults) {
   const key = requireEnv('GOOGLE_SEARCH_API_KEY')
   const cx = requireEnv('GOOGLE_SEARCH_CX')
-  const platforms = platform && platform !== 'all' ? [platform] : ['Instagram', 'TikTok', 'YouTube']
+  const platforms = getProfileDiscoveryPlatforms(platform)
+  const platformTarget = Math.max(1, Math.ceil(maxResults / platforms.length))
   const results = []
 
   for (const itemPlatform of platforms) {
@@ -580,19 +693,22 @@ async function searchGoogleProfiles(query, platform, maxResults) {
       key,
       cx,
       q: `${getPlatformSiteQuery(itemPlatform)} ${query}`,
-      num: String(maxResults),
+      num: String(Math.min(platformTarget, 10)),
       gl: 'kr',
       safe: 'active',
     })
     const payload = await fetchJson(`https://www.googleapis.com/customsearch/v1?${params}`)
     results.push(
       ...(payload.items || [])
-        .map((item) => normalizeProfileSearchItem(item, itemPlatform))
+        .map((item) => normalizeProfileSearchItem(item, itemPlatform, 'Google Programmable Search'))
         .filter(Boolean),
     )
   }
 
-  const deduped = dedupeProfileResults(results).slice(0, maxResults)
+  return enrichProfileResults(dedupeProfileResults(results).slice(0, maxResults))
+}
+
+async function enrichProfileResults(deduped) {
   if (!isPublicSnapshotEnabled()) return deduped
 
   const enriched = await Promise.all(
@@ -605,6 +721,20 @@ async function searchGoogleProfiles(query, platform, maxResults) {
     }),
   )
   return enriched
+}
+
+function normalizeProfileDiscoveryPlatform(value) {
+  const platform = String(value || '').trim()
+  if (!platform || platform === 'all' || platform === '전체') return 'all'
+  if (/instagram|인스타/i.test(platform)) return 'Instagram'
+  if (/tiktok|틱톡/i.test(platform)) return 'TikTok'
+  if (/youtube|유튜브/i.test(platform)) return 'YouTube'
+  return 'all'
+}
+
+function getProfileDiscoveryPlatforms(platform) {
+  if (platform === 'all') return ['Instagram', 'TikTok']
+  return [platform]
 }
 
 async function refreshTrackedPosts(posts) {
@@ -975,27 +1105,27 @@ function normalizeYouTubeChannel(channel, parsedLookup = {}) {
   }
 }
 
-function normalizeProfileSearchItem(item, platform) {
-  const link = item.link || item.formattedUrl || ''
+function normalizeProfileSearchItem(item, platform, source = 'Public Search API') {
+  const link = item.link || item.formattedUrl || item.url || ''
   if (!link) return null
 
   try {
     const url = new URL(link)
-    const hostname = url.hostname.replace(/^www\./, '')
+    const hostname = url.hostname.replace(/^www\./, '').toLowerCase()
     const segments = url.pathname.split('/').filter(Boolean)
 
     if (platform === 'Instagram') {
       if (!hostname.includes('instagram.com')) return null
       const handle = segments[0]
-      if (!handle || ['p', 'reel', 'tv', 'stories', 'explore', 'accounts'].includes(handle)) return null
-      return buildSearchResult(item, platform, `@${handle}`, `https://www.instagram.com/${handle}`)
+      if (!isInstagramProfileHandle(handle)) return null
+      return buildSearchResult(item, platform, `@${handle}`, `https://www.instagram.com/${handle}`, source)
     }
 
     if (platform === 'TikTok') {
       if (!hostname.includes('tiktok.com')) return null
       const handle = segments.find((segment) => segment.startsWith('@'))
       if (!handle) return null
-      return buildSearchResult(item, platform, handle, `https://www.tiktok.com/${handle}`)
+      return buildSearchResult(item, platform, handle, `https://www.tiktok.com/${handle}`, source)
     }
 
     if (platform === 'YouTube') {
@@ -1005,7 +1135,7 @@ function normalizeProfileSearchItem(item, platform) {
       const profileUrl = handle.startsWith('@')
         ? `https://www.youtube.com/${handle}`
         : `https://www.youtube.com/channel/${handle}`
-      return buildSearchResult(item, platform, handle.startsWith('@') ? handle : `@${handle}`, profileUrl)
+      return buildSearchResult(item, platform, handle.startsWith('@') ? handle : `@${handle}`, profileUrl, source)
     }
   } catch {
     return null
@@ -1014,17 +1144,50 @@ function normalizeProfileSearchItem(item, platform) {
   return null
 }
 
-function buildSearchResult(item, platform, handle, profileUrl) {
+function buildSearchResult(item, platform, handle, profileUrl, source) {
+  const title = cleanReferenceText(item.title || '')
+    .replace(/\s*[-|].*$/, '')
+    .replace(/\s*•.*$/, '')
+    .trim()
+  const snippet = cleanReferenceText(item.snippet || item.description || '')
+
   return {
     id: `${platform}:${handle}`,
     platform,
-    name: stripHtml(item.title || '').replace(/\s*[-|].*$/, '').trim() || handle.replace('@', ''),
+    name: title || handle.replace('@', ''),
     handle,
     profileUrl,
-    snippet: stripHtml(item.snippet || ''),
-    source: 'Google Programmable Search',
+    snippet,
+    source,
     verifiedMetrics: false,
   }
+}
+
+function isInstagramProfileHandle(handle) {
+  if (!handle) return false
+  const blocked = new Set([
+    'p',
+    'reel',
+    'tv',
+    'stories',
+    'explore',
+    'accounts',
+    'about',
+    'developer',
+    'direct',
+    'directory',
+    'privacy',
+    'legal',
+    'reels',
+    'tags',
+    'popular',
+    'blog',
+    'press',
+    'help',
+    'web',
+  ])
+  if (blocked.has(handle.toLowerCase())) return false
+  return /^[a-z0-9._]{2,30}$/i.test(handle)
 }
 
 async function fetchJson(url, options) {
@@ -1037,8 +1200,8 @@ async function fetchJson(url, options) {
 }
 
 function getPlatformSiteQuery(platform) {
-  if (platform === 'Instagram') return 'site:instagram.com'
-  if (platform === 'TikTok') return 'site:tiktok.com/@'
+  if (platform === 'Instagram') return 'site:instagram.com -inurl:/p/ -inurl:/reel/ -inurl:/stories/'
+  if (platform === 'TikTok') return 'site:tiktok.com/@ -inurl:/video/ -inurl:/music/'
   return 'site:youtube.com'
 }
 
