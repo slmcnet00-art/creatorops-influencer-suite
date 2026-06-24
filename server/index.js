@@ -415,7 +415,6 @@ async function searchWebContentReferences({ query, country, platform, maxResults
     q: `${siteQuery} ${query}`.trim(),
     count: String(Math.min(Math.max(maxResults, 1), 20)),
     safesearch: 'moderate',
-    freshness: 'pm',
   })
   const regionCode = normalizeRegionCode(country)
   if (regionCode) params.set('country', regionCode)
@@ -495,9 +494,9 @@ function normalizeReferencePlatform(value) {
 }
 
 function getReferenceSiteQuery(platform) {
-  if (platform === 'Instagram') return '(site:instagram.com/reel/ OR site:instagram.com/p/)'
-  if (platform === 'TikTok') return 'site:tiktok.com/@ inurl:/video/'
-  return '(site:instagram.com/reel/ OR site:instagram.com/p/ OR site:tiktok.com/@ inurl:/video/)'
+  if (platform === 'Instagram') return 'site:instagram.com/reel'
+  if (platform === 'TikTok') return 'site:tiktok.com'
+  return '(site:instagram.com/reel OR site:tiktok.com)'
 }
 
 function inferReferencePlatform(value) {
