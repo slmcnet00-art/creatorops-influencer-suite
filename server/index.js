@@ -732,6 +732,8 @@ async function fetchYouTubeReferenceSnapshot(url, videoId) {
   const snippet = item.snippet || {}
   const statistics = item.statistics || {}
   const thumbnails = snippet.thumbnails || {}
+  const channelMap = await fetchYouTubeChannelStatsMap(snippet.channelId ? [snippet.channelId] : [])
+  const channel = channelMap.get(snippet.channelId) || {}
   const image =
     thumbnails.maxres?.url ||
     thumbnails.standard?.url ||
@@ -745,8 +747,11 @@ async function fetchYouTubeReferenceSnapshot(url, videoId) {
     description: snippet.description || '',
     image,
     handle: snippet.channelTitle ? `@${snippet.channelTitle}` : inferHandleFromUrl(url),
+    platform: 'YouTube',
+    mediaType: '영상',
+    publishedAt: snippet.publishedAt ? snippet.publishedAt.slice(0, 10) : '',
     metrics: {
-      followers: null,
+      followers: Number(channel.followers || 0) || null,
       views: Number(statistics.viewCount || 0),
       likes: Number(statistics.likeCount || 0),
       comments: Number(statistics.commentCount || 0),

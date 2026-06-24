@@ -5814,8 +5814,8 @@ function App() {
     const metrics = snapshot?.metrics || {}
     const autoTitle = snapshot?.title || ''
     const autoDescription = snapshot?.description || ''
-    const autoPlatform = inferPlatformFromUrl(referenceDraft.url) || referenceDraft.platform
-    const autoMediaType = inferMediaTypeFromUrl(referenceDraft.url, autoPlatform) || referenceDraft.mediaType
+    const autoPlatform = snapshot?.platform || inferPlatformFromUrl(referenceDraft.url) || referenceDraft.platform
+    const autoMediaType = snapshot?.mediaType || inferMediaTypeFromUrl(referenceDraft.url, autoPlatform) || referenceDraft.mediaType
 
     const nextReference = {
       id: createId(),
@@ -5831,7 +5831,7 @@ function App() {
       likes: Number(referenceDraft.likes || metrics.likes || 0),
       comments: Number(referenceDraft.comments || metrics.comments || 0),
       shares: Number(referenceDraft.shares || metrics.shares || 0),
-      publishedAt: referenceDraft.publishedAt || (snapshot ? '자동 수집' : '링크 저장'),
+      publishedAt: referenceDraft.publishedAt || snapshot?.publishedAt || (snapshot ? '자동 수집' : '링크 저장'),
       hook: referenceDraft.hook.trim(),
       analysis: referenceDraft.analysis.trim() || autoDescription,
       applyIdea: referenceDraft.applyIdea.trim(),
@@ -5885,17 +5885,21 @@ function App() {
       }
 
       const metrics = snapshot.metrics || {}
+      const inferredPlatform = snapshot.platform || inferPlatformFromUrl(url) || 'Other'
+      const inferredMediaType = snapshot.mediaType || inferMediaTypeFromUrl(url, inferredPlatform) || '영상'
       setReferenceDraft((current) => ({
         ...current,
-        title: current.title || snapshot.title || current.title,
-        thumbnailUrl: current.thumbnailUrl || snapshot.image || current.thumbnailUrl,
-        views: current.views || (metrics.views ? String(metrics.views) : ''),
-        accountFollowers: current.accountFollowers || (metrics.followers ? String(metrics.followers) : ''),
-        likes: current.likes || (metrics.likes ? String(metrics.likes) : ''),
-        comments: current.comments || (metrics.comments ? String(metrics.comments) : ''),
-        shares: current.shares || (metrics.shares ? String(metrics.shares) : ''),
-        analysis: current.analysis || snapshot.description || current.analysis,
-        publishedAt: current.publishedAt || '공개 스냅샷 수집',
+        mediaType: inferredMediaType,
+        platform: inferredPlatform,
+        title: snapshot.title || current.title,
+        thumbnailUrl: snapshot.image || current.thumbnailUrl,
+        views: metrics.views ? String(metrics.views) : '',
+        accountFollowers: metrics.followers ? String(metrics.followers) : '',
+        likes: metrics.likes ? String(metrics.likes) : '',
+        comments: metrics.comments ? String(metrics.comments) : '',
+        shares: metrics.shares ? String(metrics.shares) : '',
+        analysis: snapshot.description || current.analysis,
+        publishedAt: snapshot.publishedAt || '공개 스냅샷 수집',
       }))
 
       showToast('공개 레퍼런스 값을 가져왔어요. 공개되지 않은 지표는 비워둘게요.')
