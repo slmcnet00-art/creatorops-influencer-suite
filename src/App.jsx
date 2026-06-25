@@ -1049,6 +1049,24 @@ function normalizeCreatorAvatar(creator = {}, fallback = {}) {
   return avatar
 }
 
+function isLowQualitySavedCreator(creator = {}) {
+  if (creator.platform !== 'TikTok') return false
+  const isSearchCandidate =
+    creator.status === '실제 검색 후보' ||
+    creator.needsVerification ||
+    String(creator.sourceNote || '').includes('실제 공개 검색') ||
+    String(creator.sourceUrl || creator.profileUrl || '').includes('tiktok.com')
+  const hasMetrics = Number(creator.followers || 0) > 0 || Number(creator.averageViews || 0) > 0
+  const name = String(creator.name || '')
+  const looksLikeCaption =
+    name.length >= 48 ||
+    (name.match(/#/g) || []).length >= 2 ||
+    (/추천|입양|ㅋㅋ|ㅎㅎ|릴스|챌린지|viral|fyp/i.test(name) && name.length >= 24)
+  const looksOffTopicForCreatorDiscovery = /낚시|붕어|차박|카니발|캠핑|입양|게임|roblox|adopt me/i.test(name)
+
+  return isSearchCandidate && ((!hasMetrics && looksLikeCaption) || looksOffTopicForCreatorDiscovery)
+}
+
 function getDefaultCreatorAvatar(platform = '') {
   if (platform === 'TikTok') {
     return 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=160&q=80'
@@ -1098,7 +1116,7 @@ function normalizeWorkspace(saved) {
     normalizeCampaign(campaign, normalizedBrands),
   )
   const normalizedCreators = (saved?.creators?.length
-    ? saved.creators.filter((creator) => !isVerificationCreator(creator))
+    ? saved.creators.filter((creator) => !isVerificationCreator(creator) && !isLowQualitySavedCreator(creator))
     : defaultWorkspace.creators
   ).map((creator) => normalizeCreator(creator))
   const normalizedOutreach = (saved?.outreach ?? defaultWorkspace.outreach).map((item) =>

@@ -668,7 +668,7 @@ async function searchBraveProfiles(query, platform, maxResults, country = 'KR') 
 
   for (const itemPlatform of platforms) {
     const platformResults = []
-    for (const profileQuery of buildBraveProfileSearchQueries(itemPlatform, query)) {
+    for (const profileQuery of buildStrictProfileSearchQueries(itemPlatform, query)) {
       const params = new URLSearchParams({
         q: profileQuery,
         count: String(Math.min(Math.max(perPlatformCount, 1), 20)),
@@ -690,12 +690,15 @@ async function searchBraveProfiles(query, platform, maxResults, country = 'KR') 
       )
       if (dedupeProfileResults(platformResults).length >= platformTarget) break
     }
-    results.push(...dedupeProfileResults(platformResults).slice(0, platformTarget))
+    results.push(...dedupeProfileResults(platformResults).slice(0, platformTarget * 3))
   }
 
-  return enrichProfileResults(dedupeProfileResults(results).slice(0, maxResults))
+  const enriched = await enrichProfileResults(dedupeProfileResults(results).slice(0, maxResults * 3))
+  return filterProfileDiscoveryResults(enriched, query).slice(0, maxResults)
 }
 
+// Kept only to avoid changing old deployment snapshots that may still reference the legacy query builder.
+// eslint-disable-next-line no-unused-vars
 function buildBraveProfileSearchQueries(platform, query) {
   const cleanQuery = String(query || '').replace(/\s+/g, ' ').trim()
   const queries = []
@@ -717,6 +720,35 @@ function buildBraveProfileSearchQueries(platform, query) {
     }
     if (/반려|강아지|고양이|펫|켄넬|pet|dog|cat/.test(lower)) {
       queries.push('site:tiktok.com/@ 강아지 펫')
+    }
+  } else {
+    queries.push(`${getPlatformSiteQuery(platform)} ${cleanQuery}`.trim())
+  }
+
+  return [...new Set(queries.filter(Boolean))].slice(0, 3)
+}
+
+function buildStrictProfileSearchQueries(platform, query) {
+  const cleanQuery = String(query || '').replace(/\s+/g, ' ').trim()
+  const queries = []
+  const lower = cleanQuery.toLowerCase()
+
+  if (platform === 'Instagram') {
+    queries.push(`site:instagram.com "${cleanQuery}" "@" -inurl:/p/ -inurl:/reel/ -inurl:/stories/`)
+    if (/beauty|makeup|skincare|cosmetic|cosmetics/.test(lower)) {
+      queries.push('site:instagram.com "beauty review" "@" -inurl:/p/ -inurl:/reel/ -inurl:/stories/')
+    }
+    if (/pet|dog|cat|kennel|carrier|crate/.test(lower)) {
+      queries.push('site:instagram.com "pet creator" "@" -inurl:/p/ -inurl:/reel/ -inurl:/stories/')
+    }
+  } else if (platform === 'TikTok') {
+    queries.push(`site:tiktok.com/@ "${cleanQuery}" -inurl:/video/ -inurl:/music/ -inurl:/tag/`)
+    queries.push(`site:tiktok.com/@ ${cleanQuery} -inurl:/video/ -inurl:/music/ -inurl:/tag/`)
+    if (/beauty|makeup|skincare|cosmetic|cosmetics/.test(lower)) {
+      queries.push('site:tiktok.com/@ "beauty review" -inurl:/video/ -inurl:/music/')
+    }
+    if (/pet|dog|cat|kennel|carrier|crate/.test(lower)) {
+      queries.push('site:tiktok.com/@ "pet creator" -inurl:/video/ -inurl:/music/')
     }
   } else {
     queries.push(`${getPlatformSiteQuery(platform)} ${cleanQuery}`.trim())
@@ -750,7 +782,8 @@ async function searchGoogleCseProfiles(query, platform, maxResults, country = 'K
     )
   }
 
-  return enrichProfileResults(dedupeProfileResults(results).slice(0, maxResults))
+  const enriched = await enrichProfileResults(dedupeProfileResults(results).slice(0, maxResults * 3))
+  return filterProfileDiscoveryResults(enriched, query).slice(0, maxResults)
 }
 
 async function enrichProfileResults(deduped) {
@@ -1246,7 +1279,9 @@ function normalizeProfileSearchItem(item, platform, source = 'Public Search API'
       if (!hostname.includes('tiktok.com')) return null
       const handle = segments.find((segment) => segment.startsWith('@'))
       if (!handle) return null
-      return buildSearchResult(item, platform, handle, `https://www.tiktok.com/${handle}`, source, country)
+      return buildSearchResult(item, platform, handle, `https://www.tiktok.com/${handle}`, source, country, {
+        fromContentUrl: segments.includes('video'),
+      })
     }
 
     if (platform === 'YouTube') {
@@ -1265,7 +1300,7 @@ function normalizeProfileSearchItem(item, platform, source = 'Public Search API'
   return null
 }
 
-function buildSearchResult(item, platform, handle, profileUrl, source, country = 'KR') {
+function buildSearchResult(item, platform, handle, profileUrl, source, country = 'KR', options = {}) {
   const title = cleanReferenceText(item.title || '')
     .replace(/\s*[-|].*$/, '')
     .replace(/\s*•.*$/, '')
@@ -1277,11 +1312,13 @@ function buildSearchResult(item, platform, handle, profileUrl, source, country =
   return {
     id: `${platform}:${handle}`,
     platform,
-    name: title || handle.replace('@', ''),
+    name: platform === 'TikTok' && options.fromContentUrl ? handle.replace('@', '') : title || handle.replace('@', ''),
     handle,
     profileUrl,
     country,
     snippet,
+    sourceTitle: title,
+    sourceSnippet: snippet,
     avatar: selectProfileAvatarCandidate(platform, item),
     followers: publicMetrics.followers || extractMetricFromTextSafe(metricText, 'followers') || null,
     averageViews: publicMetrics.views || extractMetricFromTextSafe(metricText, 'views') || null,
@@ -1347,6 +1384,140 @@ function dedupeProfileResults(results) {
     seen.add(key)
     return true
   })
+}
+
+function filterProfileDiscoveryResults(results, query) {
+  const context = buildProfileDiscoveryQueryContext(query)
+
+  return results
+    .map((profile) => ({
+      ...profile,
+      discoveryRelevanceScore: scoreProfileDiscoveryRelevance(profile, context),
+    }))
+    .filter((profile) => isUsableProfileDiscoveryResult(profile, context))
+    .sort((a, b) => {
+      if (b.discoveryRelevanceScore !== a.discoveryRelevanceScore) {
+        return b.discoveryRelevanceScore - a.discoveryRelevanceScore
+      }
+      return Number(b.followers || 0) - Number(a.followers || 0)
+    })
+}
+
+function buildProfileDiscoveryQueryContext(query) {
+  const tokens = String(query || '')
+    .toLowerCase()
+    .split(/[\s,./|()[\]{}"'`~!?:;]+/)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 2)
+  const stopWords = new Set([
+    'creator',
+    'creators',
+    'influencer',
+    'influencers',
+    'review',
+    'reviews',
+    'campaign',
+    'product',
+    'service',
+    'brand',
+    'official',
+    'profile',
+    'video',
+    '콘텐츠',
+    '크리에이터',
+    '인플루언서',
+    '캠페인',
+    '브랜드',
+    '제품',
+    '서비스',
+    '후보',
+    '리뷰',
+    '추천',
+    '사용',
+    '설명',
+    '타깃',
+    '페르소나',
+  ])
+  const genericCategoryWords = new Set([
+    'pet',
+    'dog',
+    'cat',
+    'beauty',
+    'makeup',
+    'skincare',
+    'food',
+    'fashion',
+    '강아지',
+    '반려견',
+    '반려동물',
+    '고양이',
+    '펫',
+    '뷰티',
+    '화장품',
+  ])
+  const uniqueTokens = [...new Set(tokens.filter((term) => !stopWords.has(term)))]
+  const distinctiveTokens = uniqueTokens.filter((term) => !genericCategoryWords.has(term))
+
+  return {
+    tokens: uniqueTokens,
+    requiredTokens: distinctiveTokens.length ? distinctiveTokens : uniqueTokens,
+  }
+}
+
+function getProfileDiscoverySearchText(profile) {
+  return [
+    profile.name,
+    profile.handle,
+    profile.profileUrl,
+    profile.snippet,
+    profile.description,
+    profile.sourceTitle,
+    profile.sourceSnippet,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
+function scoreProfileDiscoveryRelevance(profile, context) {
+  const text = getProfileDiscoverySearchText(profile)
+  const matchedTokens = context.tokens.filter((term) => text.includes(term)).length
+  const matchedRequiredTokens = context.requiredTokens.filter((term) => text.includes(term)).length
+  const hasMetrics = Number(profile.followers || 0) > 0 || Number(profile.averageViews || 0) > 0
+  const hasSnapshot = profile.publicSnapshotStatus === 'snapshot_ready'
+  const hasRealProfileImage = /tiktokcdn|cdninstagram|yt3\.ggpht|googleusercontent/i.test(String(profile.avatar || ''))
+  const captionPenalty = profile.platform === 'TikTok' && looksLikeContentCaption(profile.name) ? 3 : 0
+
+  return matchedTokens + matchedRequiredTokens * 2 + (hasMetrics ? 2 : 0) + (hasSnapshot ? 2 : 0) + (hasRealProfileImage ? 1 : 0) - captionPenalty
+}
+
+function isUsableProfileDiscoveryResult(profile, context) {
+  if (!profile?.profileUrl) return false
+  const text = getProfileDiscoverySearchText(profile)
+  const requiredMatches = context.requiredTokens.filter((term) => text.includes(term)).length
+  const hasMetrics = Number(profile.followers || 0) > 0 || Number(profile.averageViews || 0) > 0
+  const hasRequiredMatch = !context.requiredTokens.length || requiredMatches > 0
+
+  if (!hasRequiredMatch) return false
+
+  if (profile.platform === 'TikTok') {
+    if (!hasMetrics && looksLikeContentCaption(profile.name)) return false
+    if (hasBlockedDiscoveryTopic(text)) return false
+  }
+
+  return true
+}
+
+function hasBlockedDiscoveryTopic(text) {
+  return /adopt me|roblox|game|gaming|낚시|붕어|차박|카니발|캠핑|입양|게임/i.test(String(text || ''))
+}
+
+function looksLikeContentCaption(value) {
+  const text = String(value || '').trim()
+  if (!text) return false
+  if (text.length >= 48) return true
+  if ((text.match(/#/g) || []).length >= 2) return true
+  return /추천|입양|ㅋㅋ|ㅎㅎ|릴스|챌린지|viral|fyp/i.test(text) && text.length >= 24
 }
 
 function parseYouTubeLookup(value) {
