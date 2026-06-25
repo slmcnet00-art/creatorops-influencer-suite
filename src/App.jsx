@@ -60,6 +60,7 @@ import {
 
 const STORE_KEY = 'creatorops.workspace.v2'
 const TRACKING_DAILY_REFRESH_KEY = 'creatorops.tracking.lastDailyRefresh'
+const GMAIL_AUTH_STORE_KEY = 'creatorops.gmailAuth.v1'
 
 const influencerBrandGuideTemplate = `# 인플루언서 브랜드 가이드
 
@@ -2786,6 +2787,14 @@ function App() {
   const [selectedCandidatePoolIds, setSelectedCandidatePoolIds] = useState([])
   const [candidatePoolPage, setCandidatePoolPage] = useState(1)
   const [selectedOutreachIds, setSelectedOutreachIds] = useState([])
+  const [gmailAuth, setGmailAuth] = useState(() => {
+    try {
+      return JSON.parse(window.localStorage.getItem(GMAIL_AUTH_STORE_KEY) || 'null')
+    } catch {
+      return null
+    }
+  })
+  const [gmailSending, setGmailSending] = useState(false)
   const [outreachStatusFilter, setOutreachStatusFilter] = useState('전체')
   const [outreachResponseNote, setOutreachResponseNote] = useState('')
   const [realDiscoveryDraft, setRealDiscoveryDraft] = useState({
@@ -3089,6 +3098,16 @@ function App() {
     () => selectedCampaignOutreach.filter((item) => selectedOutreachIds.includes(item.id)),
     [selectedCampaignOutreach, selectedOutreachIds],
   )
+  const selectedEmailOutreachItems = useMemo(
+    () =>
+      selectedOutreachItems.filter((item) => {
+        const creator = creators.find((candidate) => candidate.id === item.creatorId)
+        const channelId = item.channel || getRecommendedContactChannelId(creator)
+        return channelId === 'email' && Boolean(creator?.contactEmail)
+      }),
+    [creators, selectedOutreachItems],
+  )
+  const gmailConnected = Boolean(gmailAuth?.accessToken && Number(gmailAuth.expiresAt || 0) > Date.now() + 60000)
   const allOutreachSelected =
     filteredCampaignOutreach.length > 0 &&
     filteredCampaignOutreach.every((item) => selectedOutreachIds.includes(item.id))
@@ -3643,6 +3662,60 @@ function App() {
 
     return () => window.clearTimeout(timeout)
   }, [backendConfig.hasSupabase, backendConfig.workspaceId, cloudWorkspaceLoaded, workspace])
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (params.get('google_oauth') !== '1') return undefined
+
+    const apiBaseUrl = backendConfig.apiBaseUrl?.replace(/\/$/, '')
+    const code = params.get('code')
+    const error = params.get('error')
+    const cleanUrl = window.location.pathname + (window.location.hash || '')
+    window.history.replaceState({}, document.title, cleanUrl)
+
+    if (error) {
+      showToast('Gmail connection failed: ' + error)
+      return undefined
+    }
+
+    if (!apiBaseUrl || !code) {
+      showToast('Gmail connection needs the API server and authorization code.')
+      return undefined
+    }
+
+    let cancelled = false
+    async function exchangeGoogleCode() {
+      try {
+        const response = await fetch(apiBaseUrl + '/oauth/google/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code }),
+        })
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(payload?.message || 'Failed to exchange Gmail authorization code.')
+        const nextAuth = {
+          accessToken: payload.data?.accessToken,
+          refreshToken: payload.data?.refreshToken || '',
+          expiresAt: Date.now() + Math.max(Number(payload.data?.expiresIn || 3600) - 60, 60) * 1000,
+          connectedAt: new Date().toISOString(),
+          scope: payload.data?.scope || '',
+        }
+        if (!nextAuth.accessToken) throw new Error('Gmail access token is empty.')
+        if (cancelled) return
+        window.localStorage.setItem(GMAIL_AUTH_STORE_KEY, JSON.stringify(nextAuth))
+        setGmailAuth(nextAuth)
+        showToast('Gmail account connected. You can now send selected email outreach.')
+      } catch (exchangeError) {
+        if (!cancelled) showToast(exchangeError instanceof Error ? exchangeError.message : 'Gmail connection failed.')
+      }
+    }
+
+    exchangeGoogleCode()
+
+    return () => {
+      cancelled = true
+    }
+  }, [backendConfig.apiBaseUrl])
 
   const showToast = (message) => setToast(message)
 
@@ -5935,6 +6008,107 @@ function App() {
     }
   }
 
+  const connectGmail = async () => {
+    if (!backendConfig.apiBaseUrl) {
+      showToast('Gmail needs the CreatorOps API server.')
+      return
+    }
+
+    try {
+      const apiBaseUrl = backendConfig.apiBaseUrl.replace(/\/$/, '')
+      const response = await fetch(apiBaseUrl + '/oauth/google/auth-url?state=creatorops-gmail')
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok || !payload?.data?.url) throw new Error(payload?.message || 'Failed to create Gmail authorization URL.')
+      window.location.href = payload.data.url
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not start Gmail connection.')
+    }
+  }
+
+  const disconnectGmail = () => {
+    window.localStorage.removeItem(GMAIL_AUTH_STORE_KEY)
+    setGmailAuth(null)
+    showToast('Gmail disconnected.')
+  }
+
+  const sendSelectedOutreachEmails = async () => {
+    if (!selectedOutreachItems.length) {
+      showToast('Select messages to send first.')
+      return
+    }
+    if (!selectedEmailOutreachItems.length) {
+      showToast('No selected item has a verified email. Use copy/profile open for DM candidates.')
+      return
+    }
+    if (!backendConfig.apiBaseUrl) {
+      showToast('Gmail needs the CreatorOps API server.')
+      return
+    }
+    if (!gmailConnected) {
+      showToast('Connect Gmail first.')
+      return
+    }
+
+    setGmailSending(true)
+    const apiBaseUrl = backendConfig.apiBaseUrl.replace(/\/$/, '')
+    const sentIds = []
+    const failures = []
+
+    for (const item of selectedEmailOutreachItems) {
+      const creator = creators.find((candidate) => candidate.id === item.creatorId)
+      const campaign = brandCampaigns.find((candidate) => candidate.id === item.campaignId)
+      try {
+        const response = await fetch(apiBaseUrl + '/outreach/gmail/send', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            accessToken: gmailAuth.accessToken,
+            to: creator?.contactEmail,
+            subject: `${campaign?.name || 'Brand campaign'} collaboration proposal`,
+            message: item.message,
+          }),
+        })
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(payload?.message || 'Gmail send failed')
+        sentIds.push(item.id)
+      } catch (error) {
+        failures.push({ item, message: error instanceof Error ? error.message : 'Send failed' })
+      }
+    }
+
+    setGmailSending(false)
+
+    if (failures.some((failure) => /accessToken|token|401|invalid/i.test(failure.message))) {
+      window.localStorage.removeItem(GMAIL_AUTH_STORE_KEY)
+      setGmailAuth(null)
+    }
+
+    if (sentIds.length) {
+      const selectedIds = new Set(sentIds)
+      const eventTime = nowLabel()
+      updateWorkspace((current) =>
+        appendActivity(
+          {
+            ...current,
+            outreach: current.outreach.map((outreachItem) =>
+              selectedIds.has(outreachItem.id)
+                ? { ...outreachItem, status: '\uBC1C\uC1A1 \uC644\uB8CC', sentAt: outreachItem.sentAt || eventTime, deliveryMode: 'Gmail API send' }
+                : outreachItem,
+            ),
+          },
+          'outreach',
+          `Sent ${sentIds.length} outreach messages via Gmail API`,
+        ),
+      )
+      setSelectedOutreachIds((current) => current.filter((id) => !selectedIds.has(id)))
+    }
+
+    if (failures.length) {
+      showToast(`Gmail send: ${sentIds.length} succeeded, ${failures.length} failed: ${failures[0].message}`)
+    } else {
+      showToast(`Gmail send completed for ${sentIds.length} messages.`)
+    }
+  }
   const markOutreachSent = (itemId) => {
     updateWorkspace((current) =>
       appendActivity(
@@ -8268,15 +8442,30 @@ function App() {
                 />
                 전체 선택
               </label>
-              <span>{selectedOutreachItems.length}건 선택</span>
+              <span>{selectedOutreachItems.length} selected / {selectedEmailOutreachItems.length} email-ready / Gmail {gmailConnected ? 'connected' : 'not connected'}</span>
+              <button
+                className="secondary-button compact-button"
+                type="button"
+                onClick={gmailConnected ? disconnectGmail : connectGmail}
+              >
+                {gmailConnected ? 'Disconnect Gmail' : 'Connect Gmail'}
+              </button>
               <button
                 className="primary-button compact-button"
+                type="button"
+                disabled={!selectedEmailOutreachItems.length || !gmailConnected || gmailSending}
+                onClick={sendSelectedOutreachEmails}
+              >
+                <Send size={15} />
+                {gmailSending ? 'Sending' : 'Send selected emails'}
+              </button>
+              <button
+                className="secondary-button compact-button"
                 type="button"
                 disabled={!selectedOutreachItems.length}
                 onClick={markSelectedOutreachSent}
               >
-                <Send size={15} />
-                선택 메시지 발송 완료
+                Mark as sent only
               </button>
             </div>
             <div className="record-list">
