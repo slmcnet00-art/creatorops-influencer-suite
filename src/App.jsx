@@ -1785,7 +1785,7 @@ function cleanReferenceDisplayText(value) {
 }
 
 function isPlatformLogoAsset(value) {
-  return /(instagram\.com\/static|static\.cdninstagram\.com|tiktokcdn.*logo|tiktok.*logo|favicon|apple-touch-icon)/i.test(String(value || ''))
+  return /(instagram\.com\/static|static\.cdninstagram\.com|tiktokcdn.*logo|tiktok.*logo|favicon|apple-touch-icon|rs:fit:32:32)/i.test(String(value || ''))
 }
 
 function appendActivity(workspace, type, text) {

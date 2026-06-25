@@ -472,26 +472,31 @@ async function searchWebContentReferences({ query, country, platform, maxResults
 
   if (!isPublicSnapshotEnabled()) return normalized
 
-  return Promise.all(
-    normalized.map(async (item) => {
-      const snapshot = await fetchPublicProfileSnapshot(item.url).catch(() => null)
-      if (!snapshot) return item
-      const metrics = snapshot.metrics || {}
-      return {
-        ...item,
-        title: item.title || snapshot.title,
-        thumbnailUrl: selectReferenceThumbnail(item.thumbnailUrl, snapshot.image),
-        views: metrics.views ?? item.views,
-        accountFollowers: metrics.followers ?? item.accountFollowers,
-        likes: metrics.likes ?? item.likes,
-        comments: metrics.comments ?? item.comments,
-        shares: metrics.shares ?? item.shares,
-        analysis: snapshot.description || item.analysis,
-        source: `${item.source} + ${snapshot.source}`,
-        confidence: Math.max(item.confidence, snapshot.confidence || 0),
-      }
-    }),
-  )
+  const enriched = []
+  for (const item of normalized) {
+    const snapshot = await fetchPublicProfileSnapshot(item.url).catch(() => null)
+    if (!snapshot) {
+      enriched.push(item)
+      continue
+    }
+
+    const metrics = snapshot.metrics || {}
+    enriched.push({
+      ...item,
+      title: item.title || snapshot.title,
+      thumbnailUrl: selectReferenceThumbnail(item.thumbnailUrl, snapshot.image),
+      views: metrics.views ?? item.views,
+      accountFollowers: metrics.followers ?? item.accountFollowers,
+      likes: metrics.likes ?? item.likes,
+      comments: metrics.comments ?? item.comments,
+      shares: metrics.shares ?? item.shares,
+      analysis: snapshot.description || item.analysis,
+      source: `${item.source} + ${snapshot.source}`,
+      confidence: Math.max(item.confidence, snapshot.confidence || 0),
+    })
+  }
+
+  return enriched
 }
 
 function normalizeWebReferenceSearchItem(item, platform, country) {
@@ -604,7 +609,7 @@ function isLowValueReferenceText(value) {
 }
 
 function isPlatformLogoThumbnail(value) {
-  return /(instagram\.com\/static|static\.cdninstagram\.com|tiktokcdn.*logo|tiktok.*logo|favicon|apple-touch-icon)/i.test(String(value || ''))
+  return /(instagram\.com\/static|static\.cdninstagram\.com|tiktokcdn.*logo|tiktok.*logo|favicon|apple-touch-icon|rs:fit:32:32)/i.test(String(value || ''))
 }
 
 function selectReferenceThumbnail(...candidates) {
@@ -702,6 +707,7 @@ function buildBraveProfileSearchQueries(platform, query) {
     }
   } else if (platform === 'TikTok') {
     queries.push(`site:tiktok.com/@ ${cleanQuery}`)
+    queries.push(`site:tiktok.com ${cleanQuery}`)
     if (/화장품|뷰티|메이크업|스킨케어|beauty|makeup|skincare/.test(lower)) {
       queries.push('site:tiktok.com/@ 뷰티 리뷰')
     }
@@ -875,6 +881,11 @@ async function fetchPublicProfileSnapshot(url) {
     return fetchYouTubeReferenceSnapshot(safeUrl, youtubeVideoId)
   }
 
+  if (isTikTokUrl(safeUrl) && isTikTokPublicMirrorEnabled()) {
+    const tiktokSnapshot = await fetchTikTokPublicStatsSnapshot(safeUrl).catch(() => null)
+    if (tiktokSnapshot?.metrics?.followers) return tiktokSnapshot
+  }
+
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), getPublicSnapshotTimeoutMs())
 
@@ -957,6 +968,73 @@ async function fetchYouTubeReferenceSnapshot(url, videoId) {
     url,
     fetchedAt: new Date().toISOString(),
   }
+}
+
+async function fetchTikTokPublicStatsSnapshot(url) {
+  const handle = extractTikTokHandle(url)
+  if (!handle) throw httpError(400, 'TikTok handle could not be parsed from the URL.')
+
+  const params = new URLSearchParams({ unique_id: handle })
+  const payload = await fetchTikTokMirrorJson(params)
+
+  if (payload.code !== 0 || !payload.data?.user) {
+    throw httpError(502, 'TikTok public stats mirror did not return user data.')
+  }
+
+  const user = payload.data.user || {}
+  const stats = payload.data.stats || {}
+  const followers = Number(stats.followerCount || 0)
+  const likes = Number(stats.heartCount || stats.heart || 0)
+  const videoCount = Number(stats.videoCount || 0)
+  const averageViews = videoCount && likes ? Math.round(likes / Math.max(videoCount, 1)) : null
+
+  return {
+    title: user.nickname || handle,
+    description: user.signature || '',
+    image: user.avatarLarger || user.avatarMedium || user.avatarThumb || '',
+    handle: `@${user.uniqueId || handle}`,
+    platform: 'TikTok',
+    mediaType: '영상',
+    metrics: {
+      followers: followers || null,
+      views: averageViews,
+      likes,
+      comments: null,
+      shares: null,
+      saves: null,
+      videos: videoCount || null,
+    },
+    source: 'TikTok public mirror snapshot',
+    confidence: 58,
+    status: 'snapshot_ready',
+    url,
+    fetchedAt: new Date().toISOString(),
+  }
+}
+
+async function fetchTikTokMirrorJson(params) {
+  const endpoints = [
+    `https://www.tikwm.com/api/user/info?${params}`,
+    `https://tikwm.com/api/user/info?${params}`,
+  ]
+  let lastError = null
+
+  for (const endpoint of endpoints) {
+    try {
+      const payload = await fetchJson(endpoint, {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'CreatorOpsPublicSnapshot/1.0 (+https://creatorops-influencer-suite.onrender.com)',
+        },
+      })
+      if (payload?.code === 0 && payload.data?.user && payload.data?.stats) return payload
+      lastError = httpError(502, 'TikTok public stats mirror returned empty user data.')
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError || httpError(502, 'TikTok public stats mirror failed.')
 }
 
 function normalizeHtmlSnapshot(html, url) {
@@ -1293,6 +1371,27 @@ function extractYouTubeVideoId(value) {
   return /^[\w-]{8,}$/.test(raw) ? raw : ''
 }
 
+function isTikTokUrl(value) {
+  try {
+    const hostname = new URL(value).hostname.replace(/^www\./, '').toLowerCase()
+    return hostname === 'tiktok.com' || hostname.endsWith('.tiktok.com')
+  } catch {
+    return false
+  }
+}
+
+function extractTikTokHandle(value) {
+  try {
+    const url = new URL(String(value || '').trim())
+    const segments = url.pathname.split('/').filter(Boolean)
+    const handle = segments.find((segment) => segment.startsWith('@')) || ''
+    return handle.replace(/^@/, '')
+  } catch {
+    const match = String(value || '').match(/@([A-Za-z0-9._-]+)/)
+    return match?.[1] || ''
+  }
+}
+
 function validatePublicSnapshotUrl(value) {
   let url
   try {
@@ -1322,6 +1421,10 @@ function validatePublicSnapshotUrl(value) {
 
 function isPublicSnapshotEnabled() {
   return String(process.env.PUBLIC_SNAPSHOT_ENABLED || 'true').toLowerCase() !== 'false'
+}
+
+function isTikTokPublicMirrorEnabled() {
+  return String(process.env.TIKTOK_PUBLIC_MIRROR_ENABLED || 'true').toLowerCase() !== 'false'
 }
 
 function getPublicSnapshotTimeoutMs() {
