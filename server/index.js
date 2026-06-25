@@ -757,6 +757,9 @@ async function searchBraveProfiles(query, platform, maxResults, country = 'KR') 
             Accept: 'application/json',
             'X-Subscription-Token': key,
           },
+        }).catch((error) => {
+          if ([400, 422].includes(error.status)) return { web: { results: [] } }
+          throw error
         })
         const pageItems = payload.web?.results || []
         platformResults.push(
@@ -812,29 +815,59 @@ function buildStrictProfileSearchQueries(platform, query) {
   const cleanQuery = String(query || '').replace(/\s+/g, ' ').trim()
   const queries = []
   const lower = cleanQuery.toLowerCase()
+  const categoryTerms = inferDiscoveryCategoryTerms(lower)
 
   if (platform === 'Instagram') {
     queries.push(`site:instagram.com "${cleanQuery}" "@" -inurl:/p/ -inurl:/reel/ -inurl:/stories/`)
+    queries.push(`site:instagram.com ${cleanQuery} influencer creator -inurl:/p/ -inurl:/reel/ -inurl:/stories/`)
     if (/beauty|makeup|skincare|cosmetic|cosmetics/.test(lower)) {
       queries.push('site:instagram.com "beauty review" "@" -inurl:/p/ -inurl:/reel/ -inurl:/stories/')
     }
     if (/pet|dog|cat|kennel|carrier|crate/.test(lower)) {
       queries.push('site:instagram.com "pet creator" "@" -inurl:/p/ -inurl:/reel/ -inurl:/stories/')
     }
+    categoryTerms.forEach((term) => {
+      queries.push(`site:instagram.com "${term}" "@" -inurl:/p/ -inurl:/reel/ -inurl:/stories/`)
+    })
   } else if (platform === 'TikTok') {
     queries.push(`site:tiktok.com/@ "${cleanQuery}" -inurl:/video/ -inurl:/music/ -inurl:/tag/`)
     queries.push(`site:tiktok.com/@ ${cleanQuery} -inurl:/video/ -inurl:/music/ -inurl:/tag/`)
+    queries.push(`site:tiktok.com/@ ${cleanQuery} creator influencer -inurl:/video/ -inurl:/music/ -inurl:/tag/`)
+    queries.push(`site:tiktok.com/@ ${cleanQuery}`)
+    queries.push(`site:tiktok.com ${cleanQuery}`)
     if (/beauty|makeup|skincare|cosmetic|cosmetics/.test(lower)) {
       queries.push('site:tiktok.com/@ "beauty review" -inurl:/video/ -inurl:/music/')
+      queries.push('site:tiktok.com "beauty review"')
     }
     if (/pet|dog|cat|kennel|carrier|crate/.test(lower)) {
       queries.push('site:tiktok.com/@ "pet creator" -inurl:/video/ -inurl:/music/')
+      queries.push('site:tiktok.com "pet creator"')
     }
+    categoryTerms.forEach((term) => {
+      queries.push(`site:tiktok.com/@ "${term}" -inurl:/video/ -inurl:/music/ -inurl:/tag/`)
+    })
   } else {
     queries.push(`${getPlatformSiteQuery(platform)} ${cleanQuery}`.trim())
   }
 
-  return [...new Set(queries.filter(Boolean))].slice(0, 3)
+  return [...new Set(queries.filter(Boolean))].slice(0, 12)
+}
+
+function inferDiscoveryCategoryTerms(lowerQuery) {
+  const terms = []
+  if (/pet|dog|cat|kennel|carrier|crate|강아지|반려견|반려동물|고양이|켄넬|이동장/.test(lowerQuery)) {
+    terms.push('pet creator', 'dog review', 'pet influencer')
+  }
+  if (/beauty|makeup|skincare|cosmetic|cosmetics|뷰티|화장품|메이크업|스킨케어/.test(lowerQuery)) {
+    terms.push('beauty creator', 'skincare review', 'makeup influencer')
+  }
+  if (/food|snack|맛집|먹방|간식|푸드/.test(lowerQuery)) {
+    terms.push('food creator', 'snack review')
+  }
+  if (/fashion|lookbook|패션|룩북|의류/.test(lowerQuery)) {
+    terms.push('fashion creator', 'lookbook')
+  }
+  return terms
 }
 
 async function searchGoogleCseProfiles(query, platform, maxResults, country = 'KR') {
@@ -1472,15 +1505,28 @@ function dedupeProfileResults(results) {
 }
 
 function filterProfileDiscoveryResults(results, query) {
-  const context = buildProfileDiscoveryQueryContext(query)
+  const context = buildProfileDiscoveryQueryContextV2(query)
+  const scoredResults = results.map((profile) => ({
+    ...profile,
+    discoveryRelevanceScore: scoreProfileDiscoveryRelevance(profile, context),
+  }))
+  const strictResults = scoredResults
+    .filter((profile) => isUsableProfileDiscoveryResultV2(profile, context, 'strict'))
+    .map((profile) => ({ ...profile, discoveryMatchLevel: '정확 후보' }))
+  const strictKeys = new Set(strictResults.map((profile) => `${profile.platform}:${profile.profileUrl || profile.handle}`.toLowerCase()))
+  const expandedResults = scoredResults
+    .filter((profile) => !strictKeys.has(`${profile.platform}:${profile.profileUrl || profile.handle}`.toLowerCase()))
+    .filter((profile) => isUsableProfileDiscoveryResultV2(profile, context, 'expanded'))
+    .map((profile) => ({ ...profile, discoveryMatchLevel: '확장 후보' }))
 
-  return results
-    .map((profile) => ({
-      ...profile,
-      discoveryRelevanceScore: scoreProfileDiscoveryRelevance(profile, context),
-    }))
-    .filter((profile) => isUsableProfileDiscoveryResult(profile, context))
+  const typedStrictResults = strictResults.map((profile) => ({ ...profile, discoveryMatchType: 'strict' }))
+  const typedExpandedResults = expandedResults.map((profile) => ({ ...profile, discoveryMatchType: 'expanded' }))
+
+  return [...typedStrictResults, ...typedExpandedResults]
     .sort((a, b) => {
+      if (a.discoveryMatchLevel !== b.discoveryMatchLevel) {
+        return a.discoveryMatchLevel === '정확 후보' ? -1 : 1
+      }
       if (b.discoveryRelevanceScore !== a.discoveryRelevanceScore) {
         return b.discoveryRelevanceScore - a.discoveryRelevanceScore
       }
@@ -1488,6 +1534,7 @@ function filterProfileDiscoveryResults(results, query) {
     })
 }
 
+// eslint-disable-next-line no-unused-vars
 function buildProfileDiscoveryQueryContext(query) {
   const tokens = String(query || '')
     .toLowerCase()
@@ -1576,6 +1623,7 @@ function scoreProfileDiscoveryRelevance(profile, context) {
   return matchedTokens + matchedRequiredTokens * 2 + (hasMetrics ? 2 : 0) + (hasSnapshot ? 2 : 0) + (hasRealProfileImage ? 1 : 0) - captionPenalty
 }
 
+// eslint-disable-next-line no-unused-vars
 function isUsableProfileDiscoveryResult(profile, context) {
   if (!profile?.profileUrl) return false
   const text = getProfileDiscoverySearchText(profile)
@@ -1603,6 +1651,99 @@ function looksLikeContentCaption(value) {
   if (text.length >= 48) return true
   if ((text.match(/#/g) || []).length >= 2) return true
   return /추천|입양|ㅋㅋ|ㅎㅎ|릴스|챌린지|viral|fyp/i.test(text) && text.length >= 24
+}
+
+function buildProfileDiscoveryQueryContextV2(query) {
+  const rawTokens = String(query || '')
+    .toLowerCase()
+    .split(/[\s,./|()[\]{}"'`~!?:;]+/)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 2)
+  const stopWords = new Set([
+    'creator',
+    'creators',
+    'influencer',
+    'influencers',
+    'review',
+    'reviews',
+    'campaign',
+    'product',
+    'service',
+    'brand',
+    'official',
+    'profile',
+    'video',
+    'content',
+    '콘텐츠',
+    '크리에이터',
+    '인플루언서',
+    '캠페인',
+    '브랜드',
+    '제품',
+    '서비스',
+    '후보',
+    '리뷰',
+    '추천',
+    '사용',
+    '설명',
+    '타깃',
+    '페르소나',
+  ])
+  const genericCategoryWords = new Set([
+    'pet',
+    'dog',
+    'cat',
+    'beauty',
+    'makeup',
+    'skincare',
+    'food',
+    'fashion',
+    '강아지',
+    '반려견',
+    '반려동물',
+    '고양이',
+    '펫',
+    '뷰티',
+    '화장품',
+  ])
+  const tokens = [...new Set(rawTokens.filter((term) => !stopWords.has(term)))]
+  const requiredTokens = tokens.filter((term) => !genericCategoryWords.has(term))
+  const genericTokens = tokens.filter((term) => genericCategoryWords.has(term))
+
+  return { tokens, requiredTokens, genericTokens }
+}
+
+function isUsableProfileDiscoveryResultV2(profile, context, mode = 'strict') {
+  if (!profile?.profileUrl) return false
+  const text = getProfileDiscoverySearchText(profile)
+  const requiredMatches = context.requiredTokens.filter((term) => text.includes(term)).length
+  const genericMatches = context.genericTokens.filter((term) => text.includes(term)).length
+  const tokenMatches = context.tokens.filter((term) => text.includes(term)).length
+  const hasMetrics = Number(profile.followers || 0) > 0 || Number(profile.averageViews || 0) > 0
+  const hasRequiredMatch = !context.requiredTokens.length || requiredMatches > 0
+  const hasCategoryMatch = genericMatches > 0 || tokenMatches > 0
+
+  if (mode === 'strict' && !hasRequiredMatch) return false
+  if (mode === 'expanded' && !hasCategoryMatch && !hasMetrics) return false
+
+  if (profile.platform === 'TikTok') {
+    if (!hasMetrics && looksLikeContentCaptionV2(profile.name)) return false
+    if (hasBlockedDiscoveryTopicV2(text)) return false
+  }
+
+  return true
+}
+
+function hasBlockedDiscoveryTopicV2(text) {
+  return /adopt me|roblox|game|gaming|낚시|붕어|차박|카니발|캠핑|입양|게임/i.test(String(text || ''))
+}
+
+function looksLikeContentCaptionV2(value) {
+  const text = String(value || '').trim()
+  if (!text) return false
+  if (text.length >= 64) return true
+  if ((text.match(/#/g) || []).length >= 4) return true
+  return /입양|ㅋㅋ|ㅎㅎ|릴스|챌린지|viral|fyp/i.test(text) && text.length >= 30
 }
 
 function parseYouTubeLookup(value) {

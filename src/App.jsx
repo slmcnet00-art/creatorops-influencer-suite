@@ -2589,6 +2589,7 @@ function buildRealDiscoveryCreator(result, brief, fallbackCategory, index = 0) {
   const observedMetrics = Boolean(followers || averageViews)
   const platform = result.platform || 'Instagram'
   const collectedAt = nowLabel()
+  const isExpandedCandidate = result.discoveryMatchType === 'expanded'
   const topicCandidates = keywordList(`${brief.keywords}, ${brief.product}`).slice(0, 5)
   const metricSources = [
     {
@@ -2656,15 +2657,15 @@ function buildRealDiscoveryCreator(result, brief, fallbackCategory, index = 0) {
       : `${result.source || '공개 웹 검색'} 결과 · 팔로워/조회수 후속 수집 필요`,
     city: result.country || 'KR',
     lastPost: verifiedMetrics ? '공식 지표 수집' : '실제 프로필 발견',
-    status: verifiedMetrics ? '실제 데이터 확인' : '실제 검색 후보',
+    status: verifiedMetrics ? '실제 데이터 확인' : isExpandedCandidate ? '보류 추천' : '실제 검색 후보',
     topics: uniqueList([brief.product, fallbackCategory, ...topicCandidates, result.snippet || '공개 검색']).slice(0, 7),
     sourceUrl: result.profileUrl,
     sourceCollectedAt: collectedAt,
     sourceNote: verifiedMetrics
       ? `${result.source}로 실제 채널과 공개 통계를 가져왔습니다.`
       : observedMetrics
-        ? '실제 공개 검색 결과에서 프로필 URL과 일부 공개 수치를 가져왔습니다. 평균 조회/참여율은 후속 검증이 필요합니다.'
-        : '실제 공개 검색 결과에서 프로필 URL을 가져왔습니다. 팔로워와 평균 조회는 공식 API 또는 공개 프로필 수집으로 검증해야 합니다.',
+        ? `${isExpandedCandidate ? '확장 검색 후보입니다. ' : ''}실제 공개 검색 결과에서 프로필 URL과 일부 공개 수치를 가져왔습니다. 평균 조회/참여율은 후속 검증이 필요합니다.`
+        : `${isExpandedCandidate ? '확장 검색 후보입니다. ' : ''}실제 공개 검색 결과에서 프로필 URL을 가져왔습니다. 팔로워와 평균 조회는 공식 API 또는 공개 프로필 수집으로 검증해야 합니다.`,
     needsVerification: !verifiedMetrics,
     metricsPending: !observedMetrics,
     metricSources,
