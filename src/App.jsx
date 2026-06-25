@@ -2915,6 +2915,7 @@ function App() {
     sort: 'views',
     maxResults: '36',
   })
+  const [referencePage, setReferencePage] = useState(1)
   const [referenceSearchStatus, setReferenceSearchStatus] = useState({
     mode: 'idle',
     message: '',
@@ -3140,6 +3141,14 @@ function App() {
       return Number(b.views || 0) - Number(a.views || 0)
     })
   }, [referenceFilters, selectedCampaignReferences])
+  const referencePageSize = 12
+  const referenceTotalPages = Math.max(1, Math.ceil(visibleReferences.length / referencePageSize))
+  const safeReferencePage = Math.min(Math.max(referencePage, 1), referenceTotalPages)
+  const paginatedReferences = useMemo(() => {
+    const start = (safeReferencePage - 1) * referencePageSize
+    return visibleReferences.slice(start, start + referencePageSize)
+  }, [safeReferencePage, visibleReferences])
+
   const savedProductionReferences = useMemo(
     () => selectedCampaignReferences.filter((item) => savedProductionReferenceIds.includes(item.id)),
     [savedProductionReferenceIds, selectedCampaignReferences],
@@ -6193,6 +6202,7 @@ function App() {
   const applyReferenceSearch = async (event) => {
     event.preventDefault()
     const query = referenceFilters.query.trim()
+    setReferencePage(1)
     setReferenceFilters((current) => ({
       ...current,
       appliedQuery: '',
@@ -6254,6 +6264,7 @@ function App() {
         )
       })
 
+      setReferencePage(1)
       setReferenceSearchStatus({
         mode: 'success',
         message: `${incoming.length}개 검색, 중복 제외 후 ${newCount}개 새 레퍼런스를 추가했습니다.`,
@@ -6267,6 +6278,7 @@ function App() {
   }
 
   const resetReferenceSearch = () => {
+    setReferencePage(1)
     setReferenceFilters({
       query: '',
       appliedQuery: '',
@@ -6274,6 +6286,7 @@ function App() {
       mediaType: '전체',
       platform: '전체',
       sort: 'views',
+      maxResults: '36',
     })
     setReferenceSearchStatus({ mode: 'idle', message: '' })
     showToast('레퍼런스 필터를 초기화했어요.')
@@ -7575,7 +7588,10 @@ function App() {
                 className={referenceFilters.country === countryOption ? 'active' : ''}
                 type="button"
                 key={countryOption}
-                onClick={() => setReferenceFilters({ ...referenceFilters, country: countryOption })}
+                onClick={() => {
+                  setReferenceFilters({ ...referenceFilters, country: countryOption })
+                  setReferencePage(1)
+                }}
               >
                 {countryOption}
               </button>
@@ -7587,7 +7603,10 @@ function App() {
               <Search size={17} />
               <input
                 value={referenceFilters.query}
-                onChange={(event) => setReferenceFilters({ ...referenceFilters, query: event.target.value })}
+                onChange={(event) => {
+                  setReferenceFilters({ ...referenceFilters, query: event.target.value })
+                  setReferencePage(1)
+                }}
                 placeholder="키워드 검색: 제품, 후킹, 썸네일, CTA, 플랫폼"
               />
             </label>
@@ -7627,7 +7646,10 @@ function App() {
               <span>국가</span>
               <select
                 value={referenceFilters.country}
-                onChange={(event) => setReferenceFilters({ ...referenceFilters, country: event.target.value })}
+                onChange={(event) => {
+                  setReferenceFilters({ ...referenceFilters, country: event.target.value })
+                  setReferencePage(1)
+                }}
               >
                 {referenceCountryOptions.map((countryOption) => (
                   <option key={countryOption}>{countryOption}</option>
@@ -7638,7 +7660,10 @@ function App() {
               <span>미디어</span>
               <select
                 value={referenceFilters.mediaType}
-                onChange={(event) => setReferenceFilters({ ...referenceFilters, mediaType: event.target.value })}
+                onChange={(event) => {
+                  setReferenceFilters({ ...referenceFilters, mediaType: event.target.value })
+                  setReferencePage(1)
+                }}
               >
                 <option>전체</option>
                 <option>영상</option>
@@ -7649,7 +7674,10 @@ function App() {
               <span>플랫폼</span>
               <select
                 value={referenceFilters.platform}
-                onChange={(event) => setReferenceFilters({ ...referenceFilters, platform: event.target.value })}
+                onChange={(event) => {
+                  setReferenceFilters({ ...referenceFilters, platform: event.target.value })
+                  setReferencePage(1)
+                }}
               >
                 <option>전체</option>
                 <option>TikTok</option>
@@ -7662,7 +7690,10 @@ function App() {
               <span>순위 기준</span>
               <select
                 value={referenceFilters.sort}
-                onChange={(event) => setReferenceFilters({ ...referenceFilters, sort: event.target.value })}
+                onChange={(event) => {
+                  setReferenceFilters({ ...referenceFilters, sort: event.target.value })
+                  setReferencePage(1)
+                }}
               >
                 <option value="views">조회수 순위</option>
                 <option value="virality">팔로워 대비 터진 순위</option>
@@ -7673,7 +7704,7 @@ function App() {
           </div>
 
           <div className="reference-list">
-            {visibleReferences.map((item, index) => (
+            {paginatedReferences.map((item, index) => (
               <article className="reference-card" key={item.id}>
                 {(() => {
                   const isSavedForProduction = savedProductionReferenceIds.includes(item.id)
@@ -7702,7 +7733,7 @@ function App() {
                 </div>
                 <div className="reference-body">
                   <div className="tracked-post-head">
-                    <span className="reference-rank-chip">#{index + 1}</span>
+                    <span className="reference-rank-chip">#{(safeReferencePage - 1) * referencePageSize + index + 1}</span>
                     <span className="type-chip">{item.mediaType}</span>
                     <span className="type-chip">{item.platform}</span>
                     <span className="type-chip">{item.country || '국가 미입력'}</span>
@@ -7745,6 +7776,16 @@ function App() {
               </div>
             )}
           </div>
+
+          {visibleReferences.length > referencePageSize && (
+            <PaginationControls
+              page={safeReferencePage}
+              totalPages={referenceTotalPages}
+              totalItems={visibleReferences.length}
+              pageSize={referencePageSize}
+              onPageChange={setReferencePage}
+            />
+          )}
 
           <div className="reference-manual-toggle">
             <div>
