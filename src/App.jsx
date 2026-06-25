@@ -13,6 +13,7 @@ import {
   Eye,
   FileText,
   Filter,
+  Globe2,
   History,
   Image as ImageIcon,
   LayoutDashboard,
@@ -135,6 +136,7 @@ const influencerBrandGuideTemplate = `# 인플루언서 브랜드 가이드
 `
 
 const defaultDiscoveryFilters = {
+  country: 'KR',
   minFollowers: '',
   maxFollowers: '',
   minAverageViews: '',
@@ -144,6 +146,7 @@ const defaultDiscoveryFilters = {
 }
 
 const discoveryFilterLabels = {
+  country: '국가',
   minFollowers: '팔로워 최소',
   maxFollowers: '팔로워 최대',
   minAverageViews: '평균 조회 최소',
@@ -754,6 +757,7 @@ const platformOptions = ['전체', 'YouTube', 'Instagram', 'TikTok']
 const briefPlatformOptions = ['YouTube', 'Instagram', 'TikTok', 'TikTok 셀러']
 const categoryOptions = ['전체', '뷰티', '테크', '푸드', '피트니스', '아웃도어', '펫', '리뷰', '공동구매']
 const referenceCountryPresets = ['전체', 'KR', 'US', 'JP', 'CN', 'SEA', 'EU']
+const discoveryCountryOptions = ['전체', 'KR', 'US', 'JP', 'CN', 'GB', 'VN', 'TH', 'ID', 'PH', 'SG', 'MY', 'TW']
 const campaignStatuses = ['섭외', '콘텐츠 제작', '라이브', '리포트', '완료']
 const campaignTypeOptions = ['제안형', '공개모집', '앰배서더', '커머스/제휴', 'UGC/숏폼', '틱톡 공동구매 셀러']
 
@@ -3110,6 +3114,7 @@ function App() {
     const minEngagement = parseDiscoveryFilterValue(discoveryFilters.minEngagement)
     const maxPrice = parseDiscoveryFilterValue(discoveryFilters.maxPrice)
     const minFit = parseDiscoveryFilterValue(discoveryFilters.minFit)
+    const selectedCountry = String(discoveryFilters.country || '전체')
 
     return creators
       .filter((creator) => {
@@ -3130,6 +3135,7 @@ function App() {
           (!queryTerms.length || queryTerms.some((term) => searchable.includes(term))) &&
           (platform === '전체' || creator.platform === platform) &&
           (category === '전체' || creator.category === category) &&
+          (selectedCountry === '전체' || creator.country === selectedCountry || creator.city === selectedCountry) &&
           (pendingMetrics || minFollowers === null || creator.followers >= minFollowers) &&
           (pendingMetrics || maxFollowers === null || creator.followers <= maxFollowers) &&
           (pendingMetrics || minAverageViews === null || creator.averageViews >= minAverageViews) &&
@@ -3291,14 +3297,23 @@ function App() {
   )
 
   const activeDiscoveryFilterCount = useMemo(
-    () => Object.values(discoveryFilters).filter(hasDiscoveryFilterValue).length,
+    () =>
+      Object.entries(discoveryFilters).filter(([field, value]) =>
+        field === 'country'
+          ? Boolean(value && value !== '전체')
+          : hasDiscoveryFilterValue(value),
+      ).length,
     [discoveryFilters],
   )
 
   const discoveryFilterSummary = useMemo(
     () =>
       Object.entries(discoveryFilters)
-        .filter(([, value]) => hasDiscoveryFilterValue(value))
+        .filter(([field, value]) =>
+          field === 'country'
+            ? Boolean(value && value !== '전체')
+            : hasDiscoveryFilterValue(value),
+        )
         .map(([field, value]) => `${discoveryFilterLabels[field]} ${value}`)
         .join(' · '),
     [discoveryFilters],
@@ -4321,6 +4336,10 @@ function App() {
     const youtubeApiKey = realDiscoveryDraft.youtubeApiKey.trim() || youtubeDraft.apiKey.trim()
     const hasServerApi = Boolean(backendConfig.apiBaseUrl)
     const hasProfileSearch = hasServerApi || (realDiscoveryDraft.googleApiKey.trim() && realDiscoveryDraft.googleCx.trim())
+    const discoveryCountry =
+      discoveryFilters.country && discoveryFilters.country !== '전체'
+        ? discoveryFilters.country
+        : activeBrand.country || 'KR'
 
     if (!hasServerApi && !youtubeApiKey && !hasProfileSearch) {
       showToast('실제 발굴은 CreatorOps API 서버 또는 YouTube/프로필 검색 API 키를 연결해야 합니다.')
@@ -4338,6 +4357,7 @@ function App() {
           ...(await searchYouTubeCreatorDiscovery({
             apiKey: youtubeApiKey,
             query: searchText,
+            country: discoveryCountry,
             maxResults,
           })),
         )
@@ -4350,6 +4370,7 @@ function App() {
             cx: realDiscoveryDraft.googleCx,
             query: searchText,
             platform,
+            country: discoveryCountry,
             maxResults,
           })),
         )
@@ -6911,6 +6932,13 @@ function App() {
                 options={categoryOptions}
                 onChange={setCategory}
                 label="카테고리"
+              />
+              <SelectPill
+                icon={<Globe2 size={16} />}
+                value={discoveryFilters.country}
+                options={discoveryCountryOptions}
+                onChange={(value) => updateDiscoveryFilter('country', value)}
+                label="국가"
               />
             </div>
 

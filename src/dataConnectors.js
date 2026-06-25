@@ -274,13 +274,15 @@ export async function fetchYouTubeChannelSnapshot({ apiKey, lookup }) {
   }
 }
 
-export async function searchYouTubeCreatorDiscovery({ apiKey, query, maxResults = 8 }) {
+export async function searchYouTubeCreatorDiscovery({ apiKey, query, country = 'KR', maxResults = 8 }) {
   const cleanKey = String(apiKey || '').trim()
   const cleanQuery = String(query || '').trim()
+  const cleanCountry = normalizeDiscoveryCountry(country)
 
   if (CREATOROPS_API_BASE_URL) {
     return callCreatorOpsApi('/discovery/youtube/search', {
       query: cleanQuery,
+      country: cleanCountry,
       maxResults,
     })
   }
@@ -298,10 +300,12 @@ export async function searchYouTubeCreatorDiscovery({ apiKey, query, maxResults 
     type: 'channel',
     q: cleanQuery,
     maxResults: String(Math.min(Math.max(Number(maxResults) || 8, 1), 20)),
-    regionCode: 'KR',
-    relevanceLanguage: 'ko',
     key: cleanKey,
   })
+  if (cleanCountry) {
+    searchParams.set('regionCode', cleanCountry)
+    searchParams.set('relevanceLanguage', getDiscoveryLanguage(cleanCountry))
+  }
 
   const searchResponse = await fetch(`https://www.googleapis.com/youtube/v3/search?${searchParams.toString()}`)
   const searchPayload = await searchResponse.json()
@@ -362,8 +366,9 @@ export async function searchYouTubeCreatorDiscovery({ apiKey, query, maxResults 
   })
 }
 
-export async function searchGoogleProfileDiscovery({ apiKey, cx, query, platform, maxResults = 8 }) {
+export async function searchGoogleProfileDiscovery({ apiKey, cx, query, platform, country = 'KR', maxResults = 8 }) {
   const cleanKey = String(apiKey || '').trim()
+  const cleanCountry = normalizeDiscoveryCountry(country)
   const cleanCx = String(cx || '').trim()
   const cleanQuery = String(query || '').trim()
   const cleanPlatform = platform === '전체' ? '' : platform
@@ -372,6 +377,7 @@ export async function searchGoogleProfileDiscovery({ apiKey, cx, query, platform
     return callCreatorOpsApi('/discovery/google-profiles/search', {
       query: cleanQuery,
       platform: cleanPlatform || 'all',
+      country: cleanCountry,
       maxResults,
     })
   }
@@ -396,7 +402,7 @@ export async function searchGoogleProfileDiscovery({ apiKey, cx, query, platform
       cx: cleanCx,
       q: `${siteQuery} ${cleanQuery}`,
       num: String(Math.min(Math.max(Number(maxResults) || 8, 1), 10)),
-      gl: 'kr',
+      gl: cleanCountry ? cleanCountry.toLowerCase() : 'kr',
       safe: 'active',
     })
     const response = await fetch(`https://www.googleapis.com/customsearch/v1?${params.toString()}`)
@@ -443,6 +449,30 @@ export async function searchContentReferences({ query, country, platform, sort, 
     sort,
     maxResults,
   })
+}
+
+function normalizeDiscoveryCountry(value) {
+  const clean = String(value || '').trim().toUpperCase()
+  if (!clean || clean === '전체' || clean === 'ALL' || clean === 'GLOBAL') return ''
+  return /^[A-Z]{2}$/.test(clean) ? clean : ''
+}
+
+function getDiscoveryLanguage(country) {
+  const languages = {
+    KR: 'ko',
+    JP: 'ja',
+    CN: 'zh-Hans',
+    TW: 'zh-Hant',
+    US: 'en',
+    GB: 'en',
+    SG: 'en',
+    MY: 'ms',
+    TH: 'th',
+    VN: 'vi',
+    ID: 'id',
+    PH: 'en',
+  }
+  return languages[country] || 'en'
 }
 
 function getPlatformSiteQuery(platform) {

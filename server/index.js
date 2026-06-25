@@ -43,10 +43,11 @@ app.post('/youtube/channel', async (request, response, next) => {
 app.post('/discovery/youtube/search', async (request, response, next) => {
   try {
     const query = String(request.body?.query || '').trim()
+    const country = String(request.body?.country || 'KR').trim()
     const maxResults = clamp(Number(request.body?.maxResults || 8), 1, 20)
     if (!query) throw httpError(400, 'query is required.')
 
-    const creators = await searchYouTubeCreators(query, maxResults)
+    const creators = await searchYouTubeCreators(query, maxResults, country)
     response.json({ data: creators })
   } catch (error) {
     next(error)
@@ -57,10 +58,11 @@ app.post('/discovery/google-profiles/search', async (request, response, next) =>
   try {
     const query = String(request.body?.query || '').trim()
     const platform = normalizeProfileDiscoveryPlatform(request.body?.platform || 'all')
+    const country = String(request.body?.country || 'KR').trim()
     const maxResults = clamp(Number(request.body?.maxResults || 8), 1, 10)
     if (!query) throw httpError(400, 'query is required.')
 
-    const profiles = await searchGoogleProfiles(query, platform, maxResults)
+    const profiles = await searchGoogleProfiles(query, platform, maxResults, country)
     response.json({ data: profiles })
   } catch (error) {
     next(error)
@@ -253,12 +255,12 @@ async function fetchYouTubeChannelSnapshot(lookup) {
   return normalizeYouTubeChannel(channel, parsed)
 }
 
-async function searchYouTubeCreators(query, maxResults) {
+async function searchYouTubeCreators(query, maxResults, country = 'KR') {
   const results = []
   const seen = new Set()
 
   for (const searchQuery of buildCreatorDiscoveryQueries(query)) {
-    const creators = await fetchYouTubeCreatorsForQuery(searchQuery, maxResults)
+    const creators = await fetchYouTubeCreatorsForQuery(searchQuery, maxResults, country)
     for (const creator of creators) {
       const key = creator.channelId || creator.id || creator.profileUrl
       if (!key || seen.has(key)) continue
@@ -271,15 +273,16 @@ async function searchYouTubeCreators(query, maxResults) {
   return results
 }
 
-async function fetchYouTubeCreatorsForQuery(query, maxResults) {
+async function fetchYouTubeCreatorsForQuery(query, maxResults, country = 'KR') {
   const key = requireEnv('YOUTUBE_DATA_API_KEY')
+  const regionCode = normalizeRegionCode(country) || 'KR'
   const searchParams = new URLSearchParams({
     part: 'snippet',
     type: 'channel',
     q: query,
     maxResults: String(maxResults),
-    regionCode: 'KR',
-    relevanceLanguage: 'ko',
+    regionCode,
+    relevanceLanguage: getDiscoveryLanguage(regionCode),
     key,
   })
   const searchPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/search?${searchParams}`)
@@ -292,7 +295,7 @@ async function fetchYouTubeCreatorsForQuery(query, maxResults) {
     key,
   })
   const channelPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/channels?${channelParams}`)
-  return (channelPayload.items || []).map((channel) => normalizeYouTubeChannel(channel))
+  return (channelPayload.items || []).map((channel) => normalizeYouTubeChannel(channel, {}, regionCode))
 }
 
 function buildCreatorDiscoveryQueries(query) {
@@ -647,17 +650,18 @@ function sortContentReferences(results, sort) {
   })
 }
 
-async function searchGoogleProfiles(query, platform, maxResults) {
+async function searchGoogleProfiles(query, platform, maxResults, country = 'KR') {
   if (process.env.BRAVE_SEARCH_API_KEY) {
-    return searchBraveProfiles(query, platform, maxResults)
+    return searchBraveProfiles(query, platform, maxResults, country)
   }
 
-  return searchGoogleCseProfiles(query, platform, maxResults)
+  return searchGoogleCseProfiles(query, platform, maxResults, country)
 }
 
-async function searchBraveProfiles(query, platform, maxResults) {
+async function searchBraveProfiles(query, platform, maxResults, country = 'KR') {
   const key = requireEnv('BRAVE_SEARCH_API_KEY')
   const platforms = getProfileDiscoveryPlatforms(platform)
+  const regionCode = normalizeRegionCode(country) || 'KR'
   const platformTarget = Math.max(1, Math.ceil(maxResults / platforms.length))
   const perPlatformCount = Math.max(10, Math.ceil(maxResults * 2))
   const results = []
@@ -669,7 +673,7 @@ async function searchBraveProfiles(query, platform, maxResults) {
         q: profileQuery,
         count: String(Math.min(Math.max(perPlatformCount, 1), 20)),
         safesearch: 'moderate',
-        country: 'KR',
+        country: regionCode,
       })
       const payload = await fetchJson(`https://api.search.brave.com/res/v1/web/search?${params}`, {
         headers: {
@@ -680,7 +684,7 @@ async function searchBraveProfiles(query, platform, maxResults) {
       platformResults.push(
         ...dedupeProfileResults(
           (payload.web?.results || [])
-            .map((item) => normalizeProfileSearchItem(item, itemPlatform, 'Brave Search API'))
+            .map((item) => normalizeProfileSearchItem(item, itemPlatform, 'Brave Search API', regionCode))
             .filter(Boolean),
         ),
       )
@@ -721,10 +725,11 @@ function buildBraveProfileSearchQueries(platform, query) {
   return [...new Set(queries.filter(Boolean))].slice(0, 3)
 }
 
-async function searchGoogleCseProfiles(query, platform, maxResults) {
+async function searchGoogleCseProfiles(query, platform, maxResults, country = 'KR') {
   const key = requireEnv('GOOGLE_SEARCH_API_KEY')
   const cx = requireEnv('GOOGLE_SEARCH_CX')
   const platforms = getProfileDiscoveryPlatforms(platform)
+  const regionCode = normalizeRegionCode(country) || 'KR'
   const platformTarget = Math.max(1, Math.ceil(maxResults / platforms.length))
   const results = []
 
@@ -734,13 +739,13 @@ async function searchGoogleCseProfiles(query, platform, maxResults) {
       cx,
       q: `${getPlatformSiteQuery(itemPlatform)} ${query}`,
       num: String(Math.min(platformTarget, 10)),
-      gl: 'kr',
+      gl: regionCode.toLowerCase(),
       safe: 'active',
     })
     const payload = await fetchJson(`https://www.googleapis.com/customsearch/v1?${params}`)
     results.push(
       ...(payload.items || [])
-        .map((item) => normalizeProfileSearchItem(item, itemPlatform, 'Google Programmable Search'))
+        .map((item) => normalizeProfileSearchItem(item, itemPlatform, 'Google Programmable Search', regionCode))
         .filter(Boolean),
     )
   }
@@ -1183,7 +1188,7 @@ async function callOpenAIText(prompt) {
   return payload.output_text || payload.output?.flatMap((item) => item.content || []).map((item) => item.text).filter(Boolean).join('\n') || ''
 }
 
-function normalizeYouTubeChannel(channel, parsedLookup = {}) {
+function normalizeYouTubeChannel(channel, parsedLookup = {}, fallbackCountry = 'KR') {
   const statistics = channel.statistics || {}
   const snippet = channel.snippet || {}
   const subscribers = Number(statistics.subscriberCount || 0)
@@ -1211,13 +1216,13 @@ function normalizeYouTubeChannel(channel, parsedLookup = {}) {
     totalViews: viewCount,
     videoCount,
     description: snippet.description || '',
-    country: snippet.country || 'KR',
+    country: snippet.country || fallbackCountry || 'KR',
     source: 'YouTube Data API',
     verifiedMetrics: true,
   }
 }
 
-function normalizeProfileSearchItem(item, platform, source = 'Public Search API') {
+function normalizeProfileSearchItem(item, platform, source = 'Public Search API', country = 'KR') {
   const link = item.link || item.formattedUrl || item.url || ''
   if (!link) return null
 
@@ -1230,14 +1235,14 @@ function normalizeProfileSearchItem(item, platform, source = 'Public Search API'
       if (!hostname.includes('instagram.com')) return null
       const handle = segments[0]
       if (!isInstagramProfileHandle(handle)) return null
-      return buildSearchResult(item, platform, `@${handle}`, `https://www.instagram.com/${handle}`, source)
+      return buildSearchResult(item, platform, `@${handle}`, `https://www.instagram.com/${handle}`, source, country)
     }
 
     if (platform === 'TikTok') {
       if (!hostname.includes('tiktok.com')) return null
       const handle = segments.find((segment) => segment.startsWith('@'))
       if (!handle) return null
-      return buildSearchResult(item, platform, handle, `https://www.tiktok.com/${handle}`, source)
+      return buildSearchResult(item, platform, handle, `https://www.tiktok.com/${handle}`, source, country)
     }
 
     if (platform === 'YouTube') {
@@ -1247,7 +1252,7 @@ function normalizeProfileSearchItem(item, platform, source = 'Public Search API'
       const profileUrl = handle.startsWith('@')
         ? `https://www.youtube.com/${handle}`
         : `https://www.youtube.com/channel/${handle}`
-      return buildSearchResult(item, platform, handle.startsWith('@') ? handle : `@${handle}`, profileUrl, source)
+      return buildSearchResult(item, platform, handle.startsWith('@') ? handle : `@${handle}`, profileUrl, source, country)
     }
   } catch {
     return null
@@ -1256,7 +1261,7 @@ function normalizeProfileSearchItem(item, platform, source = 'Public Search API'
   return null
 }
 
-function buildSearchResult(item, platform, handle, profileUrl, source) {
+function buildSearchResult(item, platform, handle, profileUrl, source, country = 'KR') {
   const title = cleanReferenceText(item.title || '')
     .replace(/\s*[-|].*$/, '')
     .replace(/\s*•.*$/, '')
@@ -1271,6 +1276,7 @@ function buildSearchResult(item, platform, handle, profileUrl, source) {
     name: title || handle.replace('@', ''),
     handle,
     profileUrl,
+    country,
     snippet,
     avatar: selectReferenceThumbnail(item.thumbnail?.src, item.profile?.img),
     followers: publicMetrics.followers || extractMetricFromTextSafe(metricText, 'followers') || null,
@@ -1433,8 +1439,27 @@ function getPublicSnapshotTimeoutMs() {
 
 function normalizeRegionCode(value) {
   const clean = String(value || '').trim().toUpperCase()
+  if (clean === '\uC804\uCCB4') return ''
   if (!clean || clean === '전체' || clean === 'ALL' || clean === 'GLOBAL') return ''
   return /^[A-Z]{2}$/.test(clean) ? clean : ''
+}
+
+function getDiscoveryLanguage(country) {
+  const languages = {
+    KR: 'ko',
+    JP: 'ja',
+    CN: 'zh-Hans',
+    TW: 'zh-Hant',
+    US: 'en',
+    GB: 'en',
+    SG: 'en',
+    MY: 'ms',
+    TH: 'th',
+    VN: 'vi',
+    ID: 'id',
+    PH: 'en',
+  }
+  return languages[country] || 'en'
 }
 
 function pickMetaContent(html, name) {
