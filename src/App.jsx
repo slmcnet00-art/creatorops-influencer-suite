@@ -2784,6 +2784,7 @@ function App() {
   const [selectedDiscoveryCreatorIds, setSelectedDiscoveryCreatorIds] = useState([])
   const [discoveryPage, setDiscoveryPage] = useState(1)
   const [selectedCandidatePoolIds, setSelectedCandidatePoolIds] = useState([])
+  const [candidatePoolPage, setCandidatePoolPage] = useState(1)
   const [selectedOutreachIds, setSelectedOutreachIds] = useState([])
   const [outreachStatusFilter, setOutreachStatusFilter] = useState('전체')
   const [outreachResponseNote, setOutreachResponseNote] = useState('')
@@ -3169,12 +3170,23 @@ function App() {
   const candidatePoolCreators = useMemo(() => {
     return getCreatorsByIds(creators, shortlist)
   }, [creators, shortlist])
+  const candidatePoolPageSize = 20
+  const candidatePoolTotalPages = Math.max(1, Math.ceil(candidatePoolCreators.length / candidatePoolPageSize))
+  const safeCandidatePoolPage = Math.min(Math.max(candidatePoolPage, 1), candidatePoolTotalPages)
+  const visibleCandidatePoolCreators = useMemo(() => {
+    const start = (safeCandidatePoolPage - 1) * candidatePoolPageSize
+    return candidatePoolCreators.slice(start, start + candidatePoolPageSize)
+  }, [candidatePoolCreators, safeCandidatePoolPage])
   const selectedCandidatePoolCreators = useMemo(
     () => candidatePoolCreators.filter((creator) => selectedCandidatePoolIds.includes(creator.id)),
     [candidatePoolCreators, selectedCandidatePoolIds],
   )
+  const selectedVisibleCandidatePoolCreators = useMemo(
+    () => visibleCandidatePoolCreators.filter((creator) => selectedCandidatePoolIds.includes(creator.id)),
+    [selectedCandidatePoolIds, visibleCandidatePoolCreators],
+  )
   const allCandidatePoolSelected =
-    candidatePoolCreators.length > 0 && selectedCandidatePoolCreators.length === candidatePoolCreators.length
+    visibleCandidatePoolCreators.length > 0 && selectedVisibleCandidatePoolCreators.length === visibleCandidatePoolCreators.length
 
   useEffect(() => {
     if (!toast) return undefined
@@ -3265,7 +3277,7 @@ function App() {
       .sort(compareCreatorsByDiscoveryPriority)
   }, [category, creators, discoveryFilters, platform, query, showExampleCreators])
 
-  const discoveryPageSize = 50
+  const discoveryPageSize = 20
   const discoveryTotalPages = Math.max(1, Math.ceil(filteredCreators.length / discoveryPageSize))
   const safeDiscoveryPage = Math.min(Math.max(discoveryPage, 1), discoveryTotalPages)
   const visibleDiscoveryCreators = useMemo(() => {
@@ -3817,6 +3829,7 @@ function App() {
     if (!nextAccount) return
     const nextBrandId = nextAccount.brandIds?.[0] ?? activeBrandId
 
+    setCandidatePoolPage(1)
     updateWorkspace((current) =>
       appendActivity(
         {
@@ -4167,7 +4180,12 @@ function App() {
   }
 
   const toggleAllCandidatePoolCreators = () => {
-    setSelectedCandidatePoolIds(allCandidatePoolSelected ? [] : candidatePoolCreators.map((creator) => creator.id))
+    const visibleIds = visibleCandidatePoolCreators.map((creator) => creator.id)
+    setSelectedCandidatePoolIds((current) =>
+      allCandidatePoolSelected
+        ? current.filter((id) => !visibleIds.includes(id))
+        : Array.from(new Set([...current, ...visibleIds])),
+    )
   }
 
   const buildCreatorProposalRecord = (creator, campaign, source = '수동') => {
@@ -4209,6 +4227,7 @@ function App() {
       ),
     )
     setSelectedCandidatePoolIds(selectedIds)
+    setCandidatePoolPage(1)
     setActiveDiscoveryPoolView('candidate')
     showToast(`선택한 인플루언서 ${selectedIds.length}명을 메시지 전 후보 풀에 저장했어요.`)
   }
@@ -4241,6 +4260,7 @@ function App() {
       ),
     )
     setSelectedCandidatePoolIds(records.map((record) => record.creatorId))
+    setCandidatePoolPage(1)
     setActiveDiscoveryPoolView('candidate')
     setSelectedDiscoveryCreatorIds([])
     showToast(`선택한 인플루언서 ${records.length}명을 후보 풀에 저장하고 제안 메시지를 검토함에 넣었어요.`)
@@ -4284,6 +4304,7 @@ function App() {
     setSelectedDiscoveryCreatorIds([])
     setSelectedCandidatePoolIds([])
     setDiscoveryPage(1)
+    setCandidatePoolPage(1)
     showToast('검색 조건을 초기화했어요.')
   }
 
@@ -7329,6 +7350,16 @@ function App() {
               </div>
             )}
 
+            {filteredCreators.length > discoveryPageSize && (
+              <PaginationControls
+                page={safeDiscoveryPage}
+                totalPages={discoveryTotalPages}
+                totalItems={filteredCreators.length}
+                pageSize={discoveryPageSize}
+                onPageChange={setDiscoveryPage}
+              />
+            )}
+
             <div className="creator-list">
               {filteredCreators.length === 0 ? (
                 <div className="empty-state">
@@ -7524,6 +7555,16 @@ function App() {
             <Stat label="선택됨" value={`${selectedCandidatePoolCreators.length}명`} />
             <Stat label="현재 캠페인" value={selectedCampaign?.name ?? '미선택'} />
           </div>
+          {candidatePoolCreators.length > candidatePoolPageSize && (
+            <PaginationControls
+              page={safeCandidatePoolPage}
+              totalPages={candidatePoolTotalPages}
+              totalItems={candidatePoolCreators.length}
+              pageSize={candidatePoolPageSize}
+              onPageChange={setCandidatePoolPage}
+            />
+          )}
+
           <div className="candidate-pool-list">
             {candidatePoolCreators.length === 0 ? (
               <div className="empty-state compact-empty">
@@ -7532,7 +7573,7 @@ function App() {
                 <p>발굴 리스트나 AI 추천에서 후보를 저장하면 이곳에 쌓이고, 메시지 검토함으로 보내기 전까지 관리할 수 있습니다.</p>
               </div>
             ) : (
-              candidatePoolCreators.map((creator) => {
+              visibleCandidatePoolCreators.map((creator) => {
                 const channelId = getRecommendedContactChannelId(creator)
                 const profileUrl = getCreatorProfileUrl(creator, channelId)
                 const contactPlan = buildContactPlan(creator, channelId, '', selectedCampaign?.name)
@@ -7556,6 +7597,16 @@ function App() {
               })
             )}
           </div>
+
+          {candidatePoolCreators.length > candidatePoolPageSize && (
+            <PaginationControls
+              page={safeCandidatePoolPage}
+              totalPages={candidatePoolTotalPages}
+              totalItems={candidatePoolCreators.length}
+              pageSize={candidatePoolPageSize}
+              onPageChange={setCandidatePoolPage}
+            />
+          )}
         </section>
         )}
           </>
