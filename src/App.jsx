@@ -2728,7 +2728,7 @@ function App() {
     youtubeApiKey: '',
     googleApiKey: '',
     googleCx: '',
-    maxResults: '8',
+    maxResults: '36',
   })
   const [briefAutoDraft, setBriefAutoDraft] = useState({
     rawText: '',
@@ -2850,6 +2850,7 @@ function App() {
     mediaType: '전체',
     platform: '전체',
     sort: 'views',
+    maxResults: '36',
   })
   const [referenceSearchStatus, setReferenceSearchStatus] = useState({
     mode: 'idle',
@@ -4377,7 +4378,7 @@ function App() {
       .join(' ')
       .replace(/\s+/g, ' ')
       .trim()
-    const maxResults = Math.min(Math.max(Number(realDiscoveryDraft.maxResults) || 8, 1), 20)
+    const maxResults = Math.min(Math.max(Number(realDiscoveryDraft.maxResults) || 36, 1), 100)
     const youtubeApiKey = realDiscoveryDraft.youtubeApiKey.trim() || youtubeDraft.apiKey.trim()
     const hasServerApi = Boolean(backendConfig.apiBaseUrl)
     const hasProfileSearch = hasServerApi || (realDiscoveryDraft.googleApiKey.trim() && realDiscoveryDraft.googleCx.trim())
@@ -6106,7 +6107,7 @@ function App() {
         country: referenceFilters.country === '전체' ? activeBrand.country || 'KR' : referenceFilters.country,
         platform: referenceFilters.platform === '전체' ? 'all' : referenceFilters.platform,
         sort: referenceFilters.sort,
-        maxResults: 12,
+        maxResults: Math.min(Math.max(Number(referenceFilters.maxResults) || 36, 1), 100),
       })
 
       if (!payload) {
@@ -7033,7 +7034,7 @@ function App() {
                       inputMode="numeric"
                       value={realDiscoveryDraft.maxResults}
                       onChange={(event) => setRealDiscoveryDraft({ ...realDiscoveryDraft, maxResults: event.target.value })}
-                      placeholder="8"
+                      placeholder="36"
                     />
                   </label>
                 </div>
@@ -7409,6 +7410,15 @@ function App() {
                 value={referenceFilters.query}
                 onChange={(event) => setReferenceFilters({ ...referenceFilters, query: event.target.value })}
                 placeholder="키워드 검색: 제품, 후킹, 썸네일, CTA, 플랫폼"
+              />
+            </label>
+            <label className="compact-count-input">
+              <span>가져올 수</span>
+              <input
+                inputMode="numeric"
+                value={referenceFilters.maxResults}
+                onChange={(event) => setReferenceFilters({ ...referenceFilters, maxResults: event.target.value })}
+                placeholder="36"
               />
             </label>
             <button className="primary-button compact-button" type="submit" disabled={referenceSearchStatus.mode === 'loading'}>

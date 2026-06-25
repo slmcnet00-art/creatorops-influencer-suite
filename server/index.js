@@ -44,7 +44,7 @@ app.post('/discovery/youtube/search', async (request, response, next) => {
   try {
     const query = String(request.body?.query || '').trim()
     const country = String(request.body?.country || 'KR').trim()
-    const maxResults = clamp(Number(request.body?.maxResults || 8), 1, 20)
+    const maxResults = clamp(Number(request.body?.maxResults || 24), 1, 100)
     if (!query) throw httpError(400, 'query is required.')
 
     const creators = await searchYouTubeCreators(query, maxResults, country)
@@ -59,7 +59,7 @@ app.post('/discovery/google-profiles/search', async (request, response, next) =>
     const query = String(request.body?.query || '').trim()
     const platform = normalizeProfileDiscoveryPlatform(request.body?.platform || 'all')
     const country = String(request.body?.country || 'KR').trim()
-    const maxResults = clamp(Number(request.body?.maxResults || 8), 1, 10)
+    const maxResults = clamp(Number(request.body?.maxResults || 24), 1, 100)
     if (!query) throw httpError(400, 'query is required.')
 
     const profiles = await searchGoogleProfiles(query, platform, maxResults, country)
@@ -75,7 +75,7 @@ app.post('/references/search', async (request, response, next) => {
     const country = String(request.body?.country || 'KR').trim()
     const platform = String(request.body?.platform || 'YouTube').trim()
     const sort = String(request.body?.sort || 'views').trim()
-    const maxResults = clamp(Number(request.body?.maxResults || 12), 1, 25)
+    const maxResults = clamp(Number(request.body?.maxResults || 36), 1, 100)
     if (!query) throw httpError(400, 'query is required.')
 
     const references = await searchContentReferences({ query, country, platform, sort, maxResults })
@@ -276,26 +276,41 @@ async function searchYouTubeCreators(query, maxResults, country = 'KR') {
 async function fetchYouTubeCreatorsForQuery(query, maxResults, country = 'KR') {
   const key = requireEnv('YOUTUBE_DATA_API_KEY')
   const regionCode = normalizeRegionCode(country) || 'KR'
-  const searchParams = new URLSearchParams({
-    part: 'snippet',
-    type: 'channel',
-    q: query,
-    maxResults: String(maxResults),
-    regionCode,
-    relevanceLanguage: getDiscoveryLanguage(regionCode),
-    key,
-  })
-  const searchPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/search?${searchParams}`)
-  const channelIds = [...new Set((searchPayload.items || []).map((item) => item.id?.channelId).filter(Boolean))]
-  if (!channelIds.length) return []
+  const channelIds = []
+  let pageToken = ''
 
-  const channelParams = new URLSearchParams({
-    part: 'snippet,statistics',
-    id: channelIds.join(','),
-    key,
-  })
-  const channelPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/channels?${channelParams}`)
-  return (channelPayload.items || []).map((channel) => normalizeYouTubeChannel(channel, {}, regionCode))
+  while (channelIds.length < maxResults) {
+    const searchParams = new URLSearchParams({
+      part: 'snippet',
+      type: 'channel',
+      q: query,
+      maxResults: String(Math.min(50, maxResults - channelIds.length)),
+      regionCode,
+      relevanceLanguage: getDiscoveryLanguage(regionCode),
+      key,
+    })
+    if (pageToken) searchParams.set('pageToken', pageToken)
+    const searchPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/search?${searchParams}`)
+    channelIds.push(...(searchPayload.items || []).map((item) => item.id?.channelId).filter(Boolean))
+    pageToken = searchPayload.nextPageToken || ''
+    if (!pageToken) break
+  }
+
+  const uniqueChannelIds = [...new Set(channelIds)].slice(0, maxResults)
+  if (!uniqueChannelIds.length) return []
+
+  const channels = []
+  for (const idChunk of chunkArray(uniqueChannelIds, 50)) {
+    const channelParams = new URLSearchParams({
+      part: 'snippet,statistics',
+      id: idChunk.join(','),
+      key,
+    })
+    const channelPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/channels?${channelParams}`)
+    channels.push(...(channelPayload.items || []))
+  }
+
+  return channels.map((channel) => normalizeYouTubeChannel(channel, {}, regionCode))
 }
 
 function buildCreatorDiscoveryQueries(query) {
@@ -357,49 +372,83 @@ async function searchContentReferences({ query, country, platform, sort, maxResu
 
 async function searchYouTubeVideoReferences({ query, country, sort, maxResults }) {
   const key = requireEnv('YOUTUBE_DATA_API_KEY')
-  const searchParams = new URLSearchParams({
-    part: 'snippet',
-    type: 'video',
-    q: query,
-    maxResults: String(maxResults),
-    order: sort === 'recent' ? 'date' : sort === 'shares' ? 'rating' : 'viewCount',
-    safeSearch: 'none',
-    videoEmbeddable: 'true',
-    key,
-  })
   const regionCode = normalizeRegionCode(country)
-  if (regionCode) searchParams.set('regionCode', regionCode)
-  if (regionCode === 'KR') searchParams.set('relevanceLanguage', 'ko')
-  if (regionCode === 'JP') searchParams.set('relevanceLanguage', 'ja')
-  if (regionCode === 'US') searchParams.set('relevanceLanguage', 'en')
+  const videoIds = []
 
-  const searchPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/search?${searchParams}`)
-  const videoIds = [...new Set((searchPayload.items || []).map((item) => item.id?.videoId).filter(Boolean))]
-  if (!videoIds.length) return []
+  for (const searchQuery of buildYouTubeReferenceQueries(query)) {
+    const searchParams = new URLSearchParams({
+      part: 'snippet',
+      type: 'video',
+      q: searchQuery,
+      maxResults: String(Math.min(25, maxResults - videoIds.length)),
+      order: sort === 'recent' ? 'date' : sort === 'shares' ? 'rating' : 'viewCount',
+      safeSearch: 'none',
+      key,
+    })
+    if (regionCode) searchParams.set('regionCode', regionCode)
+    if (regionCode === 'KR') searchParams.set('relevanceLanguage', 'ko')
+    if (regionCode === 'JP') searchParams.set('relevanceLanguage', 'ja')
+    if (regionCode === 'US') searchParams.set('relevanceLanguage', 'en')
 
-  const videoParams = new URLSearchParams({
-    part: 'snippet,statistics',
-    id: videoIds.join(','),
-    key,
-  })
-  const videoPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/videos?${videoParams}`)
-  const videos = videoPayload.items || []
+    let searchPayload
+    try {
+      searchPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/search?${searchParams}`)
+    } catch (error) {
+      if (error.status !== 400 || !String(error.message || '').includes('invalid filter')) throw error
+      searchParams.delete('regionCode')
+      searchParams.delete('relevanceLanguage')
+      searchParams.delete('safeSearch')
+      searchParams.delete('order')
+      searchPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/search?${searchParams}`)
+    }
+    videoIds.push(...(searchPayload.items || []).map((item) => item.id?.videoId).filter(Boolean))
+    if (videoIds.length >= maxResults) break
+  }
+
+  const uniqueVideoIds = [...new Set(videoIds)].slice(0, maxResults)
+  if (!uniqueVideoIds.length) return []
+
+  const videos = []
+  for (const idChunk of chunkArray(uniqueVideoIds, 50)) {
+    const videoParams = new URLSearchParams({
+      part: 'snippet,statistics',
+      id: idChunk.join(','),
+      key,
+    })
+    const videoPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/videos?${videoParams}`)
+    videos.push(...(videoPayload.items || []))
+  }
   const channelIds = [...new Set(videos.map((item) => item.snippet?.channelId).filter(Boolean))]
   const channelMap = await fetchYouTubeChannelStatsMap(channelIds)
 
   return videos.map((item) => normalizeYouTubeReference(item, channelMap, regionCode || country || 'GLOBAL'))
 }
 
+function buildYouTubeReferenceQueries(query) {
+  const cleanQuery = String(query || '').replace(/\s+/g, ' ').trim()
+  return [
+    cleanQuery,
+    `${cleanQuery} review`,
+    `${cleanQuery} viral`,
+    `${cleanQuery} shorts`,
+    `${cleanQuery} comparison`,
+  ].filter(Boolean)
+}
+
 async function fetchYouTubeChannelStatsMap(channelIds) {
   if (!channelIds.length) return new Map()
   const key = requireEnv('YOUTUBE_DATA_API_KEY')
-  const params = new URLSearchParams({
-    part: 'snippet,statistics',
-    id: channelIds.join(','),
-    key,
-  })
-  const payload = await fetchJson(`https://www.googleapis.com/youtube/v3/channels?${params}`)
-  return new Map((payload.items || []).map((channel) => [channel.id, normalizeYouTubeChannel(channel)]))
+  const channels = []
+  for (const idChunk of chunkArray(channelIds, 50)) {
+    const params = new URLSearchParams({
+      part: 'snippet,statistics',
+      id: idChunk.join(','),
+      key,
+    })
+    const payload = await fetchJson(`https://www.googleapis.com/youtube/v3/channels?${params}`)
+    channels.push(...(payload.items || []))
+  }
+  return new Map(channels.map((channel) => [channel.id, normalizeYouTubeChannel(channel)]))
 }
 
 function normalizeYouTubeReference(item, channelMap, country) {
@@ -453,38 +502,49 @@ function buildReferenceHook(title, description) {
 async function searchWebContentReferences({ query, country, platform, maxResults }) {
   const key = requireEnv('BRAVE_SEARCH_API_KEY')
   const siteQuery = getReferenceSiteQuery(platform)
-  const params = new URLSearchParams({
-    q: `${siteQuery} ${query}`.trim(),
-    count: String(Math.min(Math.max(maxResults * 5, 10), 20)),
-    safesearch: 'moderate',
-  })
   const regionCode = normalizeRegionCode(country)
-  if (regionCode) params.set('country', regionCode)
+  const items = []
 
-  const payload = await fetchJson(`https://api.search.brave.com/res/v1/web/search?${params}`, {
-    headers: {
-      Accept: 'application/json',
-      'X-Subscription-Token': key,
-    },
-  })
-  const items = payload.web?.results || []
+  for (const referenceQuery of buildReferenceSearchQueries(siteQuery, query, platform)) {
+    for (let page = 0; page < Math.ceil(maxResults / 20) && items.length < maxResults * 3; page += 1) {
+      const params = new URLSearchParams({
+        q: referenceQuery,
+        count: '20',
+        safesearch: 'moderate',
+        offset: String(page * 20),
+      })
+      if (regionCode) params.set('country', regionCode)
+
+      const payload = await fetchJson(`https://api.search.brave.com/res/v1/web/search?${params}`, {
+        headers: {
+          Accept: 'application/json',
+          'X-Subscription-Token': key,
+        },
+      })
+      const pageItems = payload.web?.results || []
+      items.push(...pageItems)
+      if (pageItems.length < 20) break
+    }
+    if (items.length >= maxResults * 3) break
+  }
+
   const normalized = items
     .map((item) => normalizeWebReferenceSearchItem(item, platform, regionCode || country || 'GLOBAL'))
     .filter(Boolean)
+    .filter((item, index, list) => list.findIndex((candidate) => candidate.url === item.url) === index)
     .slice(0, maxResults)
 
   if (!isPublicSnapshotEnabled()) return normalized
 
-  const enriched = []
-  for (const item of normalized) {
+  const maxSnapshotEnrichment = maxResults > 40 ? 40 : maxResults
+  const enrichedHead = await Promise.all(normalized.slice(0, maxSnapshotEnrichment).map(async (item) => {
     const snapshot = await fetchPublicProfileSnapshot(item.url).catch(() => null)
     if (!snapshot) {
-      enriched.push(item)
-      continue
+      return item
     }
 
     const metrics = snapshot.metrics || {}
-    enriched.push({
+    return {
       ...item,
       title: item.title || snapshot.title,
       thumbnailUrl: selectReferenceThumbnail(item.thumbnailUrl, snapshot.image),
@@ -496,10 +556,25 @@ async function searchWebContentReferences({ query, country, platform, maxResults
       analysis: snapshot.description || item.analysis,
       source: `${item.source} + ${snapshot.source}`,
       confidence: Math.max(item.confidence, snapshot.confidence || 0),
-    })
-  }
+    }
+  }))
 
-  return enriched
+  return [...enrichedHead, ...normalized.slice(maxSnapshotEnrichment)]
+}
+
+function buildReferenceSearchQueries(siteQuery, query, platform) {
+  const cleanQuery = String(query || '').replace(/\s+/g, ' ').trim()
+  const platformBoost =
+    platform === 'Instagram'
+      ? '-inurl:/explore/ -inurl:/accounts/'
+      : platform === 'TikTok'
+        ? '-inurl:/music/ -inurl:/tag/'
+        : ''
+  return [
+    `${siteQuery} ${cleanQuery} ${platformBoost}`.trim(),
+    `${siteQuery} "${cleanQuery}" ${platformBoost}`.trim(),
+    `${siteQuery} ${cleanQuery} viral popular ${platformBoost}`.trim(),
+  ]
 }
 
 function normalizeWebReferenceSearchItem(item, platform, country) {
@@ -669,26 +744,31 @@ async function searchBraveProfiles(query, platform, maxResults, country = 'KR') 
   for (const itemPlatform of platforms) {
     const platformResults = []
     for (const profileQuery of buildStrictProfileSearchQueries(itemPlatform, query)) {
-      const params = new URLSearchParams({
-        q: profileQuery,
-        count: String(Math.min(Math.max(perPlatformCount, 1), 20)),
-        safesearch: 'moderate',
-        country: regionCode,
-      })
-      const payload = await fetchJson(`https://api.search.brave.com/res/v1/web/search?${params}`, {
-        headers: {
-          Accept: 'application/json',
-          'X-Subscription-Token': key,
-        },
-      })
-      platformResults.push(
-        ...dedupeProfileResults(
-          (payload.web?.results || [])
-            .map((item) => normalizeProfileSearchItem(item, itemPlatform, 'Brave Search API', regionCode))
-            .filter(Boolean),
-        ),
-      )
-      if (dedupeProfileResults(platformResults).length >= platformTarget) break
+      for (let page = 0; page < Math.ceil(perPlatformCount / 20) && platformResults.length < platformTarget * 3; page += 1) {
+        const params = new URLSearchParams({
+          q: profileQuery,
+          count: '20',
+          safesearch: 'moderate',
+          country: regionCode,
+          offset: String(page * 20),
+        })
+        const payload = await fetchJson(`https://api.search.brave.com/res/v1/web/search?${params}`, {
+          headers: {
+            Accept: 'application/json',
+            'X-Subscription-Token': key,
+          },
+        })
+        const pageItems = payload.web?.results || []
+        platformResults.push(
+          ...dedupeProfileResults(
+            pageItems
+              .map((item) => normalizeProfileSearchItem(item, itemPlatform, 'Brave Search API', regionCode))
+              .filter(Boolean),
+          ),
+        )
+        if (pageItems.length < 20) break
+      }
+      if (dedupeProfileResults(platformResults).length >= platformTarget * 3) break
     }
     results.push(...dedupeProfileResults(platformResults).slice(0, platformTarget * 3))
   }
@@ -766,20 +846,25 @@ async function searchGoogleCseProfiles(query, platform, maxResults, country = 'K
   const results = []
 
   for (const itemPlatform of platforms) {
-    const params = new URLSearchParams({
-      key,
-      cx,
-      q: `${getPlatformSiteQuery(itemPlatform)} ${query}`,
-      num: String(Math.min(platformTarget, 10)),
-      gl: regionCode.toLowerCase(),
-      safe: 'active',
-    })
-    const payload = await fetchJson(`https://www.googleapis.com/customsearch/v1?${params}`)
-    results.push(
-      ...(payload.items || [])
-        .map((item) => normalizeProfileSearchItem(item, itemPlatform, 'Google Programmable Search', regionCode))
-        .filter(Boolean),
-    )
+    for (let start = 1; start <= Math.min(platformTarget * 3, 91) && results.length < maxResults * 3; start += 10) {
+      const params = new URLSearchParams({
+        key,
+        cx,
+        q: `${getPlatformSiteQuery(itemPlatform)} ${query}`,
+        num: String(Math.min(platformTarget, 10)),
+        start: String(start),
+        gl: regionCode.toLowerCase(),
+        safe: 'active',
+      })
+      const payload = await fetchJson(`https://www.googleapis.com/customsearch/v1?${params}`)
+      const pageItems = payload.items || []
+      results.push(
+        ...pageItems
+          .map((item) => normalizeProfileSearchItem(item, itemPlatform, 'Google Programmable Search', regionCode))
+          .filter(Boolean),
+      )
+      if (pageItems.length < 10) break
+    }
   }
 
   const enriched = await enrichProfileResults(dedupeProfileResults(results).slice(0, maxResults * 3))
@@ -1797,6 +1882,14 @@ function stripHtml(value) {
 function clamp(value, min, max) {
   if (Number.isNaN(value)) return min
   return Math.min(Math.max(value, min), max)
+}
+
+function chunkArray(items, size) {
+  const chunks = []
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size))
+  }
+  return chunks
 }
 
 function requireEnv(name) {

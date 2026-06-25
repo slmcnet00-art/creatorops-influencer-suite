@@ -299,7 +299,7 @@ export async function searchYouTubeCreatorDiscovery({ apiKey, query, country = '
     part: 'snippet',
     type: 'channel',
     q: cleanQuery,
-    maxResults: String(Math.min(Math.max(Number(maxResults) || 8, 1), 20)),
+    maxResults: String(Math.min(Math.max(Number(maxResults) || 36, 1), 50)),
     key: cleanKey,
   })
   if (cleanCountry) {
@@ -401,7 +401,7 @@ export async function searchGoogleProfileDiscovery({ apiKey, cx, query, platform
       key: cleanKey,
       cx: cleanCx,
       q: `${siteQuery} ${cleanQuery}`,
-      num: String(Math.min(Math.max(Number(maxResults) || 8, 1), 10)),
+      num: String(Math.min(Math.max(Number(maxResults) || 36, 1), 10)),
       gl: cleanCountry ? cleanCountry.toLowerCase() : 'kr',
       safe: 'active',
     })
@@ -420,7 +420,7 @@ export async function searchGoogleProfileDiscovery({ apiKey, cx, query, platform
     )
   }
 
-  return dedupeProfileResults(results).slice(0, Number(maxResults) || 8)
+  return dedupeProfileResults(results).slice(0, Math.min(Math.max(Number(maxResults) || 36, 1), 100))
 }
 
 export async function refreshContentMetrics(posts) {
