@@ -2245,6 +2245,36 @@ function hasDiscoveryFilterValue(value) {
   return parseDiscoveryFilterValue(value) !== null
 }
 
+function getCreatorViralityRatio(creator) {
+  const followers = Number(creator?.followers || 0)
+  const averageViews = Number(creator?.averageViews || 0)
+  if (!averageViews) return 0
+  if (!followers) return 1
+  return averageViews / Math.max(followers, 1)
+}
+
+function getCreatorPerformanceScore(creator) {
+  if (!creator) return 0
+  const averageViews = Number(creator.averageViews || 0)
+  const engagement = Number(creator.engagement || 0)
+  const fit = Number(creator.fit || 0)
+  const virality = getCreatorViralityRatio(creator)
+  const viewScore = Math.min(46, Math.log10(averageViews + 1) * 7.5)
+  const viralScore = Math.min(30, virality * 18)
+  const engagementScore = Math.min(16, engagement * 2)
+  const fitScore = Math.min(12, fit * 0.12)
+  const pendingPenalty = hasPendingMetrics(creator) && !averageViews ? 18 : 0
+  return clampNumber(Math.round(viewScore + viralScore + engagementScore + fitScore - pendingPenalty), 0, 100)
+}
+
+function compareCreatorsByDiscoveryPriority(a, b) {
+  const performanceGap = getCreatorPerformanceScore(b) - getCreatorPerformanceScore(a)
+  if (performanceGap) return performanceGap
+  const viewGap = Number(b.averageViews || 0) - Number(a.averageViews || 0)
+  if (viewGap) return viewGap
+  return Number(b.fit || 0) - Number(a.fit || 0)
+}
+
 function parseOpenMetric(value) {
   const normalized = String(value ?? '').trim().toLowerCase().replaceAll(',', '')
   if (!normalized) return 0
@@ -3193,7 +3223,7 @@ function App() {
           (minFit === null || creator.fit >= minFit)
         )
       })
-      .sort((a, b) => b.fit - a.fit)
+      .sort(compareCreatorsByDiscoveryPriority)
   }, [category, creators, discoveryFilters, platform, query, showExampleCreators])
 
   const selectedCreator =
@@ -9946,6 +9976,7 @@ function CreatorRow({
   const hasFollowers = Number(creator.followers || 0) > 0
   const hasAverageViews = Number(creator.averageViews || 0) > 0
   const dataQuality = getCreatorDataQuality(creator)
+  const performanceScore = getCreatorPerformanceScore(creator)
   const creatorProfileUrl = profileUrl || getCreatorProfileUrl(creator, getRecommendedContactChannelId(creator))
   const creatorContactUrl = contactUrl || creatorProfileUrl
   return (
@@ -9983,9 +10014,9 @@ function CreatorRow({
         </small>
       </div>
 
-      <div className="match-cell">
-        <span style={{ width: `${creator.fit}%` }} />
-        <strong>{creator.fit}</strong>
+      <div className="match-cell" title={`Performance ${performanceScore} / Brand fit ${creator.fit ?? '-'}`}>
+        <span style={{ width: `${performanceScore}%` }} />
+        <strong>{performanceScore}</strong>
       </div>
 
       {showChannelLink && creatorContactUrl && (
