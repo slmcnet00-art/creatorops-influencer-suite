@@ -2790,7 +2790,7 @@ function App() {
     youtubeApiKey: '',
     googleApiKey: '',
     googleCx: '',
-    maxResults: '36',
+    maxResults: '300',
   })
   const [briefAutoDraft, setBriefAutoDraft] = useState({
     rawText: '',
@@ -4465,7 +4465,7 @@ function App() {
       .join(' ')
       .replace(/\s+/g, ' ')
       .trim()
-    const maxResults = Math.min(Math.max(Number(realDiscoveryDraft.maxResults) || 36, 1), 100)
+    const maxResults = Math.min(Math.max(Number(realDiscoveryDraft.maxResults) || 300, 1), 1000)
     const youtubeApiKey = realDiscoveryDraft.youtubeApiKey.trim() || youtubeDraft.apiKey.trim()
     const hasServerApi = Boolean(backendConfig.apiBaseUrl)
     const hasProfileSearch = hasServerApi || (realDiscoveryDraft.googleApiKey.trim() && realDiscoveryDraft.googleCx.trim())
@@ -4556,7 +4556,7 @@ function App() {
                 (recommendation) =>
                   !mergedCreators.some((creator) => creator.id === recommendation.creatorId && recommendation.brandId === activeBrand.id),
               ),
-            ].slice(0, 100),
+            ].slice(0, 2000),
             shortlist: Array.from(
               new Set([...current.shortlist, ...mergedCreators.slice(0, 3).map((creator) => creator.id)]),
             ),
@@ -7152,7 +7152,7 @@ function App() {
                       inputMode="numeric"
                       value={realDiscoveryDraft.maxResults}
                       onChange={(event) => setRealDiscoveryDraft({ ...realDiscoveryDraft, maxResults: event.target.value })}
-                      placeholder="36"
+                      placeholder="100 / 300 / 1000"
                     />
                   </label>
                 </div>

@@ -4,6 +4,9 @@ import express from 'express'
 
 const app = express()
 const port = Number(process.env.PORT || 8787)
+const DISCOVERY_RESULT_LIMIT = 1000
+const REFERENCE_RESULT_LIMIT = 500
+const PROFILE_SNAPSHOT_ENRICH_LIMIT = 80
 const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
   .split(',')
   .map((origin) => origin.trim())
@@ -44,7 +47,7 @@ app.post('/discovery/youtube/search', async (request, response, next) => {
   try {
     const query = String(request.body?.query || '').trim()
     const country = String(request.body?.country || 'KR').trim()
-    const maxResults = clamp(Number(request.body?.maxResults || 24), 1, 100)
+    const maxResults = clamp(Number(request.body?.maxResults || 24), 1, DISCOVERY_RESULT_LIMIT)
     if (!query) throw httpError(400, 'query is required.')
 
     const creators = await searchYouTubeCreators(query, maxResults, country)
@@ -59,7 +62,7 @@ app.post('/discovery/google-profiles/search', async (request, response, next) =>
     const query = String(request.body?.query || '').trim()
     const platform = normalizeProfileDiscoveryPlatform(request.body?.platform || 'all')
     const country = String(request.body?.country || 'KR').trim()
-    const maxResults = clamp(Number(request.body?.maxResults || 24), 1, 100)
+    const maxResults = clamp(Number(request.body?.maxResults || 24), 1, DISCOVERY_RESULT_LIMIT)
     if (!query) throw httpError(400, 'query is required.')
 
     const profiles = await searchGoogleProfiles(query, platform, maxResults, country)
@@ -75,7 +78,7 @@ app.post('/references/search', async (request, response, next) => {
     const country = String(request.body?.country || 'KR').trim()
     const platform = String(request.body?.platform || 'YouTube').trim()
     const sort = String(request.body?.sort || 'views').trim()
-    const maxResults = clamp(Number(request.body?.maxResults || 36), 1, 100)
+    const maxResults = clamp(Number(request.body?.maxResults || 36), 1, REFERENCE_RESULT_LIMIT)
     if (!query) throw httpError(400, 'query is required.')
 
     const references = await searchContentReferences({ query, country, platform, sort, maxResults })
@@ -919,8 +922,10 @@ async function searchGoogleCseProfiles(query, platform, maxResults, country = 'K
 async function enrichProfileResults(deduped) {
   if (!isPublicSnapshotEnabled()) return deduped
 
+  const priorityHead = deduped.slice(0, PROFILE_SNAPSHOT_ENRICH_LIMIT)
+  const untouchedTail = deduped.slice(PROFILE_SNAPSHOT_ENRICH_LIMIT)
   const enriched = await Promise.all(
-    deduped.map(async (profile) => {
+    priorityHead.map(async (profile) => {
       const snapshot = await fetchPublicProfileSnapshot(profile.profileUrl).catch((error) => ({
         status: 'snapshot_failed',
         message: error.message,
@@ -928,7 +933,7 @@ async function enrichProfileResults(deduped) {
       return mergeProfileSnapshot(profile, snapshot)
     }),
   )
-  return enriched
+  return [...enriched, ...untouchedTail]
 }
 
 function normalizeProfileDiscoveryPlatform(value) {
