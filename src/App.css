@@ -1717,6 +1717,77 @@
   align-items: start;
 }
 
+.discovery-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.discovery-flow-guide {
+  order: 1;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.discovery-flow-guide article {
+  min-width: 0;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.88);
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.discovery-flow-guide article > span {
+  flex: 0 0 26px;
+  width: 26px;
+  height: 26px;
+  border-radius: 999px;
+  color: #ffffff;
+  background: var(--accent);
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.discovery-flow-guide strong,
+.discovery-flow-guide p {
+  display: block;
+}
+
+.discovery-flow-guide strong {
+  color: var(--text-strong);
+  font-size: 13px;
+}
+
+.discovery-flow-guide p {
+  margin: 4px 0 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.discovery-workspace .work-grid {
+  order: 3;
+}
+
+.discovery-workspace .ai-grid {
+  display: contents;
+  margin-bottom: 0;
+}
+
+.discovery-workspace .ai-brief-panel {
+  order: 2;
+}
+
+.discovery-workspace .ai-result-panel {
+  order: 4;
+}
+
 .brief-form {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2308,11 +2379,48 @@
   font-weight: 900;
 }
 
-.recommendation-card ul {
-  margin: 10px 0;
-  padding-left: 18px;
+.recommendation-reason-summary {
+  margin-top: 10px;
+  padding: 10px;
+  border: 1px solid rgba(0, 113, 227, 0.12);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.recommendation-reason-summary span,
+.recommendation-reason-summary p {
+  display: block;
+}
+
+.recommendation-reason-summary span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.recommendation-reason-summary p {
+  margin: 4px 0 0;
+  color: var(--text-strong);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.recommendation-reasons {
+  margin-top: 8px;
   color: var(--text);
-  font-size: 13px;
+  font-size: 12px;
+}
+
+.recommendation-reasons summary {
+  cursor: pointer;
+  color: var(--text-soft);
+  font-weight: 900;
+}
+
+.recommendation-reasons ul {
+  margin: 8px 0 0;
+  padding-left: 18px;
+  line-height: 1.5;
 }
 
 .recommendation-footer {
@@ -5264,6 +5372,10 @@
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
+  .discovery-flow-guide {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .campaign-modal-card .modal-grid,
   .campaign-modal-card .campaign-playbook,
   .campaign-edit-schedule-grid,
@@ -5282,6 +5394,10 @@
   }
 
   .ai-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .discovery-workspace .ai-grid {
     grid-template-columns: 1fr;
   }
 
@@ -5524,6 +5640,10 @@
 }
 
 @media (max-width: 540px) {
+  .discovery-flow-guide {
+    grid-template-columns: 1fr;
+  }
+
   .workspace {
     padding: 12px;
   }

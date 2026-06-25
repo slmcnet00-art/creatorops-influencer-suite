@@ -6718,17 +6718,48 @@ function App() {
 
         {activeDiscoveryPoolView === 'search' && (
           <>
+        <div className="discovery-workspace">
+          <section className="discovery-flow-guide" aria-label="발굴 작업 순서">
+            <article>
+              <span>1</span>
+              <div>
+                <strong>캠페인 조건 확인</strong>
+                <p>{selectedCampaign?.name ?? '캠페인 선택'} 기준으로 제품/타깃/키워드를 확인합니다.</p>
+              </div>
+            </article>
+            <article>
+              <span>2</span>
+              <div>
+                <strong>실제 후보 발굴</strong>
+                <p>플랫폼, 국가, 팔로워/조회 조건을 잡고 공개 검색을 실행합니다.</p>
+              </div>
+            </article>
+            <article>
+              <span>3</span>
+              <div>
+                <strong>AI 매칭</strong>
+                <p>발굴 후보를 브랜드 핏, 데이터 신뢰도, 리스크 기준으로 재정렬합니다.</p>
+              </div>
+            </article>
+            <article>
+              <span>4</span>
+              <div>
+                <strong>후보 풀 저장</strong>
+                <p>선택 후보를 메시지 전 후보 풀로 보내 제안 메시지를 만듭니다.</p>
+              </div>
+            </article>
+          </section>
         <section className="ai-grid">
           <section className="panel ai-brief-panel">
             <div className="panel-heading">
               <div>
-                <span className="mini-label">AI Discovery</span>
-                <h2>브랜드 공통 프로필</h2>
+                <span className="mini-label">Step 1 · Conditions</span>
+                <h2>발굴 조건 준비</h2>
               </div>
               <div className="panel-heading-actions">
                 <button className="primary-button compact-button" type="button" onClick={runAiDiscovery}>
                   <Target size={16} />
-                  후보 매칭 실행
+                  AI 매칭 실행
                 </button>
               </div>
             </div>
@@ -6816,7 +6847,7 @@ function App() {
           <section className="panel ai-result-panel">
             <div className="panel-heading">
               <div>
-                <span className="mini-label">Recommended Personas</span>
+                <span className="mini-label">Step 3 · AI Matching</span>
                 <h2>AI 추천 후보와 근거</h2>
               </div>
               <div className="panel-heading-actions">
@@ -6889,7 +6920,7 @@ function App() {
                 <div className="empty-state compact-empty">
                   <Target size={22} />
                   <strong>아직 AI 추천 결과가 없습니다.</strong>
-                  <p>아래 실제 웹 발굴로 후보를 먼저 모은 뒤 후보 매칭을 실행하세요.</p>
+                  <p>2단계 실제 후보 발굴을 먼저 실행한 뒤, 1단계의 AI 매칭 실행 버튼을 누르세요.</p>
                 </div>
               ) : (
                 selectedCampaignRecommendations.map((recommendation) => (
@@ -6912,7 +6943,7 @@ function App() {
           <section className="panel discovery-panel" id="discovery">
             <div className="panel-heading">
               <div>
-                <span className="mini-label">Discovery</span>
+                <span className="mini-label">Step 2 · Live Discovery</span>
                 <h2>크리에이터 발굴</h2>
               </div>
               <div className="panel-heading-actions">
@@ -7286,6 +7317,7 @@ function App() {
             </aside>
           )}
         </section>
+        </div>
           </>
         )}
 
@@ -9949,6 +9981,8 @@ function RecommendationCard({ recommendation, creator, checked, onSelect, onTogg
   if (!creator) return null
   const pendingMetrics = hasPendingMetrics(creator)
   const dataQuality = getCreatorDataQuality(creator)
+  const primaryReason = recommendation.reasons?.[0] || '브랜드 조건과 후보 데이터를 기준으로 매칭했습니다.'
+  const detailReasons = recommendation.reasons?.slice(1, 4) ?? []
 
   return (
     <article className={`recommendation-card ${checked ? 'selected' : ''}`}>
@@ -9979,11 +10013,20 @@ function RecommendationCard({ recommendation, creator, checked, onSelect, onTogg
         <span>데이터 {dataQuality.score} · {dataQuality.level}</span>
         {creator.needsVerification && <span>공개 수치 검증 대기</span>}
       </div>
-      <ul>
-        {recommendation.reasons.slice(0, 3).map((reason) => (
-          <li key={reason}>{reason}</li>
-        ))}
-      </ul>
+      <div className="recommendation-reason-summary">
+        <span>핵심 근거</span>
+        <p>{primaryReason}</p>
+      </div>
+      {detailReasons.length > 0 && (
+        <details className="recommendation-reasons">
+          <summary>근거 자세히 보기</summary>
+          <ul>
+            {detailReasons.map((reason) => (
+              <li key={reason}>{reason}</li>
+            ))}
+          </ul>
+        </details>
+      )}
       <div className="recommendation-footer">
         <span>{recommendation.risk}</span>
         <button className="secondary-button compact-button" type="button" onClick={onQueue}>
