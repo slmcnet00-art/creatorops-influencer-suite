@@ -135,9 +135,11 @@ const influencerBrandGuideTemplate = `# 인플루언서 브랜드 가이드
 - [ ] CTA가 자연스럽게 연결되는가?
 `
 
+const minimumVisibleFollowers = 1000
+
 const defaultDiscoveryFilters = {
   country: 'KR',
-  minFollowers: '',
+  minFollowers: String(minimumVisibleFollowers),
   maxFollowers: '',
   minAverageViews: '',
   minEngagement: '',
@@ -3155,6 +3157,7 @@ function App() {
       .map((term) => term.trim().toLowerCase())
       .filter((term) => term.length >= 2)
     const minFollowers = parseDiscoveryFilterValue(discoveryFilters.minFollowers)
+    const effectiveMinFollowers = minFollowers ?? minimumVisibleFollowers
     const maxFollowers = parseDiscoveryFilterValue(discoveryFilters.maxFollowers)
     const minAverageViews = parseDiscoveryFilterValue(discoveryFilters.minAverageViews)
     const minEngagement = parseDiscoveryFilterValue(discoveryFilters.minEngagement)
@@ -3182,7 +3185,7 @@ function App() {
           (platform === '전체' || creator.platform === platform) &&
           (category === '전체' || creator.category === category) &&
           (selectedCountry === '전체' || creator.country === selectedCountry || creator.city === selectedCountry) &&
-          (pendingMetrics || minFollowers === null || creator.followers >= minFollowers) &&
+          (pendingMetrics || creator.followers >= effectiveMinFollowers) &&
           (pendingMetrics || maxFollowers === null || creator.followers <= maxFollowers) &&
           (pendingMetrics || minAverageViews === null || creator.averageViews >= minAverageViews) &&
           (pendingMetrics || minEngagement === null || creator.engagement >= minEngagement) &&
