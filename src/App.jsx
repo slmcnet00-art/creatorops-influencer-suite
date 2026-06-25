@@ -1107,7 +1107,7 @@ function normalizeWorkspace(saved) {
     quotes: saved?.quotes ?? defaultWorkspace.quotes,
     fulfillmentRecords: saved?.fulfillmentRecords ?? defaultWorkspace.fulfillmentRecords,
     trackedPosts: saved?.trackedPosts ?? defaultWorkspace.trackedPosts,
-    contentReferences: saved?.contentReferences ?? defaultWorkspace.contentReferences,
+    contentReferences: normalizeContentReferences(saved?.contentReferences ?? defaultWorkspace.contentReferences),
     savedProductionReferenceIds: saved?.savedProductionReferenceIds ?? defaultWorkspace.savedProductionReferenceIds,
     activities: normalizedActivities,
   }
@@ -1701,6 +1701,91 @@ function inferMediaTypeFromUrl(value, platform) {
   const raw = String(value || '')
   if (platform === 'Instagram' && /\/p\//i.test(raw)) return '이미지'
   return platform ? '영상' : ''
+}
+
+function normalizeContentReferences(references = []) {
+  return (references || [])
+    .map((item) => normalizeContentReference(item))
+    .filter(Boolean)
+}
+
+function normalizeContentReference(item) {
+  if (!item) return null
+  const platform = item.platform || inferPlatformFromUrl(item.url)
+  const normalized = {
+    ...item,
+    platform,
+    mediaType: item.mediaType || inferMediaTypeFromUrl(item.url, platform) || '영상',
+    title: cleanReferenceDisplayText(item.title),
+    hook: cleanReferenceDisplayText(item.hook),
+    analysis: cleanReferenceDisplayText(item.analysis),
+    applyIdea: cleanReferenceDisplayText(item.applyIdea),
+    thumbnailUrl: isPlatformLogoAsset(item.thumbnailUrl) ? '' : item.thumbnailUrl,
+  }
+
+  if (isLowQualitySavedReference(normalized)) return null
+  return normalized
+}
+
+function isLowQualitySavedReference(item) {
+  const platform = item.platform || inferPlatformFromUrl(item.url)
+  if (['Instagram', 'TikTok'].includes(platform) && !isValidReferenceContentUrl(item.url, platform)) return true
+
+  const title = cleanReferenceDisplayText(item.title).toLowerCase()
+  const analysis = cleanReferenceDisplayText(item.analysis).toLowerCase()
+  if (/(^|[\s(])@?reel\b/.test(title) || /reel raffle/.test(title)) return true
+  if (title.includes('instagram photos and videos') && analysis.includes('instagram photos and videos')) return true
+  return false
+}
+
+function isValidReferenceContentUrl(value, platform = inferPlatformFromUrl(value)) {
+  try {
+    const url = new URL(String(value || ''))
+    const hostname = url.hostname.replace(/^www\./, '').toLowerCase()
+    const segments = url.pathname.split('/').filter(Boolean)
+
+    if (platform === 'Instagram') {
+      return hostname.includes('instagram.com') &&
+        ['reel', 'p'].includes(segments[0]) &&
+        /^[A-Za-z0-9_-]{5,}$/.test(segments[1] || '')
+    }
+
+    if (platform === 'TikTok') {
+      return hostname.includes('tiktok.com') &&
+        segments[0]?.startsWith('@') &&
+        segments[1] === 'video' &&
+        /^[0-9]{8,}$/.test(segments[2] || '')
+    }
+
+    if (platform === 'YouTube') {
+      return hostname.includes('youtube.com') || hostname.includes('youtu.be')
+    }
+  } catch {
+    return false
+  }
+
+  return Boolean(value)
+}
+
+function cleanReferenceDisplayText(value) {
+  let text = String(value || '')
+  for (let index = 0; index < 3; index += 1) {
+    const next = text
+      .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+      .replace(/&#(\d+);/g, (_, decimal) => String.fromCodePoint(parseInt(decimal, 10)))
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+    if (next === text) break
+    text = next
+  }
+  return text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function isPlatformLogoAsset(value) {
+  return /(instagram\.com\/static|static\.cdninstagram\.com|tiktokcdn.*logo|tiktok.*logo|favicon|apple-touch-icon)/i.test(String(value || ''))
 }
 
 function appendActivity(workspace, type, text) {
@@ -5966,15 +6051,17 @@ function App() {
         return
       }
 
-      const incoming = (payload.references || []).map((item, index) => ({
-        ...item,
-        id: item.id || `reference-${createId()}-${index}`,
-        campaignId: selectedCampaign.id,
-        country: item.country || referenceFilters.country || activeBrand.country || 'KR',
-        mediaType: item.mediaType || '영상',
-        platform: item.platform || 'YouTube',
-        savedAt: nowLabel(),
-      }))
+      const incoming = normalizeContentReferences(
+        (payload.references || []).map((item, index) => ({
+          ...item,
+          id: item.id || `reference-${createId()}-${index}`,
+          campaignId: selectedCampaign.id,
+          country: item.country || referenceFilters.country || activeBrand.country || 'KR',
+          mediaType: item.mediaType || '영상',
+          platform: item.platform || 'YouTube',
+          savedAt: nowLabel(),
+        })),
+      )
       const existingUrls = new Set((contentReferences ?? []).map((item) => String(item.url || '').toLowerCase()))
       const newCount = incoming.filter((item) => !existingUrls.has(String(item.url || '').toLowerCase())).length
 

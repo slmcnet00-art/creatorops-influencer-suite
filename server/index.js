@@ -503,6 +503,12 @@ function normalizeWebReferenceSearchItem(item, platform, country) {
 
   const title = cleanReferenceText(item.title || '')
   const description = cleanReferenceText(item.description || item.snippet || '')
+  if (isLowValueReferenceResult({ title, description, url, platform: inferredPlatform })) return null
+
+  const analysis = isLowValueReferenceText(description)
+    ? '공개 검색 결과에서 콘텐츠 URL을 확인했습니다. 세부 성과 지표는 플랫폼 API 또는 수동 확인이 필요합니다.'
+    : description
+
   return {
     id: `webref:${inferredPlatform}:${url}`,
     mediaType: inferReferenceMediaType(url, inferredPlatform),
@@ -518,7 +524,7 @@ function normalizeWebReferenceSearchItem(item, platform, country) {
     shares: null,
     publishedAt: 'public search result',
     hook: buildReferenceHook(title, description),
-    analysis: description || 'Brave Search public web result. Performance metrics need platform API, creator authorization, or public snapshot verification.',
+    analysis: analysis || '공개 검색 결과에서 콘텐츠 URL을 확인했습니다. 세부 성과 지표는 플랫폼 API 또는 수동 확인이 필요합니다.',
     applyIdea: 'Use the hook, thumbnail structure, caption angle, and comment-driving question as a production reference.',
     source: 'Brave Search API',
     confidence: 72,
@@ -560,12 +566,18 @@ function inferReferenceMediaType(value, platform) {
 function isSupportedReferenceContentUrl(value, platform) {
   try {
     const url = new URL(value)
+    const hostname = url.hostname.replace(/^www\./, '').toLowerCase()
     const segments = url.pathname.split('/').filter(Boolean)
     if (platform === 'TikTok') {
-      return segments[0]?.startsWith('@') && segments[1] === 'video' && Boolean(segments[2])
+      return hostname.includes('tiktok.com') &&
+        segments[0]?.startsWith('@') &&
+        segments[1] === 'video' &&
+        /^[0-9]{8,}$/.test(segments[2] || '')
     }
     if (platform === 'Instagram') {
-      return ['reel', 'p'].includes(segments[0]) && Boolean(segments[1])
+      return hostname.includes('instagram.com') &&
+        ['reel', 'p'].includes(segments[0]) &&
+        /^[A-Za-z0-9_-]{5,}$/.test(segments[1] || '')
     }
   } catch {
     return false
@@ -573,11 +585,33 @@ function isSupportedReferenceContentUrl(value, platform) {
   return false
 }
 
+function isLowValueReferenceResult({ title, description, url, platform }) {
+  const normalizedTitle = cleanReferenceText(title).toLowerCase()
+  const normalizedDescription = cleanReferenceText(description).toLowerCase()
+
+  if (/(^|[\s(])@?reel\b/i.test(normalizedTitle)) return true
+  if (/reel raffle/i.test(normalizedTitle)) return true
+  if (/(instagram photos and videos|create an account or log in to instagram)/i.test(normalizedTitle) && !normalizedDescription) return true
+  if (isPlatformLogoThumbnail(url)) return true
+
+  if (platform === 'Instagram' && normalizedTitle === 'instagram') return true
+  if (platform === 'TikTok' && normalizedTitle === 'tiktok') return true
+  return false
+}
+
+function isLowValueReferenceText(value) {
+  return /we cannot provide a description|create an account or log in|instagram photos and videos/i.test(String(value || ''))
+}
+
+function isPlatformLogoThumbnail(value) {
+  return /(instagram\.com\/static|static\.cdninstagram\.com|tiktokcdn.*logo|tiktok.*logo|favicon|apple-touch-icon)/i.test(String(value || ''))
+}
+
 function selectReferenceThumbnail(...candidates) {
   return candidates.find((candidate) => {
     const value = String(candidate || '')
     if (!value) return false
-    return !/(instagram\.com\/static|static\.cdninstagram\.com|tiktokcdn.*logo|tiktok.*logo|favicon|apple-touch-icon)/i.test(value)
+    return !isPlatformLogoThumbnail(value)
   }) || ''
 }
 
@@ -1430,14 +1464,20 @@ function extractMetricFromTextSafe(text, metric) {
 }
 
 function decodeHtmlEntities(value) {
-  return String(value || '')
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, decimal) => String.fromCodePoint(parseInt(decimal, 10)))
-    .replace(/&amp;/g, '&')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
+  let decoded = String(value || '')
+  for (let index = 0; index < 3; index += 1) {
+    const next = decoded
+      .replace(/&#x([0-9a-f]+);/gi, (_, hex) => String.fromCodePoint(parseInt(hex, 16)))
+      .replace(/&#(\d+);/g, (_, decimal) => String.fromCodePoint(parseInt(decimal, 10)))
+      .replace(/&amp;/g, '&')
+      .replace(/&quot;/g, '"')
+      .replace(/&#39;/g, "'")
+      .replace(/&lt;/g, '<')
+      .replace(/&gt;/g, '>')
+    if (next === decoded) break
+    decoded = next
+  }
+  return decoded
 }
 
 function stripHtml(value) {
