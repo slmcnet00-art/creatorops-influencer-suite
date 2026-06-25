@@ -2782,6 +2782,7 @@ function App() {
   const [showExampleCreators, setShowExampleCreators] = useState(false)
   const [selectedRecommendationIds, setSelectedRecommendationIds] = useState([])
   const [selectedDiscoveryCreatorIds, setSelectedDiscoveryCreatorIds] = useState([])
+  const [discoveryPage, setDiscoveryPage] = useState(1)
   const [selectedCandidatePoolIds, setSelectedCandidatePoolIds] = useState([])
   const [selectedOutreachIds, setSelectedOutreachIds] = useState([])
   const [outreachStatusFilter, setOutreachStatusFilter] = useState('전체')
@@ -3255,6 +3256,14 @@ function App() {
       .sort(compareCreatorsByDiscoveryPriority)
   }, [category, creators, discoveryFilters, platform, query, showExampleCreators])
 
+  const discoveryPageSize = 50
+  const discoveryTotalPages = Math.max(1, Math.ceil(filteredCreators.length / discoveryPageSize))
+  const safeDiscoveryPage = Math.min(Math.max(discoveryPage, 1), discoveryTotalPages)
+  const visibleDiscoveryCreators = useMemo(() => {
+    const start = (safeDiscoveryPage - 1) * discoveryPageSize
+    return filteredCreators.slice(start, start + discoveryPageSize)
+  }, [filteredCreators, safeDiscoveryPage])
+
   const selectedCreator =
     filteredCreators.find((creator) => creator.id === selectedCreatorId) ??
     filteredCreators[0] ??
@@ -3265,8 +3274,13 @@ function App() {
     () => filteredCreators.filter((creator) => selectedDiscoveryCreatorIds.includes(creator.id)),
     [filteredCreators, selectedDiscoveryCreatorIds],
   )
+  const selectedVisibleDiscoveryCreators = useMemo(
+    () => visibleDiscoveryCreators.filter((creator) => selectedDiscoveryCreatorIds.includes(creator.id)),
+    [selectedDiscoveryCreatorIds, visibleDiscoveryCreators],
+  )
   const allDiscoveryCreatorsSelected =
-    filteredCreators.length > 0 && selectedDiscoveryCreators.length === filteredCreators.length
+    visibleDiscoveryCreators.length > 0 && selectedVisibleDiscoveryCreators.length === visibleDiscoveryCreators.length
+
 
   const selectedCreatorOutreach = activeOutreach.filter((item) => item.creatorId === selectedCreator?.id)
   const selectedCreatorQuotes = activeQuotes.filter((item) => item.creatorId === selectedCreator?.id)
@@ -4127,7 +4141,12 @@ function App() {
   }
 
   const toggleAllDiscoveryCreators = () => {
-    setSelectedDiscoveryCreatorIds(allDiscoveryCreatorsSelected ? [] : filteredCreators.map((creator) => creator.id))
+    const visibleIds = visibleDiscoveryCreators.map((creator) => creator.id)
+    setSelectedDiscoveryCreatorIds((current) =>
+      allDiscoveryCreatorsSelected
+        ? current.filter((id) => !visibleIds.includes(id))
+        : Array.from(new Set([...current, ...visibleIds])),
+    )
   }
 
   const toggleCandidatePoolSelection = (creatorId) => {
@@ -4255,10 +4274,12 @@ function App() {
     setDiscoveryFilters(defaultDiscoveryFilters)
     setSelectedDiscoveryCreatorIds([])
     setSelectedCandidatePoolIds([])
+    setDiscoveryPage(1)
     showToast('검색 조건을 초기화했어요.')
   }
 
   const updateDiscoveryFilter = (field, value) => {
+    setDiscoveryPage(1)
     setDiscoveryFilters((current) => ({
       ...current,
       [field]: value,
@@ -4567,6 +4588,7 @@ function App() {
       })
       setShowExampleCreators(false)
       setSelectedCreatorId(selectedNextId)
+      setDiscoveryPage(1)
       showToast(`실제 공개 검색 결과 ${discoveredCreators.length}명을 발굴 리스트에 저장했어요.`)
     } catch (error) {
       showToast(error instanceof Error ? error.message : '실제 발굴 검색 중 오류가 발생했어요.')
@@ -7078,7 +7100,10 @@ function App() {
                 <Search size={17} />
                 <input
                   value={query}
-                  onChange={(event) => setQuery(event.target.value)}
+                  onChange={(event) => {
+                    setQuery(event.target.value)
+                    setDiscoveryPage(1)
+                  }}
                   placeholder="크리에이터, 카테고리, 키워드"
                 />
               </label>
@@ -7087,14 +7112,20 @@ function App() {
                 icon={<Filter size={16} />}
                 value={platform}
                 options={platformOptions}
-                onChange={setPlatform}
+                onChange={(value) => {
+                  setPlatform(value)
+                  setDiscoveryPage(1)
+                }}
                 label="플랫폼"
               />
               <SelectPill
                 icon={<ChevronDown size={16} />}
                 value={category}
                 options={categoryOptions}
-                onChange={setCategory}
+                onChange={(value) => {
+                  setCategory(value)
+                  setDiscoveryPage(1)
+                }}
                 label="카테고리"
               />
               <SelectPill
@@ -7162,7 +7193,14 @@ function App() {
                   <Search size={16} />
                   {realDiscoverySearching ? '검색 중' : '실제 검색'}
                 </button>
-                <button className="secondary-button compact-button" type="button" onClick={() => setShowExampleCreators((current) => !current)}>
+                <button
+                  className="secondary-button compact-button"
+                  type="button"
+                  onClick={() => {
+                    setShowExampleCreators((current) => !current)
+                    setDiscoveryPage(1)
+                  }}
+                >
                   {showExampleCreators ? '예시 숨김' : '예시 보기'}
                 </button>
               </div>
@@ -7287,12 +7325,15 @@ function App() {
                   <button type="button" onClick={resetSearch}>
                     전체 후보 보기
                   </button>
-                  <button type="button" onClick={() => setShowExampleCreators(true)}>
+                  <button type="button" onClick={() => {
+                    setShowExampleCreators(true)
+                    setDiscoveryPage(1)
+                  }}>
                     예시 후보 보기
                   </button>
                 </div>
               ) : (
-                filteredCreators.map((creator) => (
+                visibleDiscoveryCreators.map((creator) => (
                   <CreatorRow
                     key={creator.id}
                     creator={creator}
@@ -7312,6 +7353,16 @@ function App() {
                 ))
               )}
             </div>
+
+            {filteredCreators.length > discoveryPageSize && (
+              <PaginationControls
+                page={safeDiscoveryPage}
+                totalPages={discoveryTotalPages}
+                totalItems={filteredCreators.length}
+                pageSize={discoveryPageSize}
+                onPageChange={setDiscoveryPage}
+              />
+            )}
           </section>
 
           {selectedCreator && (
@@ -9985,6 +10036,56 @@ function SelectPill({ icon, value, options, onChange, label }) {
         ))}
       </select>
     </label>
+  )
+}
+
+function buildPaginationPages(page, totalPages) {
+  if (totalPages <= 7) return Array.from({ length: totalPages }, (_, index) => index + 1)
+
+  const pages = [1]
+  const start = Math.max(2, page - 1)
+  const end = Math.min(totalPages - 1, page + 1)
+
+  if (start > 2) pages.push('gap-start')
+  for (let item = start; item <= end; item += 1) pages.push(item)
+  if (end < totalPages - 1) pages.push('gap-end')
+  pages.push(totalPages)
+
+  return pages
+}
+
+function PaginationControls({ page, totalPages, totalItems, pageSize, onPageChange }) {
+  const pages = buildPaginationPages(page, totalPages)
+  const start = totalItems ? (page - 1) * pageSize + 1 : 0
+  const end = Math.min(totalItems, page * pageSize)
+
+  return (
+    <nav className="pagination-bar" aria-label="Discovery results pages">
+      <span>{start}-{end} / {totalItems}</span>
+      <div className="pagination-pages">
+        <button type="button" onClick={() => onPageChange(page - 1)} disabled={page <= 1}>
+          Prev
+        </button>
+        {pages.map((item) =>
+          typeof item === 'number' ? (
+            <button
+              key={item}
+              className={item === page ? 'active' : ''}
+              type="button"
+              onClick={() => onPageChange(item)}
+              aria-current={item === page ? 'page' : undefined}
+            >
+              {item}
+            </button>
+          ) : (
+            <span key={item} className="pagination-gap">...</span>
+          ),
+        )}
+        <button type="button" onClick={() => onPageChange(page + 1)} disabled={page >= totalPages}>
+          Next
+        </button>
+      </div>
+    </nav>
   )
 }
 
