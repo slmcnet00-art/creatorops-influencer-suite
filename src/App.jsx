@@ -7360,7 +7360,7 @@ function App() {
               />
             )}
 
-            <div className="creator-list">
+            <div className="creator-list creator-card-list">
               {filteredCreators.length === 0 ? (
                 <div className="empty-state">
                   <Search size={22} />
@@ -7377,24 +7377,24 @@ function App() {
                   </button>
                 </div>
               ) : (
-                visibleDiscoveryCreators.map((creator) => (
-                  <CreatorRow
-                    key={creator.id}
-                    creator={creator}
-                    active={selectedCreator?.id === creator.id}
-                    saved={shortlist.includes(creator.id)}
-                    checked={selectedDiscoveryCreatorIds.includes(creator.id)}
-                    showChannelLink
-                    profileUrl={getCreatorProfileUrl(creator, getRecommendedContactChannelId(creator))}
-                    contactLabel="채널 보기"
-                    onSelect={() => {
-                      setSelectedCreatorId(creator.id)
-                      showToast(`${creator.name} 분석 패널을 열었어요.`)
-                    }}
-                    onSave={() => toggleShortlist(creator)}
-                    onToggle={() => toggleDiscoveryCreatorSelection(creator.id)}
-                  />
-                ))
+                visibleDiscoveryCreators.map((creator) => {
+                  const recommendation = buildRecommendation(creator, brandBrief, selectedCampaign)
+
+                  return (
+                    <RecommendationCard
+                      key={creator.id}
+                      recommendation={recommendation}
+                      creator={creator}
+                      active={selectedCreator?.id === creator.id}
+                      checked={selectedDiscoveryCreatorIds.includes(creator.id)}
+                      profileUrl={getCreatorProfileUrl(creator, getRecommendedContactChannelId(creator))}
+                      saved={shortlist.includes(creator.id)}
+                      onSelect={() => setSelectedCreatorId(creator.id)}
+                      onToggle={() => toggleDiscoveryCreatorSelection(creator.id)}
+                      onSave={() => toggleShortlist(creator)}
+                    />
+                  )
+                })
               )}
             </div>
 
@@ -7565,7 +7565,7 @@ function App() {
             />
           )}
 
-          <div className="candidate-pool-list">
+          <div className="candidate-pool-list creator-card-list">
             {candidatePoolCreators.length === 0 ? (
               <div className="empty-state compact-empty">
                 <UsersRound size={22} />
@@ -7577,21 +7577,22 @@ function App() {
                 const channelId = getRecommendedContactChannelId(creator)
                 const profileUrl = getCreatorProfileUrl(creator, channelId)
                 const contactPlan = buildContactPlan(creator, channelId, '', selectedCampaign?.name)
+                const recommendation = buildRecommendation(creator, brandBrief, selectedCampaign)
 
                 return (
-                  <CreatorRow
+                  <RecommendationCard
                     key={creator.id}
+                    recommendation={recommendation}
                     creator={creator}
                     active={selectedCreator?.id === creator.id}
-                    saved={shortlist.includes(creator.id)}
                     checked={selectedCandidatePoolIds.includes(creator.id)}
-                    showChannelLink
                     profileUrl={profileUrl}
                     contactUrl={contactPlan.url}
                     contactLabel={contactPlan.shortLabel || contactPlan.label}
+                    saved={shortlist.includes(creator.id)}
                     onSelect={() => setSelectedCreatorId(creator.id)}
-                    onSave={() => toggleShortlist(creator)}
                     onToggle={() => toggleCandidatePoolSelection(creator.id)}
+                    onSave={() => toggleShortlist(creator)}
                   />
                 )
               })
@@ -10181,101 +10182,29 @@ function PaginationControls({ page, totalPages, totalItems, pageSize, onPageChan
   )
 }
 
-function CreatorRow({
+function RecommendationCard({
+  recommendation,
   creator,
-  active,
-  saved,
   checked,
-  showChannelLink = false,
+  active = false,
+  onSelect,
+  onToggle,
+  onQueue,
+  onSave,
+  saved = false,
   profileUrl,
   contactUrl,
   contactLabel,
-  onSelect,
-  onSave,
-  onToggle,
 }) {
-  const pendingMetrics = hasPendingMetrics(creator)
-  const hasFollowers = Number(creator.followers || 0) > 0
-  const hasAverageViews = Number(creator.averageViews || 0) > 0
-  const dataQuality = getCreatorDataQuality(creator)
-  const performanceScore = getCreatorPerformanceScore(creator)
-  const creatorProfileUrl = profileUrl || getCreatorProfileUrl(creator, getRecommendedContactChannelId(creator))
-  const creatorContactUrl = contactUrl || creatorProfileUrl
-  return (
-    <article className={`creator-row ${showChannelLink ? 'with-channel-link' : ''} ${active ? 'active' : ''} ${checked ? 'selected' : ''}`}>
-      <label className="recommendation-check creator-check" aria-label={`${creator.name} 선택`}>
-        <input type="checkbox" checked={checked} onChange={onToggle} />
-        <span />
-      </label>
-      <button className="creator-button" type="button" onClick={onSelect}>
-        <img src={creator.avatar} alt="" />
-        <div className="creator-copy">
-          <div>
-            <strong>{creator.name}</strong>
-            <span>{creator.handle}</span>
-            {creator.needsVerification && <span className="creator-status-chip">검증 대기</span>}
-          </div>
-          <p>
-            {creator.category} · {creator.city} · {creator.lastPost}
-          </p>
-          <div className="creator-quality-row">
-            <span className={`data-quality-chip ${dataQuality.tone}`}>
-              데이터 {dataQuality.score} · {dataQuality.level}
-            </span>
-          </div>
-        </div>
-      </button>
-
-      <div className="creator-numbers">
-        <span>{creator.platform}</span>
-        <strong>{hasFollowers ? `${compactNumber(creator.followers)} 팔로워` : '팔로워 수집 필요'}</strong>
-        <small>
-          {hasAverageViews
-            ? `${compactNumber(creator.averageViews)} 평균 조회${pendingMetrics ? ' · 참여율 검증 대기' : ` · ${percent(creator.engagement)}`}`
-            : '평균 조회/참여율 검증 대기'}
-        </small>
-      </div>
-
-      <div className="match-cell" title={`Performance ${performanceScore} / Brand fit ${creator.fit ?? '-'}`}>
-        <span style={{ width: `${performanceScore}%` }} />
-        <strong>{performanceScore}</strong>
-      </div>
-
-      {showChannelLink && creatorContactUrl && (
-        <a
-          className="creator-link-button"
-          href={creatorContactUrl}
-          target={creatorContactUrl.startsWith('mailto:') ? undefined : '_blank'}
-          rel={creatorContactUrl.startsWith('mailto:') ? undefined : 'noreferrer'}
-          title={`${creator.name} 채널 열기`}
-          onClick={(event) => event.stopPropagation()}
-        >
-          <ArrowUpRight size={15} />
-          <span>{contactLabel || '채널'}</span>
-        </a>
-      )}
-
-      <button
-        className="icon-button save-button"
-        type="button"
-        title={saved ? '저장됨' : '저장'}
-        onClick={onSave}
-      >
-        {saved ? <BookmarkCheck size={18} /> : <Bookmark size={18} />}
-      </button>
-    </article>
-  )
-}
-
-function RecommendationCard({ recommendation, creator, checked, onSelect, onToggle, onQueue }) {
   if (!creator) return null
   const pendingMetrics = hasPendingMetrics(creator)
   const dataQuality = getCreatorDataQuality(creator)
+  const creatorContactUrl = contactUrl || profileUrl
   const primaryReason = recommendation.reasons?.[0] || '브랜드 조건과 후보 데이터를 기준으로 매칭했습니다.'
   const detailReasons = recommendation.reasons?.slice(1, 4) ?? []
 
   return (
-    <article className={`recommendation-card ${checked ? 'selected' : ''}`}>
+    <article className={`recommendation-card ${active ? 'active' : ''} ${checked ? 'selected' : ''}`}>
       <div className="recommendation-top">
         <label className="recommendation-check" aria-label={`${creator.name} 선택`}>
           <input type="checkbox" checked={checked} onChange={onToggle} />
@@ -10319,9 +10248,31 @@ function RecommendationCard({ recommendation, creator, checked, onSelect, onTogg
       )}
       <div className="recommendation-footer">
         <span>{recommendation.risk}</span>
-        <button className="secondary-button compact-button" type="button" onClick={onQueue}>
-          메시지 검토함
-        </button>
+        <div className="recommendation-footer-actions">
+          {creatorContactUrl && (
+            <a
+              className="secondary-button compact-button"
+              href={creatorContactUrl}
+              target={creatorContactUrl.startsWith('mailto:') ? undefined : '_blank'}
+              rel={creatorContactUrl.startsWith('mailto:') ? undefined : 'noreferrer'}
+              onClick={(event) => event.stopPropagation()}
+            >
+              <ArrowUpRight size={15} />
+              {contactLabel || '\uCC44\uB110 \uBCF4\uAE30'}
+            </a>
+          )}
+          {onSave && (
+            <button className="secondary-button compact-button" type="button" onClick={onSave}>
+              {saved ? <BookmarkCheck size={15} /> : <Bookmark size={15} />}
+              {saved ? '\uC800\uC7A5\uB428' : '\uC800\uC7A5'}
+            </button>
+          )}
+          {onQueue && (
+            <button className="secondary-button compact-button" type="button" onClick={onQueue}>
+              {'\uBA54\uC2DC\uC9C0 \uAC80\uD1A0\uD568'}
+            </button>
+          )}
+        </div>
       </div>
     </article>
   )
