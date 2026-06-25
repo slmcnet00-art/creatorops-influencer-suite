@@ -32,6 +32,14 @@ services:
         sync: false
       - key: BRAVE_SEARCH_API_KEY
         sync: false
+      - key: TIKTOK_CLIENT_KEY
+        sync: false
+      - key: TIKTOK_CLIENT_SECRET
+        sync: false
+      - key: TIKTOK_COMMERCIAL_ACCESS_TOKEN
+        sync: false
+      - key: TIKTOK_COMMERCIAL_DATE_WINDOW_DAYS
+        value: 365
       - key: PUBLIC_SNAPSHOT_ENABLED
         value: true
       - key: PUBLIC_SNAPSHOT_TIMEOUT_MS

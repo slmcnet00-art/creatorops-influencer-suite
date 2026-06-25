@@ -221,3 +221,10 @@ audit_log
 12. 제품 배송과 수동 지급 상태를 기록하되 자동 송금은 실행하지 않는다.
 13. 팀원 역할에 따라 조회/수정/다운로드 권한을 제한하고 감사 로그를 남긴다.
 14. 콘텐츠 업로드 후 성과를 추적하고 실제 결과를 다음 추천 모델에 반영한다.
+
+## TikTok Commercial Content API Update
+
+- TikTok Commercial Content API is connected to the content reference search flow.
+- It is used for official commercial/ad content references and disclosure patterns.
+- It does not replace a general TikTok creator profile or follower database.
+- KR/US creator discovery still needs public search, creator opt-in data, and manual/approved verification because the Commercial Content API country filters are EEA-focused.

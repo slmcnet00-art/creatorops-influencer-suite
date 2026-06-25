@@ -24,6 +24,11 @@ VITE_CREATOROPS_API_BASE_URL=https://your-creatorops-api.onrender.com
 YOUTUBE_DATA_API_KEY=
 GOOGLE_SEARCH_API_KEY=
 GOOGLE_SEARCH_CX=
+BRAVE_SEARCH_API_KEY=
+TIKTOK_CLIENT_KEY=
+TIKTOK_CLIENT_SECRET=
+TIKTOK_COMMERCIAL_ACCESS_TOKEN=
+TIKTOK_COMMERCIAL_DATE_WINDOW_DAYS=365
 OPENAI_API_KEY=
 GMAIL_CLIENT_ID=
 GMAIL_CLIENT_SECRET=
@@ -124,6 +129,41 @@ Response:
       "snippet": "Public search snippet",
       "source": "Google Programmable Search",
       "verifiedMetrics": false
+    }
+  ]
+}
+```
+
+### POST `/references/search`
+
+Searches production references for the content reference page.
+
+- YouTube: official YouTube Data API.
+- TikTok: TikTok Commercial Content API first, Brave Search fallback.
+- Instagram: Brave Search + public metadata fallback.
+- TikTok Commercial Content API is for commercial/ad content references. It is not a general creator follower database.
+
+Request:
+
+```json
+{ "query": "pet carrier hook", "platform": "TikTok", "country": "KR", "maxResults": 24 }
+```
+
+Response:
+
+```json
+{
+  "data": [
+    {
+      "platform": "TikTok",
+      "title": "Brand - @creator - Paid partnership",
+      "url": "https://www.tiktok.com/@creator/video/...",
+      "thumbnailUrl": "https://...",
+      "views": null,
+      "likes": null,
+      "comments": null,
+      "shares": null,
+      "source": "TikTok Commercial Content API"
     }
   ]
 }

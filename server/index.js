@@ -7,6 +7,7 @@ const port = Number(process.env.PORT || 8787)
 const DISCOVERY_RESULT_LIMIT = 1000
 const REFERENCE_RESULT_LIMIT = 500
 const PROFILE_SNAPSHOT_ENRICH_LIMIT = 80
+let tiktokCommercialTokenCache = { token: '', expiresAt: 0 }
 const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
   .split(',')
   .map((origin) => origin.trim())
@@ -357,7 +358,20 @@ async function searchContentReferences({ query, country, platform, sort, maxResu
       continue
     }
 
-    if (!process.env.BRAVE_SEARCH_API_KEY && normalizedPlatform === 'all') {
+    if (targetPlatform === 'TikTok' && isTikTokCommercialContentConfigured()) {
+      const tiktokResults = await searchTikTokCommercialContentReferences({
+        query,
+        country,
+        maxResults: perPlatformLimit,
+      }).catch((error) => {
+        if ([400, 401, 403, 404, 429].includes(error.status)) return []
+        throw error
+      })
+      results.push(...tiktokResults)
+      if (tiktokResults.length >= perPlatformLimit) continue
+    }
+
+    if (!process.env.BRAVE_SEARCH_API_KEY) {
       continue
     }
 
@@ -502,6 +516,197 @@ function normalizeYouTubeReference(item, channelMap, country) {
     source: 'YouTube Data API search.list + videos.list',
     confidence: 96,
   }
+}
+
+function isTikTokCommercialContentConfigured() {
+  return Boolean(
+    process.env.TIKTOK_COMMERCIAL_ACCESS_TOKEN ||
+    (process.env.TIKTOK_CLIENT_KEY && process.env.TIKTOK_CLIENT_SECRET),
+  )
+}
+
+async function getTikTokCommercialAccessToken() {
+  if (process.env.TIKTOK_COMMERCIAL_ACCESS_TOKEN) {
+    return process.env.TIKTOK_COMMERCIAL_ACCESS_TOKEN
+  }
+
+  if (tiktokCommercialTokenCache.token && tiktokCommercialTokenCache.expiresAt > Date.now() + 60000) {
+    return tiktokCommercialTokenCache.token
+  }
+
+  const clientKey = requireEnv('TIKTOK_CLIENT_KEY')
+  const clientSecret = requireEnv('TIKTOK_CLIENT_SECRET')
+  const body = new URLSearchParams({
+    client_key: clientKey,
+    client_secret: clientSecret,
+    grant_type: 'client_credentials',
+  })
+
+  const payload = await fetchJson('https://open.tiktokapis.com/v2/oauth/token/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/x-www-form-urlencoded',
+    },
+    body,
+  })
+  const token = payload.access_token
+  if (!token) throw httpError(502, 'TikTok client access token was not returned.')
+
+  const ttlMs = Math.max(Number(payload.expires_in || 7200) - 120, 60) * 1000
+  tiktokCommercialTokenCache = {
+    token,
+    expiresAt: Date.now() + ttlMs,
+  }
+  return token
+}
+
+async function searchTikTokCommercialContentReferences({ query, country, maxResults }) {
+  const token = await getTikTokCommercialAccessToken()
+  const regionCode = normalizeRegionCode(country)
+  const fields = 'id,create_date,create_timestamp,label,brand_names,creator,videos'
+  const maxCount = Math.min(50, Math.max(1, Number(maxResults || 10)))
+  const results = []
+  let searchId = ''
+
+  for (let page = 0; page < Math.ceil(maxResults / maxCount) && results.length < maxResults; page += 1) {
+    const body = {
+      filters: {
+        content_published_date_range: getTikTokCommercialDateRange(),
+      },
+      max_count: maxCount,
+    }
+
+    if (isSupportedTikTokCommercialCountry(regionCode)) {
+      body.filters.creator_country_code = regionCode
+    }
+    if (searchId) body.search_id = searchId
+
+    const params = new URLSearchParams({ fields })
+    const payload = await fetchJson(`https://open.tiktokapis.com/v2/research/adlib/commercial_content/query/?${params}`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    })
+    const pageItems = payload.data?.commercial_contents || payload.commercial_contents || []
+    results.push(
+      ...pageItems
+        .map((item) => normalizeTikTokCommercialContentReference(item, regionCode || country || 'GLOBAL'))
+        .filter(Boolean)
+        .filter((item) => matchesReferenceQuery(item, query)),
+    )
+
+    const hasMore = Boolean(payload.data?.has_more || payload.has_more)
+    searchId = payload.data?.search_id || payload.search_id || searchId
+    if (!hasMore || !searchId) break
+  }
+
+  return results.slice(0, maxResults)
+}
+
+function normalizeTikTokCommercialContentReference(item, country) {
+  const creator = item.creator || {}
+  const videos = Array.isArray(item.videos) ? item.videos : Array.isArray(item.video) ? item.video : []
+  const video = videos[0] || {}
+  const username = creator.username || creator.display_name || creator.handle || ''
+  const creatorHandle = username ? `@${String(username).replace(/^@/, '')}` : ''
+  const brandNames = Array.isArray(item.brand_names) ? item.brand_names.filter(Boolean) : []
+  const label = Array.isArray(item.label) ? item.label.join(', ') : String(item.label || '')
+  const titleParts = [brandNames.join(', '), creatorHandle, label].filter(Boolean)
+  const title = titleParts.length ? titleParts.join(' - ') : `TikTok commercial content ${item.id || ''}`.trim()
+  const videoId = video.id || item.id || ''
+  const url = video.url || video.share_url || (creatorHandle && videoId ? `https://www.tiktok.com/${creatorHandle}/video/${videoId}` : '')
+  const publishedAt = normalizeTikTokCommercialDate(item.create_date, item.create_timestamp)
+  const detectedCountry = detectProfileCountry({
+    profileUrl: url,
+    title,
+    snippet: label,
+    handle: creatorHandle,
+  })
+
+  return {
+    id: `ttcommercial:${item.id || videoId || url}`,
+    mediaType: '\uC601\uC0C1',
+    platform: 'TikTok',
+    country: detectedCountry || country || 'GLOBAL',
+    searchCountry: country || '',
+    countryConfidence: detectedCountry ? 'detected' : isSupportedTikTokCommercialCountry(country) ? 'official' : 'unverified',
+    title,
+    url,
+    thumbnailUrl: video.cover_image_url || video.thumbnail_url || '',
+    views: Number(video.view_count || video.views || 0) || null,
+    accountFollowers: Number(creator.followers_count || creator.follower_count || creator.followers || 0) || null,
+    likes: Number(video.like_count || video.likes || 0) || null,
+    comments: Number(video.comment_count || video.comments || 0) || null,
+    shares: Number(video.share_count || video.shares || 0) || null,
+    publishedAt,
+    hook: buildReferenceHook(title, label),
+    analysis: 'TikTok Commercial Content API result. Use this as an official-reference signal for branded or paid content formats, then verify engagement metrics before final selection.',
+    applyIdea: 'Borrow the creator framing, brand disclosure pattern, opening hook, and product proof sequence for the campaign guide.',
+    channelTitle: creatorHandle,
+    source: 'TikTok Commercial Content API',
+    confidence: 88,
+  }
+}
+
+function getTikTokCommercialDateRange() {
+  const days = clamp(Number(process.env.TIKTOK_COMMERCIAL_DATE_WINDOW_DAYS || 365), 1, 1200)
+  const maxDate = new Date()
+  const minDate = new Date(maxDate)
+  minDate.setUTCDate(maxDate.getUTCDate() - days)
+  const earliest = new Date(Date.UTC(2022, 9, 2))
+  if (minDate < earliest) minDate.setTime(earliest.getTime())
+  return {
+    min: formatTikTokCommercialDate(minDate),
+    max: formatTikTokCommercialDate(maxDate),
+  }
+}
+
+function formatTikTokCommercialDate(date) {
+  return date.toISOString().slice(0, 10)
+}
+
+function normalizeTikTokCommercialDate(dateValue, timestampValue) {
+  const direct = String(dateValue || '').trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(direct)) return direct
+  if (/^\d{8}$/.test(direct)) return `${direct.slice(0, 4)}-${direct.slice(4, 6)}-${direct.slice(6, 8)}`
+  const timestamp = Number(timestampValue || 0)
+  if (timestamp > 0) {
+    const ms = timestamp > 100000000000 ? timestamp : timestamp * 1000
+    return new Date(ms).toISOString().slice(0, 10)
+  }
+  return 'public API result'
+}
+
+function isSupportedTikTokCommercialCountry(country) {
+  return new Set([
+    'AT', 'BE', 'BG', 'HR', 'CY', 'CZ', 'DK', 'EE', 'FI', 'FR', 'DE', 'GR',
+    'HU', 'IS', 'IE', 'IT', 'LV', 'LI', 'LT', 'LU', 'MT', 'NL', 'NO', 'PL',
+    'PT', 'RO', 'SK', 'SI', 'ES', 'SE',
+  ]).has(normalizeRegionCode(country))
+}
+
+function matchesReferenceQuery(reference, query) {
+  const cleanQuery = normalizeTextForSearch(query)
+  if (!cleanQuery) return true
+  const haystack = normalizeTextForSearch([
+    reference.title,
+    reference.hook,
+    reference.analysis,
+    reference.applyIdea,
+    reference.channelTitle,
+    reference.url,
+  ].filter(Boolean).join(' '))
+  return cleanQuery
+    .split(/\s+/)
+    .filter((token) => token.length > 1)
+    .some((token) => haystack.includes(token))
+}
+
+function normalizeTextForSearch(value) {
+  return String(value || '').toLowerCase().replace(/[^\p{L}\p{N}\s@#_-]+/gu, ' ').replace(/\s+/g, ' ').trim()
 }
 
 function buildReferenceHook(title, description) {
