@@ -1150,6 +1150,8 @@ function buildSearchResult(item, platform, handle, profileUrl, source) {
     .replace(/\s*•.*$/, '')
     .trim()
   const snippet = cleanReferenceText(item.snippet || item.description || '')
+  const metricText = `${title} ${snippet}`
+  const publicMetrics = extractPublicMetrics(metricText)
 
   return {
     id: `${platform}:${handle}`,
@@ -1158,6 +1160,9 @@ function buildSearchResult(item, platform, handle, profileUrl, source) {
     handle,
     profileUrl,
     snippet,
+    avatar: selectReferenceThumbnail(item.thumbnail?.src, item.profile?.img),
+    followers: publicMetrics.followers || extractMetricFromTextSafe(metricText, 'followers') || null,
+    averageViews: publicMetrics.views || extractMetricFromTextSafe(metricText, 'views') || null,
     source,
     verifiedMetrics: false,
   }
@@ -1364,12 +1369,13 @@ function extractPublicMetrics(text) {
 function firstMetric(text, patterns) {
   for (const pattern of patterns) {
     const match = text.match(pattern)
-    const value = parseMetricNumber(match?.[1], match?.[2])
+    const value = parseMetricNumberSafe(match?.[1], match?.[2])
     if (value) return value
   }
   return null
 }
 
+// eslint-disable-next-line no-unused-vars
 function parseMetricNumber(rawNumber, rawUnit = '') {
   if (!rawNumber) return null
   const base = Number(String(rawNumber).replace(/,/g, ''))
@@ -1388,6 +1394,39 @@ function parseMetricNumber(rawNumber, rawUnit = '') {
             : 1_000_000_000
           : 1
   return Math.round(base * multiplier)
+}
+
+function parseMetricNumberSafe(rawNumber, rawUnit = '') {
+  if (!rawNumber) return null
+  const base = Number(String(rawNumber).replace(/,/g, ''))
+  if (!Number.isFinite(base)) return null
+
+  const unit = String(rawUnit || '').trim().toLowerCase()
+  const multiplierByUnit = {
+    k: 1_000,
+    m: 1_000_000,
+    b: 1_000_000_000,
+    '\uCC9C': 1_000,
+    '\uB9CC': 10_000,
+    '\uC5B5': 100_000_000,
+  }
+
+  return Math.round(base * (multiplierByUnit[unit] || 1))
+}
+
+function extractMetricFromTextSafe(text, metric) {
+  const normalized = decodeHtmlEntities(String(text || '')).replace(/\s+/g, ' ')
+  const patterns = metric === 'followers'
+    ? [
+        /\uD314\uB85C\uC6CC\s*([\d.,]+)\s*([KMB]|\uCC9C|\uB9CC|\uC5B5)?/i,
+        /([\d.,]+)\s*([KMB]|\uCC9C|\uB9CC|\uC5B5)?\s*\uD314\uB85C\uC6CC/i,
+      ]
+    : [
+        /\uC870\uD68C\s*([\d.,]+)\s*([KMB]|\uCC9C|\uB9CC|\uC5B5)?/i,
+        /([\d.,]+)\s*([KMB]|\uCC9C|\uB9CC|\uC5B5)?\s*\uC870\uD68C/i,
+      ]
+
+  return firstMetric(normalized, patterns)
 }
 
 function decodeHtmlEntities(value) {

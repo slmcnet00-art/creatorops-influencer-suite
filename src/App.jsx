@@ -2452,6 +2452,7 @@ function buildRealDiscoveryCreator(result, brief, fallbackCategory, index = 0) {
   const followers = Number(result.followers || 0)
   const averageViews = Number(result.averageViews || 0)
   const verifiedMetrics = Boolean(result.verifiedMetrics && followers)
+  const observedMetrics = Boolean(followers || averageViews)
   const platform = result.platform || 'Instagram'
   const collectedAt = nowLabel()
   const topicCandidates = keywordList(`${brief.keywords}, ${brief.product}`).slice(0, 5)
@@ -2467,17 +2468,25 @@ function buildRealDiscoveryCreator(result, brief, fallbackCategory, index = 0) {
     },
     {
       metric: '팔로워',
-      source: verifiedMetrics ? result.source : '수집 필요',
-      method: verifiedMetrics ? '공식 API 통계' : '공개 프로필/공식 API로 후속 수집 필요',
-      confidence: verifiedMetrics ? 96 : 0,
+      source: verifiedMetrics || followers ? result.source : '수집 필요',
+      method: verifiedMetrics
+        ? '공식 API 통계'
+        : followers
+          ? '검색 스니펫/공개 프로필에서 추출한 공개 수치'
+          : '공개 프로필/공식 API로 후속 수집 필요',
+      confidence: verifiedMetrics ? 96 : followers ? 62 : 0,
       freshness: collectedAt,
       value: followers,
     },
     {
       metric: '평균 조회',
-      source: verifiedMetrics ? result.source : '수집 필요',
-      method: verifiedMetrics ? '공식 채널 통계 기반 계산' : '최근 콘텐츠 공개 지표로 후속 계산 필요',
-      confidence: verifiedMetrics ? 78 : 0,
+      source: verifiedMetrics || averageViews ? result.source : '수집 필요',
+      method: verifiedMetrics
+        ? '공식 채널 통계 기반 계산'
+        : averageViews
+          ? '검색 스니펫/공개 콘텐츠에서 추출한 공개 수치'
+          : '최근 콘텐츠 공개 지표로 후속 계산 필요',
+      confidence: verifiedMetrics ? 78 : averageViews ? 58 : 0,
       freshness: collectedAt,
       value: averageViews,
     },
@@ -2519,9 +2528,11 @@ function buildRealDiscoveryCreator(result, brief, fallbackCategory, index = 0) {
     sourceCollectedAt: collectedAt,
     sourceNote: verifiedMetrics
       ? `${result.source}로 실제 채널과 공개 통계를 가져왔습니다.`
-      : '실제 공개 검색 결과에서 프로필 URL을 가져왔습니다. 팔로워와 평균 조회는 공식 API 또는 공개 프로필 수집으로 검증해야 합니다.',
+      : observedMetrics
+        ? '실제 공개 검색 결과에서 프로필 URL과 일부 공개 수치를 가져왔습니다. 평균 조회/참여율은 후속 검증이 필요합니다.'
+        : '실제 공개 검색 결과에서 프로필 URL을 가져왔습니다. 팔로워와 평균 조회는 공식 API 또는 공개 프로필 수집으로 검증해야 합니다.',
     needsVerification: !verifiedMetrics,
-    metricsPending: !verifiedMetrics,
+    metricsPending: !observedMetrics,
     metricSources,
   }
 }
@@ -7000,6 +7011,9 @@ function App() {
                     active={selectedCreator?.id === creator.id}
                     saved={shortlist.includes(creator.id)}
                     checked={selectedDiscoveryCreatorIds.includes(creator.id)}
+                    showChannelLink
+                    profileUrl={getCreatorProfileUrl(creator, getRecommendedContactChannelId(creator))}
+                    contactLabel="채널 보기"
                     onSelect={() => {
                       setSelectedCreatorId(creator.id)
                       showToast(`${creator.name} 분석 패널을 열었어요.`)
@@ -9690,6 +9704,8 @@ function CreatorRow({
   onToggle,
 }) {
   const pendingMetrics = hasPendingMetrics(creator)
+  const hasFollowers = Number(creator.followers || 0) > 0
+  const hasAverageViews = Number(creator.averageViews || 0) > 0
   const dataQuality = getCreatorDataQuality(creator)
   const creatorProfileUrl = profileUrl || getCreatorProfileUrl(creator, getRecommendedContactChannelId(creator))
   const creatorContactUrl = contactUrl || creatorProfileUrl
@@ -9720,11 +9736,11 @@ function CreatorRow({
 
       <div className="creator-numbers">
         <span>{creator.platform}</span>
-        <strong>{pendingMetrics ? '팔로워 수집 필요' : `${compactNumber(creator.followers)} 팔로워`}</strong>
+        <strong>{hasFollowers ? `${compactNumber(creator.followers)} 팔로워` : '팔로워 수집 필요'}</strong>
         <small>
-          {pendingMetrics
-            ? '평균 조회/참여율 검증 대기'
-            : `${compactNumber(creator.averageViews)} 평균 조회 · ${percent(creator.engagement)}`}
+          {hasAverageViews
+            ? `${compactNumber(creator.averageViews)} 평균 조회${pendingMetrics ? ' · 참여율 검증 대기' : ` · ${percent(creator.engagement)}`}`
+            : '평균 조회/참여율 검증 대기'}
         </small>
       </div>
 
