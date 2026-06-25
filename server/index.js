@@ -462,14 +462,23 @@ function normalizeYouTubeReference(item, channelMap, country) {
   const followers = Number(channel.followers || 0)
   const virality = followers ? views / followers : 0
   const publishedDate = snippet.publishedAt ? snippet.publishedAt.slice(0, 10) : ''
+  const referenceUrl = `https://www.youtube.com/watch?v=${item.id}`
+  const detectedCountry = channel.country || detectProfileCountry({
+    profileUrl: referenceUrl,
+    title: snippet.title,
+    snippet: snippet.description,
+    handle: snippet.channelTitle || channel.name,
+  })
 
   return {
     id: `ytref:${item.id}`,
     mediaType: '영상',
     platform: 'YouTube',
-    country: country || 'GLOBAL',
+    country: detectedCountry,
+    searchCountry: country || '',
+    countryConfidence: channel.country ? 'official' : detectedCountry ? 'detected' : 'unverified',
     title: snippet.title || 'YouTube reference',
-    url: `https://www.youtube.com/watch?v=${item.id}`,
+    url: referenceUrl,
     thumbnailUrl:
       thumbnails.maxres?.url ||
       thumbnails.standard?.url ||
@@ -591,12 +600,15 @@ function normalizeWebReferenceSearchItem(item, platform, country) {
   const analysis = isLowValueReferenceText(description)
     ? '공개 검색 결과에서 콘텐츠 URL을 확인했습니다. 세부 성과 지표는 플랫폼 API 또는 수동 확인이 필요합니다.'
     : description
+  const detectedCountry = detectProfileCountry({ profileUrl: url, title, snippet: description })
 
   return {
     id: `webref:${inferredPlatform}:${url}`,
     mediaType: inferReferenceMediaType(url, inferredPlatform),
     platform: inferredPlatform,
-    country: country || 'GLOBAL',
+    country: detectedCountry,
+    searchCountry: country || '',
+    countryConfidence: detectedCountry ? 'detected' : 'unverified',
     title: title || `${inferredPlatform} reference`,
     url,
     thumbnailUrl: selectReferenceThumbnail(item.thumbnail?.src, item.profile?.img),
