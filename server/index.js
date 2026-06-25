@@ -665,7 +665,7 @@ function getTikTokCommercialDateRange() {
 }
 
 function formatTikTokCommercialDate(date) {
-  return date.toISOString().slice(0, 10)
+  return date.toISOString().slice(0, 10).replace(/-/g, '')
 }
 
 function normalizeTikTokCommercialDate(dateValue, timestampValue) {
