@@ -3096,9 +3096,8 @@ function App() {
     [visibleReferences],
   )
   const candidatePoolCreators = useMemo(() => {
-    const messagedCreatorIds = new Set(selectedCampaignOutreach.map((item) => item.creatorId))
-    return getCreatorsByIds(creators, shortlist).filter((creator) => !messagedCreatorIds.has(creator.id))
-  }, [creators, selectedCampaignOutreach, shortlist])
+    return getCreatorsByIds(creators, shortlist)
+  }, [creators, shortlist])
   const selectedCandidatePoolCreators = useMemo(
     () => candidatePoolCreators.filter((creator) => selectedCandidatePoolIds.includes(creator.id)),
     [candidatePoolCreators, selectedCandidatePoolIds],
@@ -4101,6 +4100,29 @@ function App() {
     }
   }
 
+  const saveSelectedDiscoveryCreatorsToCandidatePool = () => {
+    if (!selectedDiscoveryCreators.length) {
+      showToast('후보 풀에 저장할 인플루언서를 먼저 선택하세요.')
+      return
+    }
+
+    const selectedIds = selectedDiscoveryCreators.map((creator) => creator.id)
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          shortlist: Array.from(new Set([...current.shortlist, ...selectedIds])),
+        },
+        'shortlist',
+        `발굴 리스트 ${selectedIds.length}명 메시지 전 후보 풀 저장`,
+      ),
+    )
+    setSelectedCandidatePoolIds(selectedIds)
+    setActiveDiscoveryPoolView('candidate')
+    showToast(`선택한 인플루언서 ${selectedIds.length}명을 메시지 전 후보 풀에 저장했어요.`)
+  }
+
   const queueSelectedDiscoveryCreators = () => {
     const campaign = selectedCampaign
 
@@ -4128,8 +4150,10 @@ function App() {
         `발굴 리스트 ${records.length}명 제안 메시지 검토함 저장`,
       ),
     )
+    setSelectedCandidatePoolIds(records.map((record) => record.creatorId))
+    setActiveDiscoveryPoolView('candidate')
     setSelectedDiscoveryCreatorIds([])
-    showToast(`선택한 인플루언서 ${records.length}명의 제안 메시지를 검토함에 저장했어요.`)
+    showToast(`선택한 인플루언서 ${records.length}명을 후보 풀에 저장하고 제안 메시지를 검토함에 넣었어요.`)
   }
 
   const queueSelectedCandidatePoolCreators = () => {
@@ -7160,7 +7184,7 @@ function App() {
               <div className="recommendation-selection-bar creator-selection-bar">
                 <div>
                   <strong>{selectedDiscoveryCreators.length}명 선택</strong>
-                  <span>발굴 리스트에서 선택한 인플루언서에게 한 번에 제안 메시지를 생성합니다.</span>
+                  <span>선택한 후보를 메시지 전 후보 풀에 저장하거나 바로 제안 메시지를 생성합니다.</span>
                 </div>
                 <div>
                   <button
@@ -7169,6 +7193,15 @@ function App() {
                     onClick={toggleAllDiscoveryCreators}
                   >
                     {allDiscoveryCreatorsSelected ? '전체 해제' : '전체 선택'}
+                  </button>
+                  <button
+                    className="secondary-button compact-button"
+                    type="button"
+                    onClick={saveSelectedDiscoveryCreatorsToCandidatePool}
+                    disabled={!selectedDiscoveryCreators.length}
+                  >
+                    <BookmarkCheck size={15} />
+                    후보 풀 저장
                   </button>
                   <button
                     className="primary-button compact-button"

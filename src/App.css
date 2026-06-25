@@ -1773,6 +1773,7 @@
 
 .discovery-workspace .work-grid {
   order: 3;
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .discovery-workspace .ai-grid {
@@ -1786,6 +1787,10 @@
 
 .discovery-workspace .ai-result-panel {
   order: 4;
+}
+
+.discovery-workspace .profile-panel {
+  max-width: none;
 }
 
 .brief-form {
