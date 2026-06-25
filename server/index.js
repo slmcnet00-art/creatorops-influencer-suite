@@ -1371,7 +1371,9 @@ function normalizeYouTubeChannel(channel, parsedLookup = {}, fallbackCountry = '
     totalViews: viewCount,
     videoCount,
     description: snippet.description || '',
-    country: snippet.country || fallbackCountry || 'KR',
+    country: snippet.country || '',
+    searchCountry: fallbackCountry || '',
+    countryConfidence: snippet.country ? 'official' : 'unverified',
     source: 'YouTube Data API',
     verifiedMetrics: true,
   }
@@ -1418,6 +1420,26 @@ function normalizeProfileSearchItem(item, platform, source = 'Public Search API'
   return null
 }
 
+function detectProfileCountry({ profileUrl = '', title = '', snippet = '', handle = '' } = {}) {
+  const text = [profileUrl, title, snippet, handle].filter(Boolean).join(' ').toLowerCase()
+  if (!text) return ''
+
+  if (/\.kr(?:\/|$)|korea|south korea|seoul|busan|incheon|gangnam|hongdae/i.test(text)) return 'KR'
+  if (/\.jp(?:\/|$)|japan|tokyo|osaka|kyoto|yokohama/i.test(text)) return 'JP'
+  if (/\.cn(?:\/|$)|china|beijing|shanghai/i.test(text)) return 'CN'
+  if (/taiwan|taipei|\.tw(?:\/|$)/i.test(text)) return 'TW'
+  if (/vietnam|viet nam|hanoi|saigon|ho chi minh|\.vn(?:\/|$)/i.test(text)) return 'VN'
+  if (/thailand|bangkok|\.th(?:\/|$)/i.test(text)) return 'TH'
+  if (/indonesia|jakarta|\.id(?:\/|$)/i.test(text)) return 'ID'
+  if (/philippines|manila|\.ph(?:\/|$)/i.test(text)) return 'PH'
+  if (/singapore|\.sg(?:\/|$)/i.test(text)) return 'SG'
+  if (/malaysia|kuala lumpur|\.my(?:\/|$)/i.test(text)) return 'MY'
+  if (/united kingdom|\buk\b|london|england|\.co\.uk(?:\/|$)|\.uk(?:\/|$)/i.test(text)) return 'GB'
+  if (/united states|\busa\b|\bus\b|new york|los angeles|california|\.us(?:\/|$)/i.test(text)) return 'US'
+
+  return ''
+}
+
 function buildSearchResult(item, platform, handle, profileUrl, source, country = 'KR', options = {}) {
   const title = cleanReferenceText(item.title || '')
     .replace(/\s*[-|].*$/, '')
@@ -1426,6 +1448,7 @@ function buildSearchResult(item, platform, handle, profileUrl, source, country =
   const snippet = cleanReferenceText(item.snippet || item.description || '')
   const metricText = `${title} ${snippet}`
   const publicMetrics = extractPublicMetrics(metricText)
+  const detectedCountry = detectProfileCountry({ profileUrl, title, snippet, handle })
 
   return {
     id: `${platform}:${handle}`,
@@ -1433,7 +1456,9 @@ function buildSearchResult(item, platform, handle, profileUrl, source, country =
     name: platform === 'TikTok' && options.fromContentUrl ? handle.replace('@', '') : title || handle.replace('@', ''),
     handle,
     profileUrl,
-    country,
+    country: detectedCountry,
+    searchCountry: country,
+    countryConfidence: detectedCountry ? 'detected' : 'unverified',
     snippet,
     sourceTitle: title,
     sourceSnippet: snippet,

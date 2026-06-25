@@ -269,7 +269,7 @@ export async function fetchYouTubeChannelSnapshot({ apiKey, lookup }) {
     totalViews: viewCount,
     videoCount,
     description: snippet.description || '',
-    country: snippet.country || 'KR',
+    country: snippet.country || '',
     source: 'YouTube Data API',
   }
 }
@@ -359,7 +359,7 @@ export async function searchYouTubeCreatorDiscovery({ apiKey, query, country = '
       totalViews: viewCount,
       videoCount,
       description: snippet.description || '',
-      country: snippet.country || 'KR',
+      country: snippet.country || '',
       source: 'YouTube Data API',
       verifiedMetrics: true,
     }

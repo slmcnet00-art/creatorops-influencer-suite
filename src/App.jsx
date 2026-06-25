@@ -2614,6 +2614,34 @@ function displayMetric(value, pendingText = '수집 필요') {
   return value ? compactNumber(value) : pendingText
 }
 
+function detectDiscoveryResultCountry(result) {
+  const officialCountry = String(result?.country || '').trim().toUpperCase()
+  const platform = result?.platform || ''
+  if (officialCountry && result?.countryConfidence === 'official') return officialCountry
+  if (officialCountry && result?.countryConfidence === 'detected') return officialCountry
+  if (officialCountry && platform === 'YouTube' && result?.verifiedMetrics) return officialCountry
+
+  const text = [result?.profileUrl, result?.name, result?.handle, result?.snippet, result?.sourceTitle, result?.sourceSnippet]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+
+  if (/\.kr(?:\/|$)|korea|south korea|seoul|busan|incheon|gangnam|hongdae/i.test(text)) return 'KR'
+  if (/\.jp(?:\/|$)|japan|tokyo|osaka|kyoto|yokohama/i.test(text)) return 'JP'
+  if (/\.cn(?:\/|$)|china|beijing|shanghai/i.test(text)) return 'CN'
+  if (/taiwan|taipei|\.tw(?:\/|$)/i.test(text)) return 'TW'
+  if (/vietnam|viet nam|hanoi|saigon|ho chi minh|\.vn(?:\/|$)/i.test(text)) return 'VN'
+  if (/thailand|bangkok|\.th(?:\/|$)/i.test(text)) return 'TH'
+  if (/indonesia|jakarta|\.id(?:\/|$)/i.test(text)) return 'ID'
+  if (/philippines|manila|\.ph(?:\/|$)/i.test(text)) return 'PH'
+  if (/singapore|\.sg(?:\/|$)/i.test(text)) return 'SG'
+  if (/malaysia|kuala lumpur|\.my(?:\/|$)/i.test(text)) return 'MY'
+  if (/united kingdom|\buk\b|london|england|\.co\.uk(?:\/|$)|\.uk(?:\/|$)/i.test(text)) return 'GB'
+  if (/united states|\busa\b|\bus\b|new york|los angeles|california|\.us(?:\/|$)/i.test(text)) return 'US'
+
+  return ''
+}
+
 function buildRealDiscoveryCreator(result, brief, fallbackCategory, index = 0) {
   const followers = Number(result.followers || 0)
   const averageViews = Number(result.averageViews || 0)
@@ -2622,6 +2650,7 @@ function buildRealDiscoveryCreator(result, brief, fallbackCategory, index = 0) {
   const platform = result.platform || 'Instagram'
   const collectedAt = nowLabel()
   const isExpandedCandidate = result.discoveryMatchType === 'expanded'
+  const detectedCountry = detectDiscoveryResultCountry(result)
   const topicCandidates = keywordList(`${brief.keywords}, ${brief.product}`).slice(0, 5)
   const metricSources = [
     {
@@ -2674,7 +2703,7 @@ function buildRealDiscoveryCreator(result, brief, fallbackCategory, index = 0) {
     contactEmail: '',
     preferredContactChannel: platform === 'YouTube' ? 'email' : platform === 'TikTok' ? 'tiktok_dm' : 'instagram_dm',
     category: fallbackCategory || brief.categories?.[0] || '리뷰',
-    country: result.country || 'KR',
+    country: detectedCountry,
     followers,
     averageViews,
     engagement: verifiedMetrics ? Number(Math.min(12, Math.max(1.5, (averageViews / Math.max(followers, 1)) * 100)).toFixed(1)) : 0,
@@ -2687,7 +2716,7 @@ function buildRealDiscoveryCreator(result, brief, fallbackCategory, index = 0) {
     audience: verifiedMetrics
       ? `${result.source} 공식/공개 지표 기반`
       : `${result.source || '공개 웹 검색'} 결과 · 팔로워/조회수 후속 수집 필요`,
-    city: result.country || 'KR',
+    city: detectedCountry || 'Unverified',
     lastPost: verifiedMetrics ? '공식 지표 수집' : '실제 프로필 발견',
     status: verifiedMetrics ? '실제 데이터 확인' : isExpandedCandidate ? '보류 추천' : '실제 검색 후보',
     topics: uniqueList([brief.product, fallbackCategory, ...topicCandidates, result.snippet || '공개 검색']).slice(0, 7),
