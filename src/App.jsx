@@ -1024,6 +1024,7 @@ function normalizeCreator(creator) {
     defaultCreators.find((item) => item.handle === creator.handle)
   const nextCreator = {
     ...creator,
+    avatar: normalizeCreatorAvatar(creator, fallback),
     contactEmail: creator.contactEmail ?? fallback?.contactEmail ?? '',
     profileUrl: creator.profileUrl ?? fallback?.profileUrl ?? '',
     preferredContactChannel: creator.preferredContactChannel ?? fallback?.preferredContactChannel,
@@ -1034,6 +1035,28 @@ function normalizeCreator(creator) {
     ...nextCreator,
     preferredContactChannel: getRecommendedContactChannelId(nextCreator),
   }
+}
+
+function normalizeCreatorAvatar(creator = {}, fallback = {}) {
+  const avatar = creator.avatar ?? fallback?.avatar ?? ''
+  const platform = creator.platform || fallback?.platform || ''
+
+  if (platform === 'TikTok' && (isSearchEngineThumbnailAsset(avatar) || isPlatformLogoAsset(avatar))) {
+    return getDefaultCreatorAvatar(platform)
+  }
+
+  if (!avatar) return getDefaultCreatorAvatar(platform)
+  return avatar
+}
+
+function getDefaultCreatorAvatar(platform = '') {
+  if (platform === 'TikTok') {
+    return 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=160&q=80'
+  }
+  if (platform === 'Instagram') {
+    return 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=160&q=80'
+  }
+  return 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=160&q=80'
 }
 
 function normalizeOutreachItem(item, creators = [], campaigns = []) {
@@ -1790,6 +1813,10 @@ function cleanReferenceDisplayText(value) {
 
 function isPlatformLogoAsset(value) {
   return /(instagram\.com\/static|static\.cdninstagram\.com|tiktokcdn.*logo|tiktok.*logo|favicon|apple-touch-icon|rs:fit:32:32)/i.test(String(value || ''))
+}
+
+function isSearchEngineThumbnailAsset(value) {
+  return /(imgs\.search\.brave\.com|encrypted-tbn|googleusercontent\.com\/.*(thumbnail|favicon)|gstatic\.com\/images)/i.test(String(value || ''))
 }
 
 function appendActivity(workspace, type, text) {

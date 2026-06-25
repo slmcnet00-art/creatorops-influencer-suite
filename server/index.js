@@ -1090,14 +1090,18 @@ function mergeProfileSnapshot(profile, snapshot) {
     }
   }
 
+  const preferSnapshotIdentity =
+    profile.platform === 'TikTok' && String(snapshot.source || '').includes('TikTok public mirror')
+
   return {
     ...profile,
-    name: profile.name || snapshot.title || profile.handle,
-    avatar: profile.avatar || snapshot.image || '',
+    name: preferSnapshotIdentity ? snapshot.title || profile.name || profile.handle : profile.name || snapshot.title || profile.handle,
+    avatar: preferSnapshotIdentity ? snapshot.image || profile.avatar || '' : profile.avatar || snapshot.image || '',
     followers: snapshot.metrics?.followers || profile.followers,
     averageViews: snapshot.metrics?.views || profile.averageViews,
     description: profile.description || snapshot.description || profile.snippet,
     snippet: profile.snippet || snapshot.description,
+    source: snapshot.source ? `${profile.source || 'Public search'} + ${snapshot.source}` : profile.source,
     metricSources: [
       ...(profile.metricSources || []),
       {
@@ -1278,12 +1282,19 @@ function buildSearchResult(item, platform, handle, profileUrl, source, country =
     profileUrl,
     country,
     snippet,
-    avatar: selectReferenceThumbnail(item.thumbnail?.src, item.profile?.img),
+    avatar: selectProfileAvatarCandidate(platform, item),
     followers: publicMetrics.followers || extractMetricFromTextSafe(metricText, 'followers') || null,
     averageViews: publicMetrics.views || extractMetricFromTextSafe(metricText, 'views') || null,
     source,
     verifiedMetrics: false,
   }
+}
+
+function selectProfileAvatarCandidate(platform, item) {
+  if (platform === 'TikTok') {
+    return selectReferenceThumbnail(item.profile?.img)
+  }
+  return selectReferenceThumbnail(item.profile?.img, item.thumbnail?.src)
 }
 
 function isInstagramProfileHandle(handle) {
