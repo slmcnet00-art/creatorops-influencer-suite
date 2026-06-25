@@ -61,6 +61,8 @@ import {
 const STORE_KEY = 'creatorops.workspace.v2'
 const TRACKING_DAILY_REFRESH_KEY = 'creatorops.tracking.lastDailyRefresh'
 const GMAIL_AUTH_STORE_KEY = 'creatorops.gmailAuth.v1'
+const GMAIL_MIN_SEND_DELAY_MS = 20000
+const GMAIL_MAX_SEND_DELAY_MS = 60000
 
 const influencerBrandGuideTemplate = `# 인플루언서 브랜드 가이드
 
@@ -983,6 +985,24 @@ function buildContactPlan(creator, channelId, message = '', campaignName = '') {
     ...channel,
     url: getContactUrl(creator, id, message, campaignName),
   }
+}
+
+function hasDuplicateSentOutreach(item, outreach = []) {
+  if (!item?.creatorId || !item?.campaignId) return false
+  return outreach.some((candidate) =>
+    candidate.id !== item.id &&
+    candidate.creatorId === item.creatorId &&
+    candidate.campaignId === item.campaignId &&
+    (candidate.sentAt || candidate.status === '발송 완료'),
+  )
+}
+
+function randomSendDelayMs() {
+  return Math.round(GMAIL_MIN_SEND_DELAY_MS + Math.random() * (GMAIL_MAX_SEND_DELAY_MS - GMAIL_MIN_SEND_DELAY_MS))
+}
+
+function wait(ms) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
 function buildOutreachTimeline(item = {}) {
@@ -3030,6 +3050,22 @@ function App() {
         activeOutreachDetailCampaign?.name,
       )
     : null
+  const activeDmBulkItems = modal?.type === 'dmBulk'
+    ? (modal.ids ?? []).map((id) => activeOutreach.find((item) => item.id === id)).filter(Boolean)
+    : []
+  const activeDmBulkIndex = activeDmBulkItems.length
+    ? Math.min(Math.max(Number(modal?.index || 0), 0), activeDmBulkItems.length - 1)
+    : 0
+  const activeDmBulkItem = activeDmBulkItems[activeDmBulkIndex] ?? null
+  const activeDmBulkCreator = activeDmBulkItem
+    ? creators.find((creator) => creator.id === activeDmBulkItem.creatorId)
+    : null
+  const activeDmBulkCampaign = activeDmBulkItem
+    ? campaigns.find((campaign) => campaign.id === activeDmBulkItem.campaignId)
+    : null
+  const activeDmBulkPlan = activeDmBulkItem
+    ? buildContactPlan(activeDmBulkCreator, activeDmBulkItem.channel, activeDmBulkItem.message, activeDmBulkCampaign?.name)
+    : null
   const activeRecruitedPool = useMemo(
     () => recruitedPool.filter((item) => activeCampaignIdSet.has(item.campaignId)),
     [activeCampaignIdSet, recruitedPool],
@@ -3106,6 +3142,19 @@ function App() {
         return channelId === 'email' && Boolean(creator?.contactEmail)
       }),
     [creators, selectedOutreachItems],
+  )
+  const selectedDmOutreachItems = useMemo(
+    () =>
+      selectedOutreachItems.filter((item) => {
+        const creator = creators.find((candidate) => candidate.id === item.creatorId)
+        const channelId = item.channel || getRecommendedContactChannelId(creator)
+        return ['instagram_dm', 'tiktok_dm'].includes(channelId) && Boolean(getCreatorProfileUrl(creator, channelId))
+      }),
+    [creators, selectedOutreachItems],
+  )
+  const selectedDuplicateOutreachCount = useMemo(
+    () => selectedOutreachItems.filter((item) => hasDuplicateSentOutreach(item, outreach)).length,
+    [outreach, selectedOutreachItems],
   )
   const gmailConnected = Boolean(gmailAuth?.accessToken && Number(gmailAuth.expiresAt || 0) > Date.now() + 60000)
   const allOutreachSelected =
@@ -6054,9 +6103,22 @@ function App() {
     const sentIds = []
     const failures = []
 
-    for (const item of selectedEmailOutreachItems) {
+    for (let index = 0; index < selectedEmailOutreachItems.length; index += 1) {
+      const item = selectedEmailOutreachItems[index]
       const creator = creators.find((candidate) => candidate.id === item.creatorId)
       const campaign = brandCampaigns.find((candidate) => candidate.id === item.campaignId)
+
+      if (hasDuplicateSentOutreach(item, outreach)) {
+        failures.push({ item, message: 'Duplicate send blocked for this campaign and creator.' })
+        continue
+      }
+
+      if (sentIds.length > 0) {
+        const delayMs = randomSendDelayMs()
+        showToast(`Waiting ${Math.round(delayMs / 1000)}s before the next Gmail send.`)
+        await wait(delayMs)
+      }
+
       try {
         const response = await fetch(apiBaseUrl + '/outreach/gmail/send', {
           method: 'POST',
@@ -6125,6 +6187,33 @@ function App() {
     showToast('메시지를 발송 완료로 기록했어요.')
   }
 
+  const startDmBulkMode = () => {
+    if (!selectedDmOutreachItems.length) {
+      showToast('Select Instagram/TikTok DM candidates first.')
+      return
+    }
+    setModal({ type: 'dmBulk', ids: selectedDmOutreachItems.map((item) => item.id), index: 0 })
+  }
+
+  const moveDmBulk = (offset) => {
+    setModal((current) => {
+      if (current?.type !== 'dmBulk') return current
+      const ids = current.ids ?? []
+      const nextIndex = Math.min(Math.max(Number(current.index || 0) + offset, 0), Math.max(ids.length - 1, 0))
+      return { ...current, index: nextIndex }
+    })
+  }
+
+  const markDmBulkSentAndNext = (itemId) => {
+    markOutreachSent(itemId)
+    setSelectedOutreachIds((current) => current.filter((id) => id !== itemId))
+    if (activeDmBulkIndex >= activeDmBulkItems.length - 1) {
+      setModal(null)
+      showToast('DM work queue completed.')
+      return
+    }
+    moveDmBulk(1)
+  }
   const toggleOutreachSelection = (itemId) => {
     setSelectedOutreachIds((current) =>
       current.includes(itemId)
@@ -6144,11 +6233,18 @@ function App() {
 
   const markSelectedOutreachSent = () => {
     if (!selectedOutreachItems.length) {
-      showToast('발송 완료로 처리할 메시지를 먼저 선택해주세요.')
+      showToast('Select messages to mark as sent first.')
       return
     }
 
-    const selectedIds = new Set(selectedOutreachItems.map((item) => item.id))
+    const allowedItems = selectedOutreachItems.filter((item) => !hasDuplicateSentOutreach(item, outreach))
+    const blockedCount = selectedOutreachItems.length - allowedItems.length
+    if (!allowedItems.length) {
+      showToast('All selected messages were blocked as duplicate sends.')
+      return
+    }
+
+    const selectedIds = new Set(allowedItems.map((item) => item.id))
     const eventTime = nowLabel()
     updateWorkspace((current) =>
       appendActivity(
@@ -6156,16 +6252,16 @@ function App() {
           ...current,
           outreach: current.outreach.map((item) =>
             selectedIds.has(item.id)
-              ? { ...item, status: '발송 완료', sentAt: item.sentAt || eventTime }
+              ? { ...item, status: '\uBC1C\uC1A1 \uC644\uB8CC', sentAt: item.sentAt || eventTime }
               : item,
           ),
         },
         'outreach',
-        `선택 메시지 ${selectedIds.size}건 발송 완료 처리`,
+        `Marked ${selectedIds.size} outreach messages as sent`,
       ),
     )
     setSelectedOutreachIds([])
-    showToast(`선택한 메시지 ${selectedIds.size}건을 발송 완료로 기록했어요.`)
+    showToast(blockedCount ? `Marked ${selectedIds.size}; blocked ${blockedCount} duplicate sends.` : `Marked ${selectedIds.size} messages as sent.`)
   }
 
   const markOutreachResponse = (itemId) => {
@@ -8442,7 +8538,7 @@ function App() {
                 />
                 전체 선택
               </label>
-              <span>{selectedOutreachItems.length} selected / {selectedEmailOutreachItems.length} email-ready / Gmail {gmailConnected ? 'connected' : 'not connected'}</span>
+              <span>{selectedOutreachItems.length} selected / {selectedEmailOutreachItems.length} email / {selectedDmOutreachItems.length} DM / {selectedDuplicateOutreachCount} duplicate-blocked / Gmail {gmailConnected ? 'connected' : 'not connected'}</span>
               <button
                 className="secondary-button compact-button"
                 type="button"
@@ -8458,6 +8554,14 @@ function App() {
               >
                 <Send size={15} />
                 {gmailSending ? 'Sending' : 'Send selected emails'}
+              </button>
+              <button
+                className="secondary-button compact-button"
+                type="button"
+                disabled={!selectedDmOutreachItems.length}
+                onClick={startDmBulkMode}
+              >
+                DM work mode
               </button>
               <button
                 className="secondary-button compact-button"
@@ -9950,6 +10054,54 @@ function App() {
             </div>
           )}
 
+          {modal.type === 'dmBulk' && activeDmBulkItem && (
+            <div className="modal-stack outreach-detail-modal">
+              <div className="outreach-detail-hero">
+                <div>
+                  <span className="status-chip">DM work mode</span>
+                  <span className={`channel-chip ${activeDmBulkPlan?.tone ?? 'manual-channel'}`}>{activeDmBulkPlan?.shortLabel ?? 'DM'}</span>
+                </div>
+                <strong>{activeDmBulkCreator?.name ?? 'Unknown creator'}</strong>
+                <p>{activeDmBulkCampaign?.name ?? 'No campaign'} / {activeDmBulkIndex + 1} of {activeDmBulkItems.length}</p>
+              </div>
+              <div className="outreach-detail-grid">
+                <article>
+                  <span>Step 1</span>
+                  <strong>Copy message</strong>
+                  <p>Copy the prepared proposal, then paste it into the platform DM window manually.</p>
+                </article>
+                <article>
+                  <span>Step 2</span>
+                  <strong>Open profile</strong>
+                  <p>Use the profile link to send the DM from your logged-in Instagram or TikTok account.</p>
+                </article>
+              </div>
+              <div className="outreach-message-preview">
+                <span>Message</span>
+                <pre>{activeDmBulkItem.message}</pre>
+              </div>
+              <div className="outreach-detail-actions">
+                <button className="secondary-button compact-button" type="button" onClick={() => moveDmBulk(-1)} disabled={activeDmBulkIndex === 0}>
+                  Previous
+                </button>
+                <button className="secondary-button compact-button" type="button" onClick={() => copyOutreachMessage(activeDmBulkItem.message)}>
+                  Copy message
+                </button>
+                {activeDmBulkPlan?.url && (
+                  <a className="secondary-button compact-button" href={activeDmBulkPlan.url} target="_blank" rel="noreferrer">
+                    <ArrowUpRight size={14} />
+                    Open profile
+                  </a>
+                )}
+                <button className="primary-button compact-button" type="button" onClick={() => markDmBulkSentAndNext(activeDmBulkItem.id)}>
+                  Mark sent and next
+                </button>
+                <button className="secondary-button compact-button" type="button" onClick={() => moveDmBulk(1)} disabled={activeDmBulkIndex >= activeDmBulkItems.length - 1}>
+                  Skip / next
+                </button>
+              </div>
+            </div>
+          )}
           {modal.type === 'messages' && (
             <div className="modal-stack">
               <div className="contact-policy-note">
