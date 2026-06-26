@@ -4310,6 +4310,43 @@ function App() {
     )
   }
 
+  const removeCandidatePoolCreators = (creatorIds) => {
+    const ids = Array.from(new Set(creatorIds)).filter(Boolean)
+
+    if (!ids.length) {
+      showToast('Select candidates to remove first.')
+      return
+    }
+
+    const removeIdSet = new Set(ids)
+    const removedOutreachIds = activeOutreach
+      .filter((item) => removeIdSet.has(item.creatorId))
+      .map((item) => item.id)
+    const removedOutreachIdSet = new Set(removedOutreachIds)
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          shortlist: current.shortlist.filter((id) => !removeIdSet.has(id)),
+          outreach: current.outreach.filter(
+            (item) => !(removeIdSet.has(item.creatorId) && activeCampaignIdSet.has(item.campaignId)),
+          ),
+        },
+        'shortlist',
+        `Removed ${ids.length} creators from pre-outreach pool and message list`,
+      ),
+    )
+
+    setSelectedCandidatePoolIds((current) => current.filter((id) => !removeIdSet.has(id)))
+    setSelectedOutreachIds((current) => current.filter((id) => !removedOutreachIdSet.has(id)))
+    showToast(`Removed ${ids.length} candidates from pool and message list.`)
+  }
+
+  const removeSelectedCandidatePoolCreators = () => {
+    removeCandidatePoolCreators(selectedCandidatePoolCreators.map((creator) => creator.id))
+  }
+
   const buildCreatorProposalRecord = (creator, campaign, source = '수동') => {
     const message = buildFriendlyProposalMessage(creator, brandBrief, campaign)
     const contactPlan = buildContactPlan(creator, getRecommendedContactChannelId(creator), message, campaign.name)
@@ -7864,6 +7901,15 @@ function App() {
                 {allCandidatePoolSelected ? '전체 해제' : '전체 선택'}
               </button>
               <button
+                className="secondary-button compact-button"
+                type="button"
+                onClick={removeSelectedCandidatePoolCreators}
+                disabled={!selectedCandidatePoolCreators.length}
+              >
+                <X size={15} />
+                Remove selected
+              </button>
+              <button
                 className="primary-button compact-button"
                 type="button"
                 onClick={queueSelectedCandidatePoolCreators}
@@ -7918,6 +7964,7 @@ function App() {
                     onSelect={() => setSelectedCreatorId(creator.id)}
                     onToggle={() => toggleCandidatePoolSelection(creator.id)}
                     onSave={() => toggleShortlist(creator)}
+                    onRemove={() => removeCandidatePoolCreators([creator.id])}
                   />
                 )
               })
@@ -10596,6 +10643,7 @@ function RecommendationCard({
   onToggle,
   onQueue,
   onSave,
+  onRemove,
   saved = false,
   profileUrl,
   contactUrl,
@@ -10670,6 +10718,12 @@ function RecommendationCard({
             <button className="secondary-button compact-button" type="button" onClick={onSave}>
               {saved ? <BookmarkCheck size={15} /> : <Bookmark size={15} />}
               {saved ? '\uC800\uC7A5\uB428' : '\uC800\uC7A5'}
+            </button>
+          )}
+          {onRemove && (
+            <button className="secondary-button compact-button" type="button" onClick={onRemove}>
+              <X size={15} />
+              Remove
             </button>
           )}
           {onQueue && (
