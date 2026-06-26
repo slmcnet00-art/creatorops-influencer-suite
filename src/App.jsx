@@ -2910,10 +2910,17 @@ function App() {
   })
   const [trackingDraft, setTrackingDraft] = useState({
     campaignId: '',
-    creatorId: '',
+    creatorId: 'auto',
     platform: 'Instagram',
     title: '',
     url: '',
+    creatorName: '',
+    creatorHandle: '',
+    creatorAvatar: '',
+    creatorFollowers: '',
+    profileUrl: '',
+    snapshotSource: '',
+    snapshotCheckedAt: '',
     views: '',
     likes: '',
     comments: '',
@@ -2921,6 +2928,7 @@ function App() {
     saves: '',
     conversions: '',
   })
+  const [trackingSnapshotLoading, setTrackingSnapshotLoading] = useState(false)
   const [referenceDraft, setReferenceDraft] = useState({
     mediaType: '영상',
     platform: 'TikTok',
@@ -5979,61 +5987,215 @@ function App() {
     showToast(`${selectedCreator.name} 견적 요청 기록을 저장했어요.`)
   }
 
-  const createTrackedPost = (event) => {
-    event.preventDefault()
-    const campaignId = Number(trackingDraft.campaignId) || selectedCampaign?.id
-    const creatorId = Number(trackingDraft.creatorId) || selectedCreator?.id
-    if (!campaignId || !creatorId) {
-      showToast('추적할 캠페인과 크리에이터를 먼저 선택해주세요.')
-      return
+  const mergeTrackingSnapshotDraft = (current, snapshot, url) => {
+    const metrics = snapshot?.metrics || {}
+    const inferredPlatform = snapshot?.platform || inferPlatformFromUrl(url) || current.platform
+    const inferredHandle = snapshot?.handle || deriveHandleFromUrl(url)
+    const inferredName = String(inferredHandle || '').replace(/^@/, '') || snapshot?.title || 'Public creator'
+
+    return {
+      ...current,
+      platform: inferredPlatform,
+      title: snapshot?.title || current.title,
+      creatorId: current.creatorId || 'auto',
+      creatorName: current.creatorName || inferredName,
+      creatorHandle: current.creatorHandle || inferredHandle,
+      creatorAvatar: current.creatorAvatar || snapshot?.image || '',
+      creatorFollowers: metrics.followers ? String(metrics.followers) : current.creatorFollowers,
+      profileUrl: current.profileUrl || snapshot?.profileUrl || snapshot?.authorUrl || url,
+      snapshotSource: snapshot?.source || 'Public link snapshot',
+      snapshotCheckedAt: nowLabel(),
+      views: metrics.views ? String(metrics.views) : current.views,
+      likes: metrics.likes ? String(metrics.likes) : current.likes,
+      comments: metrics.comments ? String(metrics.comments) : current.comments,
+      shares: metrics.shares ? String(metrics.shares) : current.shares,
+      saves: metrics.saves ? String(metrics.saves) : current.saves,
     }
-    if (!trackingDraft.url.trim()) {
-      showToast('자동 추적을 위해 업로드 링크는 반드시 입력해주세요.')
+  }
+
+  const importTrackingSnapshot = async () => {
+    const url = trackingDraft.url.trim()
+    if (!url) {
+      showToast('Enter the uploaded content URL first.')
       return
-    }
-    const hasManualMetrics = [
-      trackingDraft.views,
-      trackingDraft.likes,
-      trackingDraft.comments,
-      trackingDraft.shares,
-      trackingDraft.saves,
-      trackingDraft.conversions,
-    ].some((value) => String(value || '').trim())
-    const nextPost = {
-      id: createId(),
-      campaignId,
-      creatorId,
-      platform: trackingDraft.platform,
-      title: trackingDraft.title || '신규 캠페인 콘텐츠',
-      url: trackingDraft.url.trim(),
-      status: hasManualMetrics ? '추적 중' : '자동 갱신 대기',
-      publishedAt: nowLabel(),
-      views: Number(trackingDraft.views) || 0,
-      likes: Number(trackingDraft.likes) || 0,
-      comments: Number(trackingDraft.comments) || 0,
-      shares: Number(trackingDraft.shares) || 0,
-      saves: Number(trackingDraft.saves) || 0,
-      conversions: Number(trackingDraft.conversions) || 0,
-      metricsSource: hasManualMetrics ? '수동 입력' : '업로드 링크 등록',
-      lastChecked: hasManualMetrics ? nowLabel() : '자동 갱신 대기',
     }
 
-    updateWorkspace((current) =>
-      appendActivity(
+    try {
+      setTrackingSnapshotLoading(true)
+      const snapshot = await fetchPublicProfileSnapshot(url)
+      if (!snapshot) {
+        showToast('API server is required to read public content data.')
+        return
+      }
+
+      setTrackingDraft((current) => mergeTrackingSnapshotDraft(current, snapshot, url))
+      showToast('Public content data was added. Empty fields can be edited manually.')
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Could not read public content data.')
+    } finally {
+      setTrackingSnapshotLoading(false)
+    }
+  }
+
+  const createTrackedPost = async (event) => {
+    event.preventDefault()
+    const campaignId = Number(trackingDraft.campaignId) || selectedCampaign?.id
+    const uploadedUrl = trackingDraft.url.trim()
+
+    if (!campaignId) {
+      showToast('Select a campaign to track this content.')
+      return
+    }
+    if (!uploadedUrl) {
+      showToast('The uploaded content URL is required for tracking.')
+      return
+    }
+
+    let effectiveDraft = trackingDraft
+    if (!effectiveDraft.snapshotSource) {
+      try {
+        setTrackingSnapshotLoading(true)
+        const snapshot = await fetchPublicProfileSnapshot(uploadedUrl)
+        if (snapshot) {
+          effectiveDraft = mergeTrackingSnapshotDraft(effectiveDraft, snapshot, uploadedUrl)
+          setTrackingDraft(effectiveDraft)
+        }
+      } catch {
+        effectiveDraft = {
+          ...effectiveDraft,
+          platform: effectiveDraft.platform || inferPlatformFromUrl(uploadedUrl) || 'Instagram',
+          creatorHandle: effectiveDraft.creatorHandle || deriveHandleFromUrl(uploadedUrl),
+          profileUrl: effectiveDraft.profileUrl || uploadedUrl,
+        }
+      } finally {
+        setTrackingSnapshotLoading(false)
+      }
+    }
+
+    const requestedCreatorId = Number(effectiveDraft.creatorId)
+    const platform = effectiveDraft.platform || inferPlatformFromUrl(uploadedUrl) || 'Instagram'
+    const handle = effectiveDraft.creatorHandle || deriveHandleFromUrl(effectiveDraft.profileUrl || uploadedUrl)
+    const creatorName = effectiveDraft.creatorName || String(handle || '').replace(/^@/, '') || 'Public creator'
+    const profileUrl = effectiveDraft.profileUrl || uploadedUrl
+    const hasManualMetrics = [
+      effectiveDraft.views,
+      effectiveDraft.likes,
+      effectiveDraft.comments,
+      effectiveDraft.shares,
+      effectiveDraft.saves,
+      effectiveDraft.conversions,
+    ].some((value) => String(value || '').trim())
+
+    const savedPostTitle = effectiveDraft.title || 'New campaign content'
+    let savedCreatorName = creatorName
+
+    updateWorkspace((current) => {
+      let creatorId = requestedCreatorId
+      let nextCreators = current.creators
+
+      if (!creatorId) {
+        const normalizedProfileUrl = profileUrl.toLowerCase()
+        const normalizedHandle = String(handle || '').toLowerCase()
+        const existingCreator = current.creators.find((creator) => {
+          const creatorProfileUrl = String(creator.profileUrl || creator.sourceUrl || '').toLowerCase()
+          const creatorHandle = String(creator.handle || '').toLowerCase()
+          return (
+            (normalizedProfileUrl && creatorProfileUrl && creatorProfileUrl === normalizedProfileUrl) ||
+            (normalizedHandle && creatorHandle && creatorHandle === normalizedHandle)
+          )
+        })
+
+        if (existingCreator) {
+          creatorId = existingCreator.id
+          savedCreatorName = existingCreator.name
+        } else {
+          creatorId = createId()
+          const followers = Number(effectiveDraft.creatorFollowers || 0)
+          const views = Number(effectiveDraft.views || 0)
+          const engagement = views
+            ? Number((((Number(effectiveDraft.likes || 0) + Number(effectiveDraft.comments || 0)) / Math.max(views, 1)) * 100).toFixed(1))
+            : 0
+          const nextCreator = {
+            id: creatorId,
+            isDemo: false,
+            name: creatorName,
+            handle,
+            avatar:
+              effectiveDraft.creatorAvatar ||
+              'https://images.unsplash.com/photo-1527980965255-d3b416303d12?auto=format&fit=crop&w=160&q=80',
+            platform,
+            profileUrl,
+            contactEmail: '',
+            preferredContactChannel: platform === 'YouTube' ? 'email' : platform === 'TikTok' ? 'tiktok_dm' : 'instagram_dm',
+            category: '\uB9AC\uBDF0',
+            country: activeBrand.country || 'KR',
+            followers,
+            averageViews: views,
+            engagement,
+            growth: 0,
+            fit: 78,
+            brandSafety: 80,
+            fakeRisk: 0,
+            cpm: 0,
+            price: views ? Math.max(200000, Math.round(views * (platform === 'YouTube' ? 18 : 14))) : 0,
+            audience: 'Content tracking URL import',
+            city: '',
+            lastPost: nowLabel(),
+            status: 'Content uploaded',
+            topics: [activeBrand.category || 'Campaign', platform],
+            source: effectiveDraft.snapshotSource || 'Content tracking URL',
+            sourceUrl: uploadedUrl,
+            metricsPending: !followers && !views,
+            needsVerification: !effectiveDraft.snapshotSource,
+          }
+          nextCreators = [nextCreator, ...current.creators]
+          savedCreatorName = nextCreator.name
+        }
+      }
+
+      const nextPost = {
+        id: createId(),
+        campaignId,
+        creatorId,
+        platform,
+        title: savedPostTitle,
+        url: uploadedUrl,
+        status: hasManualMetrics ? '\uCD94\uC801 \uC911' : '\uC790\uB3D9 \uAC31\uC2E0 \uB300\uAE30',
+        publishedAt: nowLabel(),
+        views: Number(effectiveDraft.views) || 0,
+        likes: Number(effectiveDraft.likes) || 0,
+        comments: Number(effectiveDraft.comments) || 0,
+        shares: Number(effectiveDraft.shares) || 0,
+        saves: Number(effectiveDraft.saves) || 0,
+        conversions: Number(effectiveDraft.conversions) || 0,
+        metricsSource: effectiveDraft.snapshotSource || (hasManualMetrics ? '\uC218\uB3D9 \uC785\uB825' : '\uC5C5\uB85C\uB4DC \uB9C1\uD06C \uB4F1\uB85D'),
+        lastChecked: effectiveDraft.snapshotCheckedAt || (hasManualMetrics ? nowLabel() : '\uC790\uB3D9 \uAC31\uC2E0 \uB300\uAE30'),
+      }
+
+      return appendActivity(
         {
           ...current,
+          creators: nextCreators,
           trackedPosts: [nextPost, ...current.trackedPosts],
         },
         'tracking',
-        `${nextPost.title} 콘텐츠 추적 등록`,
-      ),
-    )
+        savedPostTitle + ' content tracking registered - ' + savedCreatorName,
+      )
+    })
+
     setTrackingDraft({
       campaignId: '',
-      creatorId: '',
+      creatorId: 'auto',
       platform: 'Instagram',
       title: '',
       url: '',
+      creatorName: '',
+      creatorHandle: '',
+      creatorAvatar: '',
+      creatorFollowers: '',
+      profileUrl: '',
+      snapshotSource: '',
+      snapshotCheckedAt: '',
       views: '',
       likes: '',
       comments: '',
@@ -6042,7 +6204,7 @@ function App() {
       conversions: '',
     })
     setModal(null)
-    showToast('콘텐츠 추적 항목을 저장했어요.')
+    showToast('Content tracking was saved. New creators are added automatically from the link.')
   }
 
   const createFulfillmentRecord = (event) => {
@@ -9453,9 +9615,10 @@ function App() {
               <label>
                 크리에이터
                 <select
-                  value={trackingDraft.creatorId || selectedCreator?.id || ''}
+                  value={trackingDraft.creatorId || 'auto'}
                   onChange={(event) => setTrackingDraft({ ...trackingDraft, creatorId: event.target.value })}
                 >
+                  <option value="auto">Auto from content link</option>
                   {creators.map((creator) => (
                     <option key={creator.id} value={creator.id}>{creator.name}</option>
                   ))}
@@ -9477,6 +9640,27 @@ function App() {
                   placeholder="https://www.youtube.com/watch?v=... 또는 Instagram/TikTok 업로드 링크"
                 />
               </label>
+              <div className="reference-url-check-row">
+                <button
+                  className="secondary-button compact-button"
+                  type="button"
+                  onClick={importTrackingSnapshot}
+                  disabled={!trackingDraft.url.trim() || trackingSnapshotLoading}
+                >
+                  <RefreshCw size={15} />
+                  {trackingSnapshotLoading ? 'Checking' : 'Check link'}
+                </button>
+                <span>{trackingDraft.snapshotSource ? trackingDraft.snapshotSource : 'Title, platform, metrics, and creator identity are filled from public data when available.'}</span>
+              </div>
+              {(trackingDraft.creatorName || trackingDraft.creatorHandle || trackingDraft.creatorFollowers) && (
+                <div className="quote-box compact-note-box">
+                  <UsersRound size={18} />
+                  <div>
+                    <strong>{trackingDraft.creatorName || 'Auto creator'}</strong>
+                    <span>{[trackingDraft.creatorHandle, trackingDraft.creatorFollowers ? 'Followers ' + displayMetric(Number(trackingDraft.creatorFollowers)) : '', trackingDraft.snapshotCheckedAt].filter(Boolean).join(' / ')}</span>
+                  </div>
+                </div>
+              )}
               <div className="modal-two-col">
                 <label>
                   플랫폼
