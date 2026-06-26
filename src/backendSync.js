@@ -3,8 +3,16 @@ import { createClient } from '@supabase/supabase-js'
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 const WORKSPACE_ID = import.meta.env.VITE_WORKSPACE_ID || 'miping-main'
+const APP_URL = import.meta.env.VITE_APP_URL || 'https://creatorops-influencer-suite.onrender.com'
 
 let supabaseClient
+
+function getAuthRedirectUrl() {
+  const origin = window.location.origin
+  const hostname = window.location.hostname
+  if (hostname === 'localhost' || hostname === '127.0.0.1') return APP_URL
+  return origin || APP_URL
+}
 
 export function getBackendConfig() {
   return {
@@ -44,7 +52,7 @@ export async function signInWithEmail(email) {
   const { error } = await supabase.auth.signInWithOtp({
     email,
     options: {
-      emailRedirectTo: window.location.origin,
+      emailRedirectTo: getAuthRedirectUrl(),
     },
   })
   if (error) throw error
