@@ -3715,7 +3715,14 @@ function App() {
         const result = await loadCloudWorkspace()
         if (cancelled) return
 
-        if (result.workspace) {
+        if (result.status === 'auth_required') {
+          setCloudSyncStatus({
+            mode: 'auth',
+            label: 'Supabase Auth login required',
+            detail: result.message || 'Sign in before using the shared workspace.',
+            updatedAt: '',
+          })
+        } else if (result.workspace) {
           setWorkspace(normalizeWorkspace(result.workspace))
           setCloudSyncStatus({
             mode: 'cloud',
@@ -3755,7 +3762,16 @@ function App() {
 
     const timeout = window.setTimeout(async () => {
       try {
-        await saveCloudWorkspace(workspace)
+        const result = await saveCloudWorkspace(workspace)
+        if (result.status === 'auth_required') {
+          setCloudSyncStatus({
+            mode: 'auth',
+            label: 'Supabase Auth login required',
+            detail: result.message || 'Sign in before saving the shared workspace.',
+            updatedAt: '',
+          })
+          return
+        }
         setCloudSyncStatus((current) => ({
           ...current,
           mode: 'cloud',
@@ -3843,7 +3859,17 @@ function App() {
     }
 
     try {
-      await saveCloudWorkspace(workspace)
+      const result = await saveCloudWorkspace(workspace)
+      if (result.status === 'auth_required') {
+        setCloudSyncStatus({
+          mode: 'auth',
+          label: 'Supabase Auth login required',
+          detail: result.message || 'Sign in before saving the shared workspace.',
+          updatedAt: '',
+        })
+        showToast('Sign in to save the shared workspace.')
+        return
+      }
       setCloudSyncStatus({
         mode: 'cloud',
         label: 'Supabase 공유 DB 수동 저장됨',
