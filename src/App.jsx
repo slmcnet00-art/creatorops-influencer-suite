@@ -5333,6 +5333,61 @@ function App() {
     showToast('메시지 전 후보 풀을 엑셀로 다운로드했어요.')
   }
 
+  const getDmWorkRows = () => [
+    [
+      'Task No',
+      'Status',
+      'Campaign',
+      'Creator',
+      'Handle',
+      'Platform',
+      'Category',
+      'Profile URL',
+      'DM Message',
+      'Operator Instruction',
+      'Duplicate Status',
+      'Followers',
+      'Average Views',
+      'Engagement',
+      'Fit Score',
+      'Work Note',
+    ],
+    ...selectedDmOutreachItems.map((item, index) => {
+      const creator = creators.find((candidate) => candidate.id === item.creatorId)
+      const campaign = brandCampaigns.find((candidate) => candidate.id === item.campaignId) ?? selectedCampaign
+      const channelId = item.channel || getRecommendedContactChannelId(creator)
+      const profileUrl = getCreatorProfileUrl(creator, channelId)
+      const duplicate = hasDuplicateSentOutreach(item, outreach)
+      return [
+        index + 1,
+        item.status,
+        campaign?.name ?? 'No campaign',
+        creator?.name ?? 'Unknown creator',
+        creator?.handle ?? '',
+        creator?.platform ?? channelId,
+        creator?.category ?? '',
+        profileUrl || 'Profile link required',
+        item.message,
+        'Copy message > open profile > send manually > mark sent in CreatorOps',
+        duplicate ? 'BLOCKED: already sent for this campaign' : 'OK',
+        creator ? (hasPendingMetrics(creator) ? 'Needs collection' : creator.followers) : '',
+        creator ? (hasPendingMetrics(creator) ? 'Needs collection' : creator.averageViews) : '',
+        creator?.engagement ?? '',
+        creator?.fit ?? '',
+        item.reason ?? '',
+      ]
+    }),
+  ]
+
+  const exportSelectedDmWorkExcel = () => {
+    if (!selectedDmOutreachItems.length) {
+      showToast('Select Instagram/TikTok DM candidates first.')
+      return
+    }
+    exportExcelFile('creatorops-dm-work-queue.xls', 'DM Work Queue', getDmWorkRows())
+    showToast('DM work Excel exported for ' + selectedDmOutreachItems.length + ' candidates.')
+  }
+
   const sendDiscoveryToSheets = () => {
     sendRowsToGoogleSheets(getDiscoveryRows(), '크리에이터 발굴')
   }
@@ -8562,6 +8617,15 @@ function App() {
                 onClick={startDmBulkMode}
               >
                 DM work mode
+              </button>
+              <button
+                className="secondary-button compact-button"
+                type="button"
+                disabled={!selectedDmOutreachItems.length}
+                onClick={exportSelectedDmWorkExcel}
+              >
+                <Download size={15} />
+                Download DM Excel
               </button>
               <button
                 className="secondary-button compact-button"
