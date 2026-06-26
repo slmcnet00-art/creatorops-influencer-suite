@@ -761,6 +761,16 @@ const defaultWorkspace = {
 const platformOptions = ['전체', 'YouTube', 'Instagram', 'TikTok']
 const briefPlatformOptions = ['YouTube', 'Instagram', 'TikTok', 'TikTok 셀러']
 const categoryOptions = ['전체', '뷰티', '테크', '푸드', '피트니스', '아웃도어', '펫', '리뷰', '공동구매']
+const discoveryCategoryIntentTerms = {
+  '\uBDF0\uD2F0': ['\uBDF0\uD2F0', '\uD654\uC7A5\uD488', '\uBA54\uC774\uD06C\uC5C5', '\uC2A4\uD0A8\uCF00\uC5B4', 'beauty', 'makeup', 'skincare', 'cosmetic'],
+  '\uD14C\uD06C': ['\uD14C\uD06C', '\uAC00\uC804', '\uB514\uBC14\uC774\uC2A4', 'it', 'tech', 'gadget', 'device'],
+  '\uD478\uB4DC': ['\uD478\uB4DC', '\uC694\uB9AC', '\uC74C\uC2DD', '\uBA39\uBC29', '\uB9DB\uC9D1', '\uB808\uC2DC\uD53C', '\uC2DD\uD488', '\uAC04\uC2DD', 'food', 'cook', 'cooking', 'recipe', 'mukbang', 'snack'],
+  '\uD53C\uD2B8\uB2C8\uC2A4': ['\uD53C\uD2B8\uB2C8\uC2A4', '\uC6B4\uB3D9', '\uD5EC\uC2A4', '\uB2E4\uC774\uC5B4\uD2B8', 'fitness', 'workout', 'gym', 'diet'],
+  '\uC544\uC6C3\uB3C4\uC5B4': ['\uC544\uC6C3\uB3C4\uC5B4', '\uCEA0\uD551', '\uB4F1\uC0B0', '\uC5EC\uD589', 'outdoor', 'camping', 'hiking', 'travel'],
+  '\uD3AB': ['\uD3AB', '\uBC18\uB824', '\uAC15\uC544\uC9C0', '\uACE0\uC591\uC774', '\uB315\uB315', 'pet', 'dog', 'cat'],
+  '\uB9AC\uBDF0': ['\uB9AC\uBDF0', '\uD6C4\uAE30', '\uC5B8\uBC15\uC2F1', 'review', 'unboxing'],
+  '\uACF5\uB3D9\uAD6C\uB9E4': ['\uACF5\uB3D9\uAD6C\uB9E4', '\uACF5\uAD6C', '\uC140\uB7EC', '\uCEE4\uBA38\uC2A4', 'commerce', 'seller'],
+}
 const referenceCountryPresets = ['전체', 'KR', 'US', 'JP', 'CN', 'SEA', 'EU']
 const discoveryCountryOptions = ['전체', 'KR', 'US', 'JP', 'CN', 'GB', 'VN', 'TH', 'ID', 'PH', 'SG', 'MY', 'TW']
 const campaignStatuses = ['섭외', '콘텐츠 제작', '라이브', '리포트', '완료']
@@ -2661,6 +2671,53 @@ function detectDiscoveryResultCountry(result) {
   if (/united states|\busa\b|\bus\b|new york|los angeles|california|\.us(?:\/|$)/i.test(text)) return 'US'
 
   return ''
+}
+
+function buildDiscoverySearchText({ query, category, brandBrief, selectedCampaign }) {
+  const manualQuery = String(query || '').replace(/\s+/g, ' ').trim()
+  const selectedCategory = category && category !== '\uC804\uCCB4' ? category : ''
+
+  if (manualQuery) {
+    return uniqueList([manualQuery, selectedCategory]).join(' ').trim()
+  }
+
+  return [
+    selectedCategory,
+    selectedCampaign?.product,
+    selectedCampaign?.searchKeywords,
+    selectedCampaign?.targetPersona,
+    brandBrief.product,
+    brandBrief.keywords,
+    brandBrief.persona,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+function getDiscoveryIntentTerms(query, category) {
+  const manualTerms = keywordList(query)
+  const categoryTerms = category && category !== '\uC804\uCCB4' ? discoveryCategoryIntentTerms[category] ?? [category] : []
+  return uniqueList([...manualTerms, ...categoryTerms])
+    .map((term) => String(term).trim().toLowerCase())
+    .filter((term) => term.length >= 2)
+}
+
+function discoveryResultMatchesIntent(result, terms) {
+  if (!terms.length) return true
+  const searchable = [
+    result?.name,
+    result?.handle,
+    result?.snippet,
+    result?.profileUrl,
+    result?.source,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+
+  return terms.some((term) => searchable.includes(term))
 }
 
 function buildRealDiscoveryCreator(result, brief, fallbackCategory, index = 0) {
@@ -4761,11 +4818,8 @@ function App() {
   }
 
   const runRealDiscoverySearch = async () => {
-    const searchText = [query, brandBrief.product, brandBrief.keywords, brandBrief.persona]
-      .filter(Boolean)
-      .join(' ')
-      .replace(/\s+/g, ' ')
-      .trim()
+    const searchText = buildDiscoverySearchText({ query, category, brandBrief, selectedCampaign })
+    const intentTerms = getDiscoveryIntentTerms(query, category)
     const maxResults = Math.min(Math.max(Number(realDiscoveryDraft.maxResults) || 300, 1), 1000)
     const youtubeApiKey = realDiscoveryDraft.youtubeApiKey.trim() || youtubeDraft.apiKey.trim()
     const hasServerApi = Boolean(backendConfig.apiBaseUrl)
@@ -4810,17 +4864,24 @@ function App() {
         )
       }
 
-      const discoveredCreators = results.map((result, index) =>
+      const matchingResults = intentTerms.length
+        ? results.filter((result) => discoveryResultMatchesIntent(result, intentTerms))
+        : results
+      const discoveredCreators = matchingResults.map((result, index) =>
         buildRealDiscoveryCreator(
           result,
           brandBrief,
-          category === '전체' ? brandBrief.categories?.[0] : category,
+          category === '\uC804\uCCB4' ? brandBrief.categories?.[0] : category,
           index + 1,
         ),
       )
 
       if (!discoveredCreators.length) {
-        showToast('실제 검색 결과에서 가져올 프로필을 찾지 못했어요. 검색어를 더 구체화해주세요.')
+        showToast(
+          results.length
+            ? '검색 결과가 현재 키워드/카테고리 조건과 맞지 않아 저장하지 않았어요. 검색어를 조금 넓혀주세요.'
+            : '실제 검색 결과에서 가져올 프로필을 찾지 못했어요. 검색어를 더 구체화해주세요.',
+        )
         return
       }
 
