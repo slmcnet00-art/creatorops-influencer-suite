@@ -394,6 +394,7 @@ const defaultCampaigns = [
     targetConversions: 800,
     targetOrders: 0,
     targetRevenue: 90000000,
+    recommendationTargetCount: 8,
     sellerRecruitTarget: 0,
     progress: 68,
     creatorIds: [1, 3, 6],
@@ -421,6 +422,7 @@ const defaultCampaigns = [
     targetConversions: 3000,
     targetOrders: 300,
     targetRevenue: 80000000,
+    recommendationTargetCount: 12,
     sellerRecruitTarget: 12,
     progress: 36,
     creatorIds: [2, 6],
@@ -448,6 +450,7 @@ const defaultCampaigns = [
     targetConversions: 0,
     targetOrders: 600,
     targetRevenue: 70000000,
+    recommendationTargetCount: 50,
     sellerRecruitTarget: 50,
     progress: 91,
     creatorIds: [3, 4],
@@ -884,6 +887,13 @@ function inferBrandIdForCampaign(campaign, brands) {
   return brands[0]?.id ?? defaultBrands[0].id
 }
 
+function getCampaignRecommendationTarget(campaign = {}, fallback = {}) {
+  const explicitTarget = Number(campaign.recommendationTargetCount ?? fallback.recommendationTargetCount ?? 0)
+  const sellerTarget = Number(campaign.sellerRecruitTarget ?? fallback.sellerRecruitTarget ?? 0)
+  const target = explicitTarget || sellerTarget || 8
+  return clampNumber(Math.round(target), 1, 1000)
+}
+
 function normalizeCampaign(campaign, brands) {
   const fallback =
     defaultCampaigns.find((item) => item.id === campaign.id) ??
@@ -910,6 +920,7 @@ function normalizeCampaign(campaign, brands) {
     targetOrders: targets.targetOrders,
     targetRevenue: targets.targetRevenue,
     sellerRecruitTarget: Number(campaign.sellerRecruitTarget ?? fallback?.sellerRecruitTarget ?? 0),
+    recommendationTargetCount: getCampaignRecommendationTarget(campaign, fallback),
     schedule,
   }
 }
@@ -2501,6 +2512,7 @@ function buildAutoBriefSetup(rawText) {
       targetConversions: '',
       targetOrders: '',
       targetRevenue: '',
+      recommendationTargetCount: String(targets.reduce((sum, target) => sum + (target.count || 0), 0) || ''),
       sellerRecruitTarget: String(targets.reduce((sum, target) => sum + (target.count || 0), 0) || ''),
     },
     learningMaterial: {
@@ -2916,6 +2928,7 @@ function App() {
     targetConversions: '',
     targetOrders: '',
     targetRevenue: '',
+    recommendationTargetCount: '',
     sellerRecruitTarget: '',
     brandGuideAttachments: [],
     campaignGuideMaterials: [],
@@ -4961,7 +4974,7 @@ function App() {
         brandId: activeBrand.id,
       }))
       .sort((a, b) => b.score - a.score)
-      .slice(0, 8)
+      .slice(0, getCampaignRecommendationTarget(selectedCampaign))
 
     if (!ranked.length) {
       const realCreatorCount = creators.filter((creator) => !isExampleCreator(creator)).length
@@ -5624,6 +5637,7 @@ function App() {
     reportDueDate: campaign.schedule?.reportDue || '',
     kpiGoal: campaign.kpiGoal || '',
     sellerRecruitTarget: campaign.sellerRecruitTarget ? String(campaign.sellerRecruitTarget) : '',
+    recommendationTargetCount: campaign.recommendationTargetCount ? String(campaign.recommendationTargetCount) : '',
     targetViews: campaign.targetViews ? String(campaign.targetViews) : '',
     targetConversions: campaign.targetConversions ? String(campaign.targetConversions) : '',
     targetOrders: campaign.targetOrders ? String(campaign.targetOrders) : '',
@@ -5668,6 +5682,7 @@ function App() {
       },
       kpiGoal: campaignEditDraft.kpiGoal,
       sellerRecruitTarget: Number(campaignEditDraft.sellerRecruitTarget) || 0,
+      recommendationTargetCount: Number(campaignEditDraft.recommendationTargetCount) || 0,
       targetViews: normalizeNumericTarget(campaignEditDraft.targetViews),
       targetConversions: normalizeNumericTarget(campaignEditDraft.targetConversions),
       targetOrders: normalizeNumericTarget(campaignEditDraft.targetOrders),
@@ -5856,6 +5871,7 @@ function App() {
       targetOrders: normalizeNumericTarget(campaignDraft.targetOrders),
       targetRevenue: normalizeNumericTarget(campaignDraft.targetRevenue),
       sellerRecruitTarget: Number(campaignDraft.sellerRecruitTarget) || 0,
+      recommendationTargetCount: Number(campaignDraft.recommendationTargetCount) || 0,
       brandGuideAttachments: campaignDraft.brandGuideAttachments ?? [],
       guideSeedType: campaignDraft.guideSeedType,
       guideChannel: campaignDraft.guideChannel,
@@ -5925,6 +5941,7 @@ function App() {
       targetConversions: '',
       targetOrders: '',
       targetRevenue: '',
+      recommendationTargetCount: '',
       sellerRecruitTarget: '',
       brandGuideAttachments: [],
       campaignGuideMaterials: [],
@@ -7222,7 +7239,7 @@ function App() {
               </p>
             </div>
             <div className="campaign-context-metrics">
-              <Stat label="AI 추천" value={`${selectedCampaignRecommendations.length}명`} />
+              <Stat label={'AI \uCD94\uCC9C'} value={`${selectedCampaignRecommendations.length}/${getCampaignRecommendationTarget(selectedCampaign)}\uBA85`} />
               <Stat label="메시지" value={`${selectedCampaignOutreach.length}건`} />
               <Stat label="업로드" value={`${selectedCampaignTrackedPosts.length}건`} />
               <Stat label="섭외완료" value={`${selectedCampaignRecruitedPool.length}명`} />
@@ -7695,7 +7712,7 @@ function App() {
                 >
                   {allRecommendationsSelected ? '전체 해제' : '전체 선택'}
                 </button>
-                <span className="result-count">{selectedCampaignRecommendations.length}명</span>
+                <span className="result-count">{`${selectedCampaignRecommendations.length}/${getCampaignRecommendationTarget(selectedCampaign)}\uBA85`}</span>
               </div>
             </div>
             {selectedCampaignRecommendations.length > 0 && (
@@ -9287,14 +9304,25 @@ function App() {
                     />
                   </label>
                 </div>
-                <label>
-                  우선 발굴 플랫폼
-                  <input
-                    value={campaignDraft.preferredPlatforms}
-                    onChange={(event) => setCampaignDraft({ ...campaignDraft, preferredPlatforms: event.target.value })}
-                    placeholder={brandBrief.platforms.join(', ') || 'YouTube, Instagram, TikTok'}
-                  />
-                </label>
+                <div className="modal-two-col">
+                  <label>
+                    우선 발굴 플랫폼
+                    <input
+                      value={campaignDraft.preferredPlatforms}
+                      onChange={(event) => setCampaignDraft({ ...campaignDraft, preferredPlatforms: event.target.value })}
+                      placeholder={brandBrief.platforms.join(', ') || 'YouTube, Instagram, TikTok'}
+                    />
+                  </label>
+                  <label>
+                    AI 추천 목표 인원
+                    <input
+                      inputMode="numeric"
+                      value={campaignDraft.recommendationTargetCount}
+                      onChange={(event) => setCampaignDraft({ ...campaignDraft, recommendationTargetCount: event.target.value })}
+                      placeholder="8"
+                    />
+                  </label>
+                </div>
               </div>
               <div className="campaign-guide-panel">
                 <div>
@@ -10076,10 +10104,16 @@ function App() {
                       <input inputMode="numeric" value={campaignEditDraft.maxCreatorFee} onChange={(event) => updateCampaignEditField('maxCreatorFee', event.target.value)} />
                     </label>
                   </div>
-                  <label>
-                    우선 발굴 플랫폼
-                    <input value={campaignEditDraft.preferredPlatforms} onChange={(event) => updateCampaignEditField('preferredPlatforms', event.target.value)} />
-                  </label>
+                  <div className="modal-two-col">
+                    <label>
+                      우선 발굴 플랫폼
+                      <input value={campaignEditDraft.preferredPlatforms} onChange={(event) => updateCampaignEditField('preferredPlatforms', event.target.value)} />
+                    </label>
+                    <label>
+                      AI 추천 목표 인원
+                      <input inputMode="numeric" value={campaignEditDraft.recommendationTargetCount} onChange={(event) => updateCampaignEditField('recommendationTargetCount', event.target.value)} />
+                    </label>
+                  </div>
                   <div className="modal-two-col">
                     <label>
                       예산
@@ -10170,6 +10204,7 @@ function App() {
                 <Stat label="집행" value={won(activeCampaignForModal.spend)} />
                 <Stat label="예상 매출" value={won(activeCampaignForModal.revenue)} />
                 <Stat label="진행률" value={`${activeCampaignForModal.progress}%`} />
+                <Stat label={'AI \uCD94\uCC9C \uBAA9\uD45C'} value={`${getCampaignRecommendationTarget(activeCampaignForModal)}\uBA85`} />
                 <Stat label="셀러 목표" value={`${activeCampaignForModal.sellerRecruitTarget ?? 0}명`} />
               </div>
               <div className="campaign-schedule-timeline">
