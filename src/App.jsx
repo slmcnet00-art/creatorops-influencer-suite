@@ -2817,6 +2817,7 @@ function App() {
   })
   const [gmailSending, setGmailSending] = useState(false)
   const [outreachStatusFilter, setOutreachStatusFilter] = useState('전체')
+  const [outreachSearchQuery, setOutreachSearchQuery] = useState('')
   const [outreachResponseNote, setOutreachResponseNote] = useState('')
   const [realDiscoveryDraft, setRealDiscoveryDraft] = useState({
     youtubeApiKey: '',
@@ -3095,41 +3096,72 @@ function App() {
         : activeOutreach,
     [activeOutreach, selectedCampaign],
   )
+  const searchedCampaignOutreach = useMemo(() => {
+    const normalizedQuery = outreachSearchQuery.trim().toLowerCase()
+    if (!normalizedQuery) return selectedCampaignOutreach
+
+    return selectedCampaignOutreach.filter((item) => {
+      const creator = creators.find((candidate) => candidate.id === item.creatorId)
+      const campaign = campaigns.find((candidate) => candidate.id === item.campaignId)
+      const searchableText = [
+        item.status,
+        item.channel,
+        item.deliveryMode,
+        item.source,
+        item.reason,
+        item.message,
+        item.sentAt,
+        item.respondedAt,
+        creator?.name,
+        creator?.handle,
+        creator?.platform,
+        creator?.country,
+        creator?.category,
+        creator?.email,
+        campaign?.name,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+
+      return searchableText.includes(normalizedQuery)
+    })
+  }, [campaigns, creators, outreachSearchQuery, selectedCampaignOutreach])
   const outreachStatusFilters = useMemo(
     () => [
       {
         key: '전체',
         label: '전체',
-        count: selectedCampaignOutreach.length,
+        count: searchedCampaignOutreach.length,
         helper: '전체 메시지',
       },
       {
         key: '승인 대기',
         label: '검토함',
-        count: selectedCampaignOutreach.filter((item) => item.status === '승인 대기').length,
+        count: searchedCampaignOutreach.filter((item) => item.status === '승인 대기').length,
         helper: '문구 확인 후 발송 처리',
       },
       {
         key: '발송 완료',
         label: '발송완료',
-        count: selectedCampaignOutreach.filter((item) => item.status === '발송 완료').length,
+        count: searchedCampaignOutreach.filter((item) => item.status === '발송 완료').length,
         helper: '응답 대기 및 후속 확인',
       },
       {
         key: '응답',
         label: '응답',
-        count: selectedCampaignOutreach.filter((item) => item.status === '응답').length,
+        count: searchedCampaignOutreach.filter((item) => item.status === '응답').length,
         helper: '조건 확인 후 섭외 완료',
       },
     ],
-    [selectedCampaignOutreach],
+    [searchedCampaignOutreach],
   )
   const filteredCampaignOutreach = useMemo(
     () =>
-      outreachStatusFilter === '전체'
-        ? selectedCampaignOutreach
-        : selectedCampaignOutreach.filter((item) => item.status === outreachStatusFilter),
-    [outreachStatusFilter, selectedCampaignOutreach],
+      outreachStatusFilter === '\uC804\uCCB4'
+        ? searchedCampaignOutreach
+        : searchedCampaignOutreach.filter((item) => item.status === outreachStatusFilter),
+    [outreachStatusFilter, searchedCampaignOutreach],
   )
   const selectedOutreachItems = useMemo(
     () => selectedCampaignOutreach.filter((item) => selectedOutreachIds.includes(item.id)),
@@ -8682,6 +8714,28 @@ function App() {
                 <strong>{new Set(selectedCampaignOutreach.map((item) => item.channel || 'manual_other')).size}개</strong>
                 <p>이메일, DM, 수동 채널 분리</p>
               </article>
+            </div>
+            <div className="message-search-bar">
+              <label aria-label="Search outreach messages">
+                <Search size={16} />
+                <input
+                  type="search"
+                  value={outreachSearchQuery}
+                  onChange={(event) => setOutreachSearchQuery(event.target.value)}
+                  placeholder={'\uC774\uB984, \uD578\uB4E4, \uCEA0\uD398\uC778, \uCC44\uB110, \uBA54\uC2DC\uC9C0 \uAC80\uC0C9'}
+                />
+              </label>
+              {outreachSearchQuery && (
+                <button
+                  className="secondary-button compact-button"
+                  type="button"
+                  onClick={() => setOutreachSearchQuery('')}
+                >
+                  <X size={15} />
+                  Clear
+                </button>
+              )}
+              <span>{filteredCampaignOutreach.length} / {selectedCampaignOutreach.length}</span>
             </div>
             <div className="message-bulk-toolbar">
               <label className="selection-check">
