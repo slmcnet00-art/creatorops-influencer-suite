@@ -2805,6 +2805,7 @@ function App() {
   const [selectedDiscoveryCreatorIds, setSelectedDiscoveryCreatorIds] = useState([])
   const [discoveryPage, setDiscoveryPage] = useState(1)
   const [selectedCandidatePoolIds, setSelectedCandidatePoolIds] = useState([])
+  const [candidatePoolQuery, setCandidatePoolQuery] = useState('')
   const [candidatePoolPage, setCandidatePoolPage] = useState(1)
   const [selectedOutreachIds, setSelectedOutreachIds] = useState([])
   const [gmailAuth, setGmailAuth] = useState(() => {
@@ -3235,9 +3236,32 @@ function App() {
       ),
     [visibleReferences],
   )
-  const candidatePoolCreators = useMemo(() => {
+  const candidatePoolAllCreators = useMemo(() => {
     return getCreatorsByIds(creators, shortlist)
   }, [creators, shortlist])
+  const candidatePoolCreators = useMemo(() => {
+    const normalizedQuery = candidatePoolQuery.trim().toLowerCase()
+    if (!normalizedQuery) return candidatePoolAllCreators
+
+    return candidatePoolAllCreators.filter((creator) => {
+      const searchableText = [
+        creator.name,
+        creator.handle,
+        creator.platform,
+        creator.country,
+        creator.category,
+        creator.status,
+        creator.email,
+        creator.source,
+        ...(creator.tags ?? []),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+
+      return searchableText.includes(normalizedQuery)
+    })
+  }, [candidatePoolAllCreators, candidatePoolQuery])
   const candidatePoolPageSize = 20
   const candidatePoolTotalPages = Math.max(1, Math.ceil(candidatePoolCreators.length / candidatePoolPageSize))
   const safeCandidatePoolPage = Math.min(Math.max(candidatePoolPage, 1), candidatePoolTotalPages)
@@ -4462,6 +4486,7 @@ function App() {
     setDiscoveryFilters(defaultDiscoveryFilters)
     setSelectedDiscoveryCreatorIds([])
     setSelectedCandidatePoolIds([])
+    setCandidatePoolQuery('')
     setDiscoveryPage(1)
     setCandidatePoolPage(1)
     showToast('검색 조건을 초기화했어요.')
@@ -7925,6 +7950,34 @@ function App() {
             <Stat label="메시지 전" value={`${candidatePoolCreators.length}명`} />
             <Stat label="선택됨" value={`${selectedCandidatePoolCreators.length}명`} />
             <Stat label="현재 캠페인" value={selectedCampaign?.name ?? '미선택'} />
+          </div>
+          <div className="candidate-pool-search-bar">
+            <label aria-label="Search pre-outreach candidates">
+              <Search size={16} />
+              <input
+                type="search"
+                value={candidatePoolQuery}
+                onChange={(event) => {
+                  setCandidatePoolQuery(event.target.value)
+                  setCandidatePoolPage(1)
+                }}
+                placeholder={'\uC774\uB984, \uD578\uB4E4, \uD50C\uB7AB\uD3FC, \uAD6D\uAC00, \uCE74\uD14C\uACE0\uB9AC \uAC80\uC0C9'}
+              />
+            </label>
+            {candidatePoolQuery && (
+              <button
+                className="secondary-button compact-button"
+                type="button"
+                onClick={() => {
+                  setCandidatePoolQuery('')
+                  setCandidatePoolPage(1)
+                }}
+              >
+                <X size={15} />
+                Clear
+              </button>
+            )}
+            <span>{candidatePoolCreators.length} / {candidatePoolAllCreators.length}</span>
           </div>
           {candidatePoolCreators.length > candidatePoolPageSize && (
             <PaginationControls
