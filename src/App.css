@@ -1812,7 +1812,18 @@
 
 .discovery-workspace .work-grid {
   order: 3;
-  grid-template-columns: minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1.5fr) minmax(360px, 0.58fr);
+}
+
+.discovery-workspace .discovery-panel {
+  min-width: 0;
+}
+
+.discovery-workspace .profile-panel {
+  position: sticky;
+  top: 16px;
+  max-height: calc(100vh - 32px);
+  overflow: auto;
 }
 
 .discovery-workspace .ai-grid {
@@ -1830,6 +1841,10 @@
 
 .discovery-workspace .profile-panel {
   max-width: none;
+}
+
+.discovery-workspace .creator-card-list .recommendation-card {
+  scroll-margin-top: 16px;
 }
 
 .brief-form {
@@ -5527,6 +5542,15 @@
 
   .discovery-workspace .ai-grid {
     grid-template-columns: 1fr;
+  }
+
+  .discovery-workspace .work-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .discovery-workspace .profile-panel {
+    position: static;
+    max-height: none;
   }
 
   .work-grid,
