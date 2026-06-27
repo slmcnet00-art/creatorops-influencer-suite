@@ -24,6 +24,97 @@ app.use(cors({
 }))
 app.use(express.json({ limit: '1mb' }))
 
+const DISCOVERY_STOP_WORDS = new Set([
+  'creator', 'creators', 'influencer', 'influencers', 'review', 'reviews', 'campaign', 'product', 'service', 'brand', 'official', 'profile', 'video', 'content', 'channel', 'shorts', 'reels', 'tiktok', 'instagram', 'youtube',
+  '\uD06C\uB9AC\uC5D0\uC774\uD130', '\uC778\uD50C\uB8E8\uC5B8\uC11C', '\uB9AC\uBDF0', '\uD6C4\uAE30', '\uCEA0\uD398\uC778', '\uBE0C\uB79C\uB4DC', '\uC81C\uD488', '\uCC44\uB110', '\uC601\uC0C1', '\uCF58\uD150\uCE20', '\uC20F\uCE20', '\uB9B4\uC2A4',
+])
+
+const DISCOVERY_GENERIC_TERMS = new Set([
+  'food', 'cook', 'cooking', 'beauty', 'makeup', 'skincare', 'cosmetic', 'pet', 'dog', 'cat', 'fashion', 'fitness', 'travel', 'daily', 'life', 'lifestyle',
+  '\uD478\uB4DC', '\uC74C\uC2DD', '\uBDF0\uD2F0', '\uD654\uC7A5\uD488', '\uD3AB', '\uBC18\uB824', '\uAC15\uC544\uC9C0', '\uACE0\uC591\uC774', '\uD328\uC158', '\uC6B4\uB3D9', '\uC5EC\uD589',
+])
+
+function tokenizeDiscoveryIntent(query) {
+  return [...new Set(String(query || '')
+    .toLowerCase()
+    .replace(/[()\[\]{}"'~!?:;|/\\]/g, ' ')
+    .split(/[\s,.#]+/)
+    .map((term) => term.trim())
+    .filter((term) => term.length >= 2)
+    .filter((term) => !DISCOVERY_STOP_WORDS.has(term)))]
+}
+
+function buildDiscoveryIntentContext(query) {
+  const tokens = tokenizeDiscoveryIntent(query)
+  const requiredTokens = tokens.filter((term) => !DISCOVERY_GENERIC_TERMS.has(term))
+  const genericTokens = tokens.filter((term) => DISCOVERY_GENERIC_TERMS.has(term))
+  return { tokens, requiredTokens, genericTokens }
+}
+
+function compactDiscoveryQuery(query) {
+  const context = buildDiscoveryIntentContext(query)
+  const terms = context.tokens.length ? context.tokens : String(query || '').split(/\s+/).filter(Boolean)
+  return terms.join(' ').replace(/\s+/g, ' ').trim()
+}
+
+function getDiscoveryIntentText(item = {}) {
+  return [
+    item.name,
+    item.handle,
+    item.title,
+    item.description,
+    item.snippet,
+    item.sourceTitle,
+    item.sourceSnippet,
+    item.channelTitle,
+    item.profileUrl,
+    item.url,
+    item.hook,
+    item.analysis,
+  ].filter(Boolean).join(' ').toLowerCase()
+}
+
+function scoreDiscoveryIntentMatch(item, context) {
+  const text = getDiscoveryIntentText(item)
+  const requiredMatches = context.requiredTokens.filter((term) => text.includes(term)).length
+  const genericMatches = context.genericTokens.filter((term) => text.includes(term)).length
+  const tokenMatches = context.tokens.filter((term) => text.includes(term)).length
+  return requiredMatches * 5 + genericMatches * 2 + tokenMatches
+}
+
+function isDiscoveryIntentMatch(item, context) {
+  if (!context.tokens.length) return true
+  const text = getDiscoveryIntentText(item)
+  const score = scoreDiscoveryIntentMatch(item, context)
+  if (context.requiredTokens.length) return context.requiredTokens.some((term) => text.includes(term))
+  return score > 0
+}
+
+function filterAndRankDiscoveryIntent(items, query) {
+  const context = buildDiscoveryIntentContext(query)
+  if (!context.tokens.length) return items
+  return items
+    .map((item) => ({ ...item, queryIntentScore: scoreDiscoveryIntentMatch(item, context) }))
+    .filter((item) => isDiscoveryIntentMatch(item, context))
+    .sort((a, b) => b.queryIntentScore - a.queryIntentScore)
+}
+
+function sanitizeAiPromptValue(value) {
+  if (typeof value === 'string') {
+    return value
+      .replace(/\uFFFD/g, '')
+      .replace(/\?{2,}/g, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+  if (Array.isArray(value)) return value.map(sanitizeAiPromptValue)
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(Object.entries(value).map(([key, item]) => [key, sanitizeAiPromptValue(item)]))
+  }
+  return value
+}
+
+
 app.get('/health', (request, response) => {
   response.json({
     ok: true,
@@ -262,19 +353,19 @@ async function fetchYouTubeChannelSnapshot(lookup) {
 async function searchYouTubeCreators(query, maxResults, country = 'KR') {
   const results = []
   const seen = new Set()
+  const searchLimit = Math.min(Math.max(maxResults * 4, maxResults), DISCOVERY_RESULT_LIMIT)
 
   for (const searchQuery of buildCreatorDiscoveryQueries(query)) {
-    const creators = await fetchYouTubeCreatorsForQuery(searchQuery, maxResults, country)
+    const creators = await fetchYouTubeCreatorsForQuery(searchQuery, searchLimit, country)
     for (const creator of creators) {
       const key = creator.channelId || creator.id || creator.profileUrl
       if (!key || seen.has(key)) continue
       seen.add(key)
       results.push(creator)
-      if (results.length >= maxResults) return results
     }
   }
 
-  return results
+  return filterAndRankDiscoveryIntent(results, query).slice(0, maxResults)
 }
 
 async function fetchYouTubeCreatorsForQuery(query, maxResults, country = 'KR') {
@@ -318,7 +409,7 @@ async function fetchYouTubeCreatorsForQuery(query, maxResults, country = 'KR') {
 }
 
 function buildCreatorDiscoveryQueries(query) {
-  const cleanQuery = String(query || '').replace(/\s+/g, ' ').trim()
+  const cleanQuery = compactDiscoveryQuery(query)
   const queries = [cleanQuery]
   const lower = cleanQuery.toLowerCase()
 
@@ -384,20 +475,23 @@ async function searchContentReferences({ query, country, platform, sort, maxResu
     results.push(...webResults)
   }
 
-  return sortContentReferences(dedupeContentReferences(results), sort).slice(0, maxResults)
+  const deduped = dedupeContentReferences(results)
+  const relevant = filterAndRankDiscoveryIntent(deduped, query)
+  return sortContentReferences(relevant, sort).slice(0, maxResults)
 }
 
 async function searchYouTubeVideoReferences({ query, country, sort, maxResults }) {
   const key = requireEnv('YOUTUBE_DATA_API_KEY')
   const regionCode = normalizeRegionCode(country)
   const videoIds = []
+  const searchLimit = Math.min(Math.max(maxResults * 4, maxResults), 100)
 
   for (const searchQuery of buildYouTubeReferenceQueries(query)) {
     const searchParams = new URLSearchParams({
       part: 'snippet',
       type: 'video',
       q: searchQuery,
-      maxResults: String(Math.min(25, maxResults - videoIds.length)),
+      maxResults: String(Math.min(25, searchLimit - videoIds.length)),
       order: sort === 'recent' ? 'date' : sort === 'shares' ? 'rating' : 'viewCount',
       safeSearch: 'none',
       key,
@@ -419,10 +513,10 @@ async function searchYouTubeVideoReferences({ query, country, sort, maxResults }
       searchPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/search?${searchParams}`)
     }
     videoIds.push(...(searchPayload.items || []).map((item) => item.id?.videoId).filter(Boolean))
-    if (videoIds.length >= maxResults) break
+    if (videoIds.length >= searchLimit) break
   }
 
-  const uniqueVideoIds = [...new Set(videoIds)].slice(0, maxResults)
+  const uniqueVideoIds = [...new Set(videoIds)].slice(0, searchLimit)
   if (!uniqueVideoIds.length) return []
 
   const videos = []
@@ -438,15 +532,18 @@ async function searchYouTubeVideoReferences({ query, country, sort, maxResults }
   const channelIds = [...new Set(videos.map((item) => item.snippet?.channelId).filter(Boolean))]
   const channelMap = await fetchYouTubeChannelStatsMap(channelIds)
 
-  return videos.map((item) => normalizeYouTubeReference(item, channelMap, regionCode || country || 'GLOBAL'))
+  return filterAndRankDiscoveryIntent(
+    videos.map((item) => normalizeYouTubeReference(item, channelMap, regionCode || country || 'GLOBAL')),
+    query,
+  ).slice(0, maxResults)
 }
 
 function buildYouTubeReferenceQueries(query) {
-  const cleanQuery = String(query || '').replace(/\s+/g, ' ').trim()
+  const cleanQuery = compactDiscoveryQuery(query)
   return [
     cleanQuery,
-    `${cleanQuery} review`,
-    `${cleanQuery} viral`,
+    `${cleanQuery} how to`,
+    `${cleanQuery} recipe`,
     `${cleanQuery} shorts`,
     `${cleanQuery} comparison`,
   ].filter(Boolean)
@@ -1491,6 +1588,9 @@ function mergeProfileSnapshot(profile, snapshot) {
 }
 
 function buildOutreachMessagePrompt(creator = {}, brand = {}, campaign = {}) {
+  const cleanCreator = sanitizeAiPromptValue(creator)
+  const cleanBrand = sanitizeAiPromptValue(brand)
+  const cleanCampaign = sanitizeAiPromptValue(campaign)
   return [
     'Write a warm, sincere influencer collaboration proposal message in Korean.',
     'The goal is to receive a reply. Make it sound like a real brand manager wrote a polite first DM or email, not a stiff sales script.',
@@ -1501,13 +1601,18 @@ function buildOutreachMessagePrompt(creator = {}, brand = {}, campaign = {}) {
     '- a friendly question asking whether they are interested and what conditions they prefer',
     '- a short note about ad/sponsorship disclosure and guide compliance',
     'Avoid exaggerated performance guarantees, fake review requests, coercive wording, and overly long brand introductions.',
-    `Creator: ${JSON.stringify(creator || {})}`,
-    `Brand: ${JSON.stringify(brand || {})}`,
-    `Campaign: ${JSON.stringify(campaign || {})}`,
+    'If any input field looks garbled, mojibake, question-mark placeholders, or empty, do not quote it. Use a neutral natural Korean phrase instead.',
+    'Never output question-mark placeholders or broken Korean. Keep the whole message in clean Korean.',
+    `Creator: ${JSON.stringify(cleanCreator || {})}`,
+    `Brand: ${JSON.stringify(cleanBrand || {})}`,
+    `Campaign: ${JSON.stringify(cleanCampaign || {})}`,
   ].join('\\n')
 }
 
 function buildContentGuidePrompt({ brand = {}, campaign = {}, seedingType = '', channel = '', references = [] } = {}) {
+  const cleanBrand = sanitizeAiPromptValue(brand)
+  const cleanCampaign = sanitizeAiPromptValue(campaign)
+  const cleanReferences = sanitizeAiPromptValue(references)
   return [
     'Write an influencer content guide in Korean for direct delivery to creators.',
     'Use a document structure that a brand manager can share immediately, while making the shooting direction concrete and creator-friendly.',
@@ -1520,11 +1625,12 @@ function buildContentGuidePrompt({ brand = {}, campaign = {}, seedingType = '', 
     '6. Prohibited expressions and ad/sponsorship disclosure guidance',
     '7. Deliverable checklist and post-upload performance tracking items',
     'Adjust reward, CTA, and conversion tracking guidance based on whether the campaign is unpaid seeding, paid seeding, group-buying, or seller recruitment.',
-    `Brand: ${JSON.stringify(brand || {})}`,
-    `Campaign: ${JSON.stringify(campaign || {})}`,
-    `Seeding type: ${seedingType || ''}`,
-    `Channel: ${channel || ''}`,
-    `References: ${JSON.stringify(references || [])}`,
+    'If source data contains garbled characters or placeholders, rewrite that part naturally instead of copying it.',
+    `Brand: ${JSON.stringify(cleanBrand || {})}`,
+    `Campaign: ${JSON.stringify(cleanCampaign || {})}`,
+    `Seeding type: ${sanitizeAiPromptValue(seedingType) || ''}`,
+    `Channel: ${sanitizeAiPromptValue(channel) || ''}`,
+    `References: ${JSON.stringify(cleanReferences || [])}`,
   ].join('\\n')
 }
 
