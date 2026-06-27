@@ -3022,7 +3022,7 @@ function App() {
     country: '전체',
     mediaType: '전체',
     platform: '전체',
-    sort: 'views',
+    sort: 'virality',
     maxResults: '36',
   })
   const [referencePage, setReferencePage] = useState(1)
@@ -6991,7 +6991,7 @@ function App() {
       country: '전체',
       mediaType: '전체',
       platform: '전체',
-      sort: 'views',
+      sort: 'virality',
       maxResults: '36',
     })
     setReferenceSearchStatus({ mode: 'idle', message: '' })
@@ -8470,8 +8470,8 @@ function App() {
                   setReferencePage(1)
                 }}
               >
-                <option value="views">조회수 순위</option>
-                <option value="virality">팔로워 대비 터진 순위</option>
+                <option value="virality">{'\uD314\uB85C\uC6CC \uB300\uBE44 \uD130\uC9C4 \uCF58\uD150\uCE20'}</option>
+                <option value="views">{'\uC870\uD68C\uC218 \uC21C\uC704'}</option>
                 <option value="shares">공유 순위</option>
                 <option value="recent">최근 등록순</option>
               </select>

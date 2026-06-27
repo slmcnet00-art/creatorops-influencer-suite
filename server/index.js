@@ -78,7 +78,7 @@ app.post('/references/search', async (request, response, next) => {
     const query = String(request.body?.query || '').trim()
     const country = String(request.body?.country || 'KR').trim()
     const platform = String(request.body?.platform || 'YouTube').trim()
-    const sort = String(request.body?.sort || 'views').trim()
+    const sort = String(request.body?.sort || 'virality').trim()
     const maxResults = clamp(Number(request.body?.maxResults || 36), 1, REFERENCE_RESULT_LIMIT)
     if (!query) throw httpError(400, 'query is required.')
 
