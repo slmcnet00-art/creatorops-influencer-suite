@@ -8,6 +8,9 @@ const DISCOVERY_RESULT_LIMIT = 1000
 const REFERENCE_RESULT_LIMIT = 500
 const PROFILE_SNAPSHOT_ENRICH_LIMIT = 80
 const MIN_DISCOVERY_FOLLOWERS = 1000
+const SEARCH_CACHE_TTL_MS = 12 * 60 * 60 * 1000
+const SEARCH_CACHE_STALE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const searchCache = new Map()
 let tiktokCommercialTokenCache = { token: '', expiresAt: 0 }
 const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
   .split(',')
@@ -141,6 +144,32 @@ app.get('/health', (request, response) => {
     version: process.env.RENDER_GIT_COMMIT || 'local',
   })
 })
+
+function getSearchCacheKey(scope, value) {
+  return `${scope}:${JSON.stringify(value)}`
+}
+
+function readSearchCache(key, { allowStale = false } = {}) {
+  const entry = searchCache.get(key)
+  if (!entry) return null
+  const age = Date.now() - entry.createdAt
+  if (age <= SEARCH_CACHE_TTL_MS || (allowStale && age <= SEARCH_CACHE_STALE_TTL_MS)) {
+    return JSON.parse(JSON.stringify(entry.value))
+  }
+  searchCache.delete(key)
+  return null
+}
+
+function writeSearchCache(key, value) {
+  searchCache.set(key, {
+    createdAt: Date.now(),
+    value: JSON.parse(JSON.stringify(value)),
+  })
+}
+
+function isQuotaExceededError(error) {
+  return error?.status === 403 && /quota/i.test(String(error.message || ''))
+}
 
 app.post('/youtube/channel', async (request, response, next) => {
   try {
@@ -370,23 +399,35 @@ async function fetchYouTubeChannelSnapshot(lookup) {
 }
 
 async function searchYouTubeCreators(query, maxResults, country = 'KR') {
+  const cacheKey = getSearchCacheKey('youtube-creators', { query, maxResults, country })
+  const cached = readSearchCache(cacheKey)
+  if (cached) return cached
+
   const results = []
   const seen = new Set()
   const searchLimit = Math.min(Math.max(maxResults * 4, maxResults), DISCOVERY_RESULT_LIMIT)
 
-  for (const searchQuery of buildCreatorDiscoveryQueries(query)) {
-    const creators = await fetchYouTubeCreatorsForQuery(searchQuery, searchLimit, country)
-    for (const creator of creators) {
-      const key = creator.channelId || creator.id || creator.profileUrl
-      if (!key || seen.has(key)) continue
-      seen.add(key)
-      results.push(creator)
+  try {
+    for (const searchQuery of buildCreatorDiscoveryQueries(query)) {
+      const creators = await fetchYouTubeCreatorsForQuery(searchQuery, searchLimit, country)
+      for (const creator of creators) {
+        const key = creator.channelId || creator.id || creator.profileUrl
+        if (!key || seen.has(key)) continue
+        seen.add(key)
+        results.push(creator)
+      }
     }
-  }
 
-  return filterAndRankDiscoveryIntent(results, query)
-    .filter(passesMinimumDiscoveryScale)
-    .slice(0, maxResults)
+    const creators = filterAndRankDiscoveryIntent(results, query)
+      .filter(passesMinimumDiscoveryScale)
+      .slice(0, maxResults)
+    writeSearchCache(cacheKey, creators)
+    return creators
+  } catch (error) {
+    const stale = readSearchCache(cacheKey, { allowStale: true })
+    if (stale && isQuotaExceededError(error)) return stale
+    throw error
+  }
 }
 
 async function fetchYouTubeCreatorsForQuery(query, maxResults, country = 'KR') {
@@ -530,61 +571,73 @@ async function searchContentReferences({ query, country, platform, sort, maxResu
 }
 
 async function searchYouTubeVideoReferences({ query, country, sort, maxResults }) {
+  const cacheKey = getSearchCacheKey('youtube-references', { query, country, sort, maxResults })
+  const cached = readSearchCache(cacheKey)
+  if (cached) return cached
+
   const key = requireEnv('YOUTUBE_DATA_API_KEY')
   const regionCode = normalizeRegionCode(country)
   const videoIds = []
   const searchLimit = Math.min(Math.max(maxResults * 4, maxResults), 100)
 
-  for (const searchQuery of buildYouTubeReferenceQueries(query)) {
-    const searchParams = new URLSearchParams({
-      part: 'snippet',
-      type: 'video',
-      q: searchQuery,
-      maxResults: String(Math.min(25, searchLimit - videoIds.length)),
-      order: sort === 'recent' ? 'date' : sort === 'shares' ? 'rating' : 'viewCount',
-      safeSearch: 'none',
-      key,
-    })
-    if (regionCode) searchParams.set('regionCode', regionCode)
-    if (regionCode === 'KR') searchParams.set('relevanceLanguage', 'ko')
-    if (regionCode === 'JP') searchParams.set('relevanceLanguage', 'ja')
-    if (regionCode === 'US') searchParams.set('relevanceLanguage', 'en')
+  try {
+    for (const searchQuery of buildYouTubeReferenceQueries(query)) {
+      const searchParams = new URLSearchParams({
+        part: 'snippet',
+        type: 'video',
+        q: searchQuery,
+        maxResults: String(Math.min(25, searchLimit - videoIds.length)),
+        order: sort === 'recent' ? 'date' : sort === 'shares' ? 'rating' : 'viewCount',
+        safeSearch: 'none',
+        key,
+      })
+      if (regionCode) searchParams.set('regionCode', regionCode)
+      if (regionCode === 'KR') searchParams.set('relevanceLanguage', 'ko')
+      if (regionCode === 'JP') searchParams.set('relevanceLanguage', 'ja')
+      if (regionCode === 'US') searchParams.set('relevanceLanguage', 'en')
 
-    let searchPayload
-    try {
-      searchPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/search?${searchParams}`)
-    } catch (error) {
-      if (error.status !== 400 || !String(error.message || '').includes('invalid filter')) throw error
-      searchParams.delete('regionCode')
-      searchParams.delete('relevanceLanguage')
-      searchParams.delete('safeSearch')
-      searchParams.delete('order')
-      searchPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/search?${searchParams}`)
+      let searchPayload
+      try {
+        searchPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/search?${searchParams}`)
+      } catch (error) {
+        if (error.status !== 400 || !String(error.message || '').includes('invalid filter')) throw error
+        searchParams.delete('regionCode')
+        searchParams.delete('relevanceLanguage')
+        searchParams.delete('safeSearch')
+        searchParams.delete('order')
+        searchPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/search?${searchParams}`)
+      }
+      videoIds.push(...(searchPayload.items || []).map((item) => item.id?.videoId).filter(Boolean))
+      if (videoIds.length >= searchLimit) break
     }
-    videoIds.push(...(searchPayload.items || []).map((item) => item.id?.videoId).filter(Boolean))
-    if (videoIds.length >= searchLimit) break
+
+    const uniqueVideoIds = [...new Set(videoIds)].slice(0, searchLimit)
+    if (!uniqueVideoIds.length) return []
+
+    const videos = []
+    for (const idChunk of chunkArray(uniqueVideoIds, 50)) {
+      const videoParams = new URLSearchParams({
+        part: 'snippet,statistics',
+        id: idChunk.join(','),
+        key,
+      })
+      const videoPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/videos?${videoParams}`)
+      videos.push(...(videoPayload.items || []))
+    }
+    const channelIds = [...new Set(videos.map((item) => item.snippet?.channelId).filter(Boolean))]
+    const channelMap = await fetchYouTubeChannelStatsMap(channelIds)
+
+    const references = filterAndRankDiscoveryIntent(
+      videos.map((item) => normalizeYouTubeReference(item, channelMap, regionCode || country || 'GLOBAL')),
+      query,
+    ).slice(0, maxResults)
+    writeSearchCache(cacheKey, references)
+    return references
+  } catch (error) {
+    const stale = readSearchCache(cacheKey, { allowStale: true })
+    if (stale && isQuotaExceededError(error)) return stale
+    throw error
   }
-
-  const uniqueVideoIds = [...new Set(videoIds)].slice(0, searchLimit)
-  if (!uniqueVideoIds.length) return []
-
-  const videos = []
-  for (const idChunk of chunkArray(uniqueVideoIds, 50)) {
-    const videoParams = new URLSearchParams({
-      part: 'snippet,statistics',
-      id: idChunk.join(','),
-      key,
-    })
-    const videoPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/videos?${videoParams}`)
-    videos.push(...(videoPayload.items || []))
-  }
-  const channelIds = [...new Set(videos.map((item) => item.snippet?.channelId).filter(Boolean))]
-  const channelMap = await fetchYouTubeChannelStatsMap(channelIds)
-
-  return filterAndRankDiscoveryIntent(
-    videos.map((item) => normalizeYouTubeReference(item, channelMap, regionCode || country || 'GLOBAL')),
-    query,
-  ).slice(0, maxResults)
 }
 
 function buildYouTubeReferenceQueries(query) {
