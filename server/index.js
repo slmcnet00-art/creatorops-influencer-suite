@@ -94,17 +94,28 @@ function isDiscoveryIntentMatch(item, context) {
 
 function passesMinimumDiscoveryScale(item = {}) {
   const followers = Number(item.followers || item.accountFollowers || 0)
-  if (!followers) return true
+  const averageViews = Number(item.averageViews || item.avgViews || item.views || 0)
+  if (!followers) return !averageViews || averageViews >= MIN_DISCOVERY_FOLLOWERS
   return followers >= MIN_DISCOVERY_FOLLOWERS
 }
 
 function filterAndRankDiscoveryIntent(items, query) {
   const context = buildDiscoveryIntentContext(query)
   if (!context.tokens.length) return items
-  return items
+  const scoredItems = items
     .map((item) => ({ ...item, queryIntentScore: scoreDiscoveryIntentMatch(item, context) }))
-    .filter((item) => isDiscoveryIntentMatch(item, context))
     .sort((a, b) => b.queryIntentScore - a.queryIntentScore)
+  const strictMatches = scoredItems.filter((item) => isDiscoveryIntentMatch(item, context))
+  if (strictMatches.length) return strictMatches
+
+  const categoryMatches = scoredItems.filter((item) => {
+    const text = getDiscoveryIntentText(item)
+    return context.genericTokens.some((term) => text.includes(term))
+      || context.tokens.some((term) => text.includes(term))
+  })
+  if (categoryMatches.length) return categoryMatches
+
+  return []
 }
 
 function sanitizeAiPromptValue(value) {
@@ -422,6 +433,18 @@ function buildCreatorDiscoveryQueries(query) {
   const cleanQuery = compactDiscoveryQuery(query)
   const queries = [cleanQuery]
   const lower = cleanQuery.toLowerCase()
+  if (hasBeautyDiscoveryIntent(lower)) {
+    queries.push('Korean beauty review', 'beauty review Korea', 'K beauty creator', '\uD55C\uAD6D \uBDF0\uD2F0 \uB9AC\uBDF0', '\uC2A4\uD0A8\uCF00\uC5B4 \uB9AC\uBDF0')
+  }
+  if (hasPetDiscoveryIntent(lower)) {
+    queries.push('Korean pet channel', 'dog product review Korea', 'pet creator Korea', '\uBC18\uB824\uACAC \uB9AC\uBDF0')
+  }
+  if (hasFoodDiscoveryIntent(lower)) {
+    queries.push('Korean food review', 'food creator Korea', '\uD55C\uAD6D \uC694\uB9AC \uB9AC\uBDF0')
+  }
+  if (hasFashionDiscoveryIntent(lower)) {
+    queries.push('Korean fashion creator', 'fashion review Korea', '\uD328\uC158 \uB8E9\uBD81')
+  }
 
   if (/화장품|뷰티|메이크업|스킨케어|코스메틱|올리브영|beauty|makeup|skincare|cosmetic/.test(lower)) {
     queries.push('Korean beauty review', 'beauty review Korea', 'K beauty creator')
@@ -436,7 +459,23 @@ function buildCreatorDiscoveryQueries(query) {
     queries.push('Korean fashion creator', 'fashion review Korea')
   }
 
-  return [...new Set(queries.filter(Boolean))].slice(0, 4)
+  return [...new Set(queries.filter(Boolean))].slice(0, 8)
+}
+
+function hasBeautyDiscoveryIntent(text) {
+  return /beauty|makeup|skincare|cosmetic|cosmetics|serum|\uBDF0\uD2F0|\uD654\uC7A5\uD488|\uBA54\uC774\uD06C\uC5C5|\uC2A4\uD0A8\uCF00\uC5B4|\uC138\uB7FC|\uC7A5\uBCBD|\uBBFC\uAC10/.test(text)
+}
+
+function hasPetDiscoveryIntent(text) {
+  return /pet|dog|cat|kennel|carrier|crate|\uBC18\uB824|\uAC15\uC544\uC9C0|\uACE0\uC591\uC774|\uCF04\uB12C|\uC774\uB3D9\uC7A5/.test(text)
+}
+
+function hasFoodDiscoveryIntent(text) {
+  return /food|cook|cooking|recipe|snack|meal|\uD478\uB4DC|\uC694\uB9AC|\uB808\uC2DC\uD53C|\uC74C\uC2DD|\uAC04\uC2DD|\uB9DB\uC9D1|\uBC00\uD0A4\uD2B8/.test(text)
+}
+
+function hasFashionDiscoveryIntent(text) {
+  return /fashion|lookbook|style|outfit|\uD328\uC158|\uB8E9\uBD81|\uC758\uB958|\uC2A4\uD0C0\uC77C/.test(text)
 }
 
 async function searchContentReferences({ query, country, platform, sort, maxResults }) {
@@ -550,13 +589,24 @@ async function searchYouTubeVideoReferences({ query, country, sort, maxResults }
 
 function buildYouTubeReferenceQueries(query) {
   const cleanQuery = compactDiscoveryQuery(query)
-  return [
+  const lower = cleanQuery.toLowerCase()
+  const queries = [
     cleanQuery,
     `${cleanQuery} how to`,
     `${cleanQuery} recipe`,
     `${cleanQuery} shorts`,
     `${cleanQuery} comparison`,
   ].filter(Boolean)
+  if (hasBeautyDiscoveryIntent(lower)) {
+    queries.push('Korean skincare review shorts', 'K beauty serum review', '\uC2A4\uD0A8\uCF00\uC5B4 \uB9AC\uBDF0 \uC20F\uCE20')
+  }
+  if (hasPetDiscoveryIntent(lower)) {
+    queries.push('Korean pet product review shorts', '\uBC18\uB824\uACAC \uC81C\uD488 \uB9AC\uBDF0 \uC20F\uCE20')
+  }
+  if (hasFoodDiscoveryIntent(lower)) {
+    queries.push('Korean food review shorts', '\uC694\uB9AC \uB808\uC2DC\uD53C \uC20F\uCE20')
+  }
+  return [...new Set(queries.filter(Boolean))]
 }
 
 async function fetchYouTubeChannelStatsMap(channelIds) {
@@ -1043,9 +1093,12 @@ function sortContentReferences(results, sort) {
   return [...results].sort((a, b) => {
     if (sort === 'recent') return String(b.publishedAt || '').localeCompare(String(a.publishedAt || ''))
     if (sort === 'virality') {
-      const aRatio = Number(a.views || 0) / Math.max(Number(a.accountFollowers || 0), 1)
-      const bRatio = Number(b.views || 0) / Math.max(Number(b.accountFollowers || 0), 1)
-      return bRatio - aRatio
+      const aFollowers = Number(a.accountFollowers || a.followers || 0)
+      const bFollowers = Number(b.accountFollowers || b.followers || 0)
+      const aRatio = aFollowers ? Number(a.views || 0) / aFollowers : -1
+      const bRatio = bFollowers ? Number(b.views || 0) / bFollowers : -1
+      if (bRatio !== aRatio) return bRatio - aRatio
+      return Number(b.views || 0) - Number(a.views || 0)
     }
     if (sort === 'shares') return Number(b.shares || 0) - Number(a.shares || 0)
     return Number(b.views || 0) - Number(a.views || 0)
@@ -1182,6 +1235,18 @@ function buildStrictProfileSearchQueries(platform, query) {
 
 function inferDiscoveryCategoryTerms(lowerQuery) {
   const terms = []
+  if (hasBeautyDiscoveryIntent(lowerQuery)) {
+    terms.push('beauty creator', 'skincare review', 'makeup influencer', '\uBDF0\uD2F0 \uB9AC\uBDF0', '\uC2A4\uD0A8\uCF00\uC5B4')
+  }
+  if (hasPetDiscoveryIntent(lowerQuery)) {
+    terms.push('pet creator', 'dog review', 'pet influencer', '\uBC18\uB824\uACAC \uB9AC\uBDF0')
+  }
+  if (hasFoodDiscoveryIntent(lowerQuery)) {
+    terms.push('food creator', 'snack review', '\uC694\uB9AC \uB808\uC2DC\uD53C')
+  }
+  if (hasFashionDiscoveryIntent(lowerQuery)) {
+    terms.push('fashion creator', 'lookbook', '\uD328\uC158 \uB8E9\uBD81')
+  }
   if (/pet|dog|cat|kennel|carrier|crate|강아지|반려견|반려동물|고양이|켄넬|이동장/.test(lowerQuery)) {
     terms.push('pet creator', 'dog review', 'pet influencer')
   }
@@ -1194,7 +1259,7 @@ function inferDiscoveryCategoryTerms(lowerQuery) {
   if (/fashion|lookbook|패션|룩북|의류/.test(lowerQuery)) {
     terms.push('fashion creator', 'lookbook')
   }
-  return terms
+  return [...new Set(terms)]
 }
 
 async function searchGoogleCseProfiles(query, platform, maxResults, country = 'KR') {
@@ -1736,7 +1801,7 @@ function normalizeProfileSearchItem(item, platform, source = 'Public Search API'
     if (platform === 'TikTok') {
       if (!hostname.includes('tiktok.com')) return null
       const handle = segments.find((segment) => segment.startsWith('@'))
-      if (!handle) return null
+      if (!isTikTokProfileHandle(handle)) return null
       return buildSearchResult(item, platform, handle, `https://www.tiktok.com/${handle}`, source, country, {
         fromContentUrl: segments.includes('video'),
       })
@@ -1842,6 +1907,24 @@ function isInstagramProfileHandle(handle) {
   return /^[a-z0-9._]{2,30}$/i.test(handle)
 }
 
+function isTikTokProfileHandle(handle) {
+  if (!handle || handle === '@') return false
+  const normalized = String(handle).replace(/^@/, '')
+  const blocked = new Set([
+    '',
+    'tag',
+    'music',
+    'video',
+    'discover',
+    'login',
+    'about',
+    'business',
+    'creators',
+  ])
+  if (blocked.has(normalized.toLowerCase())) return false
+  return /^[a-z0-9._]{2,30}$/i.test(normalized)
+}
+
 async function fetchJson(url, options) {
   const response = await fetch(url, options)
   const payload = await response.json().catch(() => ({}))
@@ -1940,8 +2023,25 @@ function buildProfileDiscoveryQueryContext(query) {
     'beauty',
     'makeup',
     'skincare',
+    'serum',
     'food',
+    'cook',
+    'cooking',
+    'recipe',
     'fashion',
+    '\uBDF0\uD2F0',
+    '\uD654\uC7A5\uD488',
+    '\uBA54\uC774\uD06C\uC5C5',
+    '\uC2A4\uD0A8\uCF00\uC5B4',
+    '\uC138\uB7FC',
+    '\uD478\uB4DC',
+    '\uC694\uB9AC',
+    '\uB808\uC2DC\uD53C',
+    '\uBC18\uB824',
+    '\uAC15\uC544\uC9C0',
+    '\uACE0\uC591\uC774',
+    '\uD328\uC158',
+    '\uB8E9\uBD81',
     '강아지',
     '반려견',
     '반려동물',
@@ -2078,6 +2178,7 @@ function buildProfileDiscoveryQueryContextV2(query) {
 
 function isUsableProfileDiscoveryResultV2(profile, context, mode = 'strict') {
   if (!profile?.profileUrl) return false
+  if (looksLikeBrandOrPlatformAccount(profile)) return false
   const text = getProfileDiscoverySearchText(profile)
   const requiredMatches = context.requiredTokens.filter((term) => text.includes(term)).length
   const genericMatches = context.genericTokens.filter((term) => text.includes(term)).length
@@ -2095,6 +2196,22 @@ function isUsableProfileDiscoveryResultV2(profile, context, mode = 'strict') {
   }
 
   return true
+}
+
+function looksLikeBrandOrPlatformAccount(profile = {}) {
+  const text = [
+    profile.name,
+    profile.handle,
+    profile.profileUrl,
+    profile.description,
+    profile.sourceTitle,
+  ].filter(Boolean).join(' ').toLowerCase()
+  if (!text) return false
+  if (/instagram'?s @creators|@creators|@influencer|creator marketplace/.test(text)) return true
+  if (/(^|[._\s-])(official|brand|store|shop|mall|korea|kr)([._\s-]|$)/.test(text)) {
+    return !/(creator|influencer|reviewer|blogger|\uD06C\uB9AC\uC5D0\uC774\uD130|\uC778\uD50C\uB8E8\uC5B8\uC11C|\uB9AC\uBDF0\uC5B4|\uBE14\uB85C\uAC70)/.test(text)
+  }
+  return false
 }
 
 function hasBlockedDiscoveryTopicV2(text) {
