@@ -7,6 +7,7 @@ const port = Number(process.env.PORT || 8787)
 const DISCOVERY_RESULT_LIMIT = 1000
 const REFERENCE_RESULT_LIMIT = 500
 const PROFILE_SNAPSHOT_ENRICH_LIMIT = 80
+const MIN_DISCOVERY_FOLLOWERS = 1000
 let tiktokCommercialTokenCache = { token: '', expiresAt: 0 }
 const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
   .split(',')
@@ -88,6 +89,13 @@ function isDiscoveryIntentMatch(item, context) {
   const score = scoreDiscoveryIntentMatch(item, context)
   if (context.requiredTokens.length) return context.requiredTokens.some((term) => text.includes(term))
   return score > 0
+}
+
+
+function passesMinimumDiscoveryScale(item = {}) {
+  const followers = Number(item.followers || item.accountFollowers || 0)
+  if (!followers) return true
+  return followers >= MIN_DISCOVERY_FOLLOWERS
 }
 
 function filterAndRankDiscoveryIntent(items, query) {
@@ -365,7 +373,9 @@ async function searchYouTubeCreators(query, maxResults, country = 'KR') {
     }
   }
 
-  return filterAndRankDiscoveryIntent(results, query).slice(0, maxResults)
+  return filterAndRankDiscoveryIntent(results, query)
+    .filter(passesMinimumDiscoveryScale)
+    .slice(0, maxResults)
 }
 
 async function fetchYouTubeCreatorsForQuery(query, maxResults, country = 'KR') {
