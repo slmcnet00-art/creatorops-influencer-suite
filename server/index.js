@@ -8,6 +8,8 @@ const DISCOVERY_RESULT_LIMIT = 1000
 const REFERENCE_RESULT_LIMIT = 500
 const PROFILE_SNAPSHOT_ENRICH_LIMIT = 80
 const MIN_DISCOVERY_FOLLOWERS = 1000
+const MIN_REFERENCE_KNOWN_VIEWS = 1000
+const MIN_REFERENCE_QUALITY_SCORE = 45
 const SEARCH_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 const SEARCH_CACHE_STALE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const searchCache = new Map()
@@ -566,8 +568,10 @@ async function searchContentReferences({ query, country, platform, sort, maxResu
   }
 
   const deduped = dedupeContentReferences(results)
-  const relevant = filterAndRankDiscoveryIntent(deduped, query)
-  return sortContentReferences(relevant, sort).slice(0, maxResults)
+  const qualified = filterReferenceQuality(deduped, query)
+  const relevant = filterAndRankDiscoveryIntent(qualified, query)
+  const finalResults = relevant.length ? relevant : qualified
+  return sortContentReferences(finalResults, sort).slice(0, maxResults)
 }
 
 async function searchYouTubeVideoReferences({ query, country, sort, maxResults }) {
@@ -931,9 +935,10 @@ async function searchWebContentReferences({ query, country, platform, maxResults
   const siteQuery = getReferenceSiteQuery(platform)
   const regionCode = normalizeRegionCode(country)
   const items = []
+  const rawResultLimit = Math.max(maxResults * 10, 80)
 
   for (const referenceQuery of buildReferenceSearchQueries(siteQuery, query, platform)) {
-    for (let page = 0; page < Math.ceil(maxResults / 20) && items.length < maxResults * 3; page += 1) {
+    for (let page = 0; page < Math.ceil(maxResults / 20) && items.length < rawResultLimit; page += 1) {
       const params = new URLSearchParams({
         q: referenceQuery,
         count: '20',
@@ -952,14 +957,13 @@ async function searchWebContentReferences({ query, country, platform, maxResults
       items.push(...pageItems)
       if (pageItems.length < 20) break
     }
-    if (items.length >= maxResults * 3) break
   }
 
   const normalized = items
-    .map((item) => normalizeWebReferenceSearchItem(item, platform, regionCode || country || 'GLOBAL'))
+    .map((item) => normalizeWebReferenceSearchItem(item, platform, regionCode || country || 'GLOBAL', query))
     .filter(Boolean)
     .filter((item, index, list) => list.findIndex((candidate) => candidate.url === item.url) === index)
-    .slice(0, maxResults)
+    .slice(0, Math.max(maxResults * 2, maxResults))
 
   if (!isPublicSnapshotEnabled()) return normalized
 
@@ -991,20 +995,44 @@ async function searchWebContentReferences({ query, country, platform, maxResults
 
 function buildReferenceSearchQueries(siteQuery, query, platform) {
   const cleanQuery = String(query || '').replace(/\s+/g, ' ').trim()
+  const lowerQuery = cleanQuery.toLowerCase()
   const platformBoost =
     platform === 'Instagram'
-      ? '-inurl:/explore/ -inurl:/accounts/'
+      ? '-inurl:/explore/ -inurl:/accounts/ -inurl:/tags/'
       : platform === 'TikTok'
-        ? '-inurl:/music/ -inurl:/tag/'
+        ? '-inurl:/music/ -inurl:/tag/ -inurl:/discover/ -inurl:/live/'
         : ''
-  return [
+  const queries = [
     `${siteQuery} ${cleanQuery} ${platformBoost}`.trim(),
     `${siteQuery} "${cleanQuery}" ${platformBoost}`.trim(),
     `${siteQuery} ${cleanQuery} viral popular ${platformBoost}`.trim(),
   ]
+
+  if (['Instagram', 'TikTok', 'all'].includes(platform)) {
+    if (hasBeautyDiscoveryIntent(lowerQuery)) {
+      queries.push(
+        `${siteQuery} kbeauty skincare viral ${platformBoost}`.trim(),
+        `${siteQuery} korean skincare review viral ${platformBoost}`.trim(),
+      )
+    }
+    if (hasFoodDiscoveryIntent(lowerQuery)) {
+      queries.push(
+        `${siteQuery} korean food recipe viral ${platformBoost}`.trim(),
+        `${siteQuery} food review viral ${platformBoost}`.trim(),
+      )
+    }
+    if (hasPetDiscoveryIntent(lowerQuery)) {
+      queries.push(
+        `${siteQuery} pet product review viral ${platformBoost}`.trim(),
+        `${siteQuery} dog product review viral ${platformBoost}`.trim(),
+      )
+    }
+  }
+
+  return [...new Set(queries.filter(Boolean))]
 }
 
-function normalizeWebReferenceSearchItem(item, platform, country) {
+function normalizeWebReferenceSearchItem(item, platform, country, query = '') {
   const url = item.url || item.link || ''
   if (!url) return null
   const inferredPlatform = platform === 'all' ? inferReferencePlatform(url) : platform
@@ -1015,12 +1043,13 @@ function normalizeWebReferenceSearchItem(item, platform, country) {
   const description = cleanReferenceText(item.description || item.snippet || '')
   if (isLowValueReferenceResult({ title, description, url, platform: inferredPlatform })) return null
 
+  const metrics = extractPublicMetrics(`${title} ${description}`)
   const analysis = isLowValueReferenceText(description)
     ? '공개 검색 결과에서 콘텐츠 URL을 확인했습니다. 세부 성과 지표는 플랫폼 API 또는 수동 확인이 필요합니다.'
     : description
   const detectedCountry = detectProfileCountry({ profileUrl: url, title, snippet: description })
 
-  return {
+  const reference = {
     id: `webref:${inferredPlatform}:${url}`,
     mediaType: inferReferenceMediaType(url, inferredPlatform),
     platform: inferredPlatform,
@@ -1030,17 +1059,21 @@ function normalizeWebReferenceSearchItem(item, platform, country) {
     title: title || `${inferredPlatform} reference`,
     url,
     thumbnailUrl: selectReferenceThumbnail(item.thumbnail?.src, item.profile?.img),
-    views: null,
-    accountFollowers: null,
-    likes: null,
-    comments: null,
-    shares: null,
+    views: metrics.views,
+    accountFollowers: metrics.followers,
+    likes: metrics.likes,
+    comments: metrics.comments,
+    shares: metrics.shares,
     publishedAt: 'public search result',
     hook: buildReferenceHook(title, description),
     analysis: analysis || '공개 검색 결과에서 콘텐츠 URL을 확인했습니다. 세부 성과 지표는 플랫폼 API 또는 수동 확인이 필요합니다.',
     applyIdea: 'Use the hook, thumbnail structure, caption angle, and comment-driving question as a production reference.',
     source: 'Brave Search API',
     confidence: 72,
+  }
+  return {
+    ...reference,
+    referenceQualityScore: scoreReferenceQuality(reference, query),
   }
 }
 
@@ -1101,19 +1134,22 @@ function isSupportedReferenceContentUrl(value, platform) {
 function isLowValueReferenceResult({ title, description, url, platform }) {
   const normalizedTitle = cleanReferenceText(title).toLowerCase()
   const normalizedDescription = cleanReferenceText(description).toLowerCase()
+  const combinedText = `${normalizedTitle} ${normalizedDescription}`
 
+  if (!normalizedTitle && !normalizedDescription) return true
   if (/(^|[\s(])@?reel\b/i.test(normalizedTitle)) return true
   if (/reel raffle/i.test(normalizedTitle)) return true
-  if (/(instagram photos and videos|create an account or log in to instagram)/i.test(normalizedTitle) && !normalizedDescription) return true
+  if (/(instagram photos and videos|create an account or log in to instagram|view this post on instagram)/i.test(combinedText)) return true
+  if (/(tiktok - make your day|tiktok - trends start here|watch trending videos|log in to tiktok|download tiktok)/i.test(normalizedTitle)) return true
   if (isPlatformLogoThumbnail(url)) return true
 
-  if (platform === 'Instagram' && normalizedTitle === 'instagram') return true
-  if (platform === 'TikTok' && normalizedTitle === 'tiktok') return true
+  if (platform === 'Instagram' && ['instagram', 'instagram reels'].includes(normalizedTitle)) return true
+  if (platform === 'TikTok' && ['tiktok', 'tiktok video'].includes(normalizedTitle)) return true
   return false
 }
 
 function isLowValueReferenceText(value) {
-  return /we cannot provide a description|create an account or log in|instagram photos and videos/i.test(String(value || ''))
+  return /we cannot provide a description|create an account or log in|instagram photos and videos|watch trending videos|download tiktok/i.test(String(value || ''))
 }
 
 function isPlatformLogoThumbnail(value) {
@@ -1130,6 +1166,83 @@ function selectReferenceThumbnail(...candidates) {
 
 function cleanReferenceText(value) {
   return decodeHtmlEntities(stripHtml(value)).replace(/\s+/g, ' ').trim()
+}
+
+function filterReferenceQuality(items, query) {
+  return items
+    .map((item) => ({
+      ...item,
+      referenceQualityScore: item.referenceQualityScore ?? scoreReferenceQuality(item, query),
+    }))
+    .filter((item) => isUsableContentReference(item, query))
+    .sort((a, b) => Number(b.referenceQualityScore || 0) - Number(a.referenceQualityScore || 0))
+}
+
+function isUsableContentReference(item = {}, query = '') {
+  if (!item.url || !item.title) return false
+  const platform = item.platform || inferReferencePlatform(item.url)
+  if (['Instagram', 'TikTok'].includes(platform)) {
+    if (!isSupportedReferenceContentUrl(item.url, platform)) return false
+    if (isLowValueReferenceResult({
+      title: item.title,
+      description: item.analysis || item.hook || '',
+      url: item.thumbnailUrl || item.url,
+      platform,
+    })) return false
+    const knownViews = Number(item.views || 0)
+    const knownEngagement = [
+      item.views,
+      item.likes,
+      item.comments,
+      item.shares,
+      item.accountFollowers,
+    ].some((value) => Number(value || 0) > 0)
+    const knownContentEngagement = [
+      item.views,
+      item.likes,
+      item.comments,
+      item.shares,
+    ].some((value) => Number(value || 0) > 0)
+    if (knownViews > 0 && knownViews < MIN_REFERENCE_KNOWN_VIEWS) return false
+    if (!item.thumbnailUrl && !knownContentEngagement) return false
+    if (/brave search api/i.test(String(item.source || '')) && !item.thumbnailUrl && !knownEngagement) return false
+    if (!item.thumbnailUrl && isLowValueReferenceText(`${item.title} ${item.analysis || ''}`)) return false
+  }
+  return scoreReferenceQuality(item, query) >= MIN_REFERENCE_QUALITY_SCORE
+}
+
+function scoreReferenceQuality(item = {}, query = '') {
+  const platform = item.platform || inferReferencePlatform(item.url)
+  let score = 0
+  if (item.url) score += 10
+  if (!['Instagram', 'TikTok'].includes(platform) || isSupportedReferenceContentUrl(item.url, platform)) score += 25
+  if (item.thumbnailUrl && !isPlatformLogoThumbnail(item.thumbnailUrl)) score += 20
+  if (item.title && !isGenericReferenceTitle(item.title, platform)) score += 18
+  if (matchesReferenceQuery(item, query)) score += 12
+
+  const views = Number(item.views || 0)
+  const followers = Number(item.accountFollowers || item.followers || 0)
+  const engagement = Number(item.likes || 0) + Number(item.comments || 0) + Number(item.shares || 0)
+  if (views >= MIN_REFERENCE_KNOWN_VIEWS) score += Math.min(22, Math.log10(views) * 4)
+  if (followers > 0 && views > 0) score += Math.min(15, (views / followers) * 4)
+  if (engagement > 0) score += Math.min(12, Math.log10(engagement + 1) * 3)
+  if (/official|commercial content api|youtube data api/i.test(String(item.source || ''))) score += 8
+  if (isLowValueReferenceText(`${item.title || ''} ${item.analysis || ''}`)) score -= 20
+  if (isGenericReferenceTitle(item.title, platform)) score -= 25
+  if (views > 0 && views < MIN_REFERENCE_KNOWN_VIEWS) score -= 45
+  return clamp(Math.round(score), 0, 100)
+}
+
+function isGenericReferenceTitle(title, platform) {
+  const normalizedTitle = cleanReferenceText(title).toLowerCase()
+  if (!normalizedTitle) return true
+  if (platform === 'Instagram') {
+    return /^(instagram|instagram reels|\(?@?reel\)?|.*instagram photos and videos)$/.test(normalizedTitle)
+  }
+  if (platform === 'TikTok') {
+    return /^(tiktok|tiktok video|tiktok - make your day|tiktok - trends start here)$/.test(normalizedTitle)
+  }
+  return false
 }
 
 function dedupeContentReferences(results) {
@@ -1151,11 +1264,23 @@ function sortContentReferences(results, sort) {
       const aRatio = aFollowers ? Number(a.views || 0) / aFollowers : -1
       const bRatio = bFollowers ? Number(b.views || 0) / bFollowers : -1
       if (bRatio !== aRatio) return bRatio - aRatio
-      return Number(b.views || 0) - Number(a.views || 0)
+      const viewGap = Number(b.views || 0) - Number(a.views || 0)
+      if (viewGap !== 0) return viewGap
+      const engagementGap = getReferenceEngagement(b) - getReferenceEngagement(a)
+      if (engagementGap !== 0) return engagementGap
+      return Number(b.referenceQualityScore || 0) - Number(a.referenceQualityScore || 0)
     }
     if (sort === 'shares') return Number(b.shares || 0) - Number(a.shares || 0)
-    return Number(b.views || 0) - Number(a.views || 0)
+    const viewGap = Number(b.views || 0) - Number(a.views || 0)
+    if (viewGap !== 0) return viewGap
+    const engagementGap = getReferenceEngagement(b) - getReferenceEngagement(a)
+    if (engagementGap !== 0) return engagementGap
+    return Number(b.referenceQualityScore || 0) - Number(a.referenceQualityScore || 0)
   })
+}
+
+function getReferenceEngagement(item = {}) {
+  return Number(item.likes || 0) + Number(item.comments || 0) + Number(item.shares || 0)
 }
 
 async function searchGoogleProfiles(query, platform, maxResults, country = 'KR') {

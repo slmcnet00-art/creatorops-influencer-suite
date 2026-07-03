@@ -1239,6 +1239,11 @@ function compactNumber(value) {
   }).format(value)
 }
 
+function compactOptionalNumber(value, fallback = '\uC218\uC9D1 \uD544\uC694') {
+  const numeric = Number(value || 0)
+  return numeric > 0 ? compactNumber(numeric) : fallback
+}
+
 function won(value) {
   return new Intl.NumberFormat('ko-KR', {
     style: 'currency',
@@ -8521,12 +8526,12 @@ function App() {
                   <strong>{item.title}</strong>
                   <p>{item.publishedAt} · 저장 {item.savedAt}</p>
                   <div className="tracked-account-meta">
-                    <span>조회 {compactNumber(item.views)}</span>
+                    <span>조회 {compactOptionalNumber(item.views)}</span>
                     <span>팔로워 {item.accountFollowers ? compactNumber(item.accountFollowers) : '-'}</span>
                     <span>폭발 {getReferenceVirality(item) ? `${getReferenceVirality(item).toFixed(1)}x` : '-'}</span>
-                    <span>좋아요 {compactNumber(item.likes)}</span>
-                    <span>댓글 {compactNumber(item.comments)}</span>
-                    <span>공유 {compactNumber(item.shares)}</span>
+                    <span>좋아요 {compactOptionalNumber(item.likes, '-')}</span>
+                    <span>댓글 {compactOptionalNumber(item.comments, '-')}</span>
+                    <span>공유 {compactOptionalNumber(item.shares, '-')}</span>
                   </div>
                   <div className="reference-insight-grid">
                     <div>
