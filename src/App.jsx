@@ -3035,6 +3035,7 @@ function App() {
     mode: 'idle',
     message: '',
   })
+  const [referenceSearchResultUrls, setReferenceSearchResultUrls] = useState(null)
   const [isReferenceManualFormOpen, setIsReferenceManualFormOpen] = useState(false)
   const [fulfillmentDraft, setFulfillmentDraft] = useState(createEmptyFulfillmentDraft)
 
@@ -3307,8 +3308,11 @@ function App() {
   )
   const visibleReferences = useMemo(() => {
     const searchTerm = referenceFilters.appliedQuery.trim().toLowerCase()
+    const hasScopedSearchResults = Array.isArray(referenceSearchResultUrls)
+    const resultUrlSet = new Set((referenceSearchResultUrls ?? []).map((url) => String(url || '').toLowerCase()))
     const filtered = selectedCampaignReferences.filter(
       (item) =>
+        (!hasScopedSearchResults || resultUrlSet.has(String(item.url || '').toLowerCase())) &&
         (referenceFilters.country === '전체' || item.country === referenceFilters.country) &&
         (referenceFilters.mediaType === '전체' || item.mediaType === referenceFilters.mediaType) &&
         (referenceFilters.platform === '전체' || item.platform === referenceFilters.platform) &&
@@ -3325,7 +3329,7 @@ function App() {
       if (referenceFilters.sort === 'recent') return Number(b.id || 0) - Number(a.id || 0)
       return Number(b.views || 0) - Number(a.views || 0)
     })
-  }, [referenceFilters, selectedCampaignReferences])
+  }, [referenceFilters, referenceSearchResultUrls, selectedCampaignReferences])
   const referencePageSize = 12
   const referenceTotalPages = Math.max(1, Math.ceil(visibleReferences.length / referencePageSize))
   const safeReferencePage = Math.min(Math.max(referencePage, 1), referenceTotalPages)
@@ -6914,6 +6918,7 @@ function App() {
     event.preventDefault()
     const query = referenceFilters.query.trim()
     setReferencePage(1)
+    setReferenceSearchResultUrls([])
     setReferenceFilters((current) => ({
       ...current,
       appliedQuery: '',
@@ -6959,6 +6964,7 @@ function App() {
           savedAt: nowLabel(),
         })),
       )
+      const resultUrls = incoming.map((item) => item.url).filter(Boolean)
       const existingUrls = new Set((contentReferences ?? []).map((item) => String(item.url || '').toLowerCase()))
       const newCount = incoming.filter((item) => !existingUrls.has(String(item.url || '').toLowerCase())).length
 
@@ -6976,6 +6982,11 @@ function App() {
       })
 
       setReferencePage(1)
+      setReferenceSearchResultUrls(resultUrls)
+      setReferenceFilters((current) => ({
+        ...current,
+        appliedQuery: '',
+      }))
       setReferenceSearchStatus({
         mode: 'success',
         message: `${incoming.length}개 검색, 중복 제외 후 ${newCount}개 새 레퍼런스를 추가했습니다.`,
@@ -6990,6 +7001,7 @@ function App() {
 
   const resetReferenceSearch = () => {
     setReferencePage(1)
+    setReferenceSearchResultUrls(null)
     setReferenceFilters({
       query: '',
       appliedQuery: '',

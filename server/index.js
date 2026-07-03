@@ -536,6 +536,9 @@ async function searchContentReferences({ query, country, platform, sort, maxResu
         country,
         sort,
         maxResults: perPlatformLimit,
+      }).catch((error) => {
+        if (isRecoverableReferenceSearchError(error)) return []
+        throw error
       })
       results.push(...youtubeResults)
       continue
@@ -563,6 +566,9 @@ async function searchContentReferences({ query, country, platform, sort, maxResu
       country,
       platform: targetPlatform,
       maxResults: perPlatformLimit,
+    }).catch((error) => {
+      if (isRecoverableReferenceSearchError(error)) return []
+      throw error
     })
     results.push(...webResults)
   }
@@ -917,6 +923,10 @@ function matchesReferenceQuery(reference, query) {
     .split(/\s+/)
     .filter((token) => token.length > 1)
     .some((token) => haystack.includes(token))
+}
+
+function isRecoverableReferenceSearchError(error) {
+  return [400, 401, 403, 408, 409, 422, 429, 500, 502, 503, 504].includes(Number(error?.status || 0))
 }
 
 function normalizeTextForSearch(value) {
