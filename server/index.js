@@ -8,7 +8,7 @@ const DISCOVERY_RESULT_LIMIT = 1000
 const REFERENCE_RESULT_LIMIT = 500
 const PROFILE_SNAPSHOT_ENRICH_LIMIT = 80
 const MIN_DISCOVERY_FOLLOWERS = 1000
-const MIN_REFERENCE_KNOWN_VIEWS = 1000
+const MIN_REFERENCE_KNOWN_VIEWS = 500_000
 const MIN_REFERENCE_QUALITY_SCORE = 45
 const SEARCH_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 const SEARCH_CACHE_STALE_TTL_MS = 7 * 24 * 60 * 60 * 1000
@@ -1187,7 +1187,7 @@ function filterReferenceQuality(items, query) {
   return items
     .map((item) => ({
       ...item,
-      referenceQualityScore: item.referenceQualityScore ?? scoreReferenceQuality(item, query),
+      referenceQualityScore: scoreReferenceQuality(item, query),
     }))
     .filter((item) => isUsableContentReference(item, query))
     .sort((a, b) => Number(b.referenceQualityScore || 0) - Number(a.referenceQualityScore || 0))
@@ -1218,7 +1218,6 @@ function isUsableContentReference(item = {}, query = '') {
       item.comments,
       item.shares,
     ].some((value) => Number(value || 0) > 0)
-    if (knownViews > 0 && knownViews < MIN_REFERENCE_KNOWN_VIEWS) return false
     if (!item.thumbnailUrl && !knownContentEngagement) return false
     if (/brave search api/i.test(String(item.source || '')) && !item.thumbnailUrl && !knownEngagement) return false
     if (!item.thumbnailUrl && isLowValueReferenceText(`${item.title} ${item.analysis || ''}`)) return false
@@ -1274,6 +1273,8 @@ function sortContentReferences(results, sort) {
   return [...results].sort((a, b) => {
     if (sort === 'recent') return String(b.publishedAt || '').localeCompare(String(a.publishedAt || ''))
     if (sort === 'virality') {
+      const priorityGap = getReferenceViralPriority(b) - getReferenceViralPriority(a)
+      if (priorityGap !== 0) return priorityGap
       const aFollowers = Number(a.accountFollowers || a.followers || 0)
       const bFollowers = Number(b.accountFollowers || b.followers || 0)
       const aRatio = aFollowers ? Number(a.views || 0) / aFollowers : -1
@@ -1292,6 +1293,15 @@ function sortContentReferences(results, sort) {
     if (engagementGap !== 0) return engagementGap
     return Number(b.referenceQualityScore || 0) - Number(a.referenceQualityScore || 0)
   })
+}
+
+function getReferenceViralPriority(item = {}) {
+  const views = Number(item.views || 0)
+  const followers = Number(item.accountFollowers || item.followers || 0)
+  const ratio = followers ? views / followers : 0
+  if (views >= MIN_REFERENCE_KNOWN_VIEWS || ratio >= 5) return 2
+  if (!views) return 1
+  return 0
 }
 
 function getReferenceEngagement(item = {}) {

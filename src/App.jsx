@@ -1779,6 +1779,79 @@ function getReferenceVirality(reference) {
   return views / followers
 }
 
+function getReferencePerformanceLabel(reference) {
+  const views = Number(reference?.views || 0)
+  const virality = getReferenceVirality(reference)
+  if (views >= 500000 && virality >= 2) return `조회 ${compactNumber(views)} · 팔로워 대비 ${virality.toFixed(1)}x 터진 콘텐츠`
+  if (views >= 500000) return `조회 ${compactNumber(views)} 이상 고조회 레퍼런스`
+  if (virality >= 2) return `팔로워 대비 ${virality.toFixed(1)}x 반응 레퍼런스`
+  return '공개 반응 기반 제작 레퍼런스'
+}
+
+function buildReferenceScriptBlueprint(reference, brief = {}, campaign = {}) {
+  const product = brief.product || campaign.product || '제품'
+  const persona = brief.persona || campaign.persona || '타깃 고객'
+  const oneMessage =
+    campaign.oneMessage ||
+    `${product}가 ${persona}의 실제 사용 맥락에서 선택될 이유를 보여준다`
+  const hook = reference.hook || reference.title || '첫 3초에 문제와 결과를 동시에 보여준다'
+  const proof =
+    reference.analysis ||
+    '조회/저장/댓글이 나온 이유를 후킹, 장면 전환, CTA 구조로 분해한다.'
+  const applyIdea =
+    reference.applyIdea ||
+    '원본 문장과 화면은 복제하지 않고 구조만 차용한다.'
+
+  return [
+    `원본 레퍼런스 구조: ${hook}`,
+    `터진 이유 가설: ${proof}`,
+    `우리 브랜드 원메시지: ${oneMessage}`,
+    `변형 스크립트: "요즘 ${persona}가 가장 먼저 고민하는 건 결국 사용 전후의 차이입니다. ${product}는 이 장면에서 바로 확인할 수 있어요."`,
+    '컷 구성: 1) 문제/호기심 컷 2) 제품 등장 컷 3) 실제 사용 컷 4) 전후/근거 컷 5) 댓글/링크 CTA 컷',
+    `가이드 반영: ${applyIdea}`,
+    '주의: 원본 영상의 문장, 자막, 음악, 화면 구도를 그대로 복제하지 말고 후킹 구조와 정보 배열만 변형한다.',
+  ].join('\n')
+}
+
+function buildProductionReferenceMaterial(reference, brief = {}, campaign = {}) {
+  const performance = getReferencePerformanceLabel(reference)
+  const scriptBlueprint = buildReferenceScriptBlueprint(reference, brief, campaign)
+  const sourceName = [reference.platform, reference.mediaType, reference.country || '국가 미입력', performance]
+    .filter(Boolean)
+    .join(' · ')
+
+  return {
+    id: createId(),
+    title: `제작 레퍼런스 변형 가이드 · ${reference.title}`,
+    sourceType: '콘텐츠 레퍼런스 루프',
+    sourceName,
+    summary: [
+      performance,
+      `원본 링크: ${reference.url || '-'}`,
+      `핵심 분석: ${reference.analysis || reference.hook || reference.title}`,
+      `변형 방향: ${reference.applyIdea || '후킹 구조, 장면 순서, CTA 질문을 브랜드 메시지에 맞게 재구성'}`,
+      scriptBlueprint,
+    ]
+      .filter(Boolean)
+      .join('\n'),
+    keywords: [
+      reference.platform,
+      reference.mediaType,
+      reference.country,
+      '50만 이상 조회 레퍼런스',
+      '후킹 포인트',
+      '변형 스크립트',
+      '콘텐츠 가이드',
+    ]
+      .filter(Boolean)
+      .join(', '),
+    doSay: scriptBlueprint,
+    dontSay:
+      '원본 영상/이미지/자막/음원/문장을 그대로 복제하지 말 것. 타 브랜드명, 경쟁사 비교 단정, 과장 효능 표현은 제외할 것.',
+    createdAt: nowLabel(),
+  }
+}
+
 function inferPlatformFromUrl(value) {
   try {
     const hostname = new URL(String(value || '')).hostname.replace(/^www\./, '').toLowerCase()
@@ -7040,17 +7113,7 @@ function App() {
   const borrowReferenceForGuide = (reference) => {
     if (!reference) return
 
-    const material = {
-      id: createId(),
-      title: `제작 레퍼런스 · ${reference.title}`,
-      sourceType: '콘텐츠 레퍼런스',
-      sourceName: `${reference.platform} · ${reference.mediaType} · ${reference.country || '국가 미입력'}`,
-      summary: reference.analysis || reference.hook || reference.applyIdea || reference.title,
-      keywords: `${reference.platform}, ${reference.mediaType}, ${reference.country || ''}`.trim(),
-      doSay: [reference.hook, reference.applyIdea].filter(Boolean).join(' / '),
-      dontSay: '',
-      createdAt: nowLabel(),
-    }
+    const material = buildProductionReferenceMaterial(reference, brandBrief, selectedCampaign)
 
     updateWorkspace((current) =>
       appendActivity(
@@ -8732,6 +8795,7 @@ function App() {
               <div>
                 <span className="mini-label">Saved for Production</span>
                 <strong>제작 레퍼런스 저장 리스트</strong>
+                <p>50만+ 조회 또는 팔로워 대비 터진 콘텐츠를 변형 스크립트로 바꿔 캠페인 가이드에 반영합니다.</p>
               </div>
               <span>{savedProductionReferences.length}개 저장됨</span>
             </div>
