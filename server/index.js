@@ -1635,6 +1635,12 @@ async function fetchPublicProfileSnapshot(url) {
   }
 
   if (isTikTokUrl(safeUrl) && isTikTokPublicMirrorEnabled()) {
+    const tiktokVideoId = extractTikTokVideoId(safeUrl)
+    if (tiktokVideoId) {
+      const tiktokVideoSnapshot = await fetchTikTokPublicVideoSnapshot(safeUrl).catch(() => null)
+      if (tiktokVideoSnapshot?.metrics?.views || tiktokVideoSnapshot?.metrics?.likes) return tiktokVideoSnapshot
+    }
+
     const tiktokSnapshot = await fetchTikTokPublicStatsSnapshot(safeUrl).catch(() => null)
     if (tiktokSnapshot?.metrics?.followers) return tiktokSnapshot
   }
@@ -1763,6 +1769,72 @@ async function fetchTikTokPublicStatsSnapshot(url) {
     url,
     fetchedAt: new Date().toISOString(),
   }
+}
+
+async function fetchTikTokPublicVideoSnapshot(url) {
+  const payload = await fetchTikTokMirrorVideoJson(url)
+  const video = payload.data || {}
+  if (payload.code !== 0 || !video.id) {
+    throw httpError(502, 'TikTok public video mirror did not return video data.')
+  }
+
+  const author = video.author || {}
+  const handle = author.unique_id || extractTikTokHandle(url)
+  const followers = Number(author.follower_count || author.followers || 0)
+  const views = Number(video.play_count || video.view_count || video.views || 0)
+  const likes = Number(video.digg_count || video.like_count || video.likes || 0)
+  const comments = Number(video.comment_count || video.comments || 0)
+  const shares = Number(video.share_count || video.shares || 0)
+  const saves = Number(video.collect_count || video.save_count || video.saves || 0)
+
+  return {
+    title: video.title || '',
+    description: video.title || '',
+    image: video.cover || video.origin_cover || video.ai_dynamic_cover || author.avatar || '',
+    handle: handle ? `@${String(handle).replace(/^@/, '')}` : inferHandleFromUrl(url),
+    platform: 'TikTok',
+    mediaType: '\uC601\uC0C1',
+    publishedAt: normalizeTikTokVideoPublishedAt(video.create_time),
+    metrics: {
+      followers: followers || null,
+      views: views || null,
+      likes: likes || null,
+      comments: comments || null,
+      shares: shares || null,
+      saves: saves || null,
+    },
+    source: 'TikTok public video mirror snapshot',
+    confidence: views || likes ? 78 : 58,
+    status: 'snapshot_ready',
+    url,
+    fetchedAt: new Date().toISOString(),
+  }
+}
+
+async function fetchTikTokMirrorVideoJson(url) {
+  const params = new URLSearchParams({ url })
+  const endpoints = [
+    `https://www.tikwm.com/api/?${params}`,
+    `https://tikwm.com/api/?${params}`,
+  ]
+  let lastError = null
+
+  for (const endpoint of endpoints) {
+    try {
+      const payload = await fetchJson(endpoint, {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'CreatorOpsPublicSnapshot/1.0 (+https://creatorops-influencer-suite.onrender.com)',
+        },
+      })
+      if (payload?.code === 0 && payload.data?.id) return payload
+      lastError = httpError(502, 'TikTok public video mirror returned empty data.')
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError || httpError(502, 'TikTok public video mirror failed.')
 }
 
 async function fetchTikTokMirrorJson(params) {
@@ -2491,6 +2563,26 @@ function extractTikTokHandle(value) {
     const match = String(value || '').match(/@([A-Za-z0-9._-]+)/)
     return match?.[1] || ''
   }
+}
+
+function extractTikTokVideoId(value) {
+  try {
+    const url = new URL(String(value || '').trim())
+    const segments = url.pathname.split('/').filter(Boolean)
+    const videoIndex = segments.findIndex((segment) => segment === 'video')
+    if (videoIndex >= 0) return segments[videoIndex + 1] || ''
+  } catch {
+    const match = String(value || '').match(/\/video\/(\d{8,})/)
+    return match?.[1] || ''
+  }
+  return ''
+}
+
+function normalizeTikTokVideoPublishedAt(value) {
+  const timestamp = Number(value || 0)
+  if (!timestamp) return ''
+  const milliseconds = timestamp > 10_000_000_000 ? timestamp : timestamp * 1000
+  return new Date(milliseconds).toISOString().slice(0, 10)
 }
 
 function validatePublicSnapshotUrl(value) {
