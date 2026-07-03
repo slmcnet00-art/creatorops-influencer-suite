@@ -2261,6 +2261,7 @@ function looksLikeBrandOrPlatformAccount(profile = {}) {
   ].filter(Boolean).join(' ').toLowerCase()
   if (!text) return false
   if (/instagram'?s @creators|@creators|@influencer|creator marketplace/.test(text)) return true
+  if (/(?:^|[@._\s-])official(?:[._\s-]|$)|official(?:[._\s-]|$)/.test(text)) return true
   if (/(^|[._\s-])(official|brand|store|shop|mall|korea|kr)([._\s-]|$)/.test(text)) {
     return !/(creator|influencer|reviewer|blogger|\uD06C\uB9AC\uC5D0\uC774\uD130|\uC778\uD50C\uB8E8\uC5B8\uC11C|\uB9AC\uBDF0\uC5B4|\uBE14\uB85C\uAC70)/.test(text)
   }
