@@ -36,8 +36,8 @@ const DISCOVERY_STOP_WORDS = new Set([
 ])
 
 const DISCOVERY_GENERIC_TERMS = new Set([
-  'food', 'cook', 'cooking', 'beauty', 'makeup', 'skincare', 'cosmetic', 'pet', 'dog', 'cat', 'fashion', 'fitness', 'travel', 'daily', 'life', 'lifestyle',
-  '\uD478\uB4DC', '\uC74C\uC2DD', '\uBDF0\uD2F0', '\uD654\uC7A5\uD488', '\uD3AB', '\uBC18\uB824', '\uAC15\uC544\uC9C0', '\uACE0\uC591\uC774', '\uD328\uC158', '\uC6B4\uB3D9', '\uC5EC\uD589',
+  'food', 'cook', 'cooking', 'beauty', 'makeup', 'skincare', 'kbeauty', 'korean', 'cosmetic', 'pet', 'dog', 'cat', 'fashion', 'fitness', 'travel', 'daily', 'life', 'lifestyle',
+  '\uD478\uB4DC', '\uC74C\uC2DD', '\uBDF0\uD2F0', '\uD654\uC7A5\uD488', '\uC2A4\uD0A8\uCF00\uC5B4', '\uD3AB', '\uBC18\uB824', '\uAC15\uC544\uC9C0', '\uACE0\uC591\uC774', '\uD328\uC158', '\uC6B4\uB3D9', '\uC5EC\uD589',
 ])
 
 function tokenizeDiscoveryIntent(query) {
@@ -51,7 +51,13 @@ function tokenizeDiscoveryIntent(query) {
 }
 
 function buildDiscoveryIntentContext(query) {
-  const tokens = tokenizeDiscoveryIntent(query)
+  const baseTokens = tokenizeDiscoveryIntent(query)
+  const queryText = String(query || '').toLowerCase()
+  const expansionTokens = []
+  if (hasBeautyDiscoveryIntent(queryText)) expansionTokens.push('beauty', 'skincare', 'kbeauty', 'korean')
+  if (hasFoodDiscoveryIntent(queryText)) expansionTokens.push('food', 'recipe', 'cook', 'cooking')
+  if (hasPetDiscoveryIntent(queryText)) expansionTokens.push('pet', 'dog', 'cat')
+  const tokens = [...new Set([...baseTokens, ...expansionTokens])]
   const requiredTokens = tokens.filter((term) => !DISCOVERY_GENERIC_TERMS.has(term))
   const genericTokens = tokens.filter((term) => DISCOVERY_GENERIC_TERMS.has(term))
   return { tokens, requiredTokens, genericTokens }
@@ -576,8 +582,7 @@ async function searchContentReferences({ query, country, platform, sort, maxResu
   const deduped = dedupeContentReferences(results)
   const qualified = filterReferenceQuality(deduped, query)
   const relevant = filterAndRankDiscoveryIntent(qualified, query)
-  const finalResults = relevant.length ? relevant : qualified
-  return sortContentReferences(finalResults, sort).slice(0, maxResults)
+  return sortContentReferences(relevant, sort).slice(0, maxResults)
 }
 
 async function searchYouTubeVideoReferences({ query, country, sort, maxResults }) {
