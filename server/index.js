@@ -2260,10 +2260,13 @@ function looksLikeBrandOrPlatformAccount(profile = {}) {
     profile.sourceTitle,
   ].filter(Boolean).join(' ').toLowerCase()
   if (!text) return false
+  const creatorSignal = /(creator|influencer|reviewer|blogger|artist|model|personal|daily|\uD06C\uB9AC\uC5D0\uC774\uD130|\uC778\uD50C\uB8E8\uC5B8\uC11C|\uB9AC\uBDF0\uC5B4|\uBE14\uB85C\uAC70|\uBDF0\uC2A4\uD0C0)/.test(text)
   if (/instagram'?s @creators|@creators|@influencer|creator marketplace/.test(text)) return true
   if (/(?:^|[@._\s-])official(?:[._\s-]|$)|official(?:[._\s-]|$)/.test(text)) return true
+  if (!creatorSignal && /(beauty\s*global|seoul\s*beauty|korean\s*skincare|beauty\s*barn|cosmetic\s*shop|skincare\s*shop|skin\s*care\s*shop|derma\s*factory)/.test(text)) return true
+  if (!creatorSignal && /(^|[._\s-])(global|store|shop|mall|brand|cosmetics|clinic|factory|lab|company|co|inc|india|usa|uae)([._\s-]|$)/.test(text)) return true
   if (/(^|[._\s-])(official|brand|store|shop|mall|korea|kr)([._\s-]|$)/.test(text)) {
-    return !/(creator|influencer|reviewer|blogger|\uD06C\uB9AC\uC5D0\uC774\uD130|\uC778\uD50C\uB8E8\uC5B8\uC11C|\uB9AC\uBDF0\uC5B4|\uBE14\uB85C\uAC70)/.test(text)
+    return !creatorSignal
   }
   return false
 }
