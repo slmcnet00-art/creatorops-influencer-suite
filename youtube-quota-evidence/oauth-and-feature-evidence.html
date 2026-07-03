@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CreatorOps YouTube API Evidence</title>
+  <style>
+    body { font-family: Arial, sans-serif; color: #111827; line-height: 1.55; margin: 42px; }
+    h1 { font-size: 28px; margin-bottom: 4px; }
+    h2 { font-size: 18px; margin-top: 26px; border-bottom: 1px solid #d1d5db; padding-bottom: 6px; }
+    h3 { font-size: 15px; margin-top: 18px; }
+    ul { margin-top: 8px; }
+    .muted { color: #6b7280; }
+    .box { border: 1px solid #d1d5db; border-radius: 8px; padding: 14px; margin: 12px 0; background: #f9fafb; }
+    code { background: #eef2ff; padding: 2px 5px; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <h1>CreatorOps Influencer Suite - YouTube API Evidence</h1>
+  <p class="muted">Prepared for YouTube Data API quota extension review. Last updated: July 3, 2026.</p>
+
+  <h2>1. Product Overview</h2>
+  <p>CreatorOps Influencer Suite is a web-based influencer campaign management platform for brands and agencies. The platform helps users discover public creators, review public channel and video performance, manage outreach, track campaign content, and generate reports.</p>
+  <div class="box"><strong>Application URL:</strong> https://creatorops-influencer-suite.onrender.com<br><strong>Privacy Policy:</strong> https://creatorops-influencer-suite.onrender.com/privacy<br><strong>Terms of Service:</strong> https://creatorops-influencer-suite.onrender.com/terms</div>
+
+  <h2>2. YouTube API Use Cases</h2>
+  <ul>
+    <li>Search public YouTube channels related to a brand campaign brief.</li>
+    <li>Retrieve public channel statistics such as subscriber count, total views, video count, and country when available.</li>
+    <li>Search public videos as content references for campaign planning.</li>
+    <li>Retrieve public video statistics such as views, likes, comments, and publish date.</li>
+    <li>Help brand teams compare creators and content references before outreach.</li>
+    <li>Track public campaign content performance after creators upload collaboration content.</li>
+  </ul>
+
+  <h2>3. Endpoints Used</h2>
+  <ul>
+    <li><code>youtube.search.list</code> - public channel and video discovery.</li>
+    <li><code>youtube.channels.list</code> - public channel statistics and metadata.</li>
+    <li><code>youtube.videos.list</code> - public video statistics and metadata.</li>
+  </ul>
+  <p>The service does not use <code>youtube.videos.insert</code>, does not upload videos, and does not modify or delete YouTube content.</p>
+
+  <h2>4. OAuth and User Login</h2>
+  <p>Users log in to CreatorOps Influencer Suite to manage their own brand campaigns, creator discovery lists, outreach workflow, and campaign reports. YouTube Data API access is mainly used to retrieve public YouTube channel and video data. We do not require users to grant access to private YouTube account data for creator discovery.</p>
+  <p>Google OAuth may be used for Google Workspace features such as Gmail sending and Google Sheets export. These are separate from public YouTube discovery and are used only with user authorization.</p>
+
+  <h2>5. Data Handling</h2>
+  <ul>
+    <li>We only use publicly available YouTube channel and video data.</li>
+    <li>We do not collect private YouTube user data.</li>
+    <li>We do not store YouTube OAuth tokens for private YouTube account access.</li>
+    <li>We do not allow users to download or redistribute YouTube videos.</li>
+    <li>We store public metadata such as channel URLs, video URLs, subscriber counts, view counts, like counts, comment counts, publish dates, and campaign notes.</li>
+    <li>We cache repeated search results to reduce unnecessary API calls and quota usage.</li>
+  </ul>
+
+  <h2>6. User Flow</h2>
+  <ol>
+    <li>A brand or agency user logs in to CreatorOps Influencer Suite.</li>
+    <li>The user creates a campaign and enters brand, product, target persona, keywords, campaign schedule, KPI, and target creator count.</li>
+    <li>The user opens the Discovery page and searches for creators by keyword, platform, category, and country.</li>
+    <li>The platform uses YouTube Data API endpoints to find public YouTube channels/videos and retrieve public metrics.</li>
+    <li>The user reviews candidates, saves selected creators to a pre-message candidate pool, and prepares outreach.</li>
+    <li>After campaign content is uploaded, the user registers public content URLs and refreshes public performance metrics for reporting.</li>
+  </ol>
+
+  <h2>7. Requested Quota</h2>
+  <ul>
+    <li>Total daily quota: 100,000 units per day.</li>
+    <li>Maximum per-minute quota: 600 units per minute.</li>
+    <li>Search Queries per day: 10,000 initially, preferably 50,000 per day.</li>
+  </ul>
+
+  <h2>8. Compliance Statement</h2>
+  <p>CreatorOps Influencer Suite will comply with the YouTube API Services Terms of Service, Google Privacy Policy requirements, and applicable developer policies. Users can access the privacy policy and terms from the application interface.</p>
+</body>
+</html>

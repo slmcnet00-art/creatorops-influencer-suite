@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import {
   ArrowUpRight,
   BarChart3,
@@ -7190,6 +7190,11 @@ function App() {
           >
             <Settings size={19} />
           </button>
+          <div className="legal-links" aria-label="Legal links">
+            <a href="/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>
+            <span>·</span>
+            <a href="/terms" target="_blank" rel="noreferrer">Terms</a>
+          </div>
         </div>
       </aside>
 
@@ -11503,4 +11508,5 @@ function Modal({ title, children, onClose, variant = '' }) {
 }
 
 export default App
+
 

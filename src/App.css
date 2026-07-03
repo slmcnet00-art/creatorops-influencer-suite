@@ -105,7 +105,29 @@
 
 .sidebar-bottom-actions {
   display: flex;
-  justify-content: flex-start;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.legal-links {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  color: var(--text-soft);
+  font-size: 11px;
+  line-height: 1.35;
+}
+
+.legal-links a {
+  color: var(--text-soft);
+  text-decoration: none;
+}
+
+.legal-links a:hover {
+  color: var(--text-strong);
+  text-decoration: underline;
 }
 
 .sidebar-settings-button {
@@ -6069,3 +6091,4 @@
     bottom: 12px;
   }
 }
+
