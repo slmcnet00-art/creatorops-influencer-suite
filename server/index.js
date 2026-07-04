@@ -1745,7 +1745,8 @@ async function fetchTikTokPublicStatsSnapshot(url) {
   const followers = Number(stats.followerCount || 0)
   const likes = Number(stats.heartCount || stats.heart || 0)
   const videoCount = Number(stats.videoCount || 0)
-  const averageViews = videoCount && likes ? Math.round(likes / Math.max(videoCount, 1)) : null
+  const videoCollection = await fetchTikTokPublicUserVideosSnapshot(handle).catch(() => null)
+  const averageViews = videoCollection?.averageViews || (videoCount && likes ? Math.round(likes / Math.max(videoCount, 1)) : null)
 
   return {
     title: user.nickname || handle,
@@ -1762,12 +1763,67 @@ async function fetchTikTokPublicStatsSnapshot(url) {
       shares: null,
       saves: null,
       videos: videoCount || null,
+      topViews: videoCollection?.topViews || null,
     },
-    source: 'TikTok public mirror snapshot',
-    confidence: 58,
+    recentVideos: videoCollection?.videos || [],
+    source: videoCollection?.videos?.length
+      ? 'TikTok public mirror snapshot + TikTok public video collection snapshot'
+      : 'TikTok public mirror snapshot',
+    confidence: videoCollection?.videos?.length ? 72 : 58,
     status: 'snapshot_ready',
     url,
     fetchedAt: new Date().toISOString(),
+  }
+}
+
+async function fetchTikTokPublicUserVideosSnapshot(handle, count = 12) {
+  if (!handle) return null
+  await delay(1100)
+  const payload = await fetchTikTokMirrorUserVideosJson(handle, count)
+  const videos = (payload.data?.videos || [])
+    .map((video) => normalizeTikTokCollectionVideo(video, handle))
+    .filter(Boolean)
+  if (!videos.length) return null
+
+  const viewCounts = videos.map((video) => Number(video.views || 0)).filter((views) => views > 0)
+  const averageViews = viewCounts.length
+    ? Math.round(viewCounts.reduce((sum, views) => sum + views, 0) / viewCounts.length)
+    : null
+  const topViews = viewCounts.length ? Math.max(...viewCounts) : null
+
+  return {
+    videos,
+    averageViews,
+    topViews,
+    count: videos.length,
+    hasMore: Boolean(payload.data?.hasMore),
+    cursor: payload.data?.cursor || '',
+  }
+}
+
+function normalizeTikTokCollectionVideo(video = {}, fallbackHandle = '') {
+  const videoId = video.video_id || video.id || ''
+  if (!videoId) return null
+  const authorHandle = video.author?.unique_id || fallbackHandle
+  const url = authorHandle ? `https://www.tiktok.com/@${authorHandle}/video/${videoId}` : ''
+  const views = Number(video.play_count || video.view_count || video.views || 0)
+  const likes = Number(video.digg_count || video.like_count || video.likes || 0)
+  const comments = Number(video.comment_count || video.comments || 0)
+  const shares = Number(video.share_count || video.shares || 0)
+  const saves = Number(video.collect_count || video.save_count || video.saves || 0)
+
+  return {
+    id: videoId,
+    title: video.title || '',
+    url,
+    thumbnailUrl: video.cover || video.origin_cover || video.ai_dynamic_cover || '',
+    views: views || null,
+    likes: likes || null,
+    comments: comments || null,
+    shares: shares || null,
+    saves: saves || null,
+    publishedAt: normalizeTikTokVideoPublishedAt(video.create_time),
+    country: video.region || '',
   }
 }
 
@@ -1835,6 +1891,35 @@ async function fetchTikTokMirrorVideoJson(url) {
   }
 
   throw lastError || httpError(502, 'TikTok public video mirror failed.')
+}
+
+async function fetchTikTokMirrorUserVideosJson(handle, count = 12) {
+  const params = new URLSearchParams({
+    unique_id: String(handle || '').replace(/^@/, ''),
+    count: String(clamp(Number(count || 12), 1, 35)),
+  })
+  const endpoints = [
+    `https://www.tikwm.com/api/user/posts?${params}`,
+    `https://tikwm.com/api/user/posts?${params}`,
+  ]
+  let lastError = null
+
+  for (const endpoint of endpoints) {
+    try {
+      const payload = await fetchJson(endpoint, {
+        headers: {
+          Accept: 'application/json',
+          'User-Agent': 'CreatorOpsPublicSnapshot/1.0 (+https://creatorops-influencer-suite.onrender.com)',
+        },
+      })
+      if (payload?.code === 0 && Array.isArray(payload.data?.videos)) return payload
+      lastError = httpError(502, 'TikTok public video collection returned empty data.')
+    } catch (error) {
+      lastError = error
+    }
+  }
+
+  throw lastError || httpError(502, 'TikTok public video collection failed.')
 }
 
 async function fetchTikTokMirrorJson(params) {
@@ -1982,6 +2067,12 @@ function firstJsonMetric(text, keys) {
 
 function escapeRegExp(value) {
   return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function delay(milliseconds) {
+  return new Promise((resolve) => {
+    setTimeout(resolve, milliseconds)
+  })
 }
 
 function extractJsonMetric(text, key) {
