@@ -1864,6 +1864,7 @@ async function fetchTikTokMirrorJson(params) {
 
 function normalizeHtmlSnapshot(html, url) {
   const plain = stripHtml(html)
+  const platform = inferReferencePlatform(url)
   const title =
     pickMetaContent(html, 'og:title') ||
     pickMetaContent(html, 'twitter:title') ||
@@ -1876,15 +1877,19 @@ function normalizeHtmlSnapshot(html, url) {
     ''
   const image = pickMetaContent(html, 'og:image') || pickMetaContent(html, 'twitter:image') || ''
   const combined = `${title} ${description} ${plain.slice(0, 8000)}`
+  const publicMetrics = extractPublicMetrics(combined)
+  const structuredMetrics = platform === 'Instagram' ? extractInstagramPublicMetrics(html, description) : {}
 
   return {
     title: decodeHtmlEntities(title),
     description: decodeHtmlEntities(description),
     image,
-    handle: inferHandleFromUrl(url),
-    metrics: extractPublicMetrics(combined),
-    source: 'Public page snapshot',
-    confidence: description ? 64 : 42,
+    handle: platform === 'Instagram' ? inferInstagramHandleFromHtml(html, url) : inferHandleFromUrl(url),
+    platform: platform === 'Other' ? undefined : platform,
+    mediaType: inferReferenceMediaType(url, platform),
+    metrics: mergeMetricObjects(publicMetrics, structuredMetrics),
+    source: platform === 'Instagram' ? 'Instagram public page snapshot' : 'Public page snapshot',
+    confidence: platform === 'Instagram' && Object.values(structuredMetrics).some(Boolean) ? 72 : description ? 64 : 42,
   }
 }
 
@@ -1898,6 +1903,142 @@ function normalizeJsonSnapshot(payload, url) {
     metrics: extractPublicMetrics(text),
     source: 'Public oEmbed/JSON snapshot',
     confidence: 68,
+  }
+}
+
+function extractInstagramPublicMetrics(html, description = '') {
+  const decodedHtml = decodeHtmlEntities(String(html || ''))
+  const decodedDescription = decodeHtmlEntities(String(description || ''))
+  const searchText = `${decodedDescription} ${decodedHtml.slice(0, 120000)}`
+
+  const fromDescription = extractInstagramDescriptionMetrics(decodedDescription)
+  const fromJson = {
+    views: firstJsonMetric(decodedHtml, [
+      'video_view_count',
+      'video_play_count',
+      'play_count',
+      'view_count',
+      'ig_play_count',
+    ]),
+    likes: firstJsonMetric(decodedHtml, [
+      'like_count',
+      'edge_media_preview_like.count',
+      'edge_liked_by.count',
+    ]),
+    comments: firstJsonMetric(decodedHtml, [
+      'comment_count',
+      'edge_media_to_comment.count',
+    ]),
+    shares: firstJsonMetric(decodedHtml, [
+      'share_count',
+      'reshare_count',
+    ]),
+    saves: firstJsonMetric(decodedHtml, [
+      'save_count',
+      'saved_count',
+    ]),
+    followers: firstJsonMetric(decodedHtml, [
+      'follower_count',
+      'edge_followed_by.count',
+    ]),
+  }
+
+  const fromLooseText = {
+    views: extractMetricFromTextSafe(searchText, 'views'),
+    followers: extractMetricFromTextSafe(searchText, 'followers'),
+  }
+
+  return mergeMetricObjects(fromLooseText, fromJson, fromDescription)
+}
+
+function extractInstagramDescriptionMetrics(description = '') {
+  const text = decodeHtmlEntities(description).replace(/\s+/g, ' ')
+  const english = text.match(/([\d.,]+)\s*([KMB])?\s+likes?,\s*([\d.,]+)\s*([KMB])?\s+comments?/i)
+  if (english) {
+    return {
+      likes: parseMetricNumberSafe(english[1], english[2]),
+      comments: parseMetricNumberSafe(english[3], english[4]),
+    }
+  }
+
+  const koreanLikes = text.match(/\uC88B\uC544\uC694\s*([\d.,]+)\s*([KMB]|\uCC9C|\uB9CC|\uC5B5)?/i)
+    || text.match(/([\d.,]+)\s*([KMB]|\uCC9C|\uB9CC|\uC5B5)?\s*\uAC1C?\s*\uC88B\uC544\uC694/i)
+  const koreanComments = text.match(/\uB313\uAE00\s*([\d.,]+)\s*([KMB]|\uCC9C|\uB9CC|\uC5B5)?/i)
+    || text.match(/([\d.,]+)\s*([KMB]|\uCC9C|\uB9CC|\uC5B5)?\s*\uAC1C?\s*\uB313\uAE00/i)
+
+  return {
+    likes: parseMetricNumberSafe(koreanLikes?.[1], koreanLikes?.[2]),
+    comments: parseMetricNumberSafe(koreanComments?.[1], koreanComments?.[2]),
+  }
+}
+
+function firstJsonMetric(text, keys) {
+  for (const key of keys) {
+    const value = extractJsonMetric(text, key)
+    if (value) return value
+  }
+  return null
+}
+
+function escapeRegExp(value) {
+  return String(value || '').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
+function extractJsonMetric(text, key) {
+  if (!text || !key) return null
+  if (key.includes('.')) {
+    const [parentKey, childKey] = key.split('.')
+    const parentPattern = new RegExp(`["']${escapeRegExp(parentKey)}["']\\s*:\\s*\\{[^{}]{0,900}?["']${escapeRegExp(childKey)}["']\\s*:\\s*([\\d.,]+)`, 'i')
+    const parentMatch = text.match(parentPattern)
+    const parentValue = parseMetricNumberSafe(parentMatch?.[1])
+    if (parentValue) return parentValue
+  }
+
+  const patterns = [
+    new RegExp(`["']${escapeRegExp(key)}["']\\s*:\\s*([\\d.,]+)`, 'i'),
+    new RegExp(`&quot;${escapeRegExp(key)}&quot;\\s*:\\s*([\\d.,]+)`, 'i'),
+  ]
+  for (const pattern of patterns) {
+    const match = text.match(pattern)
+    const value = parseMetricNumberSafe(match?.[1])
+    if (value) return value
+  }
+  return null
+}
+
+function mergeMetricObjects(...sources) {
+  return sources.reduce((merged, source) => {
+    Object.entries(source || {}).forEach(([key, value]) => {
+      if (value !== null && value !== undefined && value !== '' && !merged[key]) {
+        merged[key] = value
+      }
+    })
+    return merged
+  }, {})
+}
+
+function inferInstagramHandleFromHtml(html, url) {
+  const ogUrl = pickMetaContent(html, 'og:url')
+  const fromOgUrl = inferInstagramHandleFromUrl(ogUrl)
+  if (fromOgUrl) return fromOgUrl
+
+  const fromUrl = inferInstagramHandleFromUrl(url)
+  if (fromUrl) return fromUrl
+
+  const title = decodeHtmlEntities(pickMetaContent(html, 'og:title') || pickTitle(html) || '')
+  const titleMatch = title.match(/@([A-Za-z0-9._]{2,30})/)
+  return titleMatch?.[1] ? `@${titleMatch[1]}` : inferHandleFromUrl(url)
+}
+
+function inferInstagramHandleFromUrl(value) {
+  try {
+    const url = new URL(String(value || '').trim())
+    const segments = url.pathname.split('/').filter(Boolean)
+    const blocked = new Set(['p', 'reel', 'tv', 'stories', 'explore'])
+    const handle = segments.find((segment) => !blocked.has(segment.toLowerCase()) && isInstagramProfileHandle(segment))
+    return handle ? `@${handle}` : ''
+  } catch {
+    return ''
   }
 }
 
