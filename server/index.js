@@ -1932,6 +1932,9 @@ async function fetchInstagramRenderedReelsSnapshot(url) {
   const handle = extractInstagramProfileHandle(url)
   if (!handle) throw httpError(400, 'Instagram profile handle could not be parsed from the URL.')
 
+  const externalSnapshot = await fetchInstagramExternalRenderedReelsSnapshot(handle).catch(() => null)
+  if (externalSnapshot?.recentVideos?.length) return externalSnapshot
+
   const { chromium } = await import('playwright')
   const executablePath = getChromiumExecutablePath()
   const launchOptions = {
@@ -2035,6 +2038,175 @@ function dedupeInstagramRenderedVideos(links = []) {
     })
     .filter(Boolean)
     .slice(0, 24)
+}
+
+async function fetchInstagramExternalRenderedReelsSnapshot(handle) {
+  const customEndpoint = process.env.INSTAGRAM_RENDER_API_URL || ''
+  if (customEndpoint) {
+    const customSnapshot = await fetchInstagramCustomRenderSnapshot(customEndpoint, handle).catch(() => null)
+    if (customSnapshot?.recentVideos?.length) return customSnapshot
+  }
+
+  if (process.env.BROWSERLESS_TOKEN) {
+    const browserlessSnapshot = await fetchInstagramBrowserlessContentSnapshot(handle).catch(() => null)
+    if (browserlessSnapshot?.recentVideos?.length) return browserlessSnapshot
+  }
+
+  return null
+}
+
+async function fetchInstagramCustomRenderSnapshot(endpoint, handle) {
+  const reelsUrl = `https://www.instagram.com/${handle}/reels/`
+  const headers = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+  }
+  if (process.env.INSTAGRAM_RENDER_API_KEY) {
+    headers.Authorization = `Bearer ${process.env.INSTAGRAM_RENDER_API_KEY}`
+  }
+
+  const payload = await fetchJson(endpoint, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({
+      platform: 'Instagram',
+      handle,
+      url: reelsUrl,
+      waitMs: getInstagramRenderWaitMs(),
+      timeoutMs: getInstagramRenderTimeoutMs(),
+    }),
+  })
+
+  return normalizeInstagramRenderedPayload(payload?.data || payload, handle, 'Instagram external render API snapshot')
+}
+
+async function fetchInstagramBrowserlessContentSnapshot(handle) {
+  const reelsUrl = `https://www.instagram.com/${handle}/reels/`
+  const baseUrl = String(process.env.BROWSERLESS_CONTENT_URL || 'https://production-sfo.browserless.io/content').trim()
+  const endpoint = appendQueryParam(baseUrl, 'token', process.env.BROWSERLESS_TOKEN)
+  const response = await fetch(endpoint, {
+    method: 'POST',
+    headers: {
+      Accept: 'text/html,application/json;q=0.9,*/*;q=0.8',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      url: reelsUrl,
+      gotoOptions: {
+        waitUntil: 'networkidle0',
+        timeout: getInstagramRenderTimeoutMs(),
+      },
+      waitForTimeout: getInstagramRenderWaitMs(),
+    }),
+  })
+  const contentType = response.headers.get('content-type') || ''
+  const text = await response.text()
+  if (!response.ok) {
+    throw httpError(response.status, 'Browserless Instagram render request failed.')
+  }
+
+  if (contentType.includes('json')) {
+    const payload = JSON.parse(text)
+    const normalized = normalizeInstagramRenderedPayload(payload?.data || payload, handle, 'Browserless Instagram render snapshot')
+    if (normalized?.recentVideos?.length) return normalized
+  }
+
+  return normalizeInstagramRenderedPayload(
+    {
+      html: text,
+      links: extractInstagramReelLinksFromHtml(text),
+      bodyText: stripHtml(text),
+    },
+    handle,
+    'Browserless Instagram render snapshot',
+  )
+}
+
+function normalizeInstagramRenderedPayload(payload = {}, handle, source) {
+  const links = Array.isArray(payload.links)
+    ? payload.links
+    : Array.isArray(payload.reels)
+      ? payload.reels
+      : Array.isArray(payload.recentVideos)
+        ? payload.recentVideos
+        : []
+  const videos = payload.recentVideos?.length
+    ? payload.recentVideos.map((video) => ({
+        id: video.id || extractInstagramShortcode(video.url),
+        title: video.title || '',
+        url: video.url,
+        thumbnailUrl: video.thumbnailUrl || video.thumbnail || '',
+        views: Number(video.views || 0) || null,
+        likes: Number(video.likes || 0) || null,
+        comments: Number(video.comments || 0) || null,
+        shares: Number(video.shares || 0) || null,
+        saves: Number(video.saves || 0) || null,
+        publishedAt: video.publishedAt || '',
+        country: video.country || '',
+      })).filter((video) => video.url && video.views)
+    : dedupeInstagramRenderedVideos(links)
+  if (!videos.length) return null
+
+  const viewCounts = videos.map((video) => Number(video.views || 0)).filter((views) => views > 0)
+  const averageViews = viewCounts.length
+    ? Math.round(viewCounts.reduce((sum, views) => sum + views, 0) / viewCounts.length)
+    : null
+  const topViews = viewCounts.length ? Math.max(...viewCounts) : null
+  const bodyText = payload.bodyText || payload.text || stripHtml(payload.html || '')
+  const followers = Number(payload.metrics?.followers || payload.followers || 0)
+    || extractMetricFromTextSafe(bodyText, 'followers')
+
+  return {
+    title: payload.title || handle,
+    description: String(bodyText || '').slice(0, 1000),
+    image: payload.image || payload.thumbnailUrl || '',
+    handle: `@${handle}`,
+    platform: 'Instagram',
+    mediaType: '\uC601\uC0C1',
+    metrics: {
+      followers: followers || null,
+      views: averageViews,
+      likes: null,
+      comments: null,
+      shares: null,
+      saves: null,
+      videos: videos.length,
+      topViews,
+    },
+    recentVideos: videos.slice(0, 24),
+    source,
+    confidence: 78,
+    status: 'snapshot_ready',
+    url: `https://www.instagram.com/${handle}/reels/`,
+    fetchedAt: new Date().toISOString(),
+  }
+}
+
+function extractInstagramReelLinksFromHtml(html) {
+  const links = []
+  const pattern = /<a\b[^>]*href=["']([^"']*\/reel\/[^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi
+  let match = pattern.exec(String(html || ''))
+  while (match) {
+    links.push({
+      url: normalizeInstagramLinkUrl(match[1]),
+      text: stripHtml(match[2]),
+    })
+    match = pattern.exec(String(html || ''))
+  }
+  return links
+}
+
+function normalizeInstagramLinkUrl(value) {
+  const raw = decodeHtmlEntities(String(value || '')).split('?')[0]
+  if (!raw) return ''
+  if (raw.startsWith('http')) return raw
+  return `https://www.instagram.com${raw.startsWith('/') ? '' : '/'}${raw}`
+}
+
+function appendQueryParam(value, key, paramValue) {
+  const url = new URL(String(value || '').trim())
+  if (paramValue) url.searchParams.set(key, paramValue)
+  return url.toString()
 }
 
 function parseSocialMetricText(value) {

@@ -52,6 +52,14 @@ services:
         value: 30000
       - key: INSTAGRAM_RENDER_WAIT_MS
         value: 8000
+      - key: INSTAGRAM_RENDER_API_URL
+        sync: false
+      - key: INSTAGRAM_RENDER_API_KEY
+        sync: false
+      - key: BROWSERLESS_TOKEN
+        sync: false
+      - key: BROWSERLESS_CONTENT_URL
+        value: https://production-sfo.browserless.io/content
       - key: OPENAI_API_KEY
         sync: false
       - key: OPENAI_MODEL
