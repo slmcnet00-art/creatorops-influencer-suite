@@ -17,7 +17,7 @@ services:
   - type: web
     name: creatorops-suite-api
     runtime: node
-    buildCommand: npm install && npx playwright install --with-deps chromium
+    buildCommand: npm install && npx playwright install chromium
     startCommand: npm run api:dev
     envVars:
       - key: NODE_VERSION
