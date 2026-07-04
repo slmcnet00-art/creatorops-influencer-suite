@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import cors from 'cors'
 import express from 'express'
+import { existsSync } from 'node:fs'
 
 const app = express()
 const port = Number(process.env.PORT || 8787)
@@ -1645,6 +1646,11 @@ async function fetchPublicProfileSnapshot(url) {
     if (tiktokSnapshot?.metrics?.followers) return tiktokSnapshot
   }
 
+  if (isInstagramUrl(safeUrl) && isInstagramRenderedSnapshotEnabled()) {
+    const instagramSnapshot = await fetchInstagramRenderedReelsSnapshot(safeUrl).catch(() => null)
+    if (instagramSnapshot?.recentVideos?.length) return instagramSnapshot
+  }
+
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), getPublicSnapshotTimeoutMs())
 
@@ -1920,6 +1926,133 @@ async function fetchTikTokMirrorUserVideosJson(handle, count = 12) {
   }
 
   throw lastError || httpError(502, 'TikTok public video collection failed.')
+}
+
+async function fetchInstagramRenderedReelsSnapshot(url) {
+  const handle = extractInstagramProfileHandle(url)
+  if (!handle) throw httpError(400, 'Instagram profile handle could not be parsed from the URL.')
+
+  const { chromium } = await import('playwright')
+  const executablePath = getChromiumExecutablePath()
+  const launchOptions = {
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-dev-shm-usage',
+      '--disable-blink-features=AutomationControlled',
+    ],
+  }
+  if (executablePath) launchOptions.executablePath = executablePath
+
+  const browser = await chromium.launch(launchOptions)
+  try {
+    const page = await browser.newPage({
+      viewport: { width: 1365, height: 1800 },
+      locale: 'ko-KR',
+      userAgent:
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36',
+    })
+    const reelsUrl = `https://www.instagram.com/${handle}/reels/`
+    await page.goto(reelsUrl, { waitUntil: 'domcontentloaded', timeout: getInstagramRenderTimeoutMs() })
+    await page.waitForTimeout(getInstagramRenderWaitMs())
+
+    const rendered = await page.evaluate(() => {
+      const bodyText = document.body?.innerText || ''
+      const title = document.title || ''
+      const image = document.querySelector('meta[property="og:image"]')?.getAttribute('content') || ''
+      const links = [...document.querySelectorAll('a[href*="/reel/"]')]
+        .map((anchor) => ({
+          url: anchor.href,
+          text: (anchor.innerText || anchor.textContent || '').replace(/\s+/g, ' ').trim(),
+        }))
+        .filter((item) => item.url && item.text)
+      return { bodyText, title, image, links }
+    })
+
+    const videos = dedupeInstagramRenderedVideos(rendered.links)
+    if (!videos.length) {
+      throw httpError(502, 'Instagram rendered reels grid did not expose video cards.')
+    }
+
+    const viewCounts = videos.map((video) => Number(video.views || 0)).filter((views) => views > 0)
+    const averageViews = viewCounts.length
+      ? Math.round(viewCounts.reduce((sum, views) => sum + views, 0) / viewCounts.length)
+      : null
+    const topViews = viewCounts.length ? Math.max(...viewCounts) : null
+    const followers = extractMetricFromTextSafe(rendered.bodyText, 'followers')
+
+    return {
+      title: rendered.title || handle,
+      description: rendered.bodyText.slice(0, 1000),
+      image: rendered.image || '',
+      handle: `@${handle}`,
+      platform: 'Instagram',
+      mediaType: '\uC601\uC0C1',
+      metrics: {
+        followers: followers || null,
+        views: averageViews,
+        likes: null,
+        comments: null,
+        shares: null,
+        saves: null,
+        videos: videos.length,
+        topViews,
+      },
+      recentVideos: videos,
+      source: 'Instagram rendered reels grid snapshot',
+      confidence: 76,
+      status: 'snapshot_ready',
+      url: `https://www.instagram.com/${handle}/reels/`,
+      fetchedAt: new Date().toISOString(),
+    }
+  } finally {
+    await browser.close().catch(() => {})
+  }
+}
+
+function dedupeInstagramRenderedVideos(links = []) {
+  const seen = new Set()
+  return links
+    .map((item) => {
+      const url = String(item.url || '').split('?')[0]
+      const views = parseSocialMetricText(item.text)
+      if (!url || !views || seen.has(url)) return null
+      seen.add(url)
+      return {
+        id: extractInstagramShortcode(url),
+        title: '',
+        url,
+        thumbnailUrl: '',
+        views,
+        likes: null,
+        comments: null,
+        shares: null,
+        saves: null,
+        publishedAt: '',
+        country: '',
+      }
+    })
+    .filter(Boolean)
+    .slice(0, 24)
+}
+
+function parseSocialMetricText(value) {
+  const text = String(value || '').replace(/\s+/g, '').trim()
+  const match = text.match(/^([\d.,]+)([KMBkmb]|\uCC9C|\uB9CC|\uC5B5)?$/)
+  return parseMetricNumberSafe(match?.[1], match?.[2])
+}
+
+function extractInstagramShortcode(value) {
+  try {
+    const url = new URL(String(value || '').trim())
+    const segments = url.pathname.split('/').filter(Boolean)
+    const contentIndex = segments.findIndex((segment) => ['p', 'reel', 'tv'].includes(segment))
+    return contentIndex >= 0 ? segments[contentIndex + 1] || '' : ''
+  } catch {
+    const match = String(value || '').match(/\/(?:p|reel|tv)\/([^/?#]+)/)
+    return match?.[1] || ''
+  }
 }
 
 async function fetchTikTokMirrorJson(params) {
@@ -2785,6 +2918,29 @@ function isTikTokUrl(value) {
   }
 }
 
+function isInstagramUrl(value) {
+  try {
+    const hostname = new URL(value).hostname.replace(/^www\./, '').toLowerCase()
+    return hostname === 'instagram.com' || hostname.endsWith('.instagram.com')
+  } catch {
+    return false
+  }
+}
+
+function extractInstagramProfileHandle(value) {
+  try {
+    const url = new URL(String(value || '').trim())
+    const segments = url.pathname.split('/').filter(Boolean)
+    const blocked = new Set(['p', 'reel', 'tv', 'stories', 'explore', 'accounts', 'direct'])
+    const directHandle = segments.find((segment) => !blocked.has(segment.toLowerCase()) && isInstagramProfileHandle(segment))
+    if (directHandle) return directHandle
+  } catch {
+    const match = String(value || '').match(/instagram\.com\/([A-Za-z0-9._]{2,30})/i)
+    if (match?.[1] && isInstagramProfileHandle(match[1])) return match[1]
+  }
+  return ''
+}
+
 function extractTikTokHandle(value) {
   try {
     const url = new URL(String(value || '').trim())
@@ -2848,12 +3004,41 @@ function isPublicSnapshotEnabled() {
   return String(process.env.PUBLIC_SNAPSHOT_ENABLED || 'true').toLowerCase() !== 'false'
 }
 
+function isInstagramRenderedSnapshotEnabled() {
+  return String(process.env.INSTAGRAM_RENDER_SNAPSHOT_ENABLED || 'true').toLowerCase() !== 'false'
+}
+
 function isTikTokPublicMirrorEnabled() {
   return String(process.env.TIKTOK_PUBLIC_MIRROR_ENABLED || 'true').toLowerCase() !== 'false'
 }
 
 function getPublicSnapshotTimeoutMs() {
   return clamp(Number(process.env.PUBLIC_SNAPSHOT_TIMEOUT_MS || 8000), 1500, 20000)
+}
+
+function getInstagramRenderTimeoutMs() {
+  return clamp(Number(process.env.INSTAGRAM_RENDER_TIMEOUT_MS || 30000), 8000, 60000)
+}
+
+function getInstagramRenderWaitMs() {
+  return clamp(Number(process.env.INSTAGRAM_RENDER_WAIT_MS || 8000), 2500, 20000)
+}
+
+function getChromiumExecutablePath() {
+  const candidates = [
+    process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH,
+    process.env.CHROME_EXECUTABLE_PATH,
+    'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files (x86)\\Google\\Chrome\\Application\\chrome.exe',
+    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
+    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
+    '/usr/bin/google-chrome-stable',
+    '/usr/bin/google-chrome',
+    '/usr/bin/chromium-browser',
+    '/usr/bin/chromium',
+  ].filter(Boolean)
+
+  return candidates.find((candidate) => existsSync(candidate)) || ''
 }
 
 function normalizeRegionCode(value) {

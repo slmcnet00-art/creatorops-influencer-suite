@@ -17,7 +17,7 @@ services:
   - type: web
     name: creatorops-suite-api
     runtime: node
-    buildCommand: npm install
+    buildCommand: npm install && npx playwright install chromium
     startCommand: npm run api:dev
     envVars:
       - key: NODE_VERSION
@@ -45,6 +45,12 @@ services:
       - key: PUBLIC_SNAPSHOT_ENABLED
         value: true
       - key: PUBLIC_SNAPSHOT_TIMEOUT_MS
+        value: 8000
+      - key: INSTAGRAM_RENDER_SNAPSHOT_ENABLED
+        value: true
+      - key: INSTAGRAM_RENDER_TIMEOUT_MS
+        value: 30000
+      - key: INSTAGRAM_RENDER_WAIT_MS
         value: 8000
       - key: OPENAI_API_KEY
         sync: false
