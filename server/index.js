@@ -596,8 +596,27 @@ async function searchContentReferences({ query, country, platform, sort, maxResu
 
   const deduped = dedupeContentReferences(results)
   const qualified = filterReferenceQuality(deduped, query)
-  const relevant = filterAndRankDiscoveryIntent(qualified, query)
-  return sortContentReferences(relevant, sort).slice(0, maxResults)
+  const relaxed = qualified.length ? qualified : buildRelaxedContentReferences(deduped, query)
+  const relevant = filterAndRankDiscoveryIntent(relaxed, query)
+  const finalResults = relevant.length ? relevant : relaxed
+  debugReferenceSearch('summary', {
+    query,
+    country,
+    platform,
+    normalizedPlatform,
+    raw: results.length,
+    deduped: deduped.length,
+    qualified: qualified.length,
+    relaxed: relaxed.length,
+    relevant: relevant.length,
+    final: finalResults.length,
+  })
+  return sortContentReferences(finalResults, sort).slice(0, maxResults)
+}
+
+function debugReferenceSearch(label, payload) {
+  if (String(process.env.DEBUG_REFERENCE_SEARCH || '').toLowerCase() !== 'true') return
+  console.log(`[reference:${label}] ${JSON.stringify(payload)}`)
 }
 
 async function searchYouTubeVideoReferences({ query, country, sort, maxResults }) {
@@ -929,8 +948,6 @@ function isSupportedTikTokCommercialCountry(country) {
 }
 
 function matchesReferenceQuery(reference, query) {
-  const cleanQuery = normalizeTextForSearch(query)
-  if (!cleanQuery) return true
   const haystack = normalizeTextForSearch([
     reference.title,
     reference.hook,
@@ -939,10 +956,9 @@ function matchesReferenceQuery(reference, query) {
     reference.channelTitle,
     reference.url,
   ].filter(Boolean).join(' '))
-  return cleanQuery
-    .split(/\s+/)
-    .filter((token) => token.length > 1)
-    .some((token) => haystack.includes(token))
+  const tokens = getReferenceQueryTokens(query)
+  if (!tokens.length) return true
+  return tokens.some((token) => textIncludesReferenceToken(haystack, token))
 }
 
 function isRecoverableReferenceSearchError(error) {
@@ -951,6 +967,44 @@ function isRecoverableReferenceSearchError(error) {
 
 function normalizeTextForSearch(value) {
   return String(value || '').toLowerCase().replace(/[^\p{L}\p{N}\s@#_-]+/gu, ' ').replace(/\s+/g, ' ').trim()
+}
+
+function getReferenceQueryTokens(query) {
+  const cleanQuery = normalizeTextForSearch(query)
+  const lowerQuery = String(query || '').toLowerCase()
+  const context = buildDiscoveryIntentContext(query)
+  const categoryTerms = inferDiscoveryCategoryTerms(lowerQuery).flatMap((term) => normalizeTextForSearch(term).split(/\s+/))
+  const categoryAliases = []
+
+  if (hasBeautyDiscoveryIntent(lowerQuery)) {
+    categoryAliases.push('beauty', 'kbeauty', 'k-beauty', 'skincare', 'skin-care', 'makeup', 'cosmetic', 'cosmetics', 'oliveyoung')
+  }
+  if (hasFoodDiscoveryIntent(lowerQuery)) {
+    categoryAliases.push('food', 'recipe', 'cook', 'cooking', 'homecook', 'homecooking', 'koreanfood', 'k-food')
+  }
+  if (hasPetDiscoveryIntent(lowerQuery)) {
+    categoryAliases.push('pet', 'dog', 'cat', 'puppy', 'kitten')
+  }
+  if (hasFashionDiscoveryIntent(lowerQuery)) {
+    categoryAliases.push('fashion', 'style', 'lookbook', 'outfit')
+  }
+
+  return [...new Set([
+    ...cleanQuery.split(/\s+/),
+    ...context.tokens,
+    ...categoryTerms,
+    ...categoryAliases,
+  ]
+    .map((token) => normalizeTextForSearch(token))
+    .filter((token) => token.length > 1))]
+}
+
+function textIncludesReferenceToken(text, token) {
+  if (!token) return false
+  if (text.includes(token)) return true
+  const compactText = text.replace(/[\s_-]+/g, '')
+  const compactToken = token.replace(/[\s_-]+/g, '')
+  return compactToken.length > 1 && compactText.includes(compactToken)
 }
 
 function buildReferenceHook(title, description) {
@@ -982,8 +1036,18 @@ async function searchWebContentReferences({ query, country, platform, maxResults
           Accept: 'application/json',
           'X-Subscription-Token': key,
         },
+      }).catch((error) => {
+        if ([400, 422].includes(error.status)) return { web: { results: [] } }
+        throw error
       })
       const pageItems = payload.web?.results || []
+      debugReferenceSearch('brave-page', {
+        platform,
+        referenceQuery,
+        page,
+        count: pageItems.length,
+        sample: pageItems.slice(0, 3).map((item) => item.url || item.link || ''),
+      })
       items.push(...pageItems)
       if (pageItems.length < 20) break
     }
@@ -994,6 +1058,12 @@ async function searchWebContentReferences({ query, country, platform, maxResults
     .filter(Boolean)
     .filter((item, index, list) => list.findIndex((candidate) => candidate.url === item.url) === index)
     .slice(0, Math.max(maxResults * 2, maxResults))
+  debugReferenceSearch('normalized', {
+    platform,
+    rawItems: items.length,
+    normalized: normalized.length,
+    sample: normalized.slice(0, 5).map((item) => item.url),
+  })
 
   if (!isPublicSnapshotEnabled()) return normalized
 
@@ -1026,6 +1096,7 @@ async function searchWebContentReferences({ query, country, platform, maxResults
 function buildReferenceSearchQueries(siteQuery, query, platform) {
   const cleanQuery = String(query || '').replace(/\s+/g, ' ').trim()
   const lowerQuery = cleanQuery.toLowerCase()
+  const categoryTerms = inferDiscoveryCategoryTerms(lowerQuery)
   const platformBoost =
     platform === 'Instagram'
       ? '-inurl:/explore/ -inurl:/accounts/ -inurl:/tags/'
@@ -1043,6 +1114,11 @@ function buildReferenceSearchQueries(siteQuery, query, platform) {
       queries.push(
         `${siteQuery} kbeauty skincare viral ${platformBoost}`.trim(),
         `${siteQuery} korean skincare review viral ${platformBoost}`.trim(),
+        platform === 'TikTok' ? 'kbeauty tiktok viral' : '',
+        platform === 'TikTok' ? 'skincare routine tiktok viral' : '',
+        platform === 'TikTok' ? 'tiktok beauty review viral' : '',
+        platform === 'Instagram' ? 'kbeauty instagram reel viral' : '',
+        platform === 'Instagram' ? 'skincare instagram reel viral' : '',
       )
     }
     if (hasFoodDiscoveryIntent(lowerQuery)) {
@@ -1053,14 +1129,24 @@ function buildReferenceSearchQueries(siteQuery, query, platform) {
         `${siteQuery} "\uC9D1\uBC25" "\uB3C4\uC2DC\uB77D" ${platformBoost}`.trim(),
         `${siteQuery} korean food recipe viral ${platformBoost}`.trim(),
         `${siteQuery} food review viral ${platformBoost}`.trim(),
+        platform === 'TikTok' ? 'korean food tiktok viral' : '',
+        platform === 'TikTok' ? 'home cooking tiktok viral' : '',
+        platform === 'Instagram' ? 'korean food instagram reel viral' : '',
       )
     }
     if (hasPetDiscoveryIntent(lowerQuery)) {
       queries.push(
         `${siteQuery} pet product review viral ${platformBoost}`.trim(),
         `${siteQuery} dog product review viral ${platformBoost}`.trim(),
+        platform === 'TikTok' ? 'pet product tiktok viral' : '',
+        platform === 'Instagram' ? 'pet product instagram reel viral' : '',
       )
     }
+    categoryTerms.forEach((term) => {
+      queries.push(`${siteQuery} "${term}" viral ${platformBoost}`.trim())
+      if (platform === 'TikTok') queries.push(`${term} tiktok viral`)
+      if (platform === 'Instagram') queries.push(`${term} instagram reel viral`)
+    })
   }
 
   return [...new Set(queries.filter(Boolean))]
@@ -1212,6 +1298,35 @@ function filterReferenceQuality(items, query) {
     .sort((a, b) => Number(b.referenceQualityScore || 0) - Number(a.referenceQualityScore || 0))
 }
 
+function buildRelaxedContentReferences(items, query) {
+  return items
+    .filter((item) => isRelaxedUsableContentReference(item, query))
+    .map((item) => ({
+      ...item,
+      source: `${item.source || 'Public search'} · verification required`,
+      analysis:
+        item.analysis ||
+        '공개 검색 결과에서 콘텐츠 URL을 찾았습니다. 조회수/팔로워/공유 수치는 플랫폼 정책상 추가 스냅샷 또는 수동 검증이 필요합니다.',
+      referenceQualityScore: Math.max(scoreReferenceQuality(item, query), matchesReferenceQuery(item, query) ? 52 : 45),
+    }))
+    .sort((a, b) => Number(b.referenceQualityScore || 0) - Number(a.referenceQualityScore || 0))
+}
+
+function isRelaxedUsableContentReference(item = {}, query = '') {
+  if (!item.url || !item.title) return false
+  const platform = item.platform || inferReferencePlatform(item.url)
+  if (!['Instagram', 'TikTok'].includes(platform)) return false
+  if (!isSupportedReferenceContentUrl(item.url, platform)) return false
+  if (getReferenceQueryTokens(query).length && !matchesReferenceQuery(item, query)) return false
+  if (isLowValueReferenceResult({
+    title: item.title,
+    description: item.analysis || item.hook || '',
+    url: item.thumbnailUrl || item.url,
+    platform,
+  })) return false
+  return true
+}
+
 function isUsableContentReference(item = {}, query = '') {
   if (!item.url || !item.title) return false
   const platform = item.platform || inferReferencePlatform(item.url)
@@ -1240,13 +1355,9 @@ function isUsableContentReference(item = {}, query = '') {
     if (!item.thumbnailUrl && !knownContentEngagement) return false
     if (/brave search api/i.test(String(item.source || '')) && !item.thumbnailUrl && !knownEngagement) return false
     if (!item.thumbnailUrl && isLowValueReferenceText(`${item.title} ${item.analysis || ''}`)) return false
-    if (hasReferenceQueryIntent(query) && !matchesReferenceQuery(item, query)) return false
+    if (getReferenceQueryTokens(query).length && !matchesReferenceQuery(item, query)) return false
   }
   return scoreReferenceQuality(item, query) >= MIN_REFERENCE_QUALITY_SCORE
-}
-
-function hasReferenceQueryIntent(query) {
-  return tokenizeDiscoveryIntent(query).some((token) => !DISCOVERY_GENERIC_TERMS.has(token))
 }
 
 function scoreReferenceQuality(item = {}, query = '') {
