@@ -6092,3 +6092,389 @@
   }
 }
 
+.data-room-page {
+  display: grid;
+  gap: 16px;
+}
+
+.data-room-summary {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.data-room-summary-card {
+  min-height: 74px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--soft-shadow);
+  display: grid;
+  gap: 6px;
+}
+
+.data-room-summary-card span {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.data-room-summary-card strong {
+  color: var(--text-strong);
+  font-size: 18px;
+}
+
+.data-room-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 16px;
+  align-items: start;
+}
+
+.data-room-main {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+}
+
+.data-room-panel {
+  overflow: hidden;
+}
+
+.data-room-filters {
+  flex-wrap: wrap;
+  align-items: stretch;
+}
+
+.segmented-button {
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.segmented-button.active {
+  color: var(--accent);
+  border-color: rgba(0, 113, 227, 0.35);
+  background: var(--accent-soft);
+}
+
+.data-room-table-wrap {
+  overflow: auto;
+  border-top: 1px solid var(--border);
+}
+
+.data-room-table {
+  width: 100%;
+  min-width: 1180px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.data-room-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  padding: 10px;
+  color: var(--text-soft);
+  background: var(--surface-muted);
+  text-align: left;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--border);
+}
+
+.data-room-table td {
+  padding: 12px 10px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text);
+  vertical-align: top;
+}
+
+.data-room-table tr {
+  cursor: pointer;
+}
+
+.data-room-table tbody tr:hover,
+.data-room-table tbody tr.active {
+  background: rgba(0, 113, 227, 0.06);
+}
+
+.data-room-table td strong,
+.data-room-table td span {
+  display: block;
+}
+
+.data-room-table td span {
+  margin-top: 4px;
+  color: var(--text-soft);
+  line-height: 1.45;
+}
+
+.data-status {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.data-status.ok {
+  color: #14783f;
+  background: #e8f8ef;
+}
+
+.data-status.warning {
+  color: #a66300;
+  background: var(--amber-soft);
+}
+
+.data-status.error {
+  color: #b3261e;
+  background: #ffeceb;
+}
+
+.data-status.paused {
+  color: #6f7280;
+  background: #eef0f4;
+}
+
+.data-status.empty {
+  color: var(--text-soft);
+  background: var(--surface-muted);
+}
+
+.empty-table-cell {
+  padding: 22px;
+  text-align: center;
+  color: var(--text-soft);
+}
+
+.data-room-actions-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 12px 18px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.metric-bundle-list {
+  display: grid;
+  gap: 12px;
+  padding: 0 18px 18px;
+}
+
+.metric-bundle {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: rgba(255, 255, 255, 0.58);
+}
+
+.metric-bundle-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px;
+  background: var(--surface-muted);
+}
+
+.metric-bundle-heading strong {
+  color: var(--text-strong);
+}
+
+.metric-bundle-heading span {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.metric-bundle-items {
+  display: grid;
+}
+
+.metric-row-button {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.3fr) auto;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 12px;
+  border: 0;
+  border-top: 1px solid var(--border);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+
+.metric-row-button:hover,
+.metric-row-button.active {
+  background: rgba(0, 113, 227, 0.06);
+}
+
+.metric-row-button span,
+.metric-row-button small {
+  display: block;
+  color: var(--text-soft);
+}
+
+.metric-row-button strong {
+  display: block;
+  margin: 2px 0;
+  color: var(--text-strong);
+}
+
+.metric-row-button code,
+.data-room-detail-stack code {
+  white-space: normal;
+  color: var(--accent);
+  background: var(--accent-soft);
+  border-radius: 6px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+.data-room-detail-panel {
+  position: sticky;
+  top: 18px;
+  max-height: calc(100vh - 36px);
+  overflow: auto;
+}
+
+.data-room-detail-stack {
+  display: grid;
+  gap: 14px;
+  padding: 0 18px 18px;
+}
+
+.detail-title-block {
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.detail-title-block strong,
+.detail-title-block span {
+  display: block;
+}
+
+.detail-title-block strong {
+  color: var(--text-strong);
+  font-size: 18px;
+}
+
+.detail-title-block span {
+  margin-top: 5px;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.data-room-detail-stack dl {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+}
+
+.data-room-detail-stack dl div {
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.62);
+}
+
+.data-room-detail-stack dt {
+  margin-bottom: 5px;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.data-room-detail-stack dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.linked-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+.linked-chip-list span {
+  width: 100%;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.linked-chip-list button {
+  min-height: 30px;
+  border: 1px solid rgba(0, 113, 227, 0.3);
+  border-radius: 999px;
+  padding: 0 10px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.ops-note-box {
+  display: grid;
+  gap: 7px;
+}
+
+.ops-note-box span {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.ops-note-box textarea {
+  min-height: 92px;
+  resize: vertical;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  color: var(--text);
+  background: var(--surface-muted);
+  font: inherit;
+  line-height: 1.5;
+}
+
+@media (max-width: 1180px) {
+  .data-room-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .data-room-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .data-room-detail-panel {
+    position: static;
+    max-height: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .data-room-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .metric-row-button {
+    grid-template-columns: 1fr;
+  }
+}
+

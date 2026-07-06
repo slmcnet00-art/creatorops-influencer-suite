@@ -37,6 +37,7 @@ import {
 } from 'lucide-react'
 import { readSheet } from 'read-excel-file/browser'
 import './App.css'
+import AdminDataRoom from './AdminDataRoom'
 import {
   getBackendConfig,
   getAuthSession,
@@ -2914,6 +2915,388 @@ function deriveHandleFromUrl(value) {
   }
 }
 
+const dataRoomRawStatuses = ['전체', '정상', '지연', '오류', '중단', '미수집']
+const dataRoomMetricStatuses = ['전체', '정상', '지연', '오류', '검증 필요']
+const dataRoomScopes = ['전체', '내부', '외부']
+
+function buildAdminRawDataCatalog({
+  creators,
+  outreach,
+  campaigns,
+  recruitedPool,
+  fulfillmentRecords,
+  trackedPosts,
+  contentReferences,
+  brands,
+  backendConfig,
+  activeBrand,
+}) {
+  const nowText = new Date().toLocaleString('ko-KR')
+  const nextDaily = '매일 09:00'
+  const storageBase = backendConfig?.hasSupabase ? 'Supabase public schema' : 'localStorage creatorops.workspace.v2'
+  const externalSnapshotStatus = trackedPosts.length ? '정상' : '지연'
+
+  return [
+    {
+      id: 'RAW-INT-CRM-001',
+      name: 'CRM 발송 데이터',
+      scope: '내부',
+      category: 'CRM/메시지',
+      description: '제안 메시지 검토함, 발송 완료, 응답, 섭외 완료 상태 로그',
+      purpose: 'CRM 효율, 응답률, 전환율, 메시지 운영 병목 확인',
+      method: 'CRM 연동',
+      cycle: '실시간 저장 / 수동 갱신',
+      lastCollectedAt: outreach.length ? nowText : '-',
+      nextCollectAt: '이벤트 발생 시',
+      status: outreach.length ? '정상' : '미수집',
+      sourceLocation: '메시지 > 제안/응답 발송',
+      storageLocation: `${storageBase} / outreach`,
+      dashboardArea: '대시보드, 메시지, 캠페인 파이프라인',
+      metricIds: ['MET-CRM-001', 'MET-CRM-002', 'MET-CRM-003', 'MET-CRM-004', 'MET-CRM-005'],
+      ownerDept: '운영팀',
+      opsOwner: 'Campaign Operator',
+      techOwner: 'Backend/Data',
+      qualityIssue: outreach.length ? '중복 발송, 수신 거부, 채널 누락 점검 필요' : '발송 이력이 없어 지표 계산 불가',
+      logLocation: 'browser local log / future: outreach_events',
+      note: `${outreach.length}건 메시지 레코드`,
+      active: true,
+    },
+    {
+      id: 'RAW-INT-INF-001',
+      name: '인플루언서 리스트 데이터',
+      scope: '내부',
+      category: '크리에이터 풀',
+      description: '발굴 후보, 메시지 전 후보 풀, 섭외 완료 풀에 저장된 크리에이터 프로필',
+      purpose: '후보 품질, 풀 규모, 카테고리/등급별 분포 확인',
+      method: 'DB 연동',
+      cycle: '저장/삭제/수정 시',
+      lastCollectedAt: creators.length ? nowText : '-',
+      nextCollectAt: '이벤트 발생 시',
+      status: creators.length ? '정상' : '미수집',
+      sourceLocation: '발굴, 메시지 전 후보 풀, 캠페인 섭외 완료 풀',
+      storageLocation: `${storageBase} / creators, recruitedPool`,
+      dashboardArea: '대시보드, 발굴, 캠페인, 메시지',
+      metricIds: ['MET-POOL-001', 'MET-POOL-002', 'MET-POOL-003', 'MET-POOL-004', 'MET-POOL-005'],
+      ownerDept: '운영팀',
+      opsOwner: 'Creator Manager',
+      techOwner: 'Frontend/Data',
+      qualityIssue: '팔로워/평균조회/참여율 누락, 국가 추정 오류, 중복 핸들',
+      logLocation: 'future: creator_profile_snapshots',
+      note: `${creators.length}명 / 섭외 완료 ${recruitedPool.length}명`,
+      active: true,
+    },
+    {
+      id: 'RAW-INT-CMP-001',
+      name: '캠페인/성과 보고서 자료',
+      scope: '내부',
+      category: '캠페인 운영',
+      description: '캠페인 브리프, 목표 KPI, 일정, 업로드 링크, 성과 보고서 생성 기록',
+      purpose: '캠페인 진행률, 리포트 생성률, 리드타임 계산',
+      method: 'DB 연동',
+      cycle: '캠페인 수정/리포트 생성 시',
+      lastCollectedAt: campaigns.length ? nowText : '-',
+      nextCollectAt: '이벤트 발생 시',
+      status: campaigns.length ? '정상' : '미수집',
+      sourceLocation: '캠페인 상세, 리포트 > 콘텐츠 추적 등록',
+      storageLocation: `${storageBase} / campaigns, trackedPosts`,
+      dashboardArea: '캠페인, 리포트, 고객사 보고서',
+      metricIds: ['MET-CMP-001', 'MET-CMP-002', 'MET-CMP-003', 'MET-CMP-004'],
+      ownerDept: 'PM/운영팀',
+      opsOwner: 'Campaign PM',
+      techOwner: 'Frontend/Data',
+      qualityIssue: trackedPosts.length ? '업로드 링크별 플랫폼 매칭 확인 필요' : '추적 콘텐츠가 없어 성과 지표 공백',
+      logLocation: 'future: campaign_audit_logs',
+      note: `${campaigns.length}개 캠페인 / 추적 콘텐츠 ${trackedPosts.length}건`,
+      active: true,
+    },
+    {
+      id: 'RAW-INT-FIN-001',
+      name: '계약/정산 관련 내부 데이터',
+      scope: '내부',
+      category: '계약/정산',
+      description: '견적, 계약 상태, 배송, 계좌, 수동 정산 상태',
+      purpose: '계약 완료율, 정산 완료율, 미정산 건수, 리드타임 계산',
+      method: '수동 업로드',
+      cycle: '운영자 입력 시',
+      lastCollectedAt: fulfillmentRecords.length ? nowText : '-',
+      nextCollectAt: '운영자 입력 시',
+      status: fulfillmentRecords.length ? '정상' : '미수집',
+      sourceLocation: '캠페인 상세 > 배송/정산 수동 관리',
+      storageLocation: `${storageBase} / quotes, fulfillmentRecords`,
+      dashboardArea: '캠페인, 내부 운영 리포트',
+      metricIds: ['MET-FIN-001', 'MET-FIN-002', 'MET-FIN-003', 'MET-FIN-004'],
+      ownerDept: '운영/재무',
+      opsOwner: 'Ops Finance',
+      techOwner: 'Frontend/Data',
+      qualityIssue: '개인정보/계좌정보 접근 권한, 정산 상태 누락',
+      logLocation: 'future: settlement_change_logs',
+      note: `${fulfillmentRecords.length}건 배송/정산 레코드`,
+      active: true,
+    },
+    {
+      id: 'RAW-INT-BRD-001',
+      name: '고객사/브랜드 운영 데이터',
+      scope: '내부',
+      category: '브랜드/고객사',
+      description: '브랜드, 제품/서비스, 타깃 페르소나, 금지 키워드, 학습자료',
+      purpose: 'AI 추천, 메시지 생성, 가이드 생성의 기준 데이터',
+      method: 'DB 연동',
+      cycle: '브랜드/캠페인 수정 시',
+      lastCollectedAt: brands.length ? nowText : '-',
+      nextCollectAt: '이벤트 발생 시',
+      status: brands.length ? '정상' : '미수집',
+      sourceLocation: '브랜드 설정, 캠페인 생성/수정',
+      storageLocation: `${storageBase} / brands, brand.brief`,
+      dashboardArea: '대시보드, 캠페인, 발굴, 메시지',
+      metricIds: ['MET-CMP-001', 'MET-POOL-003'],
+      ownerDept: 'CS/PM',
+      opsOwner: 'Brand Manager',
+      techOwner: 'Frontend/Data',
+      qualityIssue: '브리프 부족 시 AI 추천 품질 저하',
+      logLocation: 'future: brand_brief_versions',
+      note: `${activeBrand?.name ?? '선택 브랜드'} 기준`,
+      active: true,
+    },
+    {
+      id: 'RAW-INT-OPS-001',
+      name: '기타 내부 운영 데이터',
+      scope: '내부',
+      category: '운영 로그',
+      description: '운영 메모, 데이터 품질 이슈, 권한/팀 계정, 변경 이력',
+      purpose: 'CS 추적, 담당자 지정, 권한별 접근 제어',
+      method: 'DB 연동',
+      cycle: '이벤트 발생 시',
+      lastCollectedAt: nowText,
+      nextCollectAt: '이벤트 발생 시',
+      status: '정상',
+      sourceLocation: '설정, 어드민 데이터룸',
+      storageLocation: `${storageBase} / team, accounts, auditLog`,
+      dashboardArea: '설정, 어드민 데이터룸',
+      metricIds: [],
+      ownerDept: '운영/개발',
+      opsOwner: 'Admin',
+      techOwner: 'Engineering',
+      qualityIssue: '운영 메모 표준화 필요',
+      logLocation: 'future: admin_activity_logs',
+      note: '권한 관리와 데이터 변경 이력의 원천',
+      active: true,
+    },
+    {
+      id: 'RAW-EXT-CHN-001',
+      name: '외부 채널 데이터',
+      scope: '외부',
+      category: 'SNS 채널',
+      description: 'YouTube/Instagram/TikTok 공개 프로필, 채널 URL, 핸들, 팔로워',
+      purpose: '채널별 후보 발굴, 데이터 품질 점수, 채널 성과 비교',
+      method: 'API / 크롤링',
+      cycle: '검색 시 / 매일 재검증',
+      lastCollectedAt: creators.some((creator) => creator.sourceNote) ? nowText : '-',
+      nextCollectAt: nextDaily,
+      status: creators.some((creator) => creator.sourceNote) ? '정상' : '지연',
+      sourceLocation: 'YouTube Data API, Brave Search, public profile snapshot',
+      storageLocation: `${storageBase} / creators.metricSources`,
+      dashboardArea: '발굴, 메시지 전 후보 풀, 데이터 품질 배지',
+      metricIds: ['MET-POOL-001', 'MET-SNS-006', 'MET-CONT-003'],
+      ownerDept: '데이터팀',
+      opsOwner: 'Data Operator',
+      techOwner: 'API/Data',
+      qualityIssue: 'Instagram/TikTok 공식 검색 API 제한으로 수집 신뢰도 차등 적용',
+      logLocation: 'server logs / future: profile_snapshot_jobs',
+      note: 'YouTube는 공식 API, TikTok/Instagram은 보조 수집',
+      active: true,
+    },
+    {
+      id: 'RAW-EXT-SNS-001',
+      name: 'SNS 채널 수집 데이터',
+      scope: '외부',
+      category: 'SNS API',
+      description: 'YouTube 채널/영상 API, TikTok public mirror, Instagram render snapshot',
+      purpose: '팔로워, 평균 조회수, 최근 콘텐츠 기준 검증',
+      method: 'API',
+      cycle: '검색 시 / 콘텐츠 등록 시',
+      lastCollectedAt: nowText,
+      nextCollectAt: nextDaily,
+      status: '정상',
+      sourceLocation: 'server/index.js profile-snapshot endpoints',
+      storageLocation: `${storageBase} / publicSnapshotStatus, metricSources`,
+      dashboardArea: '발굴, 리포트, 어드민 데이터룸',
+      metricIds: ['MET-SNS-001', 'MET-CONT-001', 'MET-CONT-002'],
+      ownerDept: '데이터팀',
+      opsOwner: 'Data QA',
+      techOwner: 'Backend',
+      qualityIssue: '외부 페이지 구조 변경, 렌더링 실패, quota 초과',
+      logLocation: 'Render service logs / profile-snapshot',
+      note: 'Browserless 토큰 연결 시 Instagram reels 품질 개선',
+      active: true,
+    },
+    {
+      id: 'RAW-EXT-CONT-001',
+      name: '콘텐츠 조회수',
+      scope: '외부',
+      category: '콘텐츠 성과',
+      description: '업로드 링크별 조회수, 최근 갱신 시각, 플랫폼별 수집 상태',
+      purpose: '콘텐츠 성과, 성장률, KPI 달성률 계산',
+      method: 'API / 크롤링 / 수동 업로드',
+      cycle: '매일 자동 / 새로고침 즉시',
+      lastCollectedAt: trackedPosts.length ? nowText : '-',
+      nextCollectAt: nextDaily,
+      status: externalSnapshotStatus,
+      sourceLocation: 'YouTube videos.list, public content snapshot, 수동 입력',
+      storageLocation: `${storageBase} / trackedPosts.views`,
+      dashboardArea: '리포트, 고객사 리포트, 캠페인 KPI',
+      metricIds: ['MET-SNS-001', 'MET-CONT-001', 'MET-CONT-004'],
+      ownerDept: '데이터팀',
+      opsOwner: 'Report Operator',
+      techOwner: 'Backend/Data',
+      qualityIssue: trackedPosts.length ? '플랫폼별 갱신 주기 차이' : '업로드 링크 미등록',
+      logLocation: 'server logs / tracking refresh',
+      note: `${trackedPosts.length}건 콘텐츠 추적`,
+      active: true,
+    },
+    {
+      id: 'RAW-EXT-ENG-001',
+      name: '좋아요/댓글/공유/저장 반응지표',
+      scope: '외부',
+      category: '콘텐츠 반응',
+      description: '콘텐츠별 좋아요, 댓글, 공유, 저장, 전환 수치',
+      purpose: '참여율, 반응률, 이상치 탐지, 고객사 리포트',
+      method: 'API / 크롤링 / 수동 업로드',
+      cycle: '매일 자동 / 새로고침 즉시',
+      lastCollectedAt: trackedPosts.length ? nowText : '-',
+      nextCollectAt: nextDaily,
+      status: trackedPosts.some((post) => Number(post.likes || post.comments || post.shares || post.saves) > 0) ? '정상' : '지연',
+      sourceLocation: 'SNS API/public snapshot/수동 입력',
+      storageLocation: `${storageBase} / trackedPosts.likes, comments, shares, saves`,
+      dashboardArea: '리포트, 콘텐츠 성과 상세',
+      metricIds: ['MET-SNS-002', 'MET-SNS-003', 'MET-SNS-004', 'MET-SNS-005', 'MET-SNS-006'],
+      ownerDept: '데이터팀',
+      opsOwner: 'Report Operator',
+      techOwner: 'Backend/Data',
+      qualityIssue: 'Instagram/TikTok 저장 수는 공개 수집이 제한될 수 있음',
+      logLocation: 'server logs / tracking refresh',
+      note: `좋아요 ${compactNumber(trackedPosts.reduce((sum, post) => sum + Number(post.likes || 0), 0))}`,
+      active: true,
+    },
+    {
+      id: 'RAW-EXT-REF-001',
+      name: '레퍼런스 콘텐츠 수집 지표',
+      scope: '외부',
+      category: '레퍼런스',
+      description: '인기 영상/이미지 레퍼런스 URL, 썸네일, 조회수, 반응, 적용 메모',
+      purpose: '제작 가이드, 후킹포인트, 변형 스크립트 생성',
+      method: 'API / 크롤링',
+      cycle: '검색 시 / 저장 시',
+      lastCollectedAt: contentReferences.length ? nowText : '-',
+      nextCollectAt: '검색 요청 시',
+      status: contentReferences.length ? '정상' : '미수집',
+      sourceLocation: 'YouTube Data API, Brave Search, public snapshot',
+      storageLocation: `${storageBase} / contentReferences`,
+      dashboardArea: '레퍼런스, 캠페인 가이드 생성',
+      metricIds: ['MET-BENCH-001', 'MET-BENCH-002', 'MET-BENCH-003'],
+      ownerDept: '콘텐츠팀',
+      opsOwner: 'Creative Planner',
+      techOwner: 'Backend/Data',
+      qualityIssue: '무관 콘텐츠, 낮은 조회수, 깨진 썸네일 제외 규칙 필요',
+      logLocation: 'server logs / references/search',
+      note: `${contentReferences.length}개 저장 레퍼런스`,
+      active: true,
+    },
+    {
+      id: 'RAW-EXT-BENCH-001',
+      name: '경쟁/벤치마크 콘텐츠 데이터',
+      scope: '외부',
+      category: '벤치마크',
+      description: '경쟁 콘텐츠, 카테고리 평균 조회수, 벤치마크 반응률',
+      purpose: '경쟁 콘텐츠 대비 성과지수, 카테고리별 평균 반응률',
+      method: 'API / 크롤링 / 수동 업로드',
+      cycle: '주 1회 / 캠페인 생성 시',
+      lastCollectedAt: contentReferences.length ? nowText : '-',
+      nextCollectAt: '매주 월요일 09:00',
+      status: contentReferences.length ? '검증 필요' : '미수집',
+      sourceLocation: '레퍼런스 검색, 경쟁사 URL, 외부 공개 콘텐츠',
+      storageLocation: `${storageBase} / benchmarkSnapshots`,
+      dashboardArea: '레퍼런스, 리포트, 전략 생성',
+      metricIds: ['MET-BENCH-002', 'MET-BENCH-003', 'MET-BENCH-004'],
+      ownerDept: '전략/데이터',
+      opsOwner: 'Strategist',
+      techOwner: 'Data Engineer',
+      qualityIssue: '경쟁 콘텐츠 카테고리 태깅과 국가 판별 검증 필요',
+      logLocation: 'future: benchmark_collection_jobs',
+      note: '벤치마크 파이프라인 확장 대상',
+      active: false,
+    },
+  ]
+}
+
+function buildAdminMetricCatalog({ rawData, outreach, creators, campaigns, recruitedPool, fulfillmentRecords, trackedPosts, contentReferences }) {
+  const rawName = (id) => rawData.find((item) => item.id === id)?.name ?? id
+  const nowText = new Date().toLocaleString('ko-KR')
+  const rawRefs = {
+    crm: ['RAW-INT-CRM-001'],
+    pool: ['RAW-INT-INF-001', 'RAW-EXT-CHN-001'],
+    campaign: ['RAW-INT-CMP-001', 'RAW-INT-BRD-001'],
+    finance: ['RAW-INT-FIN-001'],
+    sns: ['RAW-EXT-CONT-001', 'RAW-EXT-ENG-001'],
+    reference: ['RAW-EXT-REF-001', 'RAW-EXT-BENCH-001'],
+  }
+  const rows = [
+    ['MET-CRM-001', '발송 수', 'CRM 효율 번들', '내부', '발송 완료 상태의 메시지 수', 'count(outreach.status = 발송 완료 or 응답)', rawRefs.crm, '최근 30일', '실시간', '정상', '어드민 대시보드, 메시지', '증가 추세가 정상이나 중복 발송은 별도 경고', '동일 creator/campaign/channel 2회 이상', '높음', '운영팀', 'outreach_events / Gmail send logs', `${outreach.length}건`],
+    ['MET-CRM-002', '오픈율', 'CRM 효율 번들', '내부', '이메일 오픈 수 / 발송 수', 'opened_count / sent_count * 100', rawRefs.crm, '최근 30일', '일 1회', '검증 필요', '내부 보고서', 'Gmail/메일 추적 픽셀 연동 전까지 검증 필요', '0% 또는 90% 이상', '중간', '운영/개발', 'mail_tracking_events', '이메일 추적 연동 후 활성'],
+    ['MET-CRM-003', '클릭률', 'CRM 효율 번들', '내부', '링크 클릭 수 / 발송 수', 'clicked_count / sent_count * 100', rawRefs.crm, '최근 30일', '일 1회', '검증 필요', '내부 보고서', '링크 리다이렉트/UTM 연동 필요', '0% 장기 지속', '중간', '마케팅Ops', 'link_click_events', 'UTM 링크 생성 기능 필요'],
+    ['MET-CRM-004', '응답률', 'CRM 효율 번들', '내부', '응답 상태 메시지 수 / 발송 수', 'response_count / sent_count * 100', rawRefs.crm, '최근 30일', '실시간', '정상', '대시보드, 메시지', '채널별로 분리 해석', '평균 대비 50% 이하', '높음', '운영팀', 'outreach.status history', `${outreach.filter((item) => item.status === '응답').length}건 응답`],
+    ['MET-CRM-005', '전환율', 'CRM 효율 번들', '내부', '섭외 완료 수 / 제안 발송 수', 'recruited_count / sent_count * 100', ['RAW-INT-CRM-001', 'RAW-INT-INF-001'], '캠페인 기간', '실시간', '정상', '대시보드, 캠페인', '캠페인 난이도와 보상 조건에 따라 해석', '10% 미만', '높음', '운영팀', 'recruitedPool + outreach', `${recruitedPool.length}명 섭외 완료`],
+    ['MET-POOL-001', '전체 인플루언서 수', '인플루언서 풀 관리 번들', '내부', '저장된 전체 크리에이터 수', 'count(creators)', rawRefs.pool, '전체', '실시간', '정상', '발굴, 데이터룸', '중복 제거 전후 수를 함께 확인', '전일 대비 -30% 이상', '높음', '데이터팀', 'creators table', `${creators.length}명`],
+    ['MET-POOL-002', '활성 인플루언서 수', '인플루언서 풀 관리 번들', '내부', '상태가 활성/검증 가능인 크리에이터 수', 'count(creators where active and not blocked)', rawRefs.pool, '전체', '실시간', '정상', '발굴, 메시지', '프로필 링크 접근 가능 여부 포함', '활성 비율 50% 이하', '중간', '운영팀', 'creator status logs', '향후 active flag 분리'],
+    ['MET-POOL-003', '카테고리별 인플루언서 수', '인플루언서 풀 관리 번들', '내부', '카테고리 그룹별 크리에이터 분포', 'groupBy(creators.category).count', rawRefs.pool, '전체', '실시간', '정상', '발굴, 전략', '브랜드 카테고리와 후보군 균형 확인', '기타 카테고리 40% 이상', '중간', '운영팀', 'creator category map', '카테고리 표준화 필요'],
+    ['MET-POOL-004', '등급별 인플루언서 수', '인플루언서 풀 관리 번들', '내부', 'fit/data quality 점수 기준 등급별 수', 'groupBy(score_band(fit, dataQuality)).count', rawRefs.pool, '전체', '실시간', '정상', '발굴, 대시보드', 'A/B/C 등급별 섭외 우선순위', 'A등급 0건', '중간', '데이터팀', 'creator scoring logs', '등급 정책 확정 필요'],
+    ['MET-POOL-005', '최근 업데이트 인플루언서 수', '인플루언서 풀 관리 번들', '내부', '최근 7일 내 수정/수집된 크리에이터 수', 'count(creators.updatedAt >= now-7d)', rawRefs.pool, '최근 7일', '일 1회', '검증 필요', '데이터룸', '수집 활동량 지표', '0건 7일 이상', '중간', '데이터팀', 'creator snapshots', 'updatedAt 도입 필요'],
+    ['MET-CMP-001', '섭외 진행률', '캠페인 운영 번들', '내부', '섭외 완료 수 / 목표 인원 수', 'recruited_count / campaign.recommendationTargetCount * 100', ['RAW-INT-CMP-001', 'RAW-INT-INF-001'], '캠페인 기간', '실시간', '정상', '캠페인, 대시보드', '목표 인원 미설정 시 해석 제한', '마감 3일 전 50% 미만', '높음', 'PM/운영', 'campaign + recruitedPool', `${campaigns.length}개 캠페인`],
+    ['MET-CMP-002', '콘텐츠 업로드 완료율', '캠페인 운영 번들', '내부', '업로드 완료 콘텐츠 수 / 섭외 완료 수', 'uploaded_content_count / recruited_count * 100', ['RAW-INT-CMP-001', 'RAW-EXT-CONT-001'], '캠페인 기간', '일 1회', trackedPosts.length ? '정상' : '지연', '리포트, 캠페인', '업로드 링크 미등록 시 낮게 표시', '업로드 마감 후 80% 미만', '높음', '운영팀', 'trackedPosts status', `${trackedPosts.length}건 콘텐츠`],
+    ['MET-CMP-003', '보고서 생성률', '캠페인 운영 번들', '내부', '보고서 생성 캠페인 수 / 전체 캠페인 수', 'report_generated_campaigns / campaigns * 100', rawRefs.campaign, '월간', '일 1회', '정상', '리포트', '완료 캠페인 기준으로 해석', '완료 캠페인 중 0건', '중간', 'PM', 'report export logs', 'export log 테이블 필요'],
+    ['MET-CMP-004', '캠페인별 운영 리드타임', '캠페인 운영 번들', '내부', '모집 시작일부터 보고 완료일까지 일수', 'dateDiff(reportDoneAt, recruitingStartAt)', rawRefs.campaign, '캠페인 기간', '일 1회', '검증 필요', '내부 보고서', '일정 필드 입력률 확인 필요', '목표 대비 +30% 초과', '중간', 'PM', 'campaign schedule fields', '스케줄 필드 정규화 필요'],
+    ['MET-FIN-001', '계약 완료율', '계약/정산 번들', '내부', '계약 완료 건수 / 섭외 완료 건수', 'contract_done / recruited_count * 100', ['RAW-INT-FIN-001', 'RAW-INT-INF-001'], '캠페인 기간', '실시간', '검증 필요', '내부 보고서', '계약 상태 입력 표준화 필요', '70% 미만', '중간', '운영/재무', 'quote + contract status', '계약 모듈 확장 예정'],
+    ['MET-FIN-002', '정산 완료율', '계약/정산 번들', '내부', '정산 완료 건수 / 지급 대상 건수', 'settlement_done / settlement_target * 100', rawRefs.finance, '월간', '실시간', '정상', '캠페인 내부', '자동정산 제외, 수동정산 기준', '마감 후 90% 미만', '높음', '재무/운영', 'fulfillmentRecords', `${fulfillmentRecords.length}건`],
+    ['MET-FIN-003', '미정산 건수', '계약/정산 번들', '내부', '정산 완료가 아닌 지급 대상 건수', 'count(paymentStatus != done)', rawRefs.finance, '월간', '실시간', '정상', '내부 보고서', '금액과 함께 봐야 함', '10건 이상', '높음', '재무', 'fulfillmentRecords', '개인정보 접근 제한 필요'],
+    ['MET-FIN-004', '평균 정산 리드타임', '계약/정산 번들', '내부', '업로드 완료일부터 정산 완료일까지 평균 일수', 'avg(dateDiff(settlementDoneAt, uploadDoneAt))', rawRefs.finance, '월간', '일 1회', '검증 필요', '내부 보고서', '날짜 입력 누락 시 왜곡', '14일 초과', '중간', '재무/운영', 'settlement date logs', '날짜 필드 도입 필요'],
+    ['MET-SNS-001', '조회수', 'SNS 반응 번들', '외부', '콘텐츠별 공개 조회수', 'sum(trackedPosts.views)', rawRefs.sns, '캠페인 기간', '매일/즉시', trackedPosts.length ? '정상' : '지연', '리포트, 고객사 리포트', '플랫폼별 수집 신뢰도 구분', '전일 대비 -20% 감소', '중간', '데이터팀', 'tracking refresh logs', `${compactNumber(trackedPosts.reduce((sum, post) => sum + Number(post.views || 0), 0))} 조회`],
+    ['MET-SNS-002', '좋아요 수', 'SNS 반응 번들', '외부', '콘텐츠별 좋아요 합계', 'sum(trackedPosts.likes)', rawRefs.sns, '캠페인 기간', '매일/즉시', '정상', '리포트', '플랫폼별 숨김 정책 고려', '조회수 대비 0.1% 미만', '중간', '데이터팀', 'tracking refresh logs', '수동 입력 허용'],
+    ['MET-SNS-003', '댓글 수', 'SNS 반응 번들', '외부', '콘텐츠별 댓글 합계', 'sum(trackedPosts.comments)', rawRefs.sns, '캠페인 기간', '매일/즉시', '정상', '리포트', '댓글 유도형 콘텐츠와 구분', '0건 지속', '중간', '데이터팀', 'tracking refresh logs', '댓글 품질 분석은 후속'],
+    ['MET-SNS-004', '공유 수', 'SNS 반응 번들', '외부', '콘텐츠별 공유 합계', 'sum(trackedPosts.shares)', rawRefs.sns, '캠페인 기간', '매일/즉시', '검증 필요', '리포트', '플랫폼별 공개 여부 차이 큼', '0건 장기 지속', '낮음', '데이터팀', 'tracking refresh logs', 'YouTube/Instagram 일부 제한'],
+    ['MET-SNS-005', '저장 수', 'SNS 반응 번들', '외부', '콘텐츠별 저장 합계', 'sum(trackedPosts.saves)', rawRefs.sns, '캠페인 기간', '매일/즉시', '검증 필요', '리포트', '대부분 플랫폼에서 공개 제한', '수집 불가', '낮음', '데이터팀', 'tracking refresh logs', '수동 입력 또는 크리에이터 캡처 필요'],
+    ['MET-SNS-006', '참여율', 'SNS 반응 번들', '외부', '좋아요+댓글+공유+저장 / 조회수', '(likes+comments+shares+saves)/views*100', rawRefs.sns, '캠페인 기간', '매일/즉시', '정상', '대시보드, 리포트', '조회수 0이면 계산 제외', '20% 초과 또는 0.1% 미만', '중간', '데이터팀', 'metric calculation logs', '이상치 플래그 필요'],
+    ['MET-CONT-001', '평균 조회수', '콘텐츠 성과 번들', '외부', '콘텐츠별 조회수 평균', 'avg(trackedPosts.views)', ['RAW-EXT-CONT-001'], '캠페인 기간', '매일/즉시', '정상', '리포트', '게시 후 경과일 함께 확인', '카테고리 평균 대비 -50%', '중간', '데이터팀', 'trackedPosts', '초기 24시간은 별도 표시'],
+    ['MET-CONT-002', '콘텐츠별 반응률', '콘텐츠 성과 번들', '외부', '콘텐츠별 참여율', 'engagement / views * 100 by content', rawRefs.sns, '캠페인 기간', '매일/즉시', '정상', '리포트 상세', '소형 계정은 변동성 큼', '평균 대비 3표준편차', '중간', '데이터팀', 'metric calculation logs', '콘텐츠별 이상치 확인'],
+    ['MET-CONT-003', '채널별 성과 비교', '콘텐츠 성과 번들', '외부', 'YouTube/Instagram/TikTok별 조회/참여 비교', 'groupBy(platform).sum/views/engagement', ['RAW-EXT-CHN-001', 'RAW-EXT-CONT-001'], '캠페인 기간', '일 1회', '정상', '리포트', '플랫폼별 알고리즘 차이를 감안', '한 채널만 80% 이상 편중', '중간', 'PM/데이터', 'platform group metrics', '채널 믹스 최적화에 사용'],
+    ['MET-CONT-004', '콘텐츠 성장률', '콘텐츠 성과 번들', '외부', '전일 대비 조회수 증가율', '(views_today-views_yesterday)/views_yesterday*100', ['RAW-EXT-CONT-001'], '최근 7일', '매일', '검증 필요', '리포트', '일별 스냅샷 저장 후 활성화', '음수 전환', '중간', '데이터팀', 'daily_content_snapshots', '스냅샷 테이블 필요'],
+    ['MET-BENCH-001', '레퍼런스 콘텐츠 수', '레퍼런스/벤치마크 번들', '외부', '저장된 제작 레퍼런스 콘텐츠 수', 'count(contentReferences)', ['RAW-EXT-REF-001'], '전체', '실시간', '정상', '레퍼런스', '저장된 레퍼런스만 계산', '0건', '높음', '콘텐츠팀', 'contentReferences', `${contentReferences.length}개`],
+    ['MET-BENCH-002', '벤치마크 평균 조회수', '레퍼런스/벤치마크 번들', '외부', '벤치마크 콘텐츠 조회수 평균', 'avg(reference.views)', rawRefs.reference, '최근 30일', '검색/저장 시', contentReferences.length ? '정상' : '지연', '전략, 리포트', '50만 이상 터진 콘텐츠 중심', '평균 5만 미만', '중간', '전략/데이터', 'references/search logs', '검색 품질에 따라 변동'],
+    ['MET-BENCH-003', '카테고리별 평균 반응률', '레퍼런스/벤치마크 번들', '외부', '카테고리별 레퍼런스 참여율 평균', 'groupBy(category).avg(engagementRate)', rawRefs.reference, '최근 30일', '주 1회', '검증 필요', '전략, 가이드 생성', '카테고리 태깅 정확도 확인', '태깅 없음 30% 이상', '중간', '전략/데이터', 'benchmark tag logs', '카테고리 태깅 자동화 필요'],
+    ['MET-BENCH-004', '경쟁 콘텐츠 대비 성과지수', '레퍼런스/벤치마크 번들', '외부', '우리 콘텐츠 조회/반응을 벤치마크 평균과 비교', '(campaign_score / benchmark_score) * 100', ['RAW-EXT-CONT-001', 'RAW-EXT-ENG-001', 'RAW-EXT-BENCH-001'], '캠페인 기간', '일 1회', '검증 필요', '고객사 리포트', '100 이상이면 벤치마크 상회', '70 미만', '중간', 'PM/데이터', 'benchmark metric logs', '벤치마크 표본 수 표시 필요'],
+  ]
+
+  return rows.map(([id, name, bundle, scope, description, formula, rawIds, period, refreshCycle, status, displayLocation, interpretation, outlierRule, reliability, ownerDept, errorLocation, note]) => ({
+    id,
+    name,
+    bundle,
+    scope,
+    description,
+    formula,
+    rawIds,
+    rawNames: rawIds.map(rawName),
+    period,
+    refreshCycle,
+    lastCalculatedAt: nowText,
+    status,
+    displayLocation,
+    interpretation,
+    outlierRule,
+    reliability,
+    ownerDept,
+    errorLocation,
+    note,
+  }))
+}
+
 function App() {
   const [workspace, setWorkspace] = usePersistentState(STORE_KEY, defaultWorkspace)
   const backendConfig = useMemo(() => getBackendConfig(), [])
@@ -3110,6 +3493,17 @@ function App() {
   })
   const [referenceSearchResultUrls, setReferenceSearchResultUrls] = useState(null)
   const [isReferenceManualFormOpen, setIsReferenceManualFormOpen] = useState(false)
+  const [dataRoomRawTab, setDataRoomRawTab] = useState('전체')
+  const [dataRoomRawStatus, setDataRoomRawStatus] = useState('전체')
+  const [dataRoomRawCategory, setDataRoomRawCategory] = useState('전체')
+  const [dataRoomRawMethod, setDataRoomRawMethod] = useState('전체')
+  const [dataRoomRawOwner, setDataRoomRawOwner] = useState('전체')
+  const [dataRoomRawQuery, setDataRoomRawQuery] = useState('')
+  const [dataRoomMetricTab, setDataRoomMetricTab] = useState('전체')
+  const [dataRoomMetricStatus, setDataRoomMetricStatus] = useState('전체')
+  const [dataRoomMetricBundle, setDataRoomMetricBundle] = useState('전체')
+  const [dataRoomMetricQuery, setDataRoomMetricQuery] = useState('')
+  const [selectedDataRoomItem, setSelectedDataRoomItem] = useState({ type: 'raw', id: 'RAW-INT-CRM-001' })
   const [fulfillmentDraft, setFulfillmentDraft] = useState(createEmptyFulfillmentDraft)
 
   const {
@@ -3137,8 +3531,8 @@ function App() {
   const canManagePermissions = currentAccount?.role === 'Owner' || currentAccount?.role === 'Admin'
   const accessibleSectionIds = useMemo(() => {
     if (currentAccount?.role === 'Client') return ['dashboard', 'campaigns', 'report', 'references', 'settings']
-    if (currentAccount?.role === 'Analyst') return ['dashboard', 'report', 'settings']
-    return ['dashboard', 'campaigns', 'discovery', 'messages', 'report', 'references', 'settings']
+    if (currentAccount?.role === 'Analyst') return ['dashboard', 'report', 'dataRoom', 'settings']
+    return ['dashboard', 'campaigns', 'discovery', 'messages', 'report', 'references', 'dataRoom', 'settings']
   }, [currentAccount?.role])
   const visibleSection = accessibleSectionIds.includes(activeSection) ? activeSection : accessibleSectionIds[0]
   const canAccessSection = (sectionId) => accessibleSectionIds.includes(sectionId)
@@ -3815,6 +4209,134 @@ function App() {
       trackedTotals.views,
     ],
   )
+
+  const dataRoomRawData = useMemo(
+    () =>
+      buildAdminRawDataCatalog({
+        creators,
+        outreach,
+        campaigns,
+        recruitedPool,
+        fulfillmentRecords,
+        trackedPosts,
+        contentReferences,
+        brands,
+        backendConfig,
+        activeBrand,
+      }),
+    [activeBrand, backendConfig, brands, campaigns, contentReferences, creators, fulfillmentRecords, outreach, recruitedPool, trackedPosts],
+  )
+  const dataRoomMetrics = useMemo(
+    () =>
+      buildAdminMetricCatalog({
+        rawData: dataRoomRawData,
+        outreach,
+        creators,
+        campaigns,
+        recruitedPool,
+        fulfillmentRecords,
+        trackedPosts,
+        contentReferences,
+      }),
+    [campaigns, contentReferences, creators, dataRoomRawData, fulfillmentRecords, outreach, recruitedPool, trackedPosts],
+  )
+  const dataRoomRawCategories = useMemo(
+    () => ['전체', ...new Set(dataRoomRawData.map((item) => item.category))],
+    [dataRoomRawData],
+  )
+  const dataRoomRawMethods = useMemo(
+    () => ['전체', ...new Set(dataRoomRawData.flatMap((item) => item.method.split('/').map((method) => method.trim())))],
+    [dataRoomRawData],
+  )
+  const dataRoomRawOwners = useMemo(
+    () => ['전체', ...new Set(dataRoomRawData.map((item) => item.ownerDept))],
+    [dataRoomRawData],
+  )
+  const dataRoomMetricBundles = useMemo(
+    () => ['전체', ...new Set(dataRoomMetrics.map((item) => item.bundle))],
+    [dataRoomMetrics],
+  )
+  const filteredDataRoomRawData = useMemo(() => {
+    const normalizedQuery = dataRoomRawQuery.trim().toLowerCase()
+    return dataRoomRawData.filter((item) => {
+      const matchesTab = dataRoomRawTab === '전체' || item.scope === dataRoomRawTab
+      const matchesStatus = dataRoomRawStatus === '전체' || item.status === dataRoomRawStatus
+      const matchesCategory = dataRoomRawCategory === '전체' || item.category === dataRoomRawCategory
+      const matchesMethod = dataRoomRawMethod === '전체' || item.method.includes(dataRoomRawMethod)
+      const matchesOwner = dataRoomRawOwner === '전체' || item.ownerDept === dataRoomRawOwner
+      const matchesQuery =
+        !normalizedQuery ||
+        [
+          item.id,
+          item.name,
+          item.description,
+          item.purpose,
+          item.sourceLocation,
+          item.storageLocation,
+          item.dashboardArea,
+          item.opsOwner,
+          item.techOwner,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedQuery)
+      return matchesTab && matchesStatus && matchesCategory && matchesMethod && matchesOwner && matchesQuery
+    })
+  }, [dataRoomRawCategory, dataRoomRawData, dataRoomRawMethod, dataRoomRawOwner, dataRoomRawQuery, dataRoomRawStatus, dataRoomRawTab])
+  const filteredDataRoomMetrics = useMemo(() => {
+    const normalizedQuery = dataRoomMetricQuery.trim().toLowerCase()
+    return dataRoomMetrics.filter((item) => {
+      const matchesTab = dataRoomMetricTab === '전체' || item.scope === dataRoomMetricTab
+      const matchesStatus = dataRoomMetricStatus === '전체' || item.status === dataRoomMetricStatus
+      const matchesBundle = dataRoomMetricBundle === '전체' || item.bundle === dataRoomMetricBundle
+      const matchesQuery =
+        !normalizedQuery ||
+        [
+          item.id,
+          item.name,
+          item.bundle,
+          item.description,
+          item.formula,
+          item.rawNames.join(' '),
+          item.displayLocation,
+          item.ownerDept,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(normalizedQuery)
+      return matchesTab && matchesStatus && matchesBundle && matchesQuery
+    })
+  }, [dataRoomMetricBundle, dataRoomMetricQuery, dataRoomMetricStatus, dataRoomMetricTab, dataRoomMetrics])
+  const groupedDataRoomMetrics = useMemo(
+    () =>
+      [...new Set(filteredDataRoomMetrics.map((item) => item.bundle))].map((bundle) => ({
+        bundle,
+        metrics: filteredDataRoomMetrics.filter((item) => item.bundle === bundle),
+      })),
+    [filteredDataRoomMetrics],
+  )
+  const dataRoomSummary = useMemo(
+    () => ({
+      rawTotal: dataRoomRawData.length,
+      rawOk: dataRoomRawData.filter((item) => item.status === '정상').length,
+      rawDelayed: dataRoomRawData.filter((item) => item.status === '지연').length,
+      rawError: dataRoomRawData.filter((item) => item.status === '오류').length,
+      rawPaused: dataRoomRawData.filter((item) => item.status === '중단').length,
+      internal: dataRoomRawData.filter((item) => item.scope === '내부').length,
+      external: dataRoomRawData.filter((item) => item.scope === '외부').length,
+      metricTotal: dataRoomMetrics.length,
+      metricError: dataRoomMetrics.filter((item) => item.status === '오류').length,
+      lastSync: new Date().toLocaleString('ko-KR'),
+    }),
+    [dataRoomMetrics, dataRoomRawData],
+  )
+  const activeDataRoomDetail =
+    selectedDataRoomItem.type === 'metric'
+      ? dataRoomMetrics.find((item) => item.id === selectedDataRoomItem.id) ?? dataRoomMetrics[0]
+      : dataRoomRawData.find((item) => item.id === selectedDataRoomItem.id) ?? dataRoomRawData[0]
+
   const pageMeta = {
     dashboard: {
       eyebrow: 'Overview',
@@ -3830,6 +4352,11 @@ function App() {
       eyebrow: 'Content Reference',
       title: '콘텐츠 레퍼런스',
       description: `${selectedCampaign?.name ?? activeBrand.name} 제작에 차용할 영상/이미지 레퍼런스`,
+    },
+    dataRoom: {
+      eyebrow: 'Admin Data Room',
+      title: '어드민 데이터룸',
+      description: 'raw 데이터, 수집 위치, 계산지표, 품질 이슈를 추적하는 내부 관리 화면',
     },
     campaigns: {
       eyebrow: 'Campaign Operations',
@@ -7250,6 +7777,14 @@ function App() {
               onClick={() => jumpTo('references')}
             />
           )}
+          {canAccessSection('dataRoom') && (
+            <NavButton
+              active={visibleSection === 'dataRoom'}
+              icon={<Database size={18} />}
+              label="데이터룸"
+              onClick={() => jumpTo('dataRoom')}
+            />
+          )}
         </nav>
 
         <div className="team-block">
@@ -7384,6 +7919,47 @@ function App() {
           </>
         )}
 
+        {visibleSection === 'dataRoom' && (
+          <AdminDataRoom
+            summary={dataRoomSummary}
+            rawData={filteredDataRoomRawData}
+            groupedMetrics={groupedDataRoomMetrics}
+            rawTab={dataRoomRawTab}
+            setRawTab={setDataRoomRawTab}
+            rawStatus={dataRoomRawStatus}
+            setRawStatus={setDataRoomRawStatus}
+            rawCategory={dataRoomRawCategory}
+            setRawCategory={setDataRoomRawCategory}
+            rawMethod={dataRoomRawMethod}
+            setRawMethod={setDataRoomRawMethod}
+            rawOwner={dataRoomRawOwner}
+            setRawOwner={setDataRoomRawOwner}
+            rawQuery={dataRoomRawQuery}
+            setRawQuery={setDataRoomRawQuery}
+            metricTab={dataRoomMetricTab}
+            setMetricTab={setDataRoomMetricTab}
+            metricStatus={dataRoomMetricStatus}
+            setMetricStatus={setDataRoomMetricStatus}
+            metricBundle={dataRoomMetricBundle}
+            setMetricBundle={setDataRoomMetricBundle}
+            metricQuery={dataRoomMetricQuery}
+            setMetricQuery={setDataRoomMetricQuery}
+            rawCategories={dataRoomRawCategories}
+            rawMethods={dataRoomRawMethods}
+            rawOwners={dataRoomRawOwners}
+            metricBundles={dataRoomMetricBundles}
+            selectedItem={selectedDataRoomItem}
+            setSelectedItem={setSelectedDataRoomItem}
+            activeDetail={activeDataRoomDetail}
+            rawStatuses={dataRoomRawStatuses}
+            metricStatuses={dataRoomMetricStatuses}
+            scopes={dataRoomScopes}
+            onLog={() => showToast('선택한 raw 데이터의 수집 로그 위치를 확인하세요. 실제 로그 테이블 연결 시 상세 로그가 열립니다.')}
+            onRefreshRaw={() => showToast('수동 재수집 요청이 등록되었습니다. 실제 작업 큐 연결 시 job id를 표시합니다.')}
+            onMetricLog={() => showToast('계산 로그 위치와 최근 계산 상태를 확인합니다.')}
+            onRecalculate={() => showToast('계산지표 재계산 요청이 등록되었습니다. 실제 큐 연결 시 재계산 job id를 표시합니다.')}
+          />
+        )}
         {visibleSection === 'settings' && (
           <section className="settings-grid">
             <section className="panel settings-sync-panel">
