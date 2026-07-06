@@ -118,6 +118,186 @@ create table if not exists public.job_runs (
   finished_at timestamptz
 );
 
+create table if not exists public.raw_data_sources (
+  id text primary key,
+  workspace_id text references public.workspaces(id) on delete cascade,
+  scope text not null check (scope in ('internal', 'external')),
+  category text not null,
+  name text not null,
+  description text,
+  collection_method text not null,
+  collection_cycle text,
+  source_location text,
+  storage_location text,
+  dashboard_area text,
+  owner_dept text,
+  ops_owner text,
+  tech_owner text,
+  status text not null default 'not_collected' check (status in ('ok', 'delayed', 'error', 'paused', 'not_collected', 'partial', 'needs_review')),
+  quality_issue text,
+  log_location text,
+  active boolean not null default true,
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.metric_definitions (
+  id text primary key,
+  workspace_id text references public.workspaces(id) on delete cascade,
+  scope text not null check (scope in ('internal', 'external')),
+  bundle text not null,
+  name text not null,
+  description text,
+  formula text not null,
+  raw_source_ids text[] not null default '{}',
+  period text,
+  refresh_cycle text,
+  display_location text,
+  interpretation text,
+  outlier_rule text,
+  reliability text,
+  owner_dept text,
+  status text not null default 'needs_review' check (status in ('ok', 'delayed', 'error', 'needs_review')),
+  metadata jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table if not exists public.external_report_imports (
+  id text primary key,
+  workspace_id text not null references public.workspaces(id) on delete cascade,
+  report_type text not null check (report_type in ('brand_monitor_influencers', 'video_monitor_data', 'video_monitor_workbench', 'custom')),
+  source_name text not null,
+  original_file_name text,
+  storage_path text,
+  file_hash text,
+  imported_by uuid references auth.users(id),
+  status text not null default 'uploaded' check (status in ('uploaded', 'parsing', 'parsed', 'failed', 'archived')),
+  row_count integer not null default 0,
+  sheet_count integer not null default 0,
+  parse_summary jsonb not null default '{}'::jsonb,
+  error_message text,
+  created_at timestamptz not null default now(),
+  parsed_at timestamptz
+);
+
+create table if not exists public.external_report_rows (
+  id bigserial primary key,
+  workspace_id text not null references public.workspaces(id) on delete cascade,
+  import_id text not null references public.external_report_imports(id) on delete cascade,
+  raw_source_id text references public.raw_data_sources(id),
+  report_type text not null,
+  sheet_name text not null,
+  row_index integer not null,
+  source_key text,
+  payload jsonb not null default '{}'::jsonb,
+  normalized_type text,
+  normalized_ref text,
+  quality_status text not null default 'needs_review' check (quality_status in ('ok', 'needs_review', 'error', 'ignored')),
+  quality_notes text,
+  created_at timestamptz not null default now(),
+  unique (import_id, sheet_name, row_index)
+);
+
+create table if not exists public.external_search_events (
+  id bigserial primary key,
+  workspace_id text not null references public.workspaces(id) on delete cascade,
+  raw_source_id text references public.raw_data_sources(id),
+  provider text not null,
+  endpoint text,
+  query text not null,
+  platform text,
+  country text,
+  category text,
+  request_payload jsonb not null default '{}'::jsonb,
+  response_payload jsonb not null default '{}'::jsonb,
+  result_count integer not null default 0,
+  status text not null default 'success' check (status in ('success', 'failed', 'partial')),
+  error_message text,
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.metric_snapshots (
+  id bigserial primary key,
+  workspace_id text not null references public.workspaces(id) on delete cascade,
+  metric_id text not null references public.metric_definitions(id) on delete cascade,
+  campaign_id text,
+  brand_id text,
+  creator_id text,
+  content_id text,
+  dimension jsonb not null default '{}'::jsonb,
+  value numeric,
+  value_json jsonb not null default '{}'::jsonb,
+  raw_source_ids text[] not null default '{}',
+  source_row_ids bigint[] not null default '{}',
+  calculated_at timestamptz not null default now(),
+  status text not null default 'ok' check (status in ('ok', 'delayed', 'error', 'needs_review')),
+  notes text
+);
+
+create table if not exists public.data_quality_reviews (
+  id bigserial primary key,
+  workspace_id text not null references public.workspaces(id) on delete cascade,
+  target_type text not null,
+  target_id text not null,
+  raw_source_id text references public.raw_data_sources(id),
+  issue_type text not null,
+  severity text not null default 'medium' check (severity in ('low', 'medium', 'high', 'critical')),
+  status text not null default 'open' check (status in ('open', 'in_review', 'resolved', 'ignored')),
+  reason text,
+  evidence jsonb not null default '{}'::jsonb,
+  assigned_to uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  resolved_at timestamptz
+);
+
+create table if not exists public.unsupported_metric_requests (
+  id bigserial primary key,
+  workspace_id text not null references public.workspaces(id) on delete cascade,
+  platform text not null,
+  metric_name text not null,
+  target_type text,
+  target_id text,
+  requested_reason text,
+  fallback_method text,
+  status text not null default 'pending' check (status in ('pending', 'manual_required', 'api_required', 'approved', 'blocked', 'resolved')),
+  evidence jsonb not null default '{}'::jsonb,
+  raw_source_id text references public.raw_data_sources(id),
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  resolved_at timestamptz
+);
+
+create table if not exists public.ai_generation_runs (
+  id bigserial primary key,
+  workspace_id text not null references public.workspaces(id) on delete cascade,
+  run_type text not null,
+  model text,
+  prompt_version text,
+  input_raw_source_ids text[] not null default '{}',
+  input_payload jsonb not null default '{}'::jsonb,
+  output_payload jsonb not null default '{}'::jsonb,
+  status text not null default 'success' check (status in ('success', 'failed', 'partial')),
+  error_message text,
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now()
+);
+
+create table if not exists public.export_events (
+  id bigserial primary key,
+  workspace_id text not null references public.workspaces(id) on delete cascade,
+  export_type text not null,
+  target_area text,
+  file_name text,
+  raw_source_ids text[] not null default '{}',
+  metric_ids text[] not null default '{}',
+  row_count integer not null default 0,
+  metadata jsonb not null default '{}'::jsonb,
+  created_by uuid references auth.users(id),
+  created_at timestamptz not null default now()
+);
+
 alter table public.workspaces enable row level security;
 alter table public.workspace_members enable row level security;
 alter table public.workspace_snapshots enable row level security;
@@ -127,6 +307,16 @@ alter table public.content_tracking enable row level security;
 alter table public.performance_snapshots enable row level security;
 alter table public.audit_logs enable row level security;
 alter table public.job_runs enable row level security;
+alter table public.raw_data_sources enable row level security;
+alter table public.metric_definitions enable row level security;
+alter table public.external_report_imports enable row level security;
+alter table public.external_report_rows enable row level security;
+alter table public.external_search_events enable row level security;
+alter table public.metric_snapshots enable row level security;
+alter table public.data_quality_reviews enable row level security;
+alter table public.unsupported_metric_requests enable row level security;
+alter table public.ai_generation_runs enable row level security;
+alter table public.export_events enable row level security;
 
 drop policy if exists "Authenticated users can read workspace snapshots" on public.workspace_snapshots;
 drop policy if exists "Authenticated users can upsert workspace snapshots" on public.workspace_snapshots;
@@ -149,6 +339,26 @@ drop policy if exists "Members can write content tracking" on public.content_tra
 drop policy if exists "Members can read performance snapshots" on public.performance_snapshots;
 drop policy if exists "Members can write performance snapshots" on public.performance_snapshots;
 drop policy if exists "Members can read job runs" on public.job_runs;
+drop policy if exists "Members can read raw data sources" on public.raw_data_sources;
+drop policy if exists "Owners and managers can manage raw data sources" on public.raw_data_sources;
+drop policy if exists "Members can read metric definitions" on public.metric_definitions;
+drop policy if exists "Owners and managers can manage metric definitions" on public.metric_definitions;
+drop policy if exists "Members can read external report imports" on public.external_report_imports;
+drop policy if exists "Members can write external report imports" on public.external_report_imports;
+drop policy if exists "Members can read external report rows" on public.external_report_rows;
+drop policy if exists "Members can write external report rows" on public.external_report_rows;
+drop policy if exists "Members can read external search events" on public.external_search_events;
+drop policy if exists "Members can write external search events" on public.external_search_events;
+drop policy if exists "Members can read metric snapshots" on public.metric_snapshots;
+drop policy if exists "Members can write metric snapshots" on public.metric_snapshots;
+drop policy if exists "Members can read data quality reviews" on public.data_quality_reviews;
+drop policy if exists "Members can write data quality reviews" on public.data_quality_reviews;
+drop policy if exists "Members can read unsupported metric requests" on public.unsupported_metric_requests;
+drop policy if exists "Members can write unsupported metric requests" on public.unsupported_metric_requests;
+drop policy if exists "Members can read ai generation runs" on public.ai_generation_runs;
+drop policy if exists "Members can write ai generation runs" on public.ai_generation_runs;
+drop policy if exists "Members can read export events" on public.export_events;
+drop policy if exists "Members can write export events" on public.export_events;
 
 create policy "Members can read workspaces"
   on public.workspaces for select to authenticated
@@ -227,3 +437,90 @@ create policy "Members can write audit logs"
 create policy "Members can read job runs"
   on public.job_runs for select to authenticated
   using (workspace_id is null or public.is_workspace_member(workspace_id));
+
+create policy "Members can read raw data sources"
+  on public.raw_data_sources for select to authenticated
+  using (workspace_id is null or public.is_workspace_member(workspace_id));
+
+create policy "Owners and managers can manage raw data sources"
+  on public.raw_data_sources for all to authenticated
+  using (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Manager']))
+  with check (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Manager']));
+
+create policy "Members can read metric definitions"
+  on public.metric_definitions for select to authenticated
+  using (workspace_id is null or public.is_workspace_member(workspace_id));
+
+create policy "Owners and managers can manage metric definitions"
+  on public.metric_definitions for all to authenticated
+  using (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Manager']))
+  with check (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Manager']));
+
+create policy "Members can read external report imports"
+  on public.external_report_imports for select to authenticated
+  using (public.is_workspace_member(workspace_id));
+
+create policy "Members can write external report imports"
+  on public.external_report_imports for all to authenticated
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Manager', 'Marketer', 'Analyst']))
+  with check (public.is_workspace_member(workspace_id, array['Owner', 'Manager', 'Marketer', 'Analyst']));
+
+create policy "Members can read external report rows"
+  on public.external_report_rows for select to authenticated
+  using (public.is_workspace_member(workspace_id));
+
+create policy "Members can write external report rows"
+  on public.external_report_rows for all to authenticated
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Manager', 'Marketer', 'Analyst']))
+  with check (public.is_workspace_member(workspace_id, array['Owner', 'Manager', 'Marketer', 'Analyst']));
+
+create policy "Members can read external search events"
+  on public.external_search_events for select to authenticated
+  using (public.is_workspace_member(workspace_id));
+
+create policy "Members can write external search events"
+  on public.external_search_events for insert to authenticated
+  with check (public.is_workspace_member(workspace_id));
+
+create policy "Members can read metric snapshots"
+  on public.metric_snapshots for select to authenticated
+  using (public.is_workspace_member(workspace_id));
+
+create policy "Members can write metric snapshots"
+  on public.metric_snapshots for all to authenticated
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Manager', 'Marketer', 'Analyst']))
+  with check (public.is_workspace_member(workspace_id, array['Owner', 'Manager', 'Marketer', 'Analyst']));
+
+create policy "Members can read data quality reviews"
+  on public.data_quality_reviews for select to authenticated
+  using (public.is_workspace_member(workspace_id));
+
+create policy "Members can write data quality reviews"
+  on public.data_quality_reviews for all to authenticated
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Manager', 'Marketer', 'Analyst']))
+  with check (public.is_workspace_member(workspace_id, array['Owner', 'Manager', 'Marketer', 'Analyst']));
+
+create policy "Members can read unsupported metric requests"
+  on public.unsupported_metric_requests for select to authenticated
+  using (public.is_workspace_member(workspace_id));
+
+create policy "Members can write unsupported metric requests"
+  on public.unsupported_metric_requests for all to authenticated
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Manager', 'Marketer', 'Analyst']))
+  with check (public.is_workspace_member(workspace_id, array['Owner', 'Manager', 'Marketer', 'Analyst']));
+
+create policy "Members can read ai generation runs"
+  on public.ai_generation_runs for select to authenticated
+  using (public.is_workspace_member(workspace_id));
+
+create policy "Members can write ai generation runs"
+  on public.ai_generation_runs for insert to authenticated
+  with check (public.is_workspace_member(workspace_id));
+
+create policy "Members can read export events"
+  on public.export_events for select to authenticated
+  using (public.is_workspace_member(workspace_id));
+
+create policy "Members can write export events"
+  on public.export_events for insert to authenticated
+  with check (public.is_workspace_member(workspace_id));
