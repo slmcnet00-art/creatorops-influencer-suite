@@ -175,6 +175,26 @@ export default function AdminDataRoom({
             ))}
           </div>
         )}
+        {apiStatus?.payload?.dataRoomLogging?.missingEnv?.length > 0 && (
+          <div className="api-status-action-box">
+            <strong>Missing backend environment</strong>
+            <div className="api-status-check-grid">
+              {apiStatus.payload.dataRoomLogging.missingEnv.map((key) => (
+                <span className="api-status-check error" key={key}>{key}</span>
+              ))}
+            </div>
+          </div>
+        )}
+        {apiStatus?.payload?.dataRoomLogging?.nextActions?.length > 0 && (
+          <div className="api-status-action-box">
+            <strong>Next actions</strong>
+            <ol>
+              {apiStatus.payload.dataRoomLogging.nextActions.map((action) => (
+                <li key={action}>{action}</li>
+              ))}
+            </ol>
+          </div>
+        )}
       </section>
 
       <section className="panel data-room-api-log-panel">

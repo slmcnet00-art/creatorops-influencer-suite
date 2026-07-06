@@ -6200,6 +6200,29 @@
   color: #b42318;
 }
 
+.api-status-action-box {
+  display: grid;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  padding: 12px;
+}
+
+.api-status-action-box strong {
+  color: var(--text-strong);
+  font-size: 13px;
+}
+
+.api-status-action-box ol {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 750;
+  line-height: 1.55;
+}
+
 .data-room-api-log-panel {
   overflow: hidden;
 }

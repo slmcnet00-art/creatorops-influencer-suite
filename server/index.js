@@ -176,11 +176,18 @@ app.get('/health', (request, response) => {
 function getDataRoomLogStatus() {
   const hasSupabaseUrl = Boolean(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL)
   const hasServiceRoleKey = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY)
+  const missingEnv = [
+    !hasSupabaseUrl ? 'SUPABASE_URL' : '',
+    !hasServiceRoleKey ? 'SUPABASE_SERVICE_ROLE_KEY' : '',
+    !WORKSPACE_ID ? 'WORKSPACE_ID' : '',
+  ].filter(Boolean)
   return {
     configured: hasSupabaseUrl && hasServiceRoleKey,
     hasSupabaseUrl,
     hasServiceRoleKey,
+    missingEnv,
     workspaceId: WORKSPACE_ID,
+    readinessLevel: hasSupabaseUrl && hasServiceRoleKey ? 'ready_to_check_tables' : 'missing_environment',
     requiredEnv: ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'WORKSPACE_ID'],
     requiredTables: [
       'workspaces',
@@ -191,6 +198,17 @@ function getDataRoomLogStatus() {
       'external_report_rows',
       'metric_snapshots',
     ],
+    nextActions: missingEnv.length
+      ? [
+          'Set the missing environment variables on the Render API service, not the static frontend service.',
+          'Use the Supabase service_role key only on the backend API service.',
+          'Redeploy the API service after changing environment variables.',
+          'Open /data-room/status again and confirm all required tables return OK.',
+        ]
+      : [
+          'Confirm all required tables return OK.',
+          'Run a discovery or reference search and verify a new external_search_events row appears.',
+        ],
   }
 }
 
@@ -228,6 +246,7 @@ app.get('/data-room/status', async (request, response) => {
     service: 'creatorops-api',
     dataRoomLogging: status,
     checks,
+    tableStatus: ok ? 'ready' : 'schema_or_permission_issue',
     message: ok
       ? 'Data room API logging can write raw events after collection requests.'
       : 'Data room API logging is configured, but one or more tables are not reachable.',
