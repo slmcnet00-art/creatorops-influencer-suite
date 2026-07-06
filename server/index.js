@@ -1061,7 +1061,7 @@ async function searchContentReferences({ query, country, platform, sort, maxResu
   const qualified = filterReferenceQuality(deduped, query)
   const relaxed = qualified.length ? qualified : buildRelaxedContentReferences(deduped, query)
   const relevant = filterAndRankDiscoveryIntent(relaxed, query)
-  const finalResults = relevant.length ? relevant : relaxed
+  const finalResults = relevant.length ? relevant : hasProductSpecificEvidenceTerms(query) ? [] : relaxed
   debugReferenceSearch('summary', {
     query,
     country,
@@ -1156,6 +1156,7 @@ function buildYouTubeReferenceQueries(query) {
   const cleanQuery = compactDiscoveryQuery(query)
   const aliasedQuery = expandProductSearchAliases(cleanQuery)
   const lower = aliasedQuery.toLowerCase()
+  const hasProductTerms = hasProductSpecificEvidenceTerms(query)
   const queries = [
     cleanQuery,
     aliasedQuery,
@@ -1164,13 +1165,13 @@ function buildYouTubeReferenceQueries(query) {
     `${aliasedQuery} comparison`,
     `${aliasedQuery} how to`,
   ].filter(Boolean)
-  if (hasBeautyDiscoveryIntent(lower)) {
+  if (!hasProductTerms && hasBeautyDiscoveryIntent(lower)) {
     queries.push('Korean skincare review shorts', 'K beauty serum review', '\uC2A4\uD0A8\uCF00\uC5B4 \uB9AC\uBDF0 \uC20F\uCE20')
   }
-  if (hasPetDiscoveryIntent(lower)) {
+  if (!hasProductTerms && hasPetDiscoveryIntent(lower)) {
     queries.push('Korean pet product review shorts', '\uBC18\uB824\uACAC \uC81C\uD488 \uB9AC\uBDF0 \uC20F\uCE20')
   }
-  if (hasFoodDiscoveryIntent(lower)) {
+  if (!hasProductTerms && hasFoodDiscoveryIntent(lower)) {
     queries.push('Korean food review shorts', '\uC694\uB9AC \uB808\uC2DC\uD53C \uC20F\uCE20')
   }
   return [...new Set(queries.filter(Boolean))]
@@ -1959,7 +1960,9 @@ async function searchBraveProfiles(query, platform, maxResults, country = 'KR') 
   }
 
   const enriched = await enrichProfileResults(dedupeProfileResults(results).slice(0, maxResults * 3))
-  return filterProfileDiscoveryResults(enriched, query).slice(0, maxResults)
+  const evidenceResults = filterProductSpecificEvidence(enriched, query)
+  if (hasProductSpecificEvidenceTerms(query) && !evidenceResults.length) return []
+  return filterProfileDiscoveryResults(evidenceResults, query).slice(0, maxResults)
 }
 
 // Kept only to avoid changing old deployment snapshots that may still reference the legacy query builder.
@@ -2145,7 +2148,9 @@ async function searchGoogleCseProfiles(query, platform, maxResults, country = 'K
   }
 
   const enriched = await enrichProfileResults(dedupeProfileResults(results).slice(0, maxResults * 3))
-  return filterProfileDiscoveryResults(enriched, query).slice(0, maxResults)
+  const evidenceResults = filterProductSpecificEvidence(enriched, query)
+  if (hasProductSpecificEvidenceTerms(query) && !evidenceResults.length) return []
+  return filterProfileDiscoveryResults(evidenceResults, query).slice(0, maxResults)
 }
 
 async function enrichProfileResults(deduped) {
@@ -3682,14 +3687,24 @@ function filterProductSpecificEvidence(items, query) {
   })
 }
 
+function hasProductSpecificEvidenceTerms(query) {
+  return getProductSpecificEvidenceTerms(query).length > 0
+}
+
 function getProductSpecificEvidenceTerms(query) {
   const text = normalizeSearchEvidenceText(query)
+  const compactText = text.replace(/\s+/g, '')
   const terms = []
-  if (text.includes('바닐라코') || text.includes('banila')) {
-    terms.push('바닐라코', 'banila', 'banila co')
+  if (text.includes('\uBC14\uB2D0\uB77C\uCF54') || compactText.includes('\uBC14\uB2D0\uB77C\uCF54') || text.includes('banila')) {
+    terms.push('\uBC14\uB2D0\uB77C\uCF54', 'banila', 'banila co', 'banilaco')
   }
-  if (text.includes('클렌징밤') || text.includes('cleansing balm') || text.includes('clean it zero')) {
-    terms.push('클렌징밤', 'cleansing balm', 'clean it zero', 'cleanitzero')
+  if (
+    text.includes('\uD074\uB80C\uC9D5\uBC24') ||
+    compactText.includes('\uD074\uB80C\uC9D5\uBC24') ||
+    text.includes('cleansing balm') ||
+    text.includes('clean it zero')
+  ) {
+    terms.push('\uD074\uB80C\uC9D5\uBC24', '\uD074\uB80C\uC9D5 \uBC24', 'cleansing balm', 'clean it zero', 'cleanitzero')
   }
   return [...new Set(terms)]
 }
