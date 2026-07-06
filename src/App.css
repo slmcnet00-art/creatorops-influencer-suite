@@ -6163,6 +6163,43 @@
   line-height: 1.45;
 }
 
+.data-room-api-status-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px 18px;
+}
+
+.api-status-check-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 8px;
+}
+
+.api-status-check {
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 9px 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.api-status-check.ok {
+  border-color: rgba(52, 199, 89, 0.28);
+  background: rgba(52, 199, 89, 0.08);
+  color: #1b7f3a;
+}
+
+.api-status-check.error {
+  border-color: rgba(255, 59, 48, 0.28);
+  background: rgba(255, 59, 48, 0.08);
+  color: #b42318;
+}
+
 .data-room-api-log-panel {
   overflow: hidden;
 }

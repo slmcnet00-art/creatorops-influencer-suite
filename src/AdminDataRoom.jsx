@@ -99,6 +99,8 @@ export default function AdminDataRoom({
   scopes,
   importStatus,
   onImportExternalReport,
+  apiStatus,
+  onRefreshApiStatus,
   apiEvents,
   onRefreshApiEvents,
   onLog,
@@ -138,6 +140,41 @@ export default function AdminDataRoom({
             <input type="file" accept=".xlsx,.xls" hidden onChange={onImportExternalReport} />
           </label>
         </div>
+      </section>
+
+      <section className="panel data-room-api-status-panel">
+        <div className="panel-heading">
+          <div>
+            <span className="mini-label">API Raw Logging Status</span>
+            <h2>API raw 적재 상태</h2>
+          </div>
+          <button className="secondary-button compact-button" type="button" onClick={onRefreshApiStatus}>
+            상태 확인
+          </button>
+        </div>
+        <div className={`sync-status-card ${apiStatus?.ok ? 'success' : 'warning'}`}>
+          <Database size={22} />
+          <div>
+            <strong>{apiStatus?.ok ? 'Data room API logging ready' : 'Data room API logging needs setup'}</strong>
+            <p>{apiStatus?.message || 'API status has not been checked yet.'}</p>
+            {apiStatus?.payload?.dataRoomLogging && (
+              <small>
+                workspace {apiStatus.payload.dataRoomLogging.workspaceId} · SUPABASE_URL{' '}
+                {apiStatus.payload.dataRoomLogging.hasSupabaseUrl ? 'OK' : 'missing'} · SERVICE_ROLE{' '}
+                {apiStatus.payload.dataRoomLogging.hasServiceRoleKey ? 'OK' : 'missing'}
+              </small>
+            )}
+          </div>
+        </div>
+        {apiStatus?.payload?.checks && (
+          <div className="api-status-check-grid">
+            {Object.entries(apiStatus.payload.checks).map(([table, check]) => (
+              <span className={`api-status-check ${check.ok ? 'ok' : 'error'}`} key={table}>
+                {table}: {check.ok ? `OK ${check.count ?? 0}` : check.message}
+              </span>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="panel data-room-api-log-panel">

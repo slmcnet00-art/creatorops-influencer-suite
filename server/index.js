@@ -173,6 +173,67 @@ app.get('/health', (request, response) => {
   })
 })
 
+function getDataRoomLogStatus() {
+  const hasSupabaseUrl = Boolean(process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL)
+  const hasServiceRoleKey = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY)
+  return {
+    configured: hasSupabaseUrl && hasServiceRoleKey,
+    hasSupabaseUrl,
+    hasServiceRoleKey,
+    workspaceId: WORKSPACE_ID,
+    requiredEnv: ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'WORKSPACE_ID'],
+    requiredTables: [
+      'workspaces',
+      'raw_data_sources',
+      'metric_definitions',
+      'external_search_events',
+      'external_report_imports',
+      'external_report_rows',
+      'metric_snapshots',
+    ],
+  }
+}
+
+app.get('/data-room/status', async (request, response) => {
+  const status = getDataRoomLogStatus()
+  if (!status.configured) {
+    response.json({
+      ok: false,
+      service: 'creatorops-api',
+      dataRoomLogging: status,
+      message: 'Data room API logging is not configured on this server.',
+    })
+    return
+  }
+
+  const supabase = getSupabaseAdminClient()
+  const checks = {}
+
+  for (const table of status.requiredTables) {
+    try {
+      const { error, count } = await supabase
+        .from(table)
+        .select('*', { count: 'exact', head: true })
+      checks[table] = error
+        ? { ok: false, message: error.message }
+        : { ok: true, count: count ?? 0 }
+    } catch (error) {
+      checks[table] = { ok: false, message: error.message }
+    }
+  }
+
+  const ok = Object.values(checks).every((item) => item.ok)
+  response.json({
+    ok,
+    service: 'creatorops-api',
+    dataRoomLogging: status,
+    checks,
+    message: ok
+      ? 'Data room API logging can write raw events after collection requests.'
+      : 'Data room API logging is configured, but one or more tables are not reachable.',
+  })
+})
+
 function getSearchCacheKey(scope, value) {
   return `${scope}:${JSON.stringify(value)}`
 }

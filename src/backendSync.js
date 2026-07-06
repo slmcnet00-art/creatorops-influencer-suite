@@ -22,6 +22,37 @@ export function getBackendConfig() {
   }
 }
 
+function getCreatorOpsApiUrl(path) {
+  const baseUrl = import.meta.env.VITE_CREATOROPS_API_BASE_URL || ''
+  if (!baseUrl) return path
+  return `${baseUrl.replace(/\/$/, '')}${path}`
+}
+
+export async function loadDataRoomApiStatus() {
+  try {
+    const response = await fetch(getCreatorOpsApiUrl('/data-room/status'))
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok) {
+      return {
+        ok: false,
+        message: payload.message || `API status check failed with ${response.status}.`,
+        payload,
+      }
+    }
+    return {
+      ok: Boolean(payload.ok),
+      message: payload.message || '',
+      payload,
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      message: error.message || 'Data room API status check failed.',
+      payload: null,
+    }
+  }
+}
+
 export function getSupabaseClient() {
   if (!SUPABASE_URL || !SUPABASE_ANON_KEY) return null
   if (!supabaseClient) {

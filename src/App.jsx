@@ -43,6 +43,7 @@ import {
   getBackendConfig,
   getAuthSession,
   importExternalReport,
+  loadDataRoomApiStatus,
   loadExternalSearchEvents,
   loadCloudWorkspace,
   onAuthStateChange,
@@ -4265,6 +4266,11 @@ function App() {
   const [selectedDataRoomItem, setSelectedDataRoomItem] = useState({ type: 'raw', id: 'RAW-INT-CRM-001' })
   const [dataRoomImportStatus, setDataRoomImportStatus] = useState('외부 보고서 업로드 대기')
   const [dataRoomApiEvents, setDataRoomApiEvents] = useState([])
+  const [dataRoomApiStatus, setDataRoomApiStatus] = useState({
+    ok: false,
+    message: 'API data room status has not been checked yet.',
+    payload: null,
+  })
   const [fulfillmentDraft, setFulfillmentDraft] = useState(createEmptyFulfillmentDraft)
 
   const {
@@ -5286,11 +5292,19 @@ function App() {
     }
   }, [backendConfig.hasSupabase])
 
+  const refreshDataRoomApiStatus = useCallback(async () => {
+    const result = await loadDataRoomApiStatus()
+    setDataRoomApiStatus(result)
+    return result
+  }, [])
+
   useEffect(() => {
     if (visibleSection !== 'dataRoom') return
     let cancelled = false
 
     async function loadRecentApiEvents() {
+      const statusResult = await loadDataRoomApiStatus()
+      if (!cancelled) setDataRoomApiStatus(statusResult)
       if (!backendConfig.hasSupabase) return
       try {
         const result = await loadExternalSearchEvents(20)
@@ -9160,6 +9174,8 @@ function App() {
             scopes={dataRoomScopes}
             importStatus={dataRoomImportStatus}
             onImportExternalReport={handleExternalReportImport}
+            apiStatus={dataRoomApiStatus}
+            onRefreshApiStatus={refreshDataRoomApiStatus}
             apiEvents={dataRoomApiEvents}
             onRefreshApiEvents={refreshDataRoomApiEvents}
             onLog={() => showToast('선택한 raw 데이터의 수집 로그 위치를 확인하세요. 실제 로그 테이블 연결 시 상세 로그가 열립니다.')}
