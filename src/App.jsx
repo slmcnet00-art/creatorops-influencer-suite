@@ -609,6 +609,74 @@ const defaultCreatorGroups = [
   },
 ]
 
+const defaultBrandInsightRows = [
+  {
+    name: 'Anua',
+    url: 'https://www.anua.kr',
+    category: '뷰티/스킨케어',
+    country: 'KR',
+    platform: 'YouTube',
+    creators: 98100,
+    contents: 338200,
+    views: 5636000000,
+    engagement: 5,
+    budget: '$184.37만 - $251.43만',
+    rank: 1,
+  },
+  {
+    name: 'UNOVE',
+    url: 'https://unoveofficial.com',
+    category: '뷰티/헤어케어',
+    country: 'KR',
+    platform: 'YouTube',
+    creators: 4437,
+    contents: 6588,
+    views: 394000000,
+    engagement: 3,
+    budget: '$10.59만 - $15.85만',
+    rank: 2,
+  },
+  {
+    name: 'SHEIN',
+    url: 'https://sg.shein.com',
+    category: '패션/커머스',
+    country: 'Global',
+    platform: 'TikTok',
+    creators: 850400,
+    contents: 4903500,
+    views: 83306000000,
+    engagement: 2.8,
+    budget: '$10.78억 - $16.59억',
+    rank: 3,
+  },
+  {
+    name: 'Nike',
+    url: 'https://www.nike.com',
+    category: '패션/스포츠',
+    country: 'Global',
+    platform: 'Instagram',
+    creators: 425800,
+    contents: 1892800,
+    views: 41465000000,
+    engagement: 4.1,
+    budget: '$5.54억 - $8.02억',
+    rank: 4,
+  },
+  {
+    name: 'ZARA',
+    url: 'https://www.zara.com',
+    category: '패션',
+    country: 'Global',
+    platform: 'Instagram',
+    creators: 500900,
+    contents: 1546400,
+    views: 48334000000,
+    engagement: 2.4,
+    budget: '$5.34억 - $8.14억',
+    rank: 5,
+  },
+]
+
 const defaultRecommendations = [
   {
     id: 4101,
@@ -3893,6 +3961,9 @@ function App() {
     maxResults: '36',
   })
   const [referenceMode, setReferenceMode] = useState('content')
+  const [brandDirectoryView, setBrandDirectoryView] = useState('top')
+  const [brandInsightTab, setBrandInsightTab] = useState('overview')
+  const [selectedBrandInsightName, setSelectedBrandInsightName] = useState(defaultBrandInsightRows[0].name)
   const [referencePage, setReferencePage] = useState(1)
   const [referenceSearchStatus, setReferenceSearchStatus] = useState({
     mode: 'idle',
@@ -4219,6 +4290,41 @@ function App() {
       }))
       .sort((a, b) => b.views - a.views || b.items.length - a.items.length)
   }, [brandTrackingReferences])
+  const brandInsightRows = useMemo(() => {
+    const monitoredRows = brandTrackingGroups.map((group, index) => ({
+      name: group.brandName,
+      url: group.latestItem?.url || '',
+      category: group.latestItem?.category || '저장 브랜드',
+      country: group.countries[0] || activeBrand.country || 'KR',
+      platform: group.platforms[0] || 'All',
+      creators: Math.max(group.items.length * 37, Number(group.latestItem?.accountFollowers || 0)),
+      contents: group.items.length,
+      views: group.views,
+      engagement: group.views ? ((group.likes + group.comments + group.shares) / group.views) * 100 : 0,
+      budget: '저장 데이터 기반 산출',
+      rank: index + 1,
+      source: 'monitoring',
+      items: group.items,
+    }))
+    const existingNames = new Set(monitoredRows.map((row) => row.name.toLowerCase()))
+    const topRows = defaultBrandInsightRows
+      .filter((row) => !existingNames.has(row.name.toLowerCase()))
+      .map((row) => ({ ...row, source: 'top', items: [] }))
+
+    return [...monitoredRows, ...topRows].sort((a, b) => Number(a.rank || 999) - Number(b.rank || 999))
+  }, [activeBrand.country, brandTrackingGroups])
+  const displayedBrandInsightRows = useMemo(() => {
+    const query = referenceFilters.query.trim().toLowerCase()
+    return brandInsightRows.filter((row) => {
+      const matchesView = brandDirectoryView === 'monitoring' ? row.source === 'monitoring' : true
+      const searchable = [row.name, row.category, row.country, row.platform, row.url].filter(Boolean).join(' ').toLowerCase()
+      return matchesView && (!query || searchable.includes(query))
+    })
+  }, [brandDirectoryView, brandInsightRows, referenceFilters.query])
+  const selectedBrandInsight =
+    brandInsightRows.find((row) => row.name === selectedBrandInsightName) ||
+    displayedBrandInsightRows[0] ||
+    brandInsightRows[0]
   const activeReferenceBase = referenceMode === 'brand' ? brandTrackingReferences : contentTrackingReferences
   const referenceCountryOptions = useMemo(
     () => [
@@ -8001,6 +8107,63 @@ function App() {
     showToast(`${selectedCampaign.name}에 ${creatorIds.length}명을 배정했습니다.`)
   }
 
+  const saveBrandForMonitoring = (brandRow) => {
+    if (!selectedCampaign) {
+      showToast('브랜드를 저장할 캠페인을 먼저 선택하세요.')
+      return
+    }
+
+    const alreadySaved = brandTrackingReferences.some(
+      (item) => String(getReferenceBrandName(item)).toLowerCase() === String(brandRow.name).toLowerCase(),
+    )
+    if (alreadySaved) {
+      setBrandDirectoryView('monitoring')
+      setSelectedBrandInsightName(brandRow.name)
+      showToast(`${brandRow.name}은 이미 나의 모니터링에 저장되어 있습니다.`)
+      return
+    }
+
+    const nextReference = {
+      id: createId(),
+      campaignId: selectedCampaign.id,
+      referenceKind: 'brand',
+      trackingType: 'competitor',
+      brandName: brandRow.name,
+      mediaType: '브랜드',
+      platform: brandRow.platform || 'All',
+      country: brandRow.country || activeBrand.country || 'KR',
+      title: brandRow.name,
+      url: brandRow.url || '',
+      thumbnailUrl: '',
+      views: Number(brandRow.views || 0),
+      accountFollowers: Number(brandRow.creators || 0),
+      likes: Math.round(Number(brandRow.views || 0) * 0.01),
+      comments: Math.round(Number(brandRow.views || 0) * 0.001),
+      shares: Math.round(Number(brandRow.views || 0) * 0.0005),
+      publishedAt: '브랜드 모니터링 저장',
+      hook: `${brandRow.category} 카테고리 경쟁/벤치마크 브랜드`,
+      analysis: '브랜드 인사이트 화면에서 개요, 전략, 시장 동향, 마케팅 자산으로 분석합니다.',
+      applyIdea: '캠페인 전략/콘텐츠 가이드/레퍼런스 선별에 사용',
+      source: 'Brand insight monitoring',
+      confidence: 80,
+      savedAt: nowLabel(),
+    }
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          contentReferences: [nextReference, ...(current.contentReferences ?? [])],
+        },
+        'reference',
+        `${brandRow.name} 브랜드 모니터링 저장`,
+      ),
+    )
+    setBrandDirectoryView('monitoring')
+    setSelectedBrandInsightName(brandRow.name)
+    showToast(`${brandRow.name} 브랜드를 나의 모니터링에 저장했습니다.`)
+  }
+
   const saveContentReference = async (event) => {
     event.preventDefault()
 
@@ -9711,7 +9874,7 @@ function App() {
         )}
 
         {visibleSection === 'references' && (
-        <section className="panel reference-board-panel">
+        <section className={`panel reference-board-panel ${referenceMode === 'brand' ? 'brand-mode' : 'content-mode'}`}>
           <div className="panel-heading">
             <div>
               <span className="mini-label">Content Reference</span>
@@ -9752,6 +9915,203 @@ function App() {
               <small>콘텐츠 저장기능</small>
             </button>
           </div>
+
+          {referenceMode === 'brand' && selectedBrandInsight && (
+            <div className="brand-insight-suite">
+              <div className="brand-insight-directory-tabs">
+                <button
+                  className={brandDirectoryView === 'top' ? 'active' : ''}
+                  type="button"
+                  onClick={() => setBrandDirectoryView('top')}
+                >
+                  TOP100 브랜드
+                </button>
+                <button
+                  className={brandDirectoryView === 'monitoring' ? 'active' : ''}
+                  type="button"
+                  onClick={() => setBrandDirectoryView('monitoring')}
+                >
+                  나의 모니터링 <span>{brandTrackingGroups.length} / 10</span>
+                </button>
+              </div>
+
+              <div className="brand-insight-search">
+                <Search size={22} />
+                <input
+                  value={referenceFilters.query}
+                  onChange={(event) => {
+                    setReferenceFilters({ ...referenceFilters, query: event.target.value })
+                    setReferencePage(1)
+                  }}
+                  placeholder="브랜드명"
+                />
+              </div>
+
+              <div className="brand-insight-top-grid">
+                <div className="brand-insight-rank-panel">
+                  <div className="brand-insight-panel-head">
+                    <strong>{brandDirectoryView === 'monitoring' ? '나의 모니터링 브랜드' : 'TOP100 브랜드'}</strong>
+                    <div>
+                      <span>전체 지역</span>
+                      <span>전체 카테고리</span>
+                      <span>전체 플랫폼</span>
+                    </div>
+                  </div>
+                  <div className="brand-insight-table">
+                    <div className="brand-insight-table-head">
+                      <span>순위</span>
+                      <span>브랜드</span>
+                      <span>인플루언서 수</span>
+                      <span>동영상 수</span>
+                      <span>총 조회 수</span>
+                      <span>예상 예산</span>
+                      <span />
+                    </div>
+                    {displayedBrandInsightRows.map((row, index) => {
+                      const active = selectedBrandInsight?.name === row.name
+                      return (
+                        <button
+                          className={`brand-insight-row ${active ? 'active' : ''}`}
+                          type="button"
+                          key={row.name}
+                          onClick={() => setSelectedBrandInsightName(row.name)}
+                        >
+                          <span className="brand-rank-chip">{row.rank || index + 1}</span>
+                          <span className="brand-row-name">
+                            <strong>{row.name}</strong>
+                            <small>{row.url}</small>
+                          </span>
+                          <span>{compactNumber(row.creators)}</span>
+                          <span>{compactNumber(row.contents)}</span>
+                          <span>{compactNumber(row.views)}</span>
+                          <span>{row.budget}</span>
+                          <span
+                            role="button"
+                            tabIndex={0}
+                            onClick={(event) => {
+                              event.stopPropagation()
+                              saveBrandForMonitoring(row)
+                            }}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter' || event.key === ' ') {
+                                event.preventDefault()
+                                event.stopPropagation()
+                                saveBrandForMonitoring(row)
+                              }
+                            }}
+                          >
+                            저장
+                          </span>
+                        </button>
+                      )
+                    })}
+                    {!displayedBrandInsightRows.length && (
+                      <div className="empty-state compact-empty">
+                        <Search size={22} />
+                        <strong>검색 조건에 맞는 브랜드가 없습니다.</strong>
+                        <p>브랜드명을 바꾸거나 TOP100 브랜드 탭에서 다시 확인하세요.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="brand-insight-detail-panel">
+                  <div className="brand-insight-identity">
+                    <div className="brand-logo-mark">{selectedBrandInsight.name.slice(0, 2)}</div>
+                    <div>
+                      <strong>{selectedBrandInsight.name}</strong>
+                      <a href={selectedBrandInsight.url || '#'} target="_blank" rel="noreferrer">
+                        {selectedBrandInsight.url || '저장 URL 없음'}
+                      </a>
+                    </div>
+                  </div>
+                  <div className="brand-insight-kpis">
+                    <Stat label="관련 인플루언서 수" value={compactNumber(selectedBrandInsight.creators)} />
+                    <Stat label="언급된 영상 수" value={compactNumber(selectedBrandInsight.contents)} />
+                    <Stat label="총 노출량" value={compactNumber(selectedBrandInsight.views)} />
+                    <Stat label="평균 참여율" value={percent(selectedBrandInsight.engagement)} />
+                  </div>
+                  <div className="brand-insight-tabs">
+                    {[
+                      ['overview', '브랜드 개요'],
+                      ['strategy', '마케팅 전략'],
+                      ['trend', '시장 동향'],
+                      ['asset', '마케팅 자산'],
+                    ].map(([tab, label]) => (
+                      <button
+                        className={brandInsightTab === tab ? 'active' : ''}
+                        type="button"
+                        key={tab}
+                        onClick={() => setBrandInsightTab(tab)}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  {brandInsightTab === 'overview' && (
+                    <div className="brand-insight-section">
+                      <h3>브랜드 성과 개요</h3>
+                      <div className="brand-ai-evaluation">
+                        <article>
+                          <span>핵심 통찰</span>
+                          <p>{selectedBrandInsight.name}은 {selectedBrandInsight.category} 카테고리에서 총 조회 {compactNumber(selectedBrandInsight.views)} 규모의 벤치마크를 보유합니다. 협업 후보를 볼 때 팔로워보다 조회 기여도와 카테고리 적합도를 우선 보세요.</p>
+                        </article>
+                        <article>
+                          <span>기회와 위험</span>
+                          <p>콘텐츠 수 대비 조회가 높으면 후킹/썸네일 구조를 차용하고, 참여율이 낮으면 댓글 유도형 CTA와 저장 유도형 정보 구성을 보완해야 합니다.</p>
+                        </article>
+                        <article>
+                          <span>산업 권고</span>
+                          <p>상위 콘텐츠의 첫 3초 후킹, 제품 사용 장면, 가격/권위/비교 포인트를 캠페인 가이드에 반영하세요.</p>
+                        </article>
+                      </div>
+                    </div>
+                  )}
+                  {brandInsightTab === 'strategy' && (
+                    <div className="brand-insight-section">
+                      <h3>마케팅 전략</h3>
+                      <div className="brand-strategy-list">
+                        <p>1. 조회수 기여도가 높은 마이크로/미들 크리에이터를 우선 저장하고 메시지 후보 풀로 넘깁니다.</p>
+                        <p>2. 터진 콘텐츠의 후킹, 썸네일, 댓글 유도 문장을 추출해 캠페인 가이드에 반영합니다.</p>
+                        <p>3. 경쟁 브랜드 대비 부족한 플랫폼을 별도 발굴 조건으로 만들어 후보 수를 늘립니다.</p>
+                      </div>
+                    </div>
+                  )}
+                  {brandInsightTab === 'trend' && (
+                    <div className="brand-insight-section">
+                      <h3>시장 동향</h3>
+                      <div className="brand-trend-board">
+                        <div>
+                          <strong>72시간 신규 콘텐츠</strong>
+                          <span>{compactNumber(Math.max(12, selectedBrandInsight.contents * 0.04))}</span>
+                        </div>
+                        <div>
+                          <strong>72시간 신규 조회</strong>
+                          <span>{compactNumber(Math.max(120000, selectedBrandInsight.views * 0.03))}</span>
+                        </div>
+                        <div>
+                          <strong>상승 키워드</strong>
+                          <span>review · routine · price · before after</span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  {brandInsightTab === 'asset' && (
+                    <div className="brand-insight-section">
+                      <h3>마케팅 자산</h3>
+                      <div className="brand-asset-table">
+                        <span>인플루언서 라이브러리</span>
+                        <span>콘텐츠 라이브러리</span>
+                        <span>태그 라이브러리</span>
+                        <span>상품 라이브러리</span>
+                      </div>
+                      <p>저장 브랜드의 콘텐츠 raw가 쌓이면 여기에서 크리에이터/콘텐츠/태그/상품 자산으로 분리해 캠페인 가이드와 메시지에 재사용합니다.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )}
 
           {referenceMode === 'brand' && (
             <div className="brand-tracking-dashboard">
