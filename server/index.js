@@ -432,7 +432,11 @@ async function searchYouTubeCreators(query, maxResults, country = 'KR') {
 
   try {
     for (const searchQuery of buildCreatorDiscoveryQueries(query)) {
-      const creators = await fetchYouTubeCreatorsForQuery(searchQuery, searchLimit, country)
+      const [channelCreators, contentCreators] = await Promise.all([
+        fetchYouTubeCreatorsForQuery(searchQuery, searchLimit, country),
+        fetchYouTubeCreatorsFromVideosForQuery(searchQuery, searchLimit, country),
+      ])
+      const creators = [...contentCreators, ...channelCreators]
       for (const creator of creators) {
         const key = creator.channelId || creator.id || creator.profileUrl
         if (!key || seen.has(key)) continue
@@ -493,9 +497,72 @@ async function fetchYouTubeCreatorsForQuery(query, maxResults, country = 'KR') {
   return channels.map((channel) => normalizeYouTubeChannel(channel, {}, regionCode))
 }
 
+async function fetchYouTubeCreatorsFromVideosForQuery(query, maxResults, country = 'KR') {
+  const key = requireEnv('YOUTUBE_DATA_API_KEY')
+  const regionCode = normalizeRegionCode(country) || 'KR'
+  const channelEvidence = new Map()
+  let pageToken = ''
+
+  while (channelEvidence.size < maxResults) {
+    const searchParams = new URLSearchParams({
+      part: 'snippet',
+      type: 'video',
+      q: query,
+      maxResults: String(Math.min(50, maxResults - channelEvidence.size)),
+      order: 'relevance',
+      safeSearch: 'none',
+      regionCode,
+      relevanceLanguage: getDiscoveryLanguage(regionCode),
+      key,
+    })
+    if (pageToken) searchParams.set('pageToken', pageToken)
+
+    const searchPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/search?${searchParams}`)
+    for (const item of searchPayload.items || []) {
+      const channelId = item.snippet?.channelId
+      if (!channelId || channelEvidence.has(channelId)) continue
+      channelEvidence.set(channelId, {
+        sourceTitle: item.snippet?.title || '',
+        sourceSnippet: item.snippet?.description || '',
+        matchedVideoId: item.id?.videoId || '',
+        matchedVideoUrl: item.id?.videoId ? `https://www.youtube.com/watch?v=${item.id.videoId}` : '',
+      })
+    }
+    pageToken = searchPayload.nextPageToken || ''
+    if (!pageToken) break
+  }
+
+  const channelIds = [...channelEvidence.keys()].slice(0, maxResults)
+  if (!channelIds.length) return []
+
+  const channels = []
+  for (const idChunk of chunkArray(channelIds, 50)) {
+    const channelParams = new URLSearchParams({
+      part: 'snippet,statistics',
+      id: idChunk.join(','),
+      key,
+    })
+    const channelPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/channels?${channelParams}`)
+    channels.push(...(channelPayload.items || []))
+  }
+
+  return channels.map((channel) => {
+    const evidence = channelEvidence.get(channel.id) || {}
+    return {
+      ...normalizeYouTubeChannel(channel, {}, regionCode),
+      source: 'YouTube Data API search.list(video) + channels.list',
+      sourceTitle: evidence.sourceTitle,
+      sourceSnippet: evidence.sourceSnippet,
+      matchedContentUrl: evidence.matchedVideoUrl,
+      matchedVideoId: evidence.matchedVideoId,
+    }
+  })
+}
+
 function buildCreatorDiscoveryQueries(query) {
   const cleanQuery = compactDiscoveryQuery(query)
-  const queries = [cleanQuery]
+  const aliasedQuery = expandProductSearchAliases(cleanQuery)
+  const queries = [cleanQuery, aliasedQuery, `${aliasedQuery} review`, `${aliasedQuery} influencer`]
   const lower = cleanQuery.toLowerCase()
   if (hasBeautyDiscoveryIntent(lower)) {
     queries.push('Korean beauty review', 'beauty review Korea', 'K beauty creator', '\uD55C\uAD6D \uBDF0\uD2F0 \uB9AC\uBDF0', '\uC2A4\uD0A8\uCF00\uC5B4 \uB9AC\uBDF0')
@@ -691,13 +758,15 @@ async function searchYouTubeVideoReferences({ query, country, sort, maxResults }
 
 function buildYouTubeReferenceQueries(query) {
   const cleanQuery = compactDiscoveryQuery(query)
-  const lower = cleanQuery.toLowerCase()
+  const aliasedQuery = expandProductSearchAliases(cleanQuery)
+  const lower = aliasedQuery.toLowerCase()
   const queries = [
     cleanQuery,
-    `${cleanQuery} how to`,
-    `${cleanQuery} recipe`,
-    `${cleanQuery} shorts`,
-    `${cleanQuery} comparison`,
+    aliasedQuery,
+    `${aliasedQuery} review`,
+    `${aliasedQuery} shorts`,
+    `${aliasedQuery} comparison`,
+    `${aliasedQuery} how to`,
   ].filter(Boolean)
   if (hasBeautyDiscoveryIntent(lower)) {
     queries.push('Korean skincare review shorts', 'K beauty serum review', '\uC2A4\uD0A8\uCF00\uC5B4 \uB9AC\uBDF0 \uC20F\uCE20')
@@ -1531,12 +1600,16 @@ function buildBraveProfileSearchQueries(platform, query) {
 
 function buildStrictProfileSearchQueries(platform, query) {
   const cleanQuery = String(query || '').replace(/\s+/g, ' ').trim()
+  const aliasedQuery = expandProductSearchAliases(cleanQuery)
   const queries = []
-  const lower = cleanQuery.toLowerCase()
+  const lower = aliasedQuery.toLowerCase()
   const categoryTerms = inferDiscoveryCategoryTerms(lower)
 
   if (platform === 'Instagram') {
     queries.push(`site:instagram.com "${cleanQuery}" "@" -inurl:/p/ -inurl:/reel/ -inurl:/stories/`)
+    queries.push(`site:instagram.com "${aliasedQuery}" "@" -inurl:/p/ -inurl:/reel/ -inurl:/stories/`)
+    queries.push(`site:instagram.com/reel "${aliasedQuery}"`)
+    queries.push(`site:instagram.com/p "${aliasedQuery}"`)
     queries.push(`site:instagram.com ${cleanQuery} influencer creator -inurl:/p/ -inurl:/reel/ -inurl:/stories/`)
     if (/beauty|makeup|skincare|cosmetic|cosmetics/.test(lower)) {
       queries.push('site:instagram.com "beauty review" "@" -inurl:/p/ -inurl:/reel/ -inurl:/stories/')
@@ -1555,6 +1628,9 @@ function buildStrictProfileSearchQueries(platform, query) {
     })
   } else if (platform === 'TikTok') {
     queries.push(`site:tiktok.com/@ "${cleanQuery}" -inurl:/video/ -inurl:/music/ -inurl:/tag/`)
+    queries.push(`site:tiktok.com/@ "${aliasedQuery}" -inurl:/music/ -inurl:/tag/`)
+    queries.push(`site:tiktok.com/@ "${aliasedQuery}" "/video/"`)
+    queries.push(`site:tiktok.com "${aliasedQuery}"`)
     queries.push(`site:tiktok.com/@ ${cleanQuery} -inurl:/video/ -inurl:/music/ -inurl:/tag/`)
     queries.push(`site:tiktok.com/@ ${cleanQuery} creator influencer -inurl:/video/ -inurl:/music/ -inurl:/tag/`)
     queries.push(`site:tiktok.com/@ ${cleanQuery}`)
@@ -1582,6 +1658,25 @@ function buildStrictProfileSearchQueries(platform, query) {
   }
 
   return [...new Set(queries.filter(Boolean))].slice(0, 12)
+}
+
+function expandProductSearchAliases(query) {
+  const cleanQuery = String(query || '').replace(/\s+/g, ' ').trim()
+  const lower = cleanQuery.toLowerCase()
+  const aliases = []
+
+  if (/\uBC14\uB2D0\uB77C\uCF54|banila/.test(lower)) aliases.push('banila co')
+  if (/\uD074\uB80C\uC9D5\s*\uBC24|cleansing\s*balm|clean\s*it\s*zero/.test(lower)) {
+    aliases.push('clean it zero', 'cleansing balm')
+  }
+  if (/\uBDF0\uD2F0|\uD654\uC7A5|\uC2A4\uD0A8\uCF00\uC5B4|beauty|skincare|cosmetic/.test(lower)) {
+    aliases.push('k beauty', 'skincare review')
+  }
+
+  return [...new Set([cleanQuery, ...aliases].filter(Boolean))]
+    .join(' ')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function inferDiscoveryCategoryTerms(lowerQuery) {
