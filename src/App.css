@@ -6693,6 +6693,18 @@
   align-items: start;
 }
 
+.brand-insight-suite.list-mode .brand-insight-top-grid,
+.brand-insight-suite.detail-mode .brand-insight-top-grid {
+  grid-template-columns: 1fr;
+}
+
+.brand-insight-suite.list-mode .brand-insight-detail-panel,
+.brand-insight-suite.detail-mode .brand-insight-directory-tabs,
+.brand-insight-suite.detail-mode .brand-insight-search,
+.brand-insight-suite.detail-mode .brand-insight-rank-panel {
+  display: none;
+}
+
 .brand-insight-rank-panel,
 .brand-insight-detail-panel {
   display: grid;
@@ -6702,6 +6714,10 @@
   background: var(--surface);
   padding: 16px;
   box-shadow: var(--shadow-soft);
+}
+
+.brand-insight-back {
+  justify-self: start;
 }
 
 .brand-insight-panel-head {

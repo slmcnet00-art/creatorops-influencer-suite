@@ -2046,6 +2046,21 @@ function getReferenceBrandName(item) {
   }
 }
 
+function isBrandLevelReference(item) {
+  if ((item.referenceKind || item.trackingType) !== 'brand') return false
+  if (item.trackingType === 'competitor' || item.source === 'Brand insight monitoring') return true
+
+  const url = String(item.url || '').toLowerCase()
+  const isContentUrl =
+    url.includes('youtube.com/watch') ||
+    url.includes('youtu.be/') ||
+    url.includes('instagram.com/reel') ||
+    url.includes('instagram.com/p/') ||
+    url.includes('tiktok.com/') && url.includes('/video/')
+
+  return !isContentUrl
+}
+
 function isValidReferenceContentUrl(value, platform = inferPlatformFromUrl(value)) {
   try {
     const url = new URL(String(value || ''))
@@ -3962,7 +3977,8 @@ function App() {
   })
   const [referenceMode, setReferenceMode] = useState('content')
   const [brandDirectoryView, setBrandDirectoryView] = useState('top')
-  const [brandInsightTab, setBrandInsightTab] = useState('overview')
+  const [brandInsightView, setBrandInsightView] = useState('list')
+  const [brandInsightTab, setBrandInsightTab] = useState('collection')
   const [selectedBrandInsightName, setSelectedBrandInsightName] = useState(defaultBrandInsightRows[0].name)
   const [referencePage, setReferencePage] = useState(1)
   const [referenceSearchStatus, setReferenceSearchStatus] = useState({
@@ -4251,11 +4267,11 @@ function App() {
     [activeCampaignIdSet, contentReferences],
   )
   const contentTrackingReferences = useMemo(
-    () => selectedCampaignReferences.filter((item) => (item.referenceKind || item.trackingType || 'content') !== 'brand'),
+    () => selectedCampaignReferences.filter((item) => !isBrandLevelReference(item)),
     [selectedCampaignReferences],
   )
   const brandTrackingReferences = useMemo(
-    () => selectedCampaignReferences.filter((item) => (item.referenceKind || item.trackingType) === 'brand'),
+    () => selectedCampaignReferences.filter((item) => isBrandLevelReference(item)),
     [selectedCampaignReferences],
   )
   const brandTrackingGroups = useMemo(() => {
@@ -8151,7 +8167,7 @@ function App() {
       shares: Math.round(Number(brandRow.views || 0) * 0.0005),
       publishedAt: '브랜드 모니터링 저장',
       hook: `${brandRow.category} 카테고리 경쟁/벤치마크 브랜드`,
-      analysis: '브랜드 인사이트 화면에서 개요, 전략, 시장 동향, 마케팅 자산으로 분석합니다.',
+      analysis: '브랜드 인사이트 화면에서 수집 현황, 성과/반응, 콘텐츠 힌트, 활용 자산으로 분석합니다.',
       applyIdea: '캠페인 전략/콘텐츠 가이드/레퍼런스 선별에 사용',
       source: 'Brand insight monitoring',
       confidence: 80,
@@ -10021,19 +10037,25 @@ function App() {
           </div>
 
           {referenceMode === 'brand' && selectedBrandInsight && (
-            <div className="brand-insight-suite">
+            <div className={`brand-insight-suite ${brandInsightView === 'detail' ? 'detail-mode' : 'list-mode'}`}>
               <div className="brand-insight-directory-tabs">
                 <button
                   className={brandDirectoryView === 'top' ? 'active' : ''}
                   type="button"
-                  onClick={() => setBrandDirectoryView('top')}
+                  onClick={() => {
+                    setBrandDirectoryView('top')
+                    setBrandInsightView('list')
+                  }}
                 >
-                  TOP100 브랜드
+                  브랜드 검색
                 </button>
                 <button
                   className={brandDirectoryView === 'monitoring' ? 'active' : ''}
                   type="button"
-                  onClick={() => setBrandDirectoryView('monitoring')}
+                  onClick={() => {
+                    setBrandDirectoryView('monitoring')
+                    setBrandInsightView('list')
+                  }}
                 >
                   나의 모니터링 <span>{brandTrackingGroups.length} / 10</span>
                 </button>
@@ -10046,6 +10068,7 @@ function App() {
                   onChange={(event) => {
                     setReferenceFilters({ ...referenceFilters, query: event.target.value })
                     setReferencePage(1)
+                    setBrandInsightView('list')
                   }}
                   placeholder="브랜드명"
                 />
@@ -10054,7 +10077,7 @@ function App() {
               <div className="brand-insight-top-grid">
                 <div className="brand-insight-rank-panel">
                   <div className="brand-insight-panel-head">
-                    <strong>{brandDirectoryView === 'monitoring' ? '나의 모니터링 브랜드' : 'TOP100 브랜드'}</strong>
+                    <strong>{brandDirectoryView === 'monitoring' ? '나의 모니터링 브랜드' : '브랜드 검색 결과'}</strong>
                     <div>
                       <span>전체 지역</span>
                       <span>전체 카테고리</span>
@@ -10078,7 +10101,11 @@ function App() {
                           className={`brand-insight-row ${active ? 'active' : ''}`}
                           type="button"
                           key={row.name}
-                          onClick={() => setSelectedBrandInsightName(row.name)}
+                          onClick={() => {
+                            setSelectedBrandInsightName(row.name)
+                            setBrandInsightTab('collection')
+                            setBrandInsightView('detail')
+                          }}
                         >
                           <span className="brand-rank-chip">{row.rank || index + 1}</span>
                           <span className="brand-row-name">
@@ -10113,13 +10140,16 @@ function App() {
                       <div className="empty-state compact-empty">
                         <Search size={22} />
                         <strong>검색 조건에 맞는 브랜드가 없습니다.</strong>
-                        <p>브랜드명을 바꾸거나 TOP100 브랜드 탭에서 다시 확인하세요.</p>
+                        <p>브랜드명을 바꾸거나 브랜드 검색 탭에서 다시 확인하세요.</p>
                       </div>
                     )}
                   </div>
                 </div>
 
                 <div className="brand-insight-detail-panel">
+                  <button className="secondary-button compact-button brand-insight-back" type="button" onClick={() => setBrandInsightView('list')}>
+                    ← 브랜드 검색으로 돌아가기
+                  </button>
                   <div className="brand-insight-identity">
                     <div className="brand-logo-mark">{selectedBrandInsight.name.slice(0, 2)}</div>
                     <div>
@@ -10137,10 +10167,10 @@ function App() {
                   </div>
                   <div className="brand-insight-tabs">
                     {[
-                      ['overview', '브랜드 개요'],
-                      ['strategy', '마케팅 전략'],
-                      ['trend', '시장 동향'],
-                      ['asset', '마케팅 자산'],
+                      ['collection', '수집 현황'],
+                      ['performance', '성과/반응'],
+                      ['hooks', '콘텐츠 힌트'],
+                      ['assets', '활용 자산'],
                     ].map(([tab, label]) => (
                       <button
                         className={brandInsightTab === tab ? 'active' : ''}
@@ -10152,57 +10182,57 @@ function App() {
                       </button>
                     ))}
                   </div>
-                  {brandInsightTab === 'overview' && (
+                  {brandInsightTab === 'collection' && (
                     <div className="brand-insight-section">
-                      <h3>브랜드 성과 개요</h3>
+                      <h3>수집 가능한 브랜드 데이터</h3>
                       <div className="brand-ai-evaluation">
                         <article>
-                          <span>핵심 통찰</span>
-                          <p>{selectedBrandInsight.name}은 {selectedBrandInsight.category} 카테고리에서 총 조회 {compactNumber(selectedBrandInsight.views)} 규모의 벤치마크를 보유합니다. 협업 후보를 볼 때 팔로워보다 조회 기여도와 카테고리 적합도를 우선 보세요.</p>
+                          <span>원천 데이터</span>
+                          <p>{selectedBrandInsight.name}의 공개 URL, 플랫폼, 국가, 카테고리, 저장 콘텐츠 raw를 기준으로 브랜드 단위 데이터를 구성합니다.</p>
                         </article>
                         <article>
-                          <span>기회와 위험</span>
-                          <p>콘텐츠 수 대비 조회가 높으면 후킹/썸네일 구조를 차용하고, 참여율이 낮으면 댓글 유도형 CTA와 저장 유도형 정보 구성을 보완해야 합니다.</p>
+                          <span>현재 적재량</span>
+                          <p>관련 콘텐츠 {compactNumber(selectedBrandInsight.contents)}개, 추정 관련 크리에이터 {compactNumber(selectedBrandInsight.creators)}명, 총 조회 {compactNumber(selectedBrandInsight.views)}를 집계했습니다.</p>
                         </article>
                         <article>
-                          <span>산업 권고</span>
-                          <p>상위 콘텐츠의 첫 3초 후킹, 제품 사용 장면, 가격/권위/비교 포인트를 캠페인 가이드에 반영하세요.</p>
+                          <span>데이터룸 연결</span>
+                          <p>저장된 브랜드 raw는 레퍼런스/벤치마크 번들로 들어가고, 캠페인 가이드와 발굴 조건의 근거 데이터로 재사용됩니다.</p>
                         </article>
                       </div>
                     </div>
                   )}
-                  {brandInsightTab === 'strategy' && (
+                  {brandInsightTab === 'performance' && (
                     <div className="brand-insight-section">
-                      <h3>마케팅 전략</h3>
+                      <h3>성과와 반응 지표</h3>
                       <div className="brand-strategy-list">
-                        <p>1. 조회수 기여도가 높은 마이크로/미들 크리에이터를 우선 저장하고 메시지 후보 풀로 넘깁니다.</p>
-                        <p>2. 터진 콘텐츠의 후킹, 썸네일, 댓글 유도 문장을 추출해 캠페인 가이드에 반영합니다.</p>
-                        <p>3. 경쟁 브랜드 대비 부족한 플랫폼을 별도 발굴 조건으로 만들어 후보 수를 늘립니다.</p>
+                        <p>총 노출량: {compactNumber(selectedBrandInsight.views)} / 평균 참여율: {percent(selectedBrandInsight.engagement)}</p>
+                        <p>콘텐츠 수 대비 조회가 높으면 후킹 구조가 강한 브랜드로 보고, 참여율이 낮으면 댓글/저장 유도 포인트를 보완합니다.</p>
+                        <p>현재 수치가 API 수집값이 아닌 저장 데이터 기반이면 데이터룸에서 신뢰도와 원천 위치를 함께 확인해야 합니다.</p>
                       </div>
                     </div>
                   )}
-                  {brandInsightTab === 'trend' && (
+                  {brandInsightTab === 'hooks' && (
                     <div className="brand-insight-section">
-                      <h3>시장 동향</h3>
+                      <h3>콘텐츠 힌트</h3>
                       <div className="brand-trend-board">
                         <div>
-                          <strong>72시간 신규 콘텐츠</strong>
-                          <span>{compactNumber(Math.max(12, selectedBrandInsight.contents * 0.04))}</span>
+                          <strong>반복 후킹</strong>
+                          <span>가격 · 사용 전후 · 루틴 · 비교</span>
                         </div>
                         <div>
-                          <strong>72시간 신규 조회</strong>
-                          <span>{compactNumber(Math.max(120000, selectedBrandInsight.views * 0.03))}</span>
+                          <strong>가이드 반영</strong>
+                          <span>첫 3초, 썸네일, 댓글 질문</span>
                         </div>
                         <div>
-                          <strong>상승 키워드</strong>
-                          <span>review · routine · price · before after</span>
+                          <strong>발굴 조건</strong>
+                          <span>{selectedBrandInsight.category} · {selectedBrandInsight.platform}</span>
                         </div>
                       </div>
                     </div>
                   )}
-                  {brandInsightTab === 'asset' && (
+                  {brandInsightTab === 'assets' && (
                     <div className="brand-insight-section">
-                      <h3>마케팅 자산</h3>
+                      <h3>활용 자산</h3>
                       <div className="brand-asset-table">
                         <span>인플루언서 라이브러리</span>
                         <span>콘텐츠 라이브러리</span>
