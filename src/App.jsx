@@ -3606,19 +3606,19 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
     },
     {
       id: 'RAW-INT-GROUP-001',
-      name: '인플루언서 그룹 관리 raw',
+      name: '후보 그룹/세그먼트 raw',
       scope: '?대?',
-      category: '인플루언서 그룹',
-      description: '운영자가 즐겨찾기, 리스트, 차단/이슈 형태로 묶은 인플루언서 그룹 데이터',
+      category: '후보 그룹/세그먼트',
+      description: '운영자가 메시지 발송 전 후보를 즐겨찾기, 리스트, 차단/이슈 형태로 묶은 세그먼트 데이터',
       purpose: '대량 섭외 후보군을 반복 사용하고 메시지 전 후보 풀/캠페인 배정으로 연결',
       method: 'DB 연동 / 운영자 수동 저장',
       cycle: '그룹 생성/수정 시',
       lastCollectedAt: nowText,
       nextCollectAt: '그룹 변경 시',
       status: creatorGroups.length ? '?뺤긽' : '미수집',
-      sourceLocation: '인플루언서 그룹 관리 화면',
+      sourceLocation: '후보 그룹/세그먼트 관리 화면',
       storageLocation: `${storageBase} / creatorGroups`,
-      dashboardArea: '인플루언서 그룹, 발굴, 메시지',
+      dashboardArea: '후보 그룹, 발굴, 메시지',
       metricIds: ['MET-POOL-006', 'MET-POOL-001'],
       ownerDept: '운영팀',
       opsOwner: 'Campaign Operator',
@@ -3672,7 +3672,7 @@ function buildDataRoomExtendedMetricCatalog({ metrics, rawData, creators, conten
   rows.push(
     ['MET-BRAND-001', '저장 경쟁사/브랜드 수', '브랜드/경쟁 추적 번들', '?몃?', '브랜드 검색 및 추적에 저장된 경쟁사/브랜드 raw 수', 'count(contentReferences where referenceKind=brand)', ['RAW-EXT-BRAND-001'], '캠페인 기준', '검색/저장 시', contentReferences.some((item) => (item.referenceKind || item.trackingType) === 'brand') ? '?뺤긽' : '검증 필요', '레퍼런스, 브랜드 인사이트, 데이터룸', '경쟁사 저장 수가 많을수록 벤치마크 계산 신뢰도 상승', '0개면 브랜드 인사이트 경쟁 지표 비활성', '중간', 'PM/데이터팀', 'brand_tracking_sources / contentReferences', `${contentReferences.filter((item) => (item.referenceKind || item.trackingType) === 'brand').length}개 저장`],
     ['MET-BRAND-002', '경쟁 콘텐츠 평균 조회수', '브랜드/경쟁 추적 번들', '?몃?', '저장 경쟁사/브랜드 콘텐츠의 평균 조회수와 반응 수준', 'avg(views) over brand tracking references', ['RAW-EXT-BRAND-001', 'RAW-EXT-ENG-001'], '캠페인 기준', '검색/저장 시', '검증 필요', '브랜드 인사이트, 레퍼런스', '우리 콘텐츠 목표 조회수와 후킹 기준을 잡는 벤치마크', '조회수 0 또는 썸네일 없음 비율 30% 이상', '중간', '데이터팀', 'Render API logs / brand_tracking_sources', '외부 API 한계로 플랫폼별 검증 상태와 함께 표시'],
-    ['MET-POOL-006', '인플루언서 그룹 수', '인플루언서 풀 관리 번들', '?대?', '운영자가 저장한 인플루언서 그룹과 그룹별 멤버 수', 'count(creatorGroups), sum(group.creatorIds)', ['RAW-INT-GROUP-001', 'RAW-INT-INF-001'], '전체', '그룹 변경 시', creatorGroups.length ? '?뺤긽' : '검증 필요', '인플루언서 그룹, 메시지 전 후보 풀', '그룹은 반복 섭외와 캠페인 재사용을 위한 운영 단위', '그룹 멤버 0명 또는 삭제된 creatorId 참조', '높음', '운영팀', 'workspace activities / creator_group_events', `${creatorGroups.length}개 그룹`],
+    ['MET-POOL-006', '후보 그룹/세그먼트 수', '인플루언서 풀 관리 번들', '?대?', '운영자가 저장한 후보 그룹과 그룹별 멤버 수', 'count(creatorGroups), sum(group.creatorIds)', ['RAW-INT-GROUP-001', 'RAW-INT-INF-001'], '전체', '그룹 변경 시', creatorGroups.length ? '?뺤긽' : '검증 필요', '후보 그룹, 메시지 전 후보 풀', '후보 그룹은 반복 섭외와 캠페인 재사용을 위한 운영 단위', '그룹 멤버 0명 또는 삭제된 creatorId 참조', '높음', '운영팀', 'workspace activities / creator_group_events', `${creatorGroups.length}개 그룹`],
   )
 
   const existingIds = new Set(metrics.map((item) => item.id))
@@ -3722,7 +3722,7 @@ function buildDataRoomWorkflowCoverage({ rawData, metrics }) {
 
   coverage.push(
     ['WF-BRAND-TRACKING', '브랜드/경쟁사 검색 및 추적', '레퍼런스/브랜드 인사이트', ['RAW-EXT-SEARCH-001', 'RAW-EXT-BRAND-001', 'RAW-EXT-BENCH-001', 'RAW-INT-QUALITY-001'], ['MET-BRAND-001', 'MET-BRAND-002', 'MET-BENCH-001'], '경쟁사 저장 raw를 기반으로 브랜드 비교/벤치마크 지표를 생성', '브랜드 추적 raw가 없으면 브랜드 인사이트 경쟁 지표는 비활성 또는 샘플로 표시'],
-    ['WF-GROUPS', '인플루언서 그룹 관리', '인플루언서 그룹/메시지', ['RAW-INT-GROUP-001', 'RAW-INT-INF-001'], ['MET-POOL-006', 'MET-POOL-001'], '그룹 raw의 creatorIds를 후보 풀과 캠페인 배정으로 연결', '그룹에 없는 후보는 메시지 대량 발송 대상으로 자동 포함하지 않음'],
+    ['WF-GROUPS', '후보 그룹/세그먼트 관리', '후보 그룹/메시지', ['RAW-INT-GROUP-001', 'RAW-INT-INF-001'], ['MET-POOL-006', 'MET-POOL-001'], '후보 그룹 raw의 creatorIds를 후보 풀과 캠페인 배정으로 연결', '후보 그룹에 없는 후보는 메시지 대량 발송 대상으로 자동 포함하지 않음'],
   )
 
   return coverage.map(([id, featureName, frontendArea, itemRawIds, itemMetricIds, algorithm, rule]) => {
@@ -5000,9 +5000,9 @@ function App() {
       description: `${selectedCampaign?.name ?? activeBrand.name} 제작에 차용할 영상/이미지 레퍼런스`,
     },
     groups: {
-      eyebrow: 'Influencer Groups',
-      title: '인플루언서 그룹 관리',
-      description: '발굴 후보를 즐겨찾기/리스트/차단 그룹으로 묶고 메시지 전 후보 풀과 캠페인에 연결',
+      eyebrow: 'Candidate Segments',
+      title: '후보 그룹·세그먼트 관리',
+      description: '메시지 발송 전 후보를 목적별 세그먼트로 묶고 후보 풀, 캠페인, 메시지에 연결',
     },
     dataRoom: {
       eyebrow: 'Admin Data Room',
@@ -8066,8 +8066,8 @@ function App() {
 
     const nextGroup = {
       id: createId(),
-      name: `${activeBrand.name} ${selectedCampaign?.name ?? '추천'} 그룹`,
-      description: 'AI 추천/후보 풀 기준으로 생성한 운영 그룹',
+      name: `${activeBrand.name} ${selectedCampaign?.name ?? '추천'} 후보 그룹`,
+      description: 'AI 추천/메시지 전 후보 풀 기준으로 생성한 발송 세그먼트',
       platform: 'Mixed',
       type: '즐겨찾기',
       owner: currentAccount?.name || 'Campaign Operator',
@@ -8082,10 +8082,10 @@ function App() {
           creatorGroups: [nextGroup, ...(current.creatorGroups ?? [])],
         },
         'group',
-        `${nextGroup.name} 인플루언서 그룹 생성`,
+        `${nextGroup.name} 후보 그룹 생성`,
       ),
     )
-    showToast(`${creatorIds.length}명으로 인플루언서 그룹을 만들었습니다.`)
+    showToast(`${creatorIds.length}명으로 후보 그룹을 만들었습니다.`)
   }
 
   const addCreatorGroupToCandidatePool = (group) => {
@@ -8555,7 +8555,7 @@ function App() {
             <NavButton
               active={visibleSection === 'groups'}
               icon={<FolderOpen size={18} />}
-              label="그룹"
+              label="후보 그룹"
               onClick={() => jumpTo('groups')}
             />
           )}
@@ -9809,17 +9809,17 @@ function App() {
         <section className="panel creator-groups-panel">
           <div className="panel-heading">
             <div>
-              <span className="mini-label">Influencer Groups</span>
-              <h2>인플루언서 그룹 관리</h2>
+              <span className="mini-label">Candidate Segments</span>
+              <h2>후보 그룹·세그먼트 관리</h2>
             </div>
             <button className="primary-button compact-button" type="button" onClick={createCreatorGroup}>
               <Plus size={15} />
-              새 그룹 만들기
+              새 후보 그룹 만들기
             </button>
           </div>
 
           <div className="creator-group-summary">
-            <Stat label="전체 그룹" value={`${creatorGroupSummary.groups}개`} />
+            <Stat label="후보 그룹" value={`${creatorGroupSummary.groups}개`} />
             <Stat label="누적 멤버" value={`${creatorGroupSummary.creators}명`} />
             <Stat label="총 팔로워" value={compactNumber(creatorGroupSummary.avgFollowers)} />
             <Stat label="총 평균 조회" value={compactNumber(creatorGroupSummary.avgViews)} />
@@ -9831,7 +9831,7 @@ function App() {
               <input
                 value={creatorGroupQuery}
                 onChange={(event) => setCreatorGroupQuery(event.target.value)}
-                placeholder="그룹명, 플랫폼, 멤버 검색"
+                placeholder="후보 그룹명, 플랫폼, 멤버 검색"
               />
             </label>
             <select value={creatorGroupTypeFilter} onChange={(event) => setCreatorGroupTypeFilter(event.target.value)}>
@@ -9846,8 +9846,8 @@ function App() {
             {visibleCreatorGroups.length === 0 ? (
               <div className="empty-state compact-empty">
                 <FolderOpen size={24} />
-                <strong>조건에 맞는 인플루언서 그룹이 없습니다.</strong>
-                <p>발굴 후보나 메시지 전 후보 풀에서 그룹을 만들면 이곳에서 관리할 수 있습니다.</p>
+                <strong>조건에 맞는 후보 그룹이 없습니다.</strong>
+                <p>발굴 후보나 메시지 전 후보 풀에서 세그먼트를 만들면 이곳에서 관리할 수 있습니다.</p>
               </div>
             ) : (
               visibleCreatorGroups.map((group) => {
@@ -9976,16 +9976,16 @@ function App() {
                 ) : (
                   <div className="empty-state compact-empty">
                     <FolderOpen size={22} />
-                    <strong>아직 이 그룹에 연결된 인플루언서가 없습니다.</strong>
-                    <p>발굴 후보나 메시지 전 후보 풀에서 그룹을 만들면 여기에 멤버가 표시됩니다.</p>
+                    <strong>아직 이 후보 그룹에 연결된 인플루언서가 없습니다.</strong>
+                    <p>발굴 후보나 메시지 전 후보 풀에서 세그먼트를 만들면 여기에 멤버가 표시됩니다.</p>
                   </div>
                 )}
               </>
             ) : (
               <div className="empty-state compact-empty">
                 <FolderOpen size={22} />
-                <strong>그룹을 선택하세요.</strong>
-                <p>왼쪽 그룹 카드를 누르면 멤버 리스트가 열립니다.</p>
+                <strong>후보 그룹을 선택하세요.</strong>
+                <p>왼쪽 후보 그룹 카드를 누르면 멤버 리스트가 열립니다.</p>
               </div>
             )}
           </aside>
