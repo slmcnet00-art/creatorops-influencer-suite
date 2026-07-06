@@ -69,18 +69,18 @@ const GMAIL_MIN_SEND_DELAY_MS = 20000
 const GMAIL_MAX_SEND_DELAY_MS = 60000
 const EXTERNAL_REPORT_PROFILES = [
   {
-    match: /noxinfluencer_brand_monitor_influencers/i,
+    match: /brand_monitor_influencers/i,
     reportType: 'brand_monitor_influencers',
-    sourceName: 'Nox brand monitor influencers',
-    rawSourceId: 'RAW-EXT-NOX-INF-001',
+    sourceName: 'External brand monitor influencers',
+    rawSourceId: 'RAW-EXT-MON-INF-001',
     normalizedType: 'creator',
     sheets: [{ label: 'Influencers', option: 1, required: true }],
   },
   {
     match: /video_monitor_data/i,
     reportType: 'video_monitor_data',
-    sourceName: 'Nox video monitor data',
-    rawSourceId: 'RAW-EXT-NOX-VIDEO-001',
+    sourceName: 'External video monitor data',
+    rawSourceId: 'RAW-EXT-MON-VIDEO-001',
     normalizedType: 'content',
     sheets: [
       { label: 'Monitor Project Summary', option: 'Monitor Project Summary' },
@@ -92,8 +92,8 @@ const EXTERNAL_REPORT_PROFILES = [
   {
     match: /video_monitor_workbench/i,
     reportType: 'video_monitor_workbench',
-    sourceName: 'Nox video monitor workbench',
-    rawSourceId: 'RAW-EXT-NOX-WB-001',
+    sourceName: 'External video monitor workbench',
+    rawSourceId: 'RAW-EXT-MON-WB-001',
     normalizedType: 'benchmark',
     sheets: [
       { label: 'Summary', option: 'Summary' },
@@ -1020,7 +1020,7 @@ const teamRoleCatalog = {
 
 const competitorBenchmarks = [
   {
-    name: 'NoxInfluencer',
+    name: '대형 크리에이터 데이터 솔루션',
     strength: '대규모 크리에이터 데이터, 랭킹, 브랜드 인텔리전스, API Data Service',
     gapToClose: '검색 후보마다 출처/갱신일/검증상태를 남기고 브랜드 협업 흔적을 추적해야 함',
   },
@@ -3786,21 +3786,21 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       active: true,
     },
     {
-      id: 'RAW-EXT-NOX-INF-001',
+      id: 'RAW-EXT-MON-INF-001',
       name: '외부 브랜드 모니터 인플루언서 리포트',
       scope: '외부',
       category: '브랜드 모니터링',
-      description: 'NoxInfluencer 브랜드 모니터에서 내려받은 인플루언서 리스트, 채널 링크, 구독자, 지역, 언어, 평균 조회수, 총 조회수, 참여율, 영상 수, 최근 업로드일, 예상 단가',
+      description: '외부 브랜드 모니터에서 내려받은 인플루언서 리스트, 채널 링크, 구독자, 지역, 언어, 평균 조회수, 총 조회수, 참여율, 영상 수, 최근 업로드일, 예상 단가',
       purpose: '경쟁 브랜드 주변의 협업 인플루언서 풀과 예상 단가/성과 기준을 데이터룸에 적재해 발굴 조건과 벤치마크 근거로 사용',
       method: '수동 업로드 / 외부 리포트',
       cycle: '리포트 업로드 시 / 캠페인 시작 전',
       lastCollectedAt: '-',
       nextCollectAt: '외부 리포트 업로드 시',
       status: '미수집',
-      sourceLocation: 'noxinfluencer_brand_monitor_influencers_*.xlsx / sheet 0',
+      sourceLocation: 'brand_monitor_influencers_*.xlsx / sheet 0',
       storageLocation: `${storageBase} / future: external_report_imports(type=brand_monitor_influencers)`,
       dashboardArea: '브랜드 검색 및 추적, 발굴, 데이터룸',
-      metricIds: ['MET-NOX-INF-001', 'MET-NOX-INF-002', 'MET-BRAND-001', 'MET-BRAND-002'],
+      metricIds: ['MET-EXT-INF-001', 'MET-EXT-INF-002', 'MET-BRAND-001', 'MET-BRAND-002'],
       ownerDept: '데이터/운영팀',
       opsOwner: 'Brand Analyst',
       techOwner: 'Data Engineer',
@@ -3810,7 +3810,7 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       active: true,
     },
     {
-      id: 'RAW-EXT-NOX-VIDEO-001',
+      id: 'RAW-EXT-MON-VIDEO-001',
       name: '외부 영상 모니터 상세/일별 리포트',
       scope: '외부',
       category: '콘텐츠 모니터링',
@@ -3824,7 +3824,7 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       sourceLocation: 'Video_Monitor_Data_*.xlsx / Monitor Project Summary, Monitor Project Details, Daily Change',
       storageLocation: `${storageBase} / future: external_report_imports(type=video_monitor_data)`,
       dashboardArea: '리포트, 브랜드 검색 및 추적, 데이터룸',
-      metricIds: ['MET-NOX-VIDEO-001', 'MET-NOX-VIDEO-002', 'MET-NOX-VIDEO-003', 'MET-SNS-001', 'MET-SNS-006'],
+      metricIds: ['MET-EXT-VIDEO-001', 'MET-EXT-VIDEO-002', 'MET-EXT-VIDEO-003', 'MET-SNS-001', 'MET-SNS-006'],
       ownerDept: '데이터/리포트팀',
       opsOwner: 'Report Operator',
       techOwner: 'Data Engineer',
@@ -3834,7 +3834,7 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       active: true,
     },
     {
-      id: 'RAW-EXT-NOX-WORKBENCH-001',
+      id: 'RAW-EXT-MON-WB-001',
       name: '외부 영상 모니터 워크벤치 분석 리포트',
       scope: '외부',
       category: '성과 변화/기여도',
@@ -3848,7 +3848,7 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       sourceLocation: 'Video_Monitor_Workbench_*.xlsx / Summary, Delta Ranking, Trend, Influencer Contribution, Label Contribution',
       storageLocation: `${storageBase} / future: external_report_imports(type=video_monitor_workbench)`,
       dashboardArea: '리포트, 브랜드 인사이트, 데이터룸',
-      metricIds: ['MET-NOX-WB-001', 'MET-NOX-WB-002', 'MET-NOX-WB-003', 'MET-CONT-004'],
+      metricIds: ['MET-EXT-WB-001', 'MET-EXT-WB-002', 'MET-EXT-WB-003', 'MET-CONT-004'],
       ownerDept: '데이터/PM',
       opsOwner: 'Campaign PM',
       techOwner: 'Data Engineer',
@@ -3926,14 +3926,14 @@ function buildDataRoomExtendedMetricCatalog({ metrics, rawData, creators, conten
     ['MET-BRAND-001', '저장 경쟁사/브랜드 수', '브랜드/경쟁 추적 번들', '외부', '브랜드 검색 및 추적에 저장된 경쟁사/브랜드 raw 수', 'count(contentReferences where referenceKind=brand)', ['RAW-EXT-BRAND-001'], '캠페인 기준', '검색/저장 시', contentReferences.some((item) => (item.referenceKind || item.trackingType) === 'brand') ? '정상' : '검증 필요', '레퍼런스, 브랜드 인사이트, 데이터룸', '경쟁사 저장 수가 많을수록 벤치마크 계산 신뢰도 상승', '0개면 브랜드 인사이트 경쟁 지표 비활성', '중간', 'PM/데이터팀', 'brand_tracking_sources / contentReferences', `${contentReferences.filter((item) => (item.referenceKind || item.trackingType) === 'brand').length}개 저장`],
     ['MET-BRAND-002', '경쟁 콘텐츠 평균 조회수', '브랜드/경쟁 추적 번들', '외부', '저장 경쟁사/브랜드 콘텐츠의 평균 조회수와 반응 수준', 'avg(views) over brand tracking references', ['RAW-EXT-BRAND-001', 'RAW-EXT-ENG-001'], '캠페인 기준', '검색/저장 시', '검증 필요', '브랜드 인사이트, 레퍼런스', '우리 콘텐츠 목표 조회수와 후킹 기준을 잡는 벤치마크', '조회수 0 또는 썸네일 없음 비율 30% 이상', '중간', '데이터팀', 'Render API logs / brand_tracking_sources', '외부 API 한계로 플랫폼별 검증 상태와 함께 표시'],
     ['MET-POOL-006', '후보 그룹/세그먼트 수', '인플루언서 풀 관리 번들', '내부', '운영자가 저장한 후보 그룹과 그룹별 멤버 수', 'count(creatorGroups), sum(group.creatorIds)', ['RAW-INT-GROUP-001', 'RAW-INT-INF-001'], '전체', '그룹 변경 시', creatorGroups.length ? '정상' : '검증 필요', '후보 그룹, 메시지 전 후보 풀', '후보 그룹은 반복 섭외와 캠페인 재사용을 위한 운영 단위', '그룹 멤버 0명 또는 삭제된 creatorId 참조', '높음', '운영팀', 'workspace activities / creator_group_events', `${creatorGroups.length}개 그룹`],
-    ['MET-NOX-INF-001', '외부 모니터 인플루언서 수', '외부 리포트/벤치마크 번들', '외부', '업로드된 브랜드 모니터 인플루언서 리포트의 후보 채널 수', 'count(external_report_rows where type=brand_monitor_influencers)', ['RAW-EXT-NOX-INF-001'], '업로드 파일 기준', '업로드 시', '검증 필요', '브랜드 인사이트, 발굴, 데이터룸', '외부 벤치마크 후보 풀 크기와 카테고리 커버리지 확인', '중복 채널 10% 이상', '중간', '데이터/운영팀', 'external_report_import_logs', 'Nox 보고서 기준 1,000행 구조 확인'],
-    ['MET-NOX-INF-002', '외부 모니터 평균 성과/단가', '외부 리포트/벤치마크 번들', '외부', '구독자, 평균 조회수, 총 조회수, 참여율, 예상 단가를 채널 단위로 집계', 'avg(subscribers), avg(average_views), avg(engagement_rate), median(price_range)', ['RAW-EXT-NOX-INF-001'], '업로드 파일 기준', '업로드 시', '검증 필요', '브랜드 인사이트, 후보 추천 기준', '우리 후보 조건과 비교해 적정 팔로워/조회수/단가 범위를 잡음', '가격 공란 30% 이상 또는 참여율 0%', '중간', '데이터팀', 'external_report_import_logs', '컬럼: Subscribers, Average views, Total Views, Engagement rate, Price'],
-    ['MET-NOX-VIDEO-001', '외부 모니터 콘텐츠 총 성과', '외부 리포트/벤치마크 번들', '외부', '영상 모니터 프로젝트의 총 조회수, 좋아요, 댓글, 공유, 저장, 추정 영상가치', 'sum(views, likes, comments, shares, collects), sum(est_video_value)', ['RAW-EXT-NOX-VIDEO-001'], '프로젝트 기간', '업로드 시', '검증 필요', '리포트, 브랜드 인사이트', '캠페인 전체 성과와 광고주 보고서 총량 비교', '조회수 0 콘텐츠 30% 이상', '중간', '리포트팀', 'external_report_import_logs / report_metric_snapshots', 'Monitor Project Summary/Details 기준'],
-    ['MET-NOX-VIDEO-002', '외부 모니터 콘텐츠 참여율', '외부 리포트/벤치마크 번들', '외부', '콘텐츠별 좋아요, 댓글, 공유, 저장을 조회수로 나눈 반응률', '(likes + comments + shares + collects) / views', ['RAW-EXT-NOX-VIDEO-001'], '콘텐츠별/일별', '업로드 시', '검증 필요', '리포트, 콘텐츠 성과', '인플루언서별 콘텐츠 품질과 후킹 반응 비교', 'ER 0 또는 20% 이상', '중간', '데이터팀', 'report_metric_snapshots', 'Instagram/TikTok 저장/공유 공개 여부에 따라 신뢰도 표시'],
-    ['MET-NOX-VIDEO-003', '외부 모니터 일별 성장 추이', '외부 리포트/벤치마크 번들', '외부', 'Daily Change 시트의 일별 조회수/좋아요/댓글 변화', 'daily_delta(metric_t) = metric_t - metric_t-1', ['RAW-EXT-NOX-VIDEO-001'], '일별', '업로드 시', '검증 필요', '리포트, 브랜드 인사이트 추이 차트', '어떤 날짜에 콘텐츠가 터졌는지 성장 구간 식별', '음수 델타 또는 누락 날짜', '중간', '데이터팀', 'daily_change_import_logs', 'Daily Change 10,259행 구조 확인'],
-    ['MET-NOX-WB-001', '외부 워크벤치 델타 랭킹', '외부 리포트/벤치마크 번들', '외부', '조회수/좋아요/댓글/공유/참여율 델타가 큰 콘텐츠 순위', 'rankBy(views_delta, engagement_delta, engagement_rate_delta)', ['RAW-EXT-NOX-WORKBENCH-001'], '관측 기간', '업로드 시', '검증 필요', '브랜드 인사이트, 리포트', '성과 급증 콘텐츠를 제작 레퍼런스와 가이드 소재로 전환', '델타 기준 기간 누락', '중간', 'PM/데이터팀', 'workbench_delta_logs', 'Delta Ranking 시트 기준'],
-    ['MET-NOX-WB-002', '인플루언서 기여도', '외부 리포트/벤치마크 번들', '외부', '인플루언서별 콘텐츠 수, 조회수 증가 기여율, 반응 증가 기여율', 'views_delta_by_creator / total_views_delta, engagement_delta_by_creator / total_engagement_delta', ['RAW-EXT-NOX-WORKBENCH-001', 'RAW-EXT-NOX-INF-001'], '관측 기간', '업로드 시', '검증 필요', '브랜드 인사이트, 후보 재섭외 판단', '재섭외/그룹 저장 우선순위를 정하는 성과 기여 지표', '기여율 합계 100% 불일치', '중간', '운영/데이터팀', 'influencer_contribution_logs', 'Influencer Contribution 시트 기준'],
-    ['MET-NOX-WB-003', '라벨/소재 기여도', '외부 리포트/벤치마크 번들', '외부', '라벨 그룹별 콘텐츠 수, 조회수/반응/클릭 기여율', 'groupBy(label).sum(delta_metrics) / total_delta_metrics', ['RAW-EXT-NOX-WORKBENCH-001'], '관측 기간', '업로드 시', '검증 필요', '브랜드 인사이트, 가이드 개선', '후킹/소재 유형별 성과 차이를 콘텐츠 가이드에 반영', '라벨 공란 30% 이상', '낮음', '콘텐츠/데이터팀', 'label_contribution_logs', '현재 샘플 파일은 라벨 시트가 헤더만 있어 낮은 신뢰도로 표시'],
+    ['MET-EXT-INF-001', '외부 모니터 인플루언서 수', '외부 리포트/벤치마크 번들', '외부', '업로드된 브랜드 모니터 인플루언서 리포트의 후보 채널 수', 'count(external_report_rows where type=brand_monitor_influencers)', ['RAW-EXT-MON-INF-001'], '업로드 파일 기준', '업로드 시', '검증 필요', '브랜드 인사이트, 발굴, 데이터룸', '외부 벤치마크 후보 풀 크기와 카테고리 커버리지 확인', '중복 채널 10% 이상', '중간', '데이터/운영팀', 'external_report_import_logs', '외부 모니터링 보고서 기준 1,000행 구조 확인'],
+    ['MET-EXT-INF-002', '외부 모니터 평균 성과/단가', '외부 리포트/벤치마크 번들', '외부', '구독자, 평균 조회수, 총 조회수, 참여율, 예상 단가를 채널 단위로 집계', 'avg(subscribers), avg(average_views), avg(engagement_rate), median(price_range)', ['RAW-EXT-MON-INF-001'], '업로드 파일 기준', '업로드 시', '검증 필요', '브랜드 인사이트, 후보 추천 기준', '우리 후보 조건과 비교해 적정 팔로워/조회수/단가 범위를 잡음', '가격 공란 30% 이상 또는 참여율 0%', '중간', '데이터팀', 'external_report_import_logs', '컬럼: Subscribers, Average views, Total Views, Engagement rate, Price'],
+    ['MET-EXT-VIDEO-001', '외부 모니터 콘텐츠 총 성과', '외부 리포트/벤치마크 번들', '외부', '영상 모니터 프로젝트의 총 조회수, 좋아요, 댓글, 공유, 저장, 추정 영상가치', 'sum(views, likes, comments, shares, collects), sum(est_video_value)', ['RAW-EXT-MON-VIDEO-001'], '프로젝트 기간', '업로드 시', '검증 필요', '리포트, 브랜드 인사이트', '캠페인 전체 성과와 광고주 보고서 총량 비교', '조회수 0 콘텐츠 30% 이상', '중간', '리포트팀', 'external_report_import_logs / report_metric_snapshots', 'Monitor Project Summary/Details 기준'],
+    ['MET-EXT-VIDEO-002', '외부 모니터 콘텐츠 참여율', '외부 리포트/벤치마크 번들', '외부', '콘텐츠별 좋아요, 댓글, 공유, 저장을 조회수로 나눈 반응률', '(likes + comments + shares + collects) / views', ['RAW-EXT-MON-VIDEO-001'], '콘텐츠별/일별', '업로드 시', '검증 필요', '리포트, 콘텐츠 성과', '인플루언서별 콘텐츠 품질과 후킹 반응 비교', 'ER 0 또는 20% 이상', '중간', '데이터팀', 'report_metric_snapshots', 'Instagram/TikTok 저장/공유 공개 여부에 따라 신뢰도 표시'],
+    ['MET-EXT-VIDEO-003', '외부 모니터 일별 성장 추이', '외부 리포트/벤치마크 번들', '외부', 'Daily Change 시트의 일별 조회수/좋아요/댓글 변화', 'daily_delta(metric_t) = metric_t - metric_t-1', ['RAW-EXT-MON-VIDEO-001'], '일별', '업로드 시', '검증 필요', '리포트, 브랜드 인사이트 추이 차트', '어떤 날짜에 콘텐츠가 터졌는지 성장 구간 식별', '음수 델타 또는 누락 날짜', '중간', '데이터팀', 'daily_change_import_logs', 'Daily Change 10,259행 구조 확인'],
+    ['MET-EXT-WB-001', '외부 워크벤치 델타 랭킹', '외부 리포트/벤치마크 번들', '외부', '조회수/좋아요/댓글/공유/참여율 델타가 큰 콘텐츠 순위', 'rankBy(views_delta, engagement_delta, engagement_rate_delta)', ['RAW-EXT-MON-WB-001'], '관측 기간', '업로드 시', '검증 필요', '브랜드 인사이트, 리포트', '성과 급증 콘텐츠를 제작 레퍼런스와 가이드 소재로 전환', '델타 기준 기간 누락', '중간', 'PM/데이터팀', 'workbench_delta_logs', 'Delta Ranking 시트 기준'],
+    ['MET-EXT-WB-002', '인플루언서 기여도', '외부 리포트/벤치마크 번들', '외부', '인플루언서별 콘텐츠 수, 조회수 증가 기여율, 반응 증가 기여율', 'views_delta_by_creator / total_views_delta, engagement_delta_by_creator / total_engagement_delta', ['RAW-EXT-MON-WB-001', 'RAW-EXT-MON-INF-001'], '관측 기간', '업로드 시', '검증 필요', '브랜드 인사이트, 후보 재섭외 판단', '재섭외/그룹 저장 우선순위를 정하는 성과 기여 지표', '기여율 합계 100% 불일치', '중간', '운영/데이터팀', 'influencer_contribution_logs', 'Influencer Contribution 시트 기준'],
+    ['MET-EXT-WB-003', '라벨/소재 기여도', '외부 리포트/벤치마크 번들', '외부', '라벨 그룹별 콘텐츠 수, 조회수/반응/클릭 기여율', 'groupBy(label).sum(delta_metrics) / total_delta_metrics', ['RAW-EXT-MON-WB-001'], '관측 기간', '업로드 시', '검증 필요', '브랜드 인사이트, 가이드 개선', '후킹/소재 유형별 성과 차이를 콘텐츠 가이드에 반영', '라벨 공란 30% 이상', '낮음', '콘텐츠/데이터팀', 'label_contribution_logs', '현재 샘플 파일은 라벨 시트가 헤더만 있어 낮은 신뢰도로 표시'],
   )
 
   const existingIds = new Set(metrics.map((item) => item.id))

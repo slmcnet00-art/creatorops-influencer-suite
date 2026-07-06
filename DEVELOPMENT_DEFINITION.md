@@ -272,7 +272,7 @@ npm run render:create-api
 - PG 결제 자동화
 - 인플루언서에게 무제한 자동 DM 발송
 - Instagram/TikTok 비공식 DM 자동화
-- Nox/Modash 등 경쟁사 API 직접 사용
+- 경쟁사 API 직접 사용
 - 비공개 데이터 무단 수집
 - 계정 없이 여러 사용자가 같은 localStorage를 공유하는 방식
 - 클라이언트에게 계좌번호/정산 개인정보를 노출하는 방식

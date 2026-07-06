@@ -20,7 +20,7 @@
 | 프론트 데이터룸 | raw/metric 카탈로그, 상세 패널, 기능-데이터 커버리지 표시 | 실제 DB 적재 테이블과 1:1 연결은 아직 약함 |
 | Supabase | workspace, auth, outreach, content tracking, performance snapshot 기본 테이블 있음 | raw 데이터 registry, external report import, metric catalog, data quality 로그 부족 |
 | 외부 API | YouTube/Google/Brave/TikTok reference search 일부 연결 | 수집 job 단위 저장, 원본 응답 저장, 실패 로그 표준화 부족 |
-| 외부 리포트 | 녹스/영상 모니터 엑셀 컬럼 분석 완료 | 업로드 파일 파싱 및 시트별 row 적재 미구현 |
+| 외부 리포트 | 브랜드/영상 모니터 엑셀 컬럼 분석 완료 | 업로드 파일 파싱 및 시트별 row 적재 미구현 |
 | 프론트 기능 | 캠페인, 발굴, 그룹, 메시지, 리포트, 레퍼런스 화면 구현 | 모든 수치가 데이터룸 raw에서 온다는 강제 규칙은 미완성 |
 
 ## 데이터 폴더링 원칙
@@ -74,26 +74,26 @@ data_room
 | P0 | RAW-EXT-ENG-001 | 좋아요/댓글/공유/저장 | API/수동 | performance_snapshots |
 | P1 | RAW-EXT-SEARCH-001 | 외부 검색 원본 결과 | API | external_search_events |
 | P1 | RAW-INT-QUALITY-001 | 데이터 품질 판정 로그 | 계산 엔진 | data_quality_reviews |
-| P1 | RAW-EXT-NOX-INF-001 | 외부 브랜드 모니터 인플루언서 리포트 | 엑셀 업로드 | external_report_imports, external_report_rows |
-| P1 | RAW-EXT-NOX-VIDEO-001 | 외부 영상 모니터 상세/일별 리포트 | 엑셀 업로드 | external_report_imports, external_report_rows, performance_snapshots |
-| P1 | RAW-EXT-NOX-WORKBENCH-001 | 외부 워크벤치 델타/기여도 리포트 | 엑셀 업로드 | external_report_imports, external_report_rows, metric_snapshots |
+| P1 | RAW-EXT-MON-INF-001 | 외부 브랜드 모니터 인플루언서 리포트 | 엑셀 업로드 | external_report_imports, external_report_rows |
+| P1 | RAW-EXT-MON-VIDEO-001 | 외부 영상 모니터 상세/일별 리포트 | 엑셀 업로드 | external_report_imports, external_report_rows, performance_snapshots |
+| P1 | RAW-EXT-MON-WB-001 | 외부 워크벤치 델타/기여도 리포트 | 엑셀 업로드 | external_report_imports, external_report_rows, metric_snapshots |
 | P2 | RAW-INT-AI-001 | AI 생성 실행 로그 | API | ai_generation_runs |
 | P2 | RAW-INT-EXPORT-001 | 다운로드/내보내기 로그 | 프론트/API 이벤트 | export_events |
 | P2 | RAW-EXT-UNSUPPORTED-001 | 미지원/부분지원 플랫폼 지표 | 보류/수동/인증 | data_quality_reviews, unsupported_metric_requests |
 
 ## 외부 엑셀 리포트 적재 설계
 
-### 1. Nox 브랜드 모니터 인플루언서
+### 1. 외부 브랜드 모니터 인플루언서
 
 파일 예시:
 
-- `noxinfluencer_brand_monitor_influencers_202607187.xlsx`
+- `brand_monitor_influencers_202607187.xlsx`
 
 확인된 컬럼:
 
 - Influencers
 - Channel link
-- NoxInfluencer link
+- External monitor link
 - Subscribers
 - Region
 - Language
@@ -191,9 +191,9 @@ data_room
 | 지표 번들 | 지표 | 사용 raw |
 | --- | --- | --- |
 | SNS 반응 | 조회수, 좋아요, 댓글, 공유, 저장, 참여율 | RAW-EXT-CONT-001, RAW-EXT-ENG-001 |
-| 콘텐츠 성과 | 평균 조회수, 콘텐츠 성장률, 채널별 성과 | RAW-EXT-CONT-001, RAW-EXT-NOX-VIDEO-001 |
-| 브랜드/경쟁 추적 | 저장 브랜드 수, 경쟁 콘텐츠 평균 조회수 | RAW-EXT-BRAND-001, RAW-EXT-NOX-INF-001 |
-| 외부 리포트/벤치마크 | 외부 모니터 인플루언서 수, 평균 단가, 델타 랭킹, 기여도 | RAW-EXT-NOX-INF-001, RAW-EXT-NOX-VIDEO-001, RAW-EXT-NOX-WORKBENCH-001 |
+| 콘텐츠 성과 | 평균 조회수, 콘텐츠 성장률, 채널별 성과 | RAW-EXT-CONT-001, RAW-EXT-MON-VIDEO-001 |
+| 브랜드/경쟁 추적 | 저장 브랜드 수, 경쟁 콘텐츠 평균 조회수 | RAW-EXT-BRAND-001, RAW-EXT-MON-INF-001 |
+| 외부 리포트/벤치마크 | 외부 모니터 인플루언서 수, 평균 단가, 델타 랭킹, 기여도 | RAW-EXT-MON-INF-001, RAW-EXT-MON-VIDEO-001, RAW-EXT-MON-WB-001 |
 | AI 매칭 | 브랜드-크리에이터 적합도, 후보 우선순위 | RAW-INT-BRD-001, RAW-INT-INF-001, RAW-INT-QUALITY-001 |
 | 데이터 운영 | 수집 성공률, 미지원 데이터 비율 | RAW-EXT-SEARCH-001, RAW-EXT-UNSUPPORTED-001 |
 
@@ -210,7 +210,7 @@ P1:
 
 1. 엑셀 업로드 import job 생성
 2. 파일별/시트별 row를 `external_report_rows.payload`에 저장
-3. Nox/Video Monitor/Workbench 컬럼 매핑
+3. Brand Monitor/Video Monitor/Workbench 컬럼 매핑
 4. 정규화 가능한 row는 creator/content/metric snapshot으로 연결
 
 P2:
@@ -227,9 +227,9 @@ P2:
 2. 어드민 데이터룸 진입 시 registry를 자동 동기화한다.
 3. 어드민 데이터룸에 외부 엑셀 리포트 업로드 영역을 추가했다.
 4. 파일명 기준으로 아래 리포트를 식별한다.
-   - `noxinfluencer_brand_monitor_influencers*` -> `RAW-EXT-NOX-INF-001`
-   - `Video_Monitor_Data*` -> `RAW-EXT-NOX-VIDEO-001`
-   - `Video_Monitor_Workbench*` -> `RAW-EXT-NOX-WB-001`
+   - `brand_monitor_influencers*` -> `RAW-EXT-MON-INF-001`
+   - `Video_Monitor_Data*` -> `RAW-EXT-MON-VIDEO-001`
+   - `Video_Monitor_Workbench*` -> `RAW-EXT-MON-WB-001`
 5. 업로드된 엑셀은 시트별로 파싱하여 `external_report_imports`, `external_report_rows`에 저장한다.
 6. 외부 리포트 import row count는 초기 `metric_snapshots`로 남겨 추후 정규화 검증의 출발점으로 사용한다.
 

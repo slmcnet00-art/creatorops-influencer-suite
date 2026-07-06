@@ -126,7 +126,7 @@ export default function AdminDataRoom({
           <span className="mini-label">Raw Report Ingestion</span>
           <h2>외부 리포트 raw 적재</h2>
           <p>
-            녹스 브랜드 모니터, Video Monitor Data, Workbench 엑셀을 업로드하면 데이터룸의 외부 raw 저장소에 행 단위로 적재합니다.
+            브랜드 모니터, Video Monitor Data, Workbench 엑셀을 업로드하면 데이터룸의 외부 raw 저장소에 행 단위로 적재합니다.
           </p>
         </div>
         <div className="data-room-import-actions">
