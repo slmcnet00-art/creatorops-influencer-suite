@@ -56,7 +56,21 @@ function buildDiscoveryIntentContext(query) {
   const queryText = String(query || '').toLowerCase()
   const expansionTokens = []
   if (hasBeautyDiscoveryIntent(queryText)) expansionTokens.push('beauty', 'skincare', 'kbeauty', 'korean')
-  if (hasFoodDiscoveryIntent(queryText)) expansionTokens.push('food', 'recipe', 'cook', 'cooking')
+  if (hasFoodDiscoveryIntent(queryText)) {
+    expansionTokens.push(
+      'food',
+      'recipe',
+      'cook',
+      'cooking',
+      'homecooking',
+      'koreanfood',
+      '\uC9D1\uBC25',
+      '\uD648\uCFE1',
+      '\uBC18\uCC2C',
+      '\uB3C4\uC2DC\uB77D',
+      '\uD55C\uC2DD',
+    )
+  }
   if (hasPetDiscoveryIntent(queryText)) expansionTokens.push('pet', 'dog', 'cat')
   const tokens = [...new Set([...baseTokens, ...expansionTokens])]
   const requiredTokens = tokens.filter((term) => !DISCOVERY_GENERIC_TERMS.has(term))
@@ -521,7 +535,7 @@ function hasPetDiscoveryIntent(text) {
 }
 
 function hasFoodDiscoveryIntent(text) {
-  return /food|cook|cooking|recipe|snack|meal|\uD478\uB4DC|\uC694\uB9AC|\uB808\uC2DC\uD53C|\uC74C\uC2DD|\uAC04\uC2DD|\uB9DB\uC9D1|\uBC00\uD0A4\uD2B8/.test(text)
+  return /food|cook|cooking|recipe|snack|meal|home\s*cook|home\s*meal|\uD478\uB4DC|\uC694\uB9AC|\uB808\uC2DC\uD53C|\uC74C\uC2DD|\uAC04\uC2DD|\uB9DB\uC9D1|\uBC00\uD0A4\uD2B8|\uC9D1\uBC25|\uD648\uCFE1|\uBC18\uCC2C|\uB3C4\uC2DC\uB77D|\uD55C\uC2DD/.test(text)
 }
 
 function hasFashionDiscoveryIntent(text) {
@@ -1033,6 +1047,10 @@ function buildReferenceSearchQueries(siteQuery, query, platform) {
     }
     if (hasFoodDiscoveryIntent(lowerQuery)) {
       queries.push(
+        `${siteQuery} "${cleanQuery}" "\uC9D1\uBC25" ${platformBoost}`.trim(),
+        `${siteQuery} "\uC9D1\uBC25" "\uB808\uC2DC\uD53C" ${platformBoost}`.trim(),
+        `${siteQuery} "\uC9D1\uBC25" "\uBC18\uCC2C" ${platformBoost}`.trim(),
+        `${siteQuery} "\uC9D1\uBC25" "\uB3C4\uC2DC\uB77D" ${platformBoost}`.trim(),
         `${siteQuery} korean food recipe viral ${platformBoost}`.trim(),
         `${siteQuery} food review viral ${platformBoost}`.trim(),
       )
@@ -1222,8 +1240,13 @@ function isUsableContentReference(item = {}, query = '') {
     if (!item.thumbnailUrl && !knownContentEngagement) return false
     if (/brave search api/i.test(String(item.source || '')) && !item.thumbnailUrl && !knownEngagement) return false
     if (!item.thumbnailUrl && isLowValueReferenceText(`${item.title} ${item.analysis || ''}`)) return false
+    if (hasReferenceQueryIntent(query) && !matchesReferenceQuery(item, query)) return false
   }
   return scoreReferenceQuality(item, query) >= MIN_REFERENCE_QUALITY_SCORE
+}
+
+function hasReferenceQueryIntent(query) {
+  return tokenizeDiscoveryIntent(query).some((token) => !DISCOVERY_GENERIC_TERMS.has(token))
 }
 
 function scoreReferenceQuality(item = {}, query = '') {
@@ -1410,6 +1433,12 @@ function buildStrictProfileSearchQueries(platform, query) {
     if (/pet|dog|cat|kennel|carrier|crate/.test(lower)) {
       queries.push('site:instagram.com "pet creator" "@" -inurl:/p/ -inurl:/reel/ -inurl:/stories/')
     }
+    if (hasFoodDiscoveryIntent(lower)) {
+      queries.push(`site:instagram.com "\uC9D1\uBC25" "@" -inurl:/p/ -inurl:/reel/ -inurl:/stories/`)
+      queries.push(`site:instagram.com "\uD648\uCFE1" "@" -inurl:/p/ -inurl:/reel/ -inurl:/stories/`)
+      queries.push(`site:instagram.com "\uBC18\uCC2C" "@" -inurl:/p/ -inurl:/reel/ -inurl:/stories/`)
+      queries.push(`site:instagram.com "\uB3C4\uC2DC\uB77D" "@" -inurl:/p/ -inurl:/reel/ -inurl:/stories/`)
+    }
     categoryTerms.forEach((term) => {
       queries.push(`site:instagram.com "${term}" "@" -inurl:/p/ -inurl:/reel/ -inurl:/stories/`)
     })
@@ -1426,6 +1455,13 @@ function buildStrictProfileSearchQueries(platform, query) {
     if (/pet|dog|cat|kennel|carrier|crate/.test(lower)) {
       queries.push('site:tiktok.com/@ "pet creator" -inurl:/video/ -inurl:/music/')
       queries.push('site:tiktok.com "pet creator"')
+    }
+    if (hasFoodDiscoveryIntent(lower)) {
+      queries.push(`site:tiktok.com/@ "\uC9D1\uBC25" -inurl:/video/ -inurl:/music/ -inurl:/tag/`)
+      queries.push(`site:tiktok.com/@ "\uD648\uCFE1" -inurl:/video/ -inurl:/music/ -inurl:/tag/`)
+      queries.push(`site:tiktok.com/@ "\uBC18\uCC2C" -inurl:/video/ -inurl:/music/ -inurl:/tag/`)
+      queries.push(`site:tiktok.com "\uC9D1\uBC25"`)
+      queries.push(`site:tiktok.com "\uD648\uCFE1"`)
     }
     categoryTerms.forEach((term) => {
       queries.push(`site:tiktok.com/@ "${term}" -inurl:/video/ -inurl:/music/ -inurl:/tag/`)
@@ -1446,7 +1482,18 @@ function inferDiscoveryCategoryTerms(lowerQuery) {
     terms.push('pet creator', 'dog review', 'pet influencer', '\uBC18\uB824\uACAC \uB9AC\uBDF0')
   }
   if (hasFoodDiscoveryIntent(lowerQuery)) {
-    terms.push('food creator', 'snack review', '\uC694\uB9AC \uB808\uC2DC\uD53C')
+    terms.push(
+      'food creator',
+      'snack review',
+      'home cooking',
+      'korean food',
+      '\uC694\uB9AC \uB808\uC2DC\uD53C',
+      '\uC9D1\uBC25',
+      '\uD648\uCFE1',
+      '\uBC18\uCC2C',
+      '\uB3C4\uC2DC\uB77D',
+      '\uD55C\uC2DD',
+    )
   }
   if (hasFashionDiscoveryIntent(lowerQuery)) {
     terms.push('fashion creator', 'lookbook', '\uD328\uC158 \uB8E9\uBD81')
@@ -3000,7 +3047,7 @@ function isUsableProfileDiscoveryResultV2(profile, context, mode = 'strict') {
   const hasCategoryMatch = genericMatches > 0 || tokenMatches > 0
 
   if (mode === 'strict' && !hasRequiredMatch) return false
-  if (mode === 'expanded' && !hasCategoryMatch && !hasMetrics) return false
+  if (mode === 'expanded' && !hasCategoryMatch) return false
 
   if (profile.platform === 'TikTok') {
     if (!hasMetrics && looksLikeContentCaptionV2(profile.name)) return false
