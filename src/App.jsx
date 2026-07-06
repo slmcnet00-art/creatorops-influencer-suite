@@ -2945,9 +2945,19 @@ function buildDiscoverySearchText({ query, category, brandBrief, selectedCampaig
 function getDiscoveryIntentTerms(query, category) {
   const manualTerms = keywordList(query)
   const categoryTerms = category && category !== '\uC804\uCCB4' ? discoveryCategoryIntentTerms[category] ?? [category] : []
-  return uniqueList([...manualTerms, ...categoryTerms])
+  return uniqueList([...manualTerms, ...expandDiscoveryProductIntentTerms(manualTerms.join(' ')), ...categoryTerms])
     .map((term) => String(term).trim().toLowerCase())
     .filter((term) => term.length >= 2)
+}
+
+function expandDiscoveryProductIntentTerms(text) {
+  const clean = String(text || '').toLowerCase()
+  const terms = []
+  if (clean.includes('\uBC14\uB2D0\uB77C\uCF54') || clean.includes('banila')) terms.push('banila', 'banila co')
+  if (clean.includes('\uD074\uB80C\uC9D5\uBC24') || clean.includes('cleansing balm') || clean.includes('clean it zero')) {
+    terms.push('cleansing balm', 'clean it zero', 'cleanitzero')
+  }
+  return terms
 }
 
 function discoveryResultMatchesIntent(result, terms) {
@@ -2956,6 +2966,9 @@ function discoveryResultMatchesIntent(result, terms) {
     result?.name,
     result?.handle,
     result?.snippet,
+    result?.sourceTitle,
+    result?.sourceSnippet,
+    result?.matchedContentUrl,
     result?.profileUrl,
     result?.source,
   ]
@@ -2964,6 +2977,67 @@ function discoveryResultMatchesIntent(result, terms) {
     .toLowerCase()
 
   return terms.some((term) => searchable.includes(term))
+}
+
+function buildDiscoveryResultFromReference(reference, index = 0) {
+  if (!reference?.url) return null
+  const platform = reference.platform || inferPlatformFromUrl(reference.url) || 'Instagram'
+  const profileUrl = getReferenceCreatorProfileUrl(reference, platform)
+  const handle = getReferenceCreatorHandle(reference, platform, profileUrl)
+  if (!profileUrl || !handle) return null
+  if (looksLikeBrandReferenceCandidate(reference, handle)) return null
+
+  return {
+    id: `ref-discovery:${reference.id || reference.url || index}`,
+    platform,
+    name: reference.channelTitle || handle.replace(/^@/, '') || reference.title || 'Public creator',
+    handle,
+    profileUrl,
+    avatar: reference.thumbnailUrl || '',
+    followers: Number(reference.accountFollowers || reference.followers || 0),
+    averageViews: Number(reference.views || 0),
+    country: reference.country || reference.searchCountry || '',
+    snippet: reference.title || reference.hook || reference.analysis || '',
+    sourceTitle: reference.title || '',
+    sourceSnippet: reference.analysis || reference.hook || '',
+    matchedContentUrl: reference.url,
+    source: `${reference.source || 'Content reference search'} -> creator candidate`,
+    verifiedMetrics: false,
+    discoveryMatchType: 'content_reference',
+  }
+}
+
+function getReferenceCreatorProfileUrl(reference, platform) {
+  const url = String(reference?.url || '')
+  if (!url) return ''
+  if (platform === 'TikTok') {
+    const match = url.match(/tiktok\.com\/(@[A-Za-z0-9._-]+)/i)
+    return match?.[1] ? `https://www.tiktok.com/${match[1]}` : ''
+  }
+  if (platform === 'Instagram') {
+    const handle = extractHandleFromText(`${reference.title || ''} ${reference.analysis || ''}`)
+    return handle ? `https://www.instagram.com/${handle.replace(/^@/, '')}` : ''
+  }
+  return ''
+}
+
+function getReferenceCreatorHandle(reference, platform, profileUrl) {
+  if (platform === 'TikTok') {
+    const match = String(profileUrl || reference?.url || '').match(/tiktok\.com\/(@[A-Za-z0-9._-]+)/i)
+    return match?.[1] || ''
+  }
+  if (platform === 'Instagram') return extractHandleFromText(`${reference?.title || ''} ${reference?.analysis || ''}`)
+  return ''
+}
+
+function extractHandleFromText(text) {
+  const match = String(text || '').match(/@([A-Za-z0-9._]{2,30})/)
+  return match?.[1] ? `@${match[1]}` : ''
+}
+
+function looksLikeBrandReferenceCandidate(reference, handle) {
+  const text = `${handle || ''} ${reference?.title || ''} ${reference?.channelTitle || ''} ${reference?.url || ''}`.toLowerCase()
+  return /banilaco|banila\s*co|official|tester\s*korea|coupang|amazon|ulta|bagallery/.test(text)
 }
 
 function buildRealDiscoveryCreator(result, brief, fallbackCategory, index = 0) {
@@ -6135,6 +6209,21 @@ function App() {
             maxResults,
           })),
         )
+      }
+
+      if (hasServerApi && platform !== 'YouTube' && results.length < maxResults) {
+        const referencePlatform = platform === '?꾩껜' ? 'all' : platform
+        const referencePayload = await searchContentReferences({
+          query: searchText,
+          country: discoveryCountry,
+          platform: referencePlatform,
+          sort: 'virality',
+          maxResults: Math.min(maxResults * 2, 120),
+        })
+        const referenceCandidates = (referencePayload?.references || [])
+          .map((reference, index) => buildDiscoveryResultFromReference(reference, index))
+          .filter(Boolean)
+        results.push(...referenceCandidates)
       }
 
       const matchingResults = intentTerms.length
