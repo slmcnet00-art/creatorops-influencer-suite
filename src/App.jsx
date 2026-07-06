@@ -13,6 +13,7 @@ import {
   Eye,
   FileText,
   Filter,
+  FolderOpen,
   Globe2,
   History,
   Image as ImageIcon,
@@ -575,6 +576,39 @@ const defaultTrackedPosts = [
 const defaultContentReferences = [
 ]
 
+const defaultCreatorGroups = [
+  {
+    id: 'group-beauty-kr',
+    name: '뷰티_KR_우선 제안',
+    description: '국내 뷰티 캠페인에 바로 제안 가능한 후보 그룹',
+    platform: 'Instagram · YouTube',
+    type: '즐겨찾기',
+    owner: 'Campaign Operator',
+    creatorIds: [1, 2, 3],
+    createdAt: '기본 그룹',
+  },
+  {
+    id: 'group-tiktok-seller',
+    name: 'TikTok 셀러_공동구매',
+    description: '공동구매, 커머스, 셀러형 제안 우선 그룹',
+    platform: 'TikTok',
+    type: '리스트',
+    owner: 'Growth Team',
+    creatorIds: [2, 4],
+    createdAt: '기본 그룹',
+  },
+  {
+    id: 'group-review-high-view',
+    name: '리뷰_조회수 우선',
+    description: '팔로워보다 평균 조회수와 터진 콘텐츠 가능성이 높은 후보',
+    platform: 'All',
+    type: '즐겨찾기',
+    owner: 'Data QA',
+    creatorIds: [1, 3, 4],
+    createdAt: '기본 그룹',
+  },
+]
+
 const defaultRecommendations = [
   {
     id: 4101,
@@ -739,6 +773,7 @@ const defaultWorkspace = {
   fulfillmentRecords: defaultFulfillmentRecords,
   trackedPosts: defaultTrackedPosts,
   contentReferences: defaultContentReferences,
+  creatorGroups: defaultCreatorGroups,
   savedProductionReferenceIds: [],
   activities: [
     {
@@ -1198,6 +1233,7 @@ function normalizeWorkspace(saved) {
     fulfillmentRecords: saved?.fulfillmentRecords ?? defaultWorkspace.fulfillmentRecords,
     trackedPosts: saved?.trackedPosts ?? defaultWorkspace.trackedPosts,
     contentReferences: normalizeContentReferences(saved?.contentReferences ?? defaultWorkspace.contentReferences),
+    creatorGroups: normalizeCreatorGroups(saved?.creatorGroups ?? defaultWorkspace.creatorGroups, normalizedCreators),
     savedProductionReferenceIds: saved?.savedProductionReferenceIds ?? defaultWorkspace.savedProductionReferenceIds,
     activities: normalizedActivities,
   }
@@ -1880,8 +1916,11 @@ function normalizeContentReferences(references = []) {
 function normalizeContentReference(item) {
   if (!item) return null
   const platform = item.platform || inferPlatformFromUrl(item.url)
+  const referenceKind = item.referenceKind || item.trackingType || 'content'
   const normalized = {
     ...item,
+    referenceKind,
+    trackingType: item.trackingType || referenceKind,
     platform,
     mediaType: item.mediaType || inferMediaTypeFromUrl(item.url, platform) || '영상',
     title: cleanReferenceDisplayText(item.title),
@@ -1904,6 +1943,22 @@ function isLowQualitySavedReference(item) {
   if (/(^|[\s(])@?reel\b/.test(title) || /reel raffle/.test(title)) return true
   if (title.includes('instagram photos and videos') && analysis.includes('instagram photos and videos')) return true
   return false
+}
+
+function normalizeCreatorGroups(groups = [], creators = []) {
+  const creatorIds = new Set(creators.map((creator) => creator.id))
+  const cleaned = (groups || defaultCreatorGroups).map((group, index) => ({
+    id: group.id || `group-${index + 1}`,
+    name: group.name || `인플루언서 그룹 ${index + 1}`,
+    description: group.description || '운영자가 저장한 인플루언서 그룹입니다.',
+    platform: group.platform || 'All',
+    type: group.type || '즐겨찾기',
+    owner: group.owner || 'Campaign Operator',
+    createdAt: group.createdAt || new Date().toLocaleDateString('ko-KR'),
+    creatorIds: (group.creatorIds || []).filter((id) => creatorIds.has(id)),
+  }))
+
+  return cleaned.length ? cleaned : defaultCreatorGroups
 }
 
 function isValidReferenceContentUrl(value, platform = inferPlatformFromUrl(value)) {
@@ -3297,7 +3352,7 @@ function buildAdminMetricCatalog({ rawData, outreach, creators, campaigns, recru
   }))
 }
 
-function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, outreach, contentReferences }) {
+function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, outreach, contentReferences, creatorGroups = [] }) {
   const nowText = new Date().toLocaleString('ko-KR')
   const storageBase = backendConfig?.hasSupabase ? 'Supabase public schema' : 'localStorage creatorops.workspace.v2'
   const apiStatus = backendConfig?.apiBaseUrl ? '정상' : '지연'
@@ -3426,6 +3481,54 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       active: true,
     },
     {
+      id: 'RAW-EXT-BRAND-001',
+      name: '브랜드/경쟁사 추적 raw',
+      scope: '?몃?',
+      category: '브랜드/경쟁 추적',
+      description: '브랜드 검색 및 추적 화면에서 저장한 경쟁사, 브랜드 언급, 외부 콘텐츠 원천',
+      purpose: '경쟁 브랜드와 벤치마크 콘텐츠를 저장해 시장/브랜드 인사이트 계산지표의 원천으로 사용',
+      method: 'API / 외부 검색 / 수동 URL 저장',
+      cycle: '검색 또는 저장 요청 시',
+      lastCollectedAt: nowText,
+      nextCollectAt: '검색 또는 저장 요청 시',
+      status: contentReferences.some((item) => (item.referenceKind || item.trackingType) === 'brand') ? apiStatus : '미수집',
+      sourceLocation: 'Reference > 브랜드 검색 및 추적, /references/search',
+      storageLocation: `${storageBase} / contentReferences(referenceKind=brand)`,
+      dashboardArea: '레퍼런스, 브랜드 인사이트, 데이터룸',
+      metricIds: ['MET-BRAND-001', 'MET-BRAND-002', 'MET-BENCH-001'],
+      ownerDept: 'PM/데이터팀',
+      opsOwner: 'Brand Analyst',
+      techOwner: 'Backend/Data',
+      qualityIssue: '검색 API가 공개 페이지 요약만 제공하면 조회수/팔로워는 검증 필요로 표시',
+      logLocation: 'Render API logs / future: brand_tracking_sources',
+      note: `${contentReferences.filter((item) => (item.referenceKind || item.trackingType) === 'brand').length}개 경쟁/브랜드 추적 raw 저장`,
+      active: true,
+    },
+    {
+      id: 'RAW-INT-GROUP-001',
+      name: '인플루언서 그룹 관리 raw',
+      scope: '?대?',
+      category: '인플루언서 그룹',
+      description: '운영자가 즐겨찾기, 리스트, 차단/이슈 형태로 묶은 인플루언서 그룹 데이터',
+      purpose: '대량 섭외 후보군을 반복 사용하고 메시지 전 후보 풀/캠페인 배정으로 연결',
+      method: 'DB 연동 / 운영자 수동 저장',
+      cycle: '그룹 생성/수정 시',
+      lastCollectedAt: nowText,
+      nextCollectAt: '그룹 변경 시',
+      status: creatorGroups.length ? '?뺤긽' : '미수집',
+      sourceLocation: '인플루언서 그룹 관리 화면',
+      storageLocation: `${storageBase} / creatorGroups`,
+      dashboardArea: '인플루언서 그룹, 발굴, 메시지',
+      metricIds: ['MET-POOL-006', 'MET-POOL-001'],
+      ownerDept: '운영팀',
+      opsOwner: 'Campaign Operator',
+      techOwner: 'Frontend/Data',
+      qualityIssue: '그룹 멤버가 삭제된 후보 ID를 참조하지 않도록 정규화 필요',
+      logLocation: 'workspace activities / future: creator_group_events',
+      note: `${creatorGroups.length}개 그룹, ${creatorGroups.reduce((sum, group) => sum + (group.creatorIds?.length || 0), 0)}명 연결`,
+      active: true,
+    },
+    {
       id: 'RAW-EXT-UNSUPPORTED-001',
       name: '미지원/부분지원 플랫폼 지표 보류 번들',
       scope: '외부',
@@ -3452,7 +3555,7 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
   ])
 }
 
-function buildDataRoomExtendedMetricCatalog({ metrics, rawData, creators, contentReferences }) {
+function buildDataRoomExtendedMetricCatalog({ metrics, rawData, creators, contentReferences, creatorGroups = [] }) {
   const rawName = (id) => rawData.find((item) => item.id === id)?.name ?? id
   const nowText = new Date().toLocaleString('ko-KR')
   const rows = [
@@ -3465,6 +3568,12 @@ function buildDataRoomExtendedMetricCatalog({ metrics, rawData, creators, conten
     ['MET-EXPORT-001', '전달 산출물 생성 수', '내보내기 번들', '내부', '엑셀/시트/문서/리포트로 광고주에게 전달 가능한 산출물 생성 수', 'count(export_events)', ['RAW-INT-EXPORT-001'], '최근 30일', '실시간', '검증 필요', '대시보드, 리포트, 발굴', '클라이언트 전달 이력과 연결', '다운로드 실패 1건 이상', '중간', 'CS/운영', 'export_events', '실제 DB 로그 연결 전까지 브라우저 이벤트 중심'],
     ['MET-AUTH-001', '권한 커버리지', '팀/권한 번들', '내부', '팀 멤버가 접근 가능한 브랜드/캠페인/데이터룸 범위', 'assigned_permission_count / required_permission_count * 100', ['RAW-INT-AUTH-001', 'RAW-INT-OPS-001'], '전체', '권한 변경 시', '정상', '설정, 데이터룸', '팀 단위 풀 공유와 관리권한 기준', 'Owner 없는 워크스페이스', '높음', '운영/개발', 'permission_audit_logs', 'Supabase Auth와 workspace_members 기준'],
   ]
+
+  rows.push(
+    ['MET-BRAND-001', '저장 경쟁사/브랜드 수', '브랜드/경쟁 추적 번들', '?몃?', '브랜드 검색 및 추적에 저장된 경쟁사/브랜드 raw 수', 'count(contentReferences where referenceKind=brand)', ['RAW-EXT-BRAND-001'], '캠페인 기준', '검색/저장 시', contentReferences.some((item) => (item.referenceKind || item.trackingType) === 'brand') ? '?뺤긽' : '검증 필요', '레퍼런스, 브랜드 인사이트, 데이터룸', '경쟁사 저장 수가 많을수록 벤치마크 계산 신뢰도 상승', '0개면 브랜드 인사이트 경쟁 지표 비활성', '중간', 'PM/데이터팀', 'brand_tracking_sources / contentReferences', `${contentReferences.filter((item) => (item.referenceKind || item.trackingType) === 'brand').length}개 저장`],
+    ['MET-BRAND-002', '경쟁 콘텐츠 평균 조회수', '브랜드/경쟁 추적 번들', '?몃?', '저장 경쟁사/브랜드 콘텐츠의 평균 조회수와 반응 수준', 'avg(views) over brand tracking references', ['RAW-EXT-BRAND-001', 'RAW-EXT-ENG-001'], '캠페인 기준', '검색/저장 시', '검증 필요', '브랜드 인사이트, 레퍼런스', '우리 콘텐츠 목표 조회수와 후킹 기준을 잡는 벤치마크', '조회수 0 또는 썸네일 없음 비율 30% 이상', '중간', '데이터팀', 'Render API logs / brand_tracking_sources', '외부 API 한계로 플랫폼별 검증 상태와 함께 표시'],
+    ['MET-POOL-006', '인플루언서 그룹 수', '인플루언서 풀 관리 번들', '?대?', '운영자가 저장한 인플루언서 그룹과 그룹별 멤버 수', 'count(creatorGroups), sum(group.creatorIds)', ['RAW-INT-GROUP-001', 'RAW-INT-INF-001'], '전체', '그룹 변경 시', creatorGroups.length ? '?뺤긽' : '검증 필요', '인플루언서 그룹, 메시지 전 후보 풀', '그룹은 반복 섭외와 캠페인 재사용을 위한 운영 단위', '그룹 멤버 0명 또는 삭제된 creatorId 참조', '높음', '운영팀', 'workspace activities / creator_group_events', `${creatorGroups.length}개 그룹`],
+  )
 
   const existingIds = new Set(metrics.map((item) => item.id))
   const extraMetrics = rows
@@ -3510,6 +3619,11 @@ function buildDataRoomWorkflowCoverage({ rawData, metrics }) {
     ['WF-EXPORT', '엑셀/시트/DOCX/PPT 내보내기', '발굴/리포트/캠페인', ['RAW-INT-EXPORT-001', 'RAW-INT-INF-001', 'RAW-INT-CMP-001'], ['MET-EXPORT-001'], '광고주 전달 산출물 생성 시 데이터 버전과 다운로드 종류를 기록', '내보내기 로그가 없으면 전달본 기준 추적 불가'],
     ['WF-AUTH', '팀/권한 설정', '설정/데이터룸', ['RAW-INT-AUTH-001', 'RAW-INT-OPS-001'], ['MET-AUTH-001'], '워크스페이스/브랜드/캠페인 단위 권한으로 같은 풀 접근 범위 제어', '권한 데이터룸 없는 화면은 내부 운영자 전용으로 제한'],
   ]
+
+  coverage.push(
+    ['WF-BRAND-TRACKING', '브랜드/경쟁사 검색 및 추적', '레퍼런스/브랜드 인사이트', ['RAW-EXT-SEARCH-001', 'RAW-EXT-BRAND-001', 'RAW-EXT-BENCH-001', 'RAW-INT-QUALITY-001'], ['MET-BRAND-001', 'MET-BRAND-002', 'MET-BENCH-001'], '경쟁사 저장 raw를 기반으로 브랜드 비교/벤치마크 지표를 생성', '브랜드 추적 raw가 없으면 브랜드 인사이트 경쟁 지표는 비활성 또는 샘플로 표시'],
+    ['WF-GROUPS', '인플루언서 그룹 관리', '인플루언서 그룹/메시지', ['RAW-INT-GROUP-001', 'RAW-INT-INF-001'], ['MET-POOL-006', 'MET-POOL-001'], '그룹 raw의 creatorIds를 후보 풀과 캠페인 배정으로 연결', '그룹에 없는 후보는 메시지 대량 발송 대상으로 자동 포함하지 않음'],
+  )
 
   return coverage.map(([id, featureName, frontendArea, itemRawIds, itemMetricIds, algorithm, rule]) => {
     const missingRaw = itemRawIds.filter((rawId) => !rawIds.has(rawId))
@@ -3761,6 +3875,7 @@ function App() {
     sort: 'virality',
     maxResults: '36',
   })
+  const [referenceMode, setReferenceMode] = useState('content')
   const [referencePage, setReferencePage] = useState(1)
   const [referenceSearchStatus, setReferenceSearchStatus] = useState({
     mode: 'idle',
@@ -3768,6 +3883,8 @@ function App() {
   })
   const [referenceSearchResultUrls, setReferenceSearchResultUrls] = useState(null)
   const [isReferenceManualFormOpen, setIsReferenceManualFormOpen] = useState(false)
+  const [creatorGroupQuery, setCreatorGroupQuery] = useState('')
+  const [creatorGroupTypeFilter, setCreatorGroupTypeFilter] = useState('전체')
   const [dataRoomRawTab, setDataRoomRawTab] = useState('전체')
   const [dataRoomRawStatus, setDataRoomRawStatus] = useState('전체')
   const [dataRoomRawCategory, setDataRoomRawCategory] = useState('전체')
@@ -3794,6 +3911,7 @@ function App() {
     fulfillmentRecords,
     trackedPosts,
     contentReferences,
+    creatorGroups,
     savedProductionReferenceIds,
     activities,
     team,
@@ -3807,7 +3925,7 @@ function App() {
   const accessibleSectionIds = useMemo(() => {
     if (currentAccount?.role === 'Client') return ['dashboard', 'campaigns', 'report', 'references', 'settings']
     if (currentAccount?.role === 'Analyst') return ['dashboard', 'report', 'dataRoom', 'settings']
-    return ['dashboard', 'campaigns', 'discovery', 'messages', 'report', 'references', 'dataRoom', 'settings']
+    return ['dashboard', 'campaigns', 'discovery', 'groups', 'messages', 'report', 'references', 'dataRoom', 'settings']
   }, [currentAccount?.role])
   const visibleSection = accessibleSectionIds.includes(activeSection) ? activeSection : accessibleSectionIds[0]
   const canAccessSection = (sectionId) => accessibleSectionIds.includes(sectionId)
@@ -4040,19 +4158,28 @@ function App() {
       ),
     [activeCampaignIdSet, contentReferences],
   )
+  const contentTrackingReferences = useMemo(
+    () => selectedCampaignReferences.filter((item) => (item.referenceKind || item.trackingType || 'content') !== 'brand'),
+    [selectedCampaignReferences],
+  )
+  const brandTrackingReferences = useMemo(
+    () => selectedCampaignReferences.filter((item) => (item.referenceKind || item.trackingType) === 'brand'),
+    [selectedCampaignReferences],
+  )
+  const activeReferenceBase = referenceMode === 'brand' ? brandTrackingReferences : contentTrackingReferences
   const referenceCountryOptions = useMemo(
     () => [
       ...referenceCountryPresets,
-      ...Array.from(new Set(selectedCampaignReferences.map((item) => item.country).filter(Boolean)))
+      ...Array.from(new Set(activeReferenceBase.map((item) => item.country).filter(Boolean)))
         .filter((country) => !referenceCountryPresets.includes(country)),
     ],
-    [selectedCampaignReferences],
+    [activeReferenceBase],
   )
   const visibleReferences = useMemo(() => {
     const searchTerm = referenceFilters.appliedQuery.trim().toLowerCase()
     const hasScopedSearchResults = Array.isArray(referenceSearchResultUrls)
     const resultUrlSet = new Set((referenceSearchResultUrls ?? []).map((url) => String(url || '').toLowerCase()))
-    const filtered = selectedCampaignReferences.filter(
+    const filtered = activeReferenceBase.filter(
       (item) =>
         (!hasScopedSearchResults || resultUrlSet.has(String(item.url || '').toLowerCase())) &&
         (referenceFilters.country === '전체' || item.country === referenceFilters.country) &&
@@ -4071,7 +4198,7 @@ function App() {
       if (referenceFilters.sort === 'recent') return Number(b.id || 0) - Number(a.id || 0)
       return Number(b.views || 0) - Number(a.views || 0)
     })
-  }, [referenceFilters, referenceSearchResultUrls, selectedCampaignReferences])
+  }, [activeReferenceBase, referenceFilters, referenceSearchResultUrls])
   const referencePageSize = 12
   const referenceTotalPages = Math.max(1, Math.ceil(visibleReferences.length / referencePageSize))
   const safeReferencePage = Math.min(Math.max(referencePage, 1), referenceTotalPages)
@@ -4081,8 +4208,8 @@ function App() {
   }, [safeReferencePage, visibleReferences])
 
   const savedProductionReferences = useMemo(
-    () => selectedCampaignReferences.filter((item) => savedProductionReferenceIds.includes(item.id)),
-    [savedProductionReferenceIds, selectedCampaignReferences],
+    () => contentTrackingReferences.filter((item) => savedProductionReferenceIds.includes(item.id)),
+    [contentTrackingReferences, savedProductionReferenceIds],
   )
   const referenceTotals = useMemo(
     () =>
@@ -4096,6 +4223,45 @@ function App() {
         { views: 0, shares: 0, videos: 0, images: 0 },
       ),
     [visibleReferences],
+  )
+  const safeCreatorGroups = creatorGroups?.length ? creatorGroups : defaultCreatorGroups
+  const creatorGroupTypeOptions = useMemo(
+    () => ['전체', ...Array.from(new Set(safeCreatorGroups.map((group) => group.type).filter(Boolean)))],
+    [safeCreatorGroups],
+  )
+  const visibleCreatorGroups = useMemo(() => {
+    const query = creatorGroupQuery.trim().toLowerCase()
+    return safeCreatorGroups.filter((group) => {
+      const groupCreators = getCreatorsByIds(creators, group.creatorIds || [])
+      const searchable = [
+        group.name,
+        group.description,
+        group.platform,
+        group.type,
+        group.owner,
+        ...groupCreators.flatMap((creator) => [creator.name, creator.handle, creator.category, creator.country, creator.platform]),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return (creatorGroupTypeFilter === '전체' || group.type === creatorGroupTypeFilter) && (!query || searchable.includes(query))
+    })
+  }, [creatorGroupQuery, creatorGroupTypeFilter, creators, safeCreatorGroups])
+  const creatorGroupSummary = useMemo(
+    () =>
+      safeCreatorGroups.reduce(
+        (summary, group) => {
+          const groupCreators = getCreatorsByIds(creators, group.creatorIds || [])
+          return {
+            groups: summary.groups + 1,
+            creators: summary.creators + groupCreators.length,
+            avgFollowers: summary.avgFollowers + groupCreators.reduce((sum, creator) => sum + Number(creator.followers || 0), 0),
+            avgViews: summary.avgViews + groupCreators.reduce((sum, creator) => sum + Number(creator.avgViews || 0), 0),
+          }
+        },
+        { groups: 0, creators: 0, avgFollowers: 0, avgViews: 0 },
+      ),
+    [creators, safeCreatorGroups],
   )
   const candidatePoolAllCreators = useMemo(() => {
     return getCreatorsByIds(creators, shortlist)
@@ -4504,8 +4670,9 @@ function App() {
         creators,
         outreach,
         contentReferences,
+        creatorGroups,
       }),
-    [activeBrand, backendConfig, brands, campaigns, contentReferences, creators, fulfillmentRecords, outreach, recruitedPool, trackedPosts],
+    [activeBrand, backendConfig, brands, campaigns, contentReferences, creatorGroups, creators, fulfillmentRecords, outreach, recruitedPool, trackedPosts],
   )
   const dataRoomMetrics = useMemo(
     () =>
@@ -4523,8 +4690,9 @@ function App() {
         rawData: dataRoomRawData,
         creators,
         contentReferences,
+        creatorGroups,
       }),
-    [campaigns, contentReferences, creators, dataRoomRawData, fulfillmentRecords, outreach, recruitedPool, trackedPosts],
+    [campaigns, contentReferences, creatorGroups, creators, dataRoomRawData, fulfillmentRecords, outreach, recruitedPool, trackedPosts],
   )
   const dataRoomWorkflowCoverage = useMemo(
     () => buildDataRoomWorkflowCoverage({ rawData: dataRoomRawData, metrics: dataRoomMetrics }),
@@ -4646,6 +4814,11 @@ function App() {
       eyebrow: 'Content Reference',
       title: '콘텐츠 레퍼런스',
       description: `${selectedCampaign?.name ?? activeBrand.name} 제작에 차용할 영상/이미지 레퍼런스`,
+    },
+    groups: {
+      eyebrow: 'Influencer Groups',
+      title: '인플루언서 그룹 관리',
+      description: '발굴 후보를 즐겨찾기/리스트/차단 그룹으로 묶고 메시지 전 후보 풀과 캠페인에 연결',
     },
     dataRoom: {
       eyebrow: 'Admin Data Room',
@@ -7691,6 +7864,90 @@ function App() {
     showToast('섭외 완료 인플루언서 풀에 저장했어요.')
   }
 
+  const createCreatorGroup = () => {
+    const seedCreatorIds = [
+      ...selectedRecommendations.map((recommendation) => recommendation.creatorId),
+      ...selectedCandidatePoolIds,
+    ]
+    const fallbackCreatorIds = [...creators]
+      .sort((a, b) => Number(b.avgViews || 0) - Number(a.avgViews || 0))
+      .slice(0, 6)
+      .map((creator) => creator.id)
+    const creatorIds = Array.from(new Set(seedCreatorIds.length ? seedCreatorIds : fallbackCreatorIds)).slice(0, 50)
+
+    if (!creatorIds.length) {
+      showToast('그룹에 넣을 인플루언서 후보가 없습니다.')
+      return
+    }
+
+    const nextGroup = {
+      id: createId(),
+      name: `${activeBrand.name} ${selectedCampaign?.name ?? '추천'} 그룹`,
+      description: 'AI 추천/후보 풀 기준으로 생성한 운영 그룹',
+      platform: 'Mixed',
+      type: '즐겨찾기',
+      owner: currentAccount?.name || 'Campaign Operator',
+      creatorIds,
+      createdAt: nowLabel(),
+    }
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          creatorGroups: [nextGroup, ...(current.creatorGroups ?? [])],
+        },
+        'group',
+        `${nextGroup.name} 인플루언서 그룹 생성`,
+      ),
+    )
+    showToast(`${creatorIds.length}명으로 인플루언서 그룹을 만들었습니다.`)
+  }
+
+  const addCreatorGroupToCandidatePool = (group) => {
+    const creatorIds = group.creatorIds || []
+    if (!creatorIds.length) {
+      showToast('후보 풀로 보낼 멤버가 없습니다.')
+      return
+    }
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          shortlist: Array.from(new Set([...(current.shortlist ?? []), ...creatorIds])),
+        },
+        'shortlist',
+        `${group.name} 그룹을 메시지 전 후보 풀에 저장`,
+      ),
+    )
+    showToast(`${group.name} 그룹을 메시지 전 후보 풀에 보냈습니다.`)
+  }
+
+  const assignCreatorGroupToCampaign = (group) => {
+    if (!selectedCampaign) {
+      showToast('그룹을 배정할 캠페인을 먼저 선택하세요.')
+      return
+    }
+
+    const creatorIds = group.creatorIds || []
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          campaigns: current.campaigns.map((campaign) =>
+            campaign.id === selectedCampaign.id
+              ? { ...campaign, creatorIds: Array.from(new Set([...(campaign.creatorIds ?? []), ...creatorIds])) }
+              : campaign,
+          ),
+        },
+        'campaign',
+        `${selectedCampaign.name} 캠페인에 ${group.name} 그룹 배정`,
+      ),
+    )
+    showToast(`${selectedCampaign.name}에 ${creatorIds.length}명을 배정했습니다.`)
+  }
+
   const saveContentReference = async (event) => {
     event.preventDefault()
 
@@ -7720,6 +7977,8 @@ function App() {
     const nextReference = {
       id: createId(),
       campaignId: selectedCampaign.id,
+      referenceKind: referenceMode === 'brand' ? 'brand' : 'content',
+      trackingType: referenceMode === 'brand' ? 'competitor' : 'content',
       mediaType: autoMediaType,
       platform: autoPlatform,
       country: referenceDraft.country || 'KR',
@@ -7852,6 +8111,8 @@ function App() {
           ...item,
           id: item.id || `reference-${createId()}-${index}`,
           campaignId: selectedCampaign.id,
+          referenceKind: referenceMode === 'brand' ? 'brand' : 'content',
+          trackingType: referenceMode === 'brand' ? 'competitor' : 'content',
           country: item.country || referenceFilters.country || activeBrand.country || 'KR',
           mediaType: item.mediaType || '영상',
           platform: item.platform || 'YouTube',
@@ -8045,6 +8306,14 @@ function App() {
               icon={<UsersRound size={18} />}
               label="발굴"
               onClick={() => jumpTo('discovery')}
+            />
+          )}
+          {canAccessSection('groups') && (
+            <NavButton
+              active={visibleSection === 'groups'}
+              icon={<FolderOpen size={18} />}
+              label="그룹"
+              onClick={() => jumpTo('groups')}
             />
           )}
           {canAccessSection('messages') && (
@@ -9293,6 +9562,99 @@ function App() {
           </>
         )}
 
+        {visibleSection === 'groups' && (
+        <section className="panel creator-groups-panel">
+          <div className="panel-heading">
+            <div>
+              <span className="mini-label">Influencer Groups</span>
+              <h2>인플루언서 그룹 관리</h2>
+            </div>
+            <button className="primary-button compact-button" type="button" onClick={createCreatorGroup}>
+              <Plus size={15} />
+              새 그룹 만들기
+            </button>
+          </div>
+
+          <div className="creator-group-summary">
+            <Stat label="전체 그룹" value={`${creatorGroupSummary.groups}개`} />
+            <Stat label="누적 멤버" value={`${creatorGroupSummary.creators}명`} />
+            <Stat label="총 팔로워" value={compactNumber(creatorGroupSummary.avgFollowers)} />
+            <Stat label="총 평균 조회" value={compactNumber(creatorGroupSummary.avgViews)} />
+          </div>
+
+          <div className="creator-group-toolbar">
+            <label className="search-field">
+              <Search size={16} />
+              <input
+                value={creatorGroupQuery}
+                onChange={(event) => setCreatorGroupQuery(event.target.value)}
+                placeholder="그룹명, 플랫폼, 멤버 검색"
+              />
+            </label>
+            <select value={creatorGroupTypeFilter} onChange={(event) => setCreatorGroupTypeFilter(event.target.value)}>
+              {creatorGroupTypeOptions.map((option) => (
+                <option key={option}>{option}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="creator-group-grid">
+            {visibleCreatorGroups.length === 0 ? (
+              <div className="empty-state compact-empty">
+                <FolderOpen size={24} />
+                <strong>조건에 맞는 인플루언서 그룹이 없습니다.</strong>
+                <p>발굴 후보나 메시지 전 후보 풀에서 그룹을 만들면 이곳에서 관리할 수 있습니다.</p>
+              </div>
+            ) : (
+              visibleCreatorGroups.map((group) => {
+                const groupCreators = getCreatorsByIds(creators, group.creatorIds || [])
+                const platforms = Array.from(new Set(groupCreators.map((creator) => creator.platform).filter(Boolean))).slice(0, 3)
+                const groupViews = groupCreators.reduce((sum, creator) => sum + Number(creator.avgViews || 0), 0)
+                const groupFollowers = groupCreators.reduce((sum, creator) => sum + Number(creator.followers || 0), 0)
+
+                return (
+                  <article className="creator-group-card" key={group.id}>
+                    <div className="creator-group-folder-tab" />
+                    <div className="creator-group-card-head">
+                      <div>
+                        <span>{group.type}</span>
+                        <strong>{group.name}</strong>
+                        <p>{group.description}</p>
+                      </div>
+                      <FolderOpen size={24} />
+                    </div>
+                    <div className="creator-group-metrics">
+                      <span>멤버 {groupCreators.length}명</span>
+                      <span>팔로워 {compactNumber(groupFollowers)}</span>
+                      <span>평균조회 {compactNumber(groupViews)}</span>
+                    </div>
+                    <div className="creator-group-platforms">
+                      {(platforms.length ? platforms : [group.platform || 'All']).map((platformName) => (
+                        <span key={platformName}>{platformName}</span>
+                      ))}
+                    </div>
+                    <div className="creator-group-avatars">
+                      {groupCreators.slice(0, 7).map((creator) => (
+                        <img key={creator.id} src={creator.avatar} alt="" />
+                      ))}
+                      {groupCreators.length > 7 && <span>+{groupCreators.length - 7}</span>}
+                    </div>
+                    <div className="creator-group-actions">
+                      <button className="secondary-button compact-button" type="button" onClick={() => addCreatorGroupToCandidatePool(group)}>
+                        후보 풀 저장
+                      </button>
+                      <button className="primary-button compact-button" type="button" onClick={() => assignCreatorGroupToCampaign(group)}>
+                        캠페인 배정
+                      </button>
+                    </div>
+                  </article>
+                )
+              })
+            )}
+          </div>
+        </section>
+        )}
+
         {visibleSection === 'references' && (
         <section className="panel reference-board-panel">
           <div className="panel-heading">
@@ -9305,6 +9667,35 @@ function App() {
                 영상 {referenceTotals.videos} · 이미지 {referenceTotals.images}
               </span>
             </div>
+          </div>
+
+          <div className="reference-mode-tabs" aria-label="레퍼런스 카테고리">
+            <button
+              className={referenceMode === 'brand' ? 'active' : ''}
+              type="button"
+              onClick={() => {
+                setReferenceMode('brand')
+                setReferencePage(1)
+                setReferenceSearchResultUrls(null)
+              }}
+            >
+              <Globe2 size={17} />
+              <span>브랜드 검색 및 추적</span>
+              <small>경쟁사 저장기능</small>
+            </button>
+            <button
+              className={referenceMode === 'content' ? 'active' : ''}
+              type="button"
+              onClick={() => {
+                setReferenceMode('content')
+                setReferencePage(1)
+                setReferenceSearchResultUrls(null)
+              }}
+            >
+              <Video size={17} />
+              <span>콘텐츠 추적</span>
+              <small>콘텐츠 저장기능</small>
+            </button>
           </div>
 
           <div className="reference-summary">
@@ -9440,12 +9831,19 @@ function App() {
               <article className="reference-card" key={item.id}>
                 {(() => {
                   const isSavedForProduction = savedProductionReferenceIds.includes(item.id)
+                  const isBrandReference = referenceMode === 'brand'
                   return (
                     <button
-                      className={`reference-save-button ${isSavedForProduction ? 'saved' : ''}`}
+                      className={`reference-save-button ${isSavedForProduction || isBrandReference ? 'saved' : ''}`}
                       type="button"
                       title={isSavedForProduction ? '제작 레퍼런스 저장 해제' : '제작 레퍼런스로 저장'}
-                      onClick={() => toggleProductionReference(item.id)}
+                      onClick={() => {
+                        if (isBrandReference) {
+                          showToast('브랜드/경쟁사 추적 raw에 이미 저장된 항목입니다.')
+                          return
+                        }
+                        toggleProductionReference(item.id)
+                      }}
                     >
                       {isSavedForProduction ? <BookmarkCheck size={16} /> : <Bookmark size={16} />}
                       <span>{isSavedForProduction ? '저장됨' : '저장'}</span>
@@ -9662,6 +10060,7 @@ function App() {
           </form>
           )}
 
+          {referenceMode === 'content' && (
           <div className="production-reference-shelf">
             <div className="production-reference-head">
               <div>
@@ -9698,6 +10097,7 @@ function App() {
               </div>
             )}
           </div>
+          )}
 
         </section>
         )}

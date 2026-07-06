@@ -6592,3 +6592,239 @@
   }
 }
 
+.reference-mode-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin: 8px 0 16px;
+}
+
+.reference-mode-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 62px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 900;
+  text-align: left;
+  padding: 12px 14px;
+  cursor: pointer;
+}
+
+.reference-mode-tabs button small {
+  display: block;
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.reference-mode-tabs button.active {
+  border-color: rgba(0, 113, 227, 0.35);
+  background: rgba(0, 113, 227, 0.08);
+  color: var(--accent);
+}
+
+.creator-groups-panel {
+  display: grid;
+  gap: 18px;
+}
+
+.creator-group-summary {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.creator-group-toolbar {
+  display: grid;
+  grid-template-columns: minmax(280px, 1fr) 220px;
+  gap: 12px;
+  align-items: center;
+}
+
+.creator-group-toolbar .search-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 12px;
+  background: var(--surface);
+}
+
+.creator-group-toolbar input,
+.creator-group-toolbar select {
+  width: 100%;
+  min-height: 44px;
+  border: 0;
+  background: transparent;
+  color: var(--text-strong);
+  font: inherit;
+}
+
+.creator-group-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 18px;
+}
+
+.creator-group-card {
+  position: relative;
+  display: grid;
+  gap: 14px;
+  min-height: 230px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 20px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.creator-group-folder-tab {
+  position: absolute;
+  top: -1px;
+  right: 28px;
+  width: 96px;
+  height: 26px;
+  border-radius: 0 0 8px 8px;
+  background: rgba(255, 149, 0, 0.14);
+}
+
+.creator-group-card-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.creator-group-card-head span {
+  color: var(--accent);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.creator-group-card-head strong {
+  display: block;
+  margin-top: 6px;
+  color: var(--text-strong);
+  font-size: 18px;
+  line-height: 1.35;
+}
+
+.creator-group-card-head p {
+  margin: 8px 0 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.creator-group-metrics,
+.creator-group-platforms,
+.creator-group-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.creator-group-metrics span,
+.creator-group-platforms span {
+  border-radius: 999px;
+  background: var(--surface-muted);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 800;
+  padding: 6px 9px;
+}
+
+.creator-group-avatars {
+  display: flex;
+  align-items: center;
+  min-height: 28px;
+}
+
+.creator-group-avatars img,
+.creator-group-avatars span {
+  width: 28px;
+  height: 28px;
+  margin-left: -7px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--surface-muted);
+  object-fit: cover;
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 900;
+  display: grid;
+  place-items: center;
+}
+
+.creator-group-avatars img:first-child {
+  margin-left: 0;
+}
+
+.messages-workspace .message-panel {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+
+.messages-workspace .message-panel > .panel-heading,
+.messages-workspace .message-panel > .outreach-guidance {
+  grid-column: 1 / -1;
+}
+
+.messages-workspace .message-stage-board {
+  grid-column: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: sticky;
+  top: 88px;
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+  border-right: 1px solid var(--border);
+  padding-right: 10px;
+}
+
+.messages-workspace .message-search-bar,
+.messages-workspace .message-bulk-toolbar,
+.messages-workspace .record-list {
+  grid-column: 2;
+}
+
+.messages-workspace .message-stage-board button,
+.messages-workspace .message-stage-board article {
+  width: 100%;
+  text-align: left;
+}
+
+@media (max-width: 980px) {
+  .creator-group-summary,
+  .reference-mode-tabs,
+  .messages-workspace .message-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .creator-group-toolbar {
+    grid-template-columns: 1fr;
+  }
+
+  .messages-workspace .message-stage-board,
+  .messages-workspace .message-search-bar,
+  .messages-workspace .message-bulk-toolbar,
+  .messages-workspace .record-list {
+    grid-column: 1;
+  }
+
+  .messages-workspace .message-stage-board {
+    position: static;
+    max-height: none;
+    border-right: 0;
+    padding-right: 0;
+  }
+}
+
