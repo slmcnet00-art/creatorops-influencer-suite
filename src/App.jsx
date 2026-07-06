@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import {
   ArrowUpRight,
   BarChart3,
@@ -43,6 +43,7 @@ import {
   getBackendConfig,
   getAuthSession,
   importExternalReport,
+  loadExternalSearchEvents,
   loadCloudWorkspace,
   onAuthStateChange,
   saveCloudWorkspace,
@@ -4263,6 +4264,7 @@ function App() {
   const [dataRoomMetricQuery, setDataRoomMetricQuery] = useState('')
   const [selectedDataRoomItem, setSelectedDataRoomItem] = useState({ type: 'raw', id: 'RAW-INT-CRM-001' })
   const [dataRoomImportStatus, setDataRoomImportStatus] = useState('외부 보고서 업로드 대기')
+  const [dataRoomApiEvents, setDataRoomApiEvents] = useState([])
   const [fulfillmentDraft, setFulfillmentDraft] = useState(createEmptyFulfillmentDraft)
 
   const {
@@ -5263,6 +5265,56 @@ function App() {
       cancelled = true
     }
   }, [backendConfig.hasSupabase, dataRoomMetrics, dataRoomRawData, visibleSection])
+
+  const refreshDataRoomApiEvents = useCallback(async () => {
+    if (!backendConfig.hasSupabase) {
+      setDataRoomApiEvents([])
+      return
+    }
+
+    try {
+      const result = await loadExternalSearchEvents(20)
+      if (result.status === 'loaded') {
+        setDataRoomApiEvents(result.events)
+      } else if (result.status === 'auth_required') {
+        setDataRoomApiEvents([])
+        setDataRoomImportStatus('Supabase 로그인 후 최근 API 수집 로그를 볼 수 있어요.')
+      }
+    } catch (error) {
+      setDataRoomApiEvents([])
+      setDataRoomImportStatus(error instanceof Error ? `API 수집 로그 로드 실패: ${error.message}` : 'API 수집 로그 로드 실패')
+    }
+  }, [backendConfig.hasSupabase])
+
+  useEffect(() => {
+    if (visibleSection !== 'dataRoom') return
+    let cancelled = false
+
+    async function loadRecentApiEvents() {
+      if (!backendConfig.hasSupabase) return
+      try {
+        const result = await loadExternalSearchEvents(20)
+        if (cancelled) return
+        if (result.status === 'loaded') {
+          setDataRoomApiEvents(result.events)
+        } else if (result.status === 'auth_required') {
+          setDataRoomApiEvents([])
+          setDataRoomImportStatus('Supabase 로그인 후 최근 API 수집 로그를 볼 수 있어요.')
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setDataRoomApiEvents([])
+          setDataRoomImportStatus(error instanceof Error ? `API 수집 로그 로드 실패: ${error.message}` : 'API 수집 로그 로드 실패')
+        }
+      }
+    }
+
+    loadRecentApiEvents()
+
+    return () => {
+      cancelled = true
+    }
+  }, [backendConfig.hasSupabase, visibleSection])
 
   const handleExternalReportImport = async (event) => {
     const file = event.target.files?.[0]
@@ -9108,6 +9160,8 @@ function App() {
             scopes={dataRoomScopes}
             importStatus={dataRoomImportStatus}
             onImportExternalReport={handleExternalReportImport}
+            apiEvents={dataRoomApiEvents}
+            onRefreshApiEvents={refreshDataRoomApiEvents}
             onLog={() => showToast('선택한 raw 데이터의 수집 로그 위치를 확인하세요. 실제 로그 테이블 연결 시 상세 로그가 열립니다.')}
             onRefreshRaw={() => showToast('수동 재수집 요청이 등록되었습니다. 실제 작업 큐 연결 시 job id를 표시합니다.')}
             onMetricLog={() => showToast('계산 로그 위치와 최근 계산 상태를 확인합니다.')}

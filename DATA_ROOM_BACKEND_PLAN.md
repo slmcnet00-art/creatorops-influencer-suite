@@ -232,13 +232,14 @@ P2:
    - `Video_Monitor_Workbench*` -> `RAW-EXT-MON-WB-001`
 5. 업로드된 엑셀은 시트별로 파싱하여 `external_report_imports`, `external_report_rows`에 저장한다.
 6. 외부 리포트 import row count는 초기 `metric_snapshots`로 남겨 추후 정규화 검증의 출발점으로 사용한다.
+7. `/youtube/channel`, `/discovery/*`, `/references/search`, `/public/profile-snapshot`, `/tracking/refresh` API 성공/실패 응답을 `external_search_events`에 자동 저장한다.
+8. 어드민 데이터룸에서 최근 API 수집 로그 20건을 확인할 수 있다.
 
 아직 남은 범위:
 
 1. Supabase SQL Editor에서 `supabase/schema.sql`을 실제 운영 프로젝트에 적용해야 한다.
 2. `external_report_rows.payload`를 creators/content/performance snapshot으로 정규화하는 서버 job이 필요하다.
-3. 발굴/레퍼런스 API 응답 원문을 `external_search_events`에 자동 저장하는 서버 미들웨어가 필요하다.
-4. 모든 고객용 대시보드 수치가 `metric_snapshots`를 우선 조회하도록 읽기 계층을 분리해야 한다.
+3. 모든 고객용 대시보드 수치가 `metric_snapshots`를 우선 조회하도록 읽기 계층을 분리해야 한다.
 
 ## MVP 내부 테스트 체크리스트
 
@@ -255,7 +256,6 @@ P2:
 
 1. 프론트 데이터룸 카탈로그를 DB `raw_data_sources`, `metric_definitions`에서 우선 읽도록 전환
 2. 외부 리포트 row -> normalized creator/content/metric 변환기 구현
-3. API 검색 결과 원문 저장
-4. OpenAI 추천/메시지/가이드 실행 로그 저장
-5. 미지원 지표는 `unsupported_metric_requests` 또는 `data_quality_reviews`에 등록하고 프론트에는 검증 필요로 표시
-6. 데이터룸에서 raw -> metric -> frontend area 역추적 테스트 자동화
+3. OpenAI 추천/메시지/가이드 실행 로그 저장
+4. 미지원 지표는 `unsupported_metric_requests` 또는 `data_quality_reviews`에 등록하고 프론트에는 검증 필요로 표시
+5. 데이터룸에서 raw -> metric -> frontend area 역추적 테스트 자동화

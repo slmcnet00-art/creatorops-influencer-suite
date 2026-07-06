@@ -2,6 +2,7 @@ import 'dotenv/config'
 import cors from 'cors'
 import express from 'express'
 import { existsSync } from 'node:fs'
+import { createClient } from '@supabase/supabase-js'
 
 /* global document */
 
@@ -15,8 +16,10 @@ const MIN_REFERENCE_KNOWN_VIEWS = 500_000
 const MIN_REFERENCE_QUALITY_SCORE = 45
 const SEARCH_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 const SEARCH_CACHE_STALE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const WORKSPACE_ID = process.env.WORKSPACE_ID || process.env.VITE_WORKSPACE_ID || 'miping-main'
 const searchCache = new Map()
 let tiktokCommercialTokenCache = { token: '', expiresAt: 0 }
+let supabaseAdminClient
 const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
   .split(',')
   .map((origin) => origin.trim())
@@ -192,63 +195,331 @@ function writeSearchCache(key, value) {
   })
 }
 
+function getSupabaseAdminClient() {
+  const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_SERVICE_KEY
+  if (!url || !key) return null
+  if (!supabaseAdminClient) {
+    supabaseAdminClient = createClient(url, key, {
+      auth: {
+        persistSession: false,
+        autoRefreshToken: false,
+      },
+    })
+  }
+  return supabaseAdminClient
+}
+
+const DATA_ROOM_RAW_SOURCE_META = {
+  'RAW-EXT-SEARCH-001': {
+    category: '외부 검색 원본',
+    name: '외부 검색 원본 결과',
+    method: 'API',
+    cycle: '검색 요청 시',
+    dashboardArea: '발굴, 레퍼런스, 데이터룸',
+  },
+  'RAW-EXT-CHN-001': {
+    category: 'SNS 채널 수집',
+    name: 'SNS 채널/프로필 공개 지표',
+    method: 'API / 공개 snapshot',
+    cycle: '채널 조회 시',
+    dashboardArea: '발굴, 리포트, 데이터룸',
+  },
+  'RAW-EXT-CONT-001': {
+    category: '콘텐츠 조회수',
+    name: '콘텐츠 공개 성과 지표',
+    method: 'API / 공개 snapshot',
+    cycle: '콘텐츠 조회/갱신 시',
+    dashboardArea: '리포트, 레퍼런스, 데이터룸',
+  },
+  'RAW-EXT-REF-001': {
+    category: '콘텐츠 레퍼런스',
+    name: '콘텐츠 레퍼런스 검색 결과',
+    method: 'API / 외부 검색',
+    cycle: '레퍼런스 검색 시',
+    dashboardArea: '레퍼런스, 콘텐츠 가이드, 데이터룸',
+  },
+  'RAW-EXT-ENG-001': {
+    category: '콘텐츠 반응지표',
+    name: '좋아요/댓글/공유/저장 공개 반응지표',
+    method: 'API / 공개 snapshot',
+    cycle: '성과 갱신 시',
+    dashboardArea: '리포트, 데이터룸',
+  },
+}
+
+async function ensureDataRoomWorkspace(supabase) {
+  const { error } = await supabase
+    .from('workspaces')
+    .upsert(
+      {
+        id: WORKSPACE_ID,
+        name: WORKSPACE_ID,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' },
+    )
+  if (error) throw error
+}
+
+async function ensureDataRoomRawSource(supabase, rawSourceId) {
+  if (!rawSourceId) return
+  const meta = DATA_ROOM_RAW_SOURCE_META[rawSourceId] || {
+    category: '외부 수집',
+    name: rawSourceId,
+    method: 'API',
+    cycle: '요청 시',
+    dashboardArea: '데이터룸',
+  }
+  const { error } = await supabase
+    .from('raw_data_sources')
+    .upsert(
+      {
+        id: rawSourceId,
+        workspace_id: WORKSPACE_ID,
+        scope: 'external',
+        category: meta.category,
+        name: meta.name,
+        description: `${meta.name} API raw log source`,
+        collection_method: meta.method,
+        collection_cycle: meta.cycle,
+        source_location: 'CreatorOps API server',
+        storage_location: 'external_search_events',
+        dashboard_area: meta.dashboardArea,
+        owner_dept: '데이터/개발팀',
+        ops_owner: 'Data Operator',
+        tech_owner: 'Backend',
+        status: 'ok',
+        quality_issue: '',
+        log_location: 'external_search_events',
+        active: true,
+        metadata: {
+          managedBy: 'api-raw-logger',
+        },
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'id' },
+    )
+  if (error) throw error
+}
+
+function compactRawLogPayload(value, maxLength = 180000) {
+  const json = JSON.stringify(value ?? {})
+  if (json.length <= maxLength) return value ?? {}
+  return {
+    truncated: true,
+    originalLength: json.length,
+    preview: json.slice(0, maxLength),
+  }
+}
+
+function getErrorLogPayload(error) {
+  return {
+    status: Number(error?.status || 500),
+    message: error?.message || 'Unexpected server error.',
+    name: error?.name || 'Error',
+  }
+}
+
+async function safeLogExternalCollectionEvent({
+  rawSourceId = 'RAW-EXT-SEARCH-001',
+  provider,
+  endpoint,
+  query = '',
+  platform = '',
+  country = '',
+  category = '',
+  requestPayload = {},
+  responsePayload = {},
+  resultCount = 0,
+  status = 'success',
+  errorMessage = '',
+}) {
+  const supabase = getSupabaseAdminClient()
+  if (!supabase) {
+    if (process.env.DATA_ROOM_LOG_VERBOSE === 'true') {
+      console.warn(`Data room API log skipped: SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY missing (${endpoint})`)
+    }
+    return { status: 'skipped' }
+  }
+
+  try {
+    await ensureDataRoomWorkspace(supabase)
+    await ensureDataRoomRawSource(supabase, rawSourceId)
+    const { error } = await supabase.from('external_search_events').insert({
+      workspace_id: WORKSPACE_ID,
+      raw_source_id: rawSourceId,
+      provider,
+      endpoint,
+      query,
+      platform,
+      country,
+      category,
+      request_payload: compactRawLogPayload(requestPayload),
+      response_payload: compactRawLogPayload(responsePayload),
+      result_count: Number(resultCount || 0),
+      status,
+      error_message: errorMessage || null,
+    })
+    if (error) throw error
+    return { status: 'logged' }
+  } catch (error) {
+    console.warn(`Data room API log failed (${endpoint}): ${error.message}`)
+    return { status: 'failed', message: error.message }
+  }
+}
+
 function isQuotaExceededError(error) {
   return error?.status === 403 && /quota/i.test(String(error.message || ''))
 }
 
 app.post('/youtube/channel', async (request, response, next) => {
+  const endpoint = '/youtube/channel'
+  const lookup = String(request.body?.lookup || '').trim()
   try {
-    const lookup = String(request.body?.lookup || '').trim()
     if (!lookup) throw httpError(400, 'lookup is required.')
 
     const channel = await fetchYouTubeChannelSnapshot(lookup)
+    await safeLogExternalCollectionEvent({
+      rawSourceId: 'RAW-EXT-CHN-001',
+      provider: 'youtube-data-api',
+      endpoint,
+      query: lookup,
+      platform: 'YouTube',
+      requestPayload: { lookup },
+      responsePayload: { data: channel },
+      resultCount: channel ? 1 : 0,
+    })
     response.json({ data: channel })
   } catch (error) {
+    await safeLogExternalCollectionEvent({
+      rawSourceId: 'RAW-EXT-CHN-001',
+      provider: 'youtube-data-api',
+      endpoint,
+      query: lookup,
+      platform: 'YouTube',
+      requestPayload: { lookup },
+      responsePayload: getErrorLogPayload(error),
+      status: 'failed',
+      errorMessage: error.message,
+    })
     next(error)
   }
 })
 
 app.post('/discovery/youtube/search', async (request, response, next) => {
+  const endpoint = '/discovery/youtube/search'
+  const query = String(request.body?.query || '').trim()
+  const country = String(request.body?.country || 'KR').trim()
+  const maxResults = clamp(Number(request.body?.maxResults || 24), 1, DISCOVERY_RESULT_LIMIT)
   try {
-    const query = String(request.body?.query || '').trim()
-    const country = String(request.body?.country || 'KR').trim()
-    const maxResults = clamp(Number(request.body?.maxResults || 24), 1, DISCOVERY_RESULT_LIMIT)
     if (!query) throw httpError(400, 'query is required.')
 
     const creators = await searchYouTubeCreators(query, maxResults, country)
+    await safeLogExternalCollectionEvent({
+      rawSourceId: 'RAW-EXT-SEARCH-001',
+      provider: 'youtube-data-api',
+      endpoint,
+      query,
+      platform: 'YouTube',
+      country,
+      requestPayload: { query, country, maxResults },
+      responsePayload: { data: creators },
+      resultCount: creators.length,
+    })
     response.json({ data: creators })
   } catch (error) {
+    await safeLogExternalCollectionEvent({
+      rawSourceId: 'RAW-EXT-SEARCH-001',
+      provider: 'youtube-data-api',
+      endpoint,
+      query,
+      platform: 'YouTube',
+      country,
+      requestPayload: { query, country, maxResults },
+      responsePayload: getErrorLogPayload(error),
+      status: 'failed',
+      errorMessage: error.message,
+    })
     next(error)
   }
 })
 
 app.post('/discovery/google-profiles/search', async (request, response, next) => {
+  const endpoint = '/discovery/google-profiles/search'
+  const query = String(request.body?.query || '').trim()
+  const platform = normalizeProfileDiscoveryPlatform(request.body?.platform || 'all')
+  const country = String(request.body?.country || 'KR').trim()
+  const maxResults = clamp(Number(request.body?.maxResults || 24), 1, DISCOVERY_RESULT_LIMIT)
   try {
-    const query = String(request.body?.query || '').trim()
-    const platform = normalizeProfileDiscoveryPlatform(request.body?.platform || 'all')
-    const country = String(request.body?.country || 'KR').trim()
-    const maxResults = clamp(Number(request.body?.maxResults || 24), 1, DISCOVERY_RESULT_LIMIT)
     if (!query) throw httpError(400, 'query is required.')
 
     const profiles = await searchGoogleProfiles(query, platform, maxResults, country)
+    await safeLogExternalCollectionEvent({
+      rawSourceId: 'RAW-EXT-SEARCH-001',
+      provider: 'google-custom-search',
+      endpoint,
+      query,
+      platform,
+      country,
+      requestPayload: { query, platform, country, maxResults },
+      responsePayload: { data: profiles },
+      resultCount: profiles.length,
+    })
     response.json({ data: profiles })
   } catch (error) {
+    await safeLogExternalCollectionEvent({
+      rawSourceId: 'RAW-EXT-SEARCH-001',
+      provider: 'google-custom-search',
+      endpoint,
+      query,
+      platform,
+      country,
+      requestPayload: { query, platform, country, maxResults },
+      responsePayload: getErrorLogPayload(error),
+      status: 'failed',
+      errorMessage: error.message,
+    })
     next(error)
   }
 })
 
 app.post('/references/search', async (request, response, next) => {
+  const endpoint = '/references/search'
+  const query = String(request.body?.query || '').trim()
+  const country = String(request.body?.country || 'KR').trim()
+  const platform = String(request.body?.platform || 'YouTube').trim()
+  const sort = String(request.body?.sort || 'virality').trim()
+  const maxResults = clamp(Number(request.body?.maxResults || 36), 1, REFERENCE_RESULT_LIMIT)
   try {
-    const query = String(request.body?.query || '').trim()
-    const country = String(request.body?.country || 'KR').trim()
-    const platform = String(request.body?.platform || 'YouTube').trim()
-    const sort = String(request.body?.sort || 'virality').trim()
-    const maxResults = clamp(Number(request.body?.maxResults || 36), 1, REFERENCE_RESULT_LIMIT)
     if (!query) throw httpError(400, 'query is required.')
 
     const references = await searchContentReferences({ query, country, platform, sort, maxResults })
+    await safeLogExternalCollectionEvent({
+      rawSourceId: 'RAW-EXT-REF-001',
+      provider: 'content-reference-search',
+      endpoint,
+      query,
+      platform,
+      country,
+      requestPayload: { query, country, platform, sort, maxResults },
+      responsePayload: { references },
+      resultCount: references.length,
+    })
     response.json({ data: { references } })
   } catch (error) {
+    await safeLogExternalCollectionEvent({
+      rawSourceId: 'RAW-EXT-REF-001',
+      provider: 'content-reference-search',
+      endpoint,
+      query,
+      platform,
+      country,
+      requestPayload: { query, country, platform, sort, maxResults },
+      responsePayload: getErrorLogPayload(error),
+      status: 'failed',
+      errorMessage: error.message,
+    })
     next(error)
   }
 })
@@ -276,23 +547,66 @@ app.post('/ai/content-guide', async (request, response, next) => {
 })
 
 app.post('/public/profile-snapshot', async (request, response, next) => {
+  const endpoint = '/public/profile-snapshot'
+  const url = String(request.body?.url || '').trim()
+  const platform = inferReferencePlatform(url)
   try {
-    const url = String(request.body?.url || '').trim()
     if (!url) throw httpError(400, 'url is required.')
 
     const snapshot = await fetchPublicProfileSnapshot(url)
+    await safeLogExternalCollectionEvent({
+      rawSourceId: isSupportedReferenceContentUrl(url, platform) ? 'RAW-EXT-CONT-001' : 'RAW-EXT-CHN-001',
+      provider: 'public-profile-snapshot',
+      endpoint,
+      query: url,
+      platform,
+      requestPayload: { url },
+      responsePayload: { data: snapshot },
+      resultCount: snapshot ? 1 : 0,
+    })
     response.json({ data: snapshot })
   } catch (error) {
+    await safeLogExternalCollectionEvent({
+      rawSourceId: 'RAW-EXT-CHN-001',
+      provider: 'public-profile-snapshot',
+      endpoint,
+      query: url,
+      platform,
+      requestPayload: { url },
+      responsePayload: getErrorLogPayload(error),
+      status: 'failed',
+      errorMessage: error.message,
+    })
     next(error)
   }
 })
 
 app.post('/tracking/refresh', async (request, response, next) => {
+  const endpoint = '/tracking/refresh'
+  const posts = Array.isArray(request.body?.posts) ? request.body.posts : []
   try {
-    const posts = Array.isArray(request.body?.posts) ? request.body.posts : []
     const refreshed = await refreshTrackedPosts(posts)
+    await safeLogExternalCollectionEvent({
+      rawSourceId: 'RAW-EXT-CONT-001',
+      provider: 'tracking-refresh',
+      endpoint,
+      query: `${posts.length} posts`,
+      requestPayload: { posts },
+      responsePayload: { posts: refreshed },
+      resultCount: refreshed.length,
+    })
     response.json({ data: { posts: refreshed } })
   } catch (error) {
+    await safeLogExternalCollectionEvent({
+      rawSourceId: 'RAW-EXT-CONT-001',
+      provider: 'tracking-refresh',
+      endpoint,
+      query: `${posts.length} posts`,
+      requestPayload: { posts },
+      responsePayload: getErrorLogPayload(error),
+      status: 'failed',
+      errorMessage: error.message,
+    })
     next(error)
   }
 })

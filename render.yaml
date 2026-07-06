@@ -26,6 +26,12 @@ services:
         value: https://creatorops-influencer-suite.onrender.com,http://localhost:5173
       - key: FRONTEND_URL
         value: https://creatorops-influencer-suite.onrender.com
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: WORKSPACE_ID
+        value: miping-main
       - key: YOUTUBE_DATA_API_KEY
         sync: false
       - key: GOOGLE_SEARCH_API_KEY

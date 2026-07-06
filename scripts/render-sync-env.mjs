@@ -15,6 +15,9 @@ if (!apiKey) {
 }
 
 const apiEnvKeys = [
+  'SUPABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'WORKSPACE_ID',
   'YOUTUBE_DATA_API_KEY',
   'GOOGLE_SEARCH_API_KEY',
   'GOOGLE_SEARCH_CX',

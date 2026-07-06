@@ -396,3 +396,25 @@ export async function importExternalReport({ reportType = 'custom', sourceName =
 
   return { status: 'imported', importId, rowCount, sheetCount: sheets.length, parsedAt }
 }
+
+export async function loadExternalSearchEvents(limit = 20) {
+  const supabase = getSupabaseClient()
+  if (!supabase) {
+    return { status: 'local', events: [], message: 'Supabase env is not configured.' }
+  }
+
+  const membership = await ensureWorkspaceMembership(supabase)
+  if (membership.status === 'anonymous') {
+    return { status: 'auth_required', events: [], message: 'Sign in to load external API events.' }
+  }
+
+  const { data, error } = await supabase
+    .from('external_search_events')
+    .select('id,raw_source_id,provider,endpoint,query,platform,country,result_count,status,error_message,created_at')
+    .eq('workspace_id', WORKSPACE_ID)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+
+  if (error) throw error
+  return { status: 'loaded', events: data || [] }
+}

@@ -99,6 +99,8 @@ export default function AdminDataRoom({
   scopes,
   importStatus,
   onImportExternalReport,
+  apiEvents,
+  onRefreshApiEvents,
   onLog,
   onRefreshRaw,
   onMetricLog,
@@ -135,6 +137,37 @@ export default function AdminDataRoom({
             엑셀 업로드
             <input type="file" accept=".xlsx,.xls" hidden onChange={onImportExternalReport} />
           </label>
+        </div>
+      </section>
+
+      <section className="panel data-room-api-log-panel">
+        <div className="panel-heading">
+          <div>
+            <span className="mini-label">API Raw Event Log</span>
+            <h2>최근 API 수집 로그</h2>
+          </div>
+          <button className="secondary-button compact-button" type="button" onClick={onRefreshApiEvents}>
+            새로고침
+          </button>
+        </div>
+        <div className="api-event-list">
+          {apiEvents?.length ? (
+            apiEvents.map((event) => (
+              <button type="button" className="api-event-row" key={event.id} onClick={() => setSelectedItem({ type: 'raw', id: event.raw_source_id })}>
+                <span className={`data-status ${event.status === 'success' ? 'ok' : event.status === 'partial' ? 'warning' : 'error'}`}>{event.status}</span>
+                <strong>{event.provider}</strong>
+                <span>{event.endpoint}</span>
+                <span>{event.platform || '-'} · {event.country || '-'}</span>
+                <span className="api-event-query">{event.query || '-'}</span>
+                <span>{event.result_count}건</span>
+                <small>{event.error_message || new Date(event.created_at).toLocaleString('ko-KR')}</small>
+              </button>
+            ))
+          ) : (
+            <div className="api-event-empty">
+              아직 저장된 API 수집 로그가 없습니다. 발굴/레퍼런스/콘텐츠 갱신 API를 실행하면 이곳에 raw 이벤트가 쌓입니다.
+            </div>
+          )}
         </div>
       </section>
 
