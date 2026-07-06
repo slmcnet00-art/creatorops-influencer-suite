@@ -42,11 +42,13 @@ import AdminDataRoom from './AdminDataRoom'
 import {
   getBackendConfig,
   getAuthSession,
+  importExternalReport,
   loadCloudWorkspace,
   onAuthStateChange,
   saveCloudWorkspace,
   signInWithEmail,
   signOut,
+  syncDataRoomRegistry,
 } from './backendSync'
 import {
   buildCreatorSourceEvidence,
@@ -65,6 +67,111 @@ const TRACKING_DAILY_REFRESH_KEY = 'creatorops.tracking.lastDailyRefresh'
 const GMAIL_AUTH_STORE_KEY = 'creatorops.gmailAuth.v1'
 const GMAIL_MIN_SEND_DELAY_MS = 20000
 const GMAIL_MAX_SEND_DELAY_MS = 60000
+const EXTERNAL_REPORT_PROFILES = [
+  {
+    match: /noxinfluencer_brand_monitor_influencers/i,
+    reportType: 'brand_monitor_influencers',
+    sourceName: 'Nox brand monitor influencers',
+    rawSourceId: 'RAW-EXT-NOX-INF-001',
+    normalizedType: 'creator',
+    sheets: [{ label: 'Influencers', option: 1, required: true }],
+  },
+  {
+    match: /video_monitor_data/i,
+    reportType: 'video_monitor_data',
+    sourceName: 'Nox video monitor data',
+    rawSourceId: 'RAW-EXT-NOX-VIDEO-001',
+    normalizedType: 'content',
+    sheets: [
+      { label: 'Monitor Project Summary', option: 'Monitor Project Summary' },
+      { label: 'Monitor Project Details', option: 'Monitor Project Details' },
+      { label: 'Daily Change', option: 'Daily Change' },
+      { label: 'First Sheet', option: 1, fallback: true },
+    ],
+  },
+  {
+    match: /video_monitor_workbench/i,
+    reportType: 'video_monitor_workbench',
+    sourceName: 'Nox video monitor workbench',
+    rawSourceId: 'RAW-EXT-NOX-WB-001',
+    normalizedType: 'benchmark',
+    sheets: [
+      { label: 'Summary', option: 'Summary' },
+      { label: 'Delta Ranking', option: 'Delta Ranking' },
+      { label: 'Views Likes Comments Trend', option: 'Views Likes Comments Trend' },
+      { label: 'Influencer Contribution', option: 'Influencer Contribution' },
+      { label: 'Label Contribution', option: 'Label Contribution' },
+      { label: 'Label Distribution', option: 'Label Distribution' },
+      { label: 'First Sheet', option: 1, fallback: true },
+    ],
+  },
+]
+
+function detectExternalReportProfile(fileName = '') {
+  return (
+    EXTERNAL_REPORT_PROFILES.find((profile) => profile.match.test(fileName)) || {
+      reportType: 'custom',
+      sourceName: 'Custom external report',
+      rawSourceId: null,
+      normalizedType: 'custom',
+      sheets: [{ label: 'First Sheet', option: 1, required: true }],
+    }
+  )
+}
+
+function serializeExcelCell(value) {
+  if (value instanceof Date) return value.toISOString()
+  if (value === undefined) return null
+  return value
+}
+
+function normalizeExcelHeader(value, index) {
+  const header = String(value ?? '').trim()
+  return header || `Column ${index + 1}`
+}
+
+function buildExternalRowsFromSheet(rows, normalizedType) {
+  if (!Array.isArray(rows) || rows.length < 2) return []
+  const headers = rows[0].map(normalizeExcelHeader)
+  return rows
+    .slice(1)
+    .map((row, rowIndex) => ({
+      rowIndex: rowIndex + 2,
+      normalizedType,
+      payload: Object.fromEntries(headers.map((header, index) => [header, serializeExcelCell(row[index])])),
+    }))
+    .filter((row) => Object.values(row.payload).some((value) => value !== null && value !== ''))
+}
+
+async function readExternalReportWorkbook(file, profile) {
+  const sheets = []
+
+  for (const sheet of profile.sheets) {
+    try {
+      if (sheet.fallback && sheets.length) continue
+      const rows = await readSheet(file, { sheet: sheet.option })
+      const parsedRows = buildExternalRowsFromSheet(rows, profile.normalizedType)
+      if (parsedRows.length || sheet.required || sheet.fallback) {
+        sheets.push({
+          sheetName: sheet.label,
+          rows: parsedRows,
+        })
+      }
+    } catch (error) {
+      if (sheet.required) throw error
+    }
+  }
+
+  if (!sheets.length) {
+    const rows = await readSheet(file)
+    sheets.push({
+      sheetName: 'First Sheet',
+      rows: buildExternalRowsFromSheet(rows, profile.normalizedType),
+    })
+  }
+
+  return sheets.filter((sheet) => sheet.rows.length)
+}
 
 const influencerBrandGuideTemplate = `# 인플루언서 브랜드 가이드
 
@@ -4155,6 +4262,7 @@ function App() {
   const [dataRoomMetricBundle, setDataRoomMetricBundle] = useState('전체')
   const [dataRoomMetricQuery, setDataRoomMetricQuery] = useState('')
   const [selectedDataRoomItem, setSelectedDataRoomItem] = useState({ type: 'raw', id: 'RAW-INT-CRM-001' })
+  const [dataRoomImportStatus, setDataRoomImportStatus] = useState('외부 보고서 업로드 대기')
   const [fulfillmentDraft, setFulfillmentDraft] = useState(createEmptyFulfillmentDraft)
 
   const {
@@ -4326,10 +4434,6 @@ function App() {
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
-      if (!creatorGroupTypeOptions.includes(creatorGroupTypeFilter) && creatorGroupTypeFilter !== '전체') {
-        return !query || searchable.includes(query)
-      }
-
       return searchableText.includes(normalizedQuery)
     })
   }, [campaigns, creators, outreachSearchQuery, selectedCampaignOutreach])
@@ -5132,6 +5236,77 @@ function App() {
     }),
     [dataRoomMetrics, dataRoomRawData],
   )
+
+  useEffect(() => {
+    if (!backendConfig.hasSupabase || visibleSection !== 'dataRoom') return undefined
+    let cancelled = false
+
+    async function syncRegistry() {
+      try {
+        const result = await syncDataRoomRegistry(dataRoomRawData, dataRoomMetrics)
+        if (cancelled) return
+        if (result.status === 'synced') {
+          setDataRoomImportStatus(`데이터룸 registry 동기화 완료 · raw ${result.rawCount}개 / 지표 ${result.metricCount}개`)
+        } else if (result.status === 'auth_required') {
+          setDataRoomImportStatus('Supabase 로그인 후 데이터룸 registry를 동기화할 수 있어요.')
+        }
+      } catch (error) {
+        if (!cancelled) {
+          setDataRoomImportStatus(error instanceof Error ? `데이터룸 registry 동기화 실패: ${error.message}` : '데이터룸 registry 동기화 실패')
+        }
+      }
+    }
+
+    syncRegistry()
+
+    return () => {
+      cancelled = true
+    }
+  }, [backendConfig.hasSupabase, dataRoomMetrics, dataRoomRawData, visibleSection])
+
+  const handleExternalReportImport = async (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    const profile = detectExternalReportProfile(file.name)
+    setDataRoomImportStatus(`${file.name} 파싱 중...`)
+
+    try {
+      const sheets = await readExternalReportWorkbook(file, profile)
+      const rowCount = sheets.reduce((total, sheet) => total + sheet.rows.length, 0)
+      if (!rowCount) {
+        setDataRoomImportStatus(`${file.name}에서 적재할 행을 찾지 못했어요.`)
+        showToast('엑셀 첫 행을 헤더로 보고 두 번째 행부터 적재합니다. 파일 구조를 확인해주세요.')
+        return
+      }
+
+      await syncDataRoomRegistry(dataRoomRawData, dataRoomMetrics)
+      const result = await importExternalReport({
+        reportType: profile.reportType,
+        sourceName: profile.sourceName,
+        originalFileName: file.name,
+        rawSourceId: profile.rawSourceId,
+        sheets,
+      })
+
+      if (result.status === 'imported') {
+        setDataRoomImportStatus(`${profile.sourceName} 적재 완료 · ${result.sheetCount}개 시트 / ${result.rowCount}행`)
+        showToast(`데이터룸에 ${result.rowCount}개 raw row를 적재했어요.`)
+      } else if (result.status === 'auth_required') {
+        setDataRoomImportStatus('Supabase 로그인 후 외부 리포트를 적재할 수 있어요.')
+        showToast(result.message)
+      } else {
+        setDataRoomImportStatus('Supabase 연결 후 외부 리포트를 적재할 수 있어요.')
+        showToast(result.message || 'Supabase 환경변수가 필요합니다.')
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '외부 리포트 적재 실패'
+      setDataRoomImportStatus(`외부 리포트 적재 실패: ${message}`)
+      showToast(message)
+    }
+  }
+
   const activeDataRoomDetail =
     selectedDataRoomItem.type === 'metric'
       ? dataRoomMetrics.find((item) => item.id === selectedDataRoomItem.id) ?? dataRoomMetrics[0]
@@ -8931,6 +9106,8 @@ function App() {
             rawStatuses={dataRoomRawStatuses}
             metricStatuses={dataRoomMetricStatuses}
             scopes={dataRoomScopes}
+            importStatus={dataRoomImportStatus}
+            onImportExternalReport={handleExternalReportImport}
             onLog={() => showToast('선택한 raw 데이터의 수집 로그 위치를 확인하세요. 실제 로그 테이블 연결 시 상세 로그가 열립니다.')}
             onRefreshRaw={() => showToast('수동 재수집 요청이 등록되었습니다. 실제 작업 큐 연결 시 job id를 표시합니다.')}
             onMetricLog={() => showToast('계산 로그 위치와 최근 계산 상태를 확인합니다.')}

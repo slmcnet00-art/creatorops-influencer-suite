@@ -218,7 +218,27 @@ P2:
 1. AI 추천 실행 로그 저장
 2. export 이벤트 저장
 3. data quality review 자동 생성
-4. 데이터룸에서 raw -> metric -> frontend area 역추적
+
+## 2026-07-06 구현 반영
+
+현재 코드에 반영된 범위:
+
+1. 프론트 데이터룸 raw/metric 카탈로그를 Supabase `raw_data_sources`, `metric_definitions`에 동기화하는 `syncDataRoomRegistry`를 추가했다.
+2. 어드민 데이터룸 진입 시 registry를 자동 동기화한다.
+3. 어드민 데이터룸에 외부 엑셀 리포트 업로드 영역을 추가했다.
+4. 파일명 기준으로 아래 리포트를 식별한다.
+   - `noxinfluencer_brand_monitor_influencers*` -> `RAW-EXT-NOX-INF-001`
+   - `Video_Monitor_Data*` -> `RAW-EXT-NOX-VIDEO-001`
+   - `Video_Monitor_Workbench*` -> `RAW-EXT-NOX-WB-001`
+5. 업로드된 엑셀은 시트별로 파싱하여 `external_report_imports`, `external_report_rows`에 저장한다.
+6. 외부 리포트 import row count는 초기 `metric_snapshots`로 남겨 추후 정규화 검증의 출발점으로 사용한다.
+
+아직 남은 범위:
+
+1. Supabase SQL Editor에서 `supabase/schema.sql`을 실제 운영 프로젝트에 적용해야 한다.
+2. `external_report_rows.payload`를 creators/content/performance snapshot으로 정규화하는 서버 job이 필요하다.
+3. 발굴/레퍼런스 API 응답 원문을 `external_search_events`에 자동 저장하는 서버 미들웨어가 필요하다.
+4. 모든 고객용 대시보드 수치가 `metric_snapshots`를 우선 조회하도록 읽기 계층을 분리해야 한다.
 
 ## MVP 내부 테스트 체크리스트
 
@@ -233,10 +253,9 @@ P2:
 
 ## 아직 정리/개발이 필요한 부분
 
-1. 프론트 데이터룸 카탈로그를 DB `raw_data_sources`, `metric_definitions`에서 읽도록 전환
-2. 엑셀 업로드 UI와 서버 파서 구현
-3. 외부 리포트 row -> normalized creator/content/metric 변환기 구현
-4. API 검색 결과 원문 저장
-5. OpenAI 추천/메시지/가이드 실행 로그 저장
-6. 미지원 지표는 `unsupported_metric_requests` 또는 `data_quality_reviews`에 등록하고 프론트에는 검증 필요로 표시
-
+1. 프론트 데이터룸 카탈로그를 DB `raw_data_sources`, `metric_definitions`에서 우선 읽도록 전환
+2. 외부 리포트 row -> normalized creator/content/metric 변환기 구현
+3. API 검색 결과 원문 저장
+4. OpenAI 추천/메시지/가이드 실행 로그 저장
+5. 미지원 지표는 `unsupported_metric_requests` 또는 `data_quality_reviews`에 등록하고 프론트에는 검증 필요로 표시
+6. 데이터룸에서 raw -> metric -> frontend area 역추적 테스트 자동화

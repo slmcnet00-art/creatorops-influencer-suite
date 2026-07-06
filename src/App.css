@@ -6125,6 +6125,44 @@
   font-size: 18px;
 }
 
+.data-room-import-panel {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 16px 18px;
+}
+
+.data-room-import-panel h2 {
+  margin: 3px 0 6px;
+  color: var(--text-strong);
+  font-size: 18px;
+}
+
+.data-room-import-panel p {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.data-room-import-actions {
+  min-width: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.data-room-import-actions span {
+  max-width: 360px;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 800;
+  text-align: right;
+  line-height: 1.45;
+}
+
 .data-room-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) 360px;
@@ -6565,6 +6603,21 @@
 @media (max-width: 1180px) {
   .data-room-summary {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .data-room-import-panel,
+  .data-room-import-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .data-room-import-actions {
+    min-width: 0;
+  }
+
+  .data-room-import-actions span {
+    max-width: none;
+    text-align: left;
   }
 
   .data-room-layout {

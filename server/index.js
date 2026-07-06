@@ -3,6 +3,8 @@ import cors from 'cors'
 import express from 'express'
 import { existsSync } from 'node:fs'
 
+/* global document */
+
 const app = express()
 const port = Number(process.env.PORT || 8787)
 const DISCOVERY_RESULT_LIMIT = 1000
@@ -44,7 +46,7 @@ const DISCOVERY_GENERIC_TERMS = new Set([
 function tokenizeDiscoveryIntent(query) {
   return [...new Set(String(query || '')
     .toLowerCase()
-    .replace(/[()\[\]{}"'~!?:;|/\\]/g, ' ')
+    .replace(/[(){}"'~!?:;|/\\]|\[|\]/g, ' ')
     .split(/[\s,.#]+/)
     .map((term) => term.trim())
     .filter((term) => term.length >= 2)
@@ -1407,7 +1409,6 @@ function isUsableContentReference(item = {}, query = '') {
       url: item.thumbnailUrl || item.url,
       platform,
     })) return false
-    const knownViews = Number(item.views || 0)
     const knownEngagement = [
       item.views,
       item.likes,

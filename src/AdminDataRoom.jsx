@@ -97,6 +97,8 @@ export default function AdminDataRoom({
   rawStatuses,
   metricStatuses,
   scopes,
+  importStatus,
+  onImportExternalReport,
   onLog,
   onRefreshRaw,
   onMetricLog,
@@ -117,6 +119,23 @@ export default function AdminDataRoom({
         <MiniStat label="계산지표" value={`${summary.metricTotal}개`} />
         <MiniStat label="지표 오류" value={`${summary.metricError}개`} />
         <MiniStat label="마지막 동기화" value={summary.lastSync} />
+      </section>
+
+      <section className="panel data-room-import-panel">
+        <div>
+          <span className="mini-label">Raw Report Ingestion</span>
+          <h2>외부 리포트 raw 적재</h2>
+          <p>
+            녹스 브랜드 모니터, Video Monitor Data, Workbench 엑셀을 업로드하면 데이터룸의 외부 raw 저장소에 행 단위로 적재합니다.
+          </p>
+        </div>
+        <div className="data-room-import-actions">
+          <span>{importStatus}</span>
+          <label className="primary-button compact-button">
+            엑셀 업로드
+            <input type="file" accept=".xlsx,.xls" hidden onChange={onImportExternalReport} />
+          </label>
+        </div>
       </section>
 
       <section className="data-room-layout">
