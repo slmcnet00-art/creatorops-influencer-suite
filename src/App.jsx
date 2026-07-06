@@ -1961,6 +1961,23 @@ function normalizeCreatorGroups(groups = [], creators = []) {
   return cleaned.length ? cleaned : defaultCreatorGroups
 }
 
+function getReferenceBrandName(item) {
+  if (item.brandName) return item.brandName
+  if (item.trackedBrandName) return item.trackedBrandName
+  if (item.title) {
+    return String(item.title)
+      .split(/[|·•/@#]/)[0]
+      .trim()
+      .slice(0, 48)
+  }
+  try {
+    const host = new URL(item.url).hostname.replace(/^www\./, '')
+    return host.split('.')[0] || host
+  } catch {
+    return item.platform || 'Unknown Brand'
+  }
+}
+
 function isValidReferenceContentUrl(value, platform = inferPlatformFromUrl(value)) {
   try {
     const url = new URL(String(value || ''))
@@ -3923,7 +3940,7 @@ function App() {
   const currentRole = teamRoleCatalog[currentAccount?.role] ?? teamRoleCatalog.Manager
   const canManagePermissions = currentAccount?.role === 'Owner' || currentAccount?.role === 'Admin'
   const accessibleSectionIds = useMemo(() => {
-    if (currentAccount?.role === 'Client') return ['dashboard', 'campaigns', 'report', 'references', 'settings']
+    if (currentAccount?.role === 'Client') return ['dashboard', 'campaigns', 'groups', 'report', 'references', 'settings']
     if (currentAccount?.role === 'Analyst') return ['dashboard', 'report', 'dataRoom', 'settings']
     return ['dashboard', 'campaigns', 'discovery', 'groups', 'messages', 'report', 'references', 'dataRoom', 'settings']
   }, [currentAccount?.role])
@@ -4067,6 +4084,9 @@ function App() {
         .filter(Boolean)
         .join(' ')
         .toLowerCase()
+      if (!creatorGroupTypeOptions.includes(creatorGroupTypeFilter) && creatorGroupTypeFilter !== '전체') {
+        return !query || searchable.includes(query)
+      }
 
       return searchableText.includes(normalizedQuery)
     })
@@ -4166,6 +4186,39 @@ function App() {
     () => selectedCampaignReferences.filter((item) => (item.referenceKind || item.trackingType) === 'brand'),
     [selectedCampaignReferences],
   )
+  const brandTrackingGroups = useMemo(() => {
+    const grouped = new Map()
+    brandTrackingReferences.forEach((item) => {
+      const brandName = getReferenceBrandName(item)
+      const existing = grouped.get(brandName) || {
+        brandName,
+        items: [],
+        views: 0,
+        likes: 0,
+        comments: 0,
+        shares: 0,
+        platforms: new Set(),
+        countries: new Set(),
+      }
+      existing.items.push(item)
+      existing.views += Number(item.views || 0)
+      existing.likes += Number(item.likes || 0)
+      existing.comments += Number(item.comments || 0)
+      existing.shares += Number(item.shares || 0)
+      if (item.platform) existing.platforms.add(item.platform)
+      if (item.country) existing.countries.add(item.country)
+      grouped.set(brandName, existing)
+    })
+
+    return Array.from(grouped.values())
+      .map((group) => ({
+        ...group,
+        platforms: Array.from(group.platforms),
+        countries: Array.from(group.countries),
+        latestItem: group.items[0],
+      }))
+      .sort((a, b) => b.views - a.views || b.items.length - a.items.length)
+  }, [brandTrackingReferences])
   const activeReferenceBase = referenceMode === 'brand' ? brandTrackingReferences : contentTrackingReferences
   const referenceCountryOptions = useMemo(
     () => [
@@ -7979,6 +8032,7 @@ function App() {
       campaignId: selectedCampaign.id,
       referenceKind: referenceMode === 'brand' ? 'brand' : 'content',
       trackingType: referenceMode === 'brand' ? 'competitor' : 'content',
+      brandName: referenceMode === 'brand' ? referenceDraft.title.trim() || autoTitle || getReferenceBrandName({ url: referenceDraft.url, platform: autoPlatform }) : '',
       mediaType: autoMediaType,
       platform: autoPlatform,
       country: referenceDraft.country || 'KR',
@@ -8113,6 +8167,7 @@ function App() {
           campaignId: selectedCampaign.id,
           referenceKind: referenceMode === 'brand' ? 'brand' : 'content',
           trackingType: referenceMode === 'brand' ? 'competitor' : 'content',
+          brandName: referenceMode === 'brand' ? query : item.brandName || '',
           country: item.country || referenceFilters.country || activeBrand.country || 'KR',
           mediaType: item.mediaType || '영상',
           platform: item.platform || 'YouTube',
@@ -9697,6 +9752,53 @@ function App() {
               <small>콘텐츠 저장기능</small>
             </button>
           </div>
+
+          {referenceMode === 'brand' && (
+            <div className="brand-tracking-dashboard">
+              <div className="brand-tracking-head">
+                <div>
+                  <span className="mini-label">Saved Brand Tracker</span>
+                  <strong>저장 브랜드별 누적 콘텐츠 현황</strong>
+                  <p>브랜드 검색 및 추적에서 저장한 브랜드/경쟁사를 기준으로 콘텐츠 수, 누적 조회수, 반응을 모아봅니다.</p>
+                </div>
+                <span>{brandTrackingGroups.length}개 브랜드 저장됨</span>
+              </div>
+              {brandTrackingGroups.length === 0 ? (
+                <div className="empty-state compact-empty">
+                  <Globe2 size={22} />
+                  <strong>아직 저장한 브랜드가 없습니다.</strong>
+                  <p>원하는 브랜드명이나 경쟁사명을 검색한 뒤 결과를 저장하면 이곳에 브랜드별 현황이 쌓입니다.</p>
+                </div>
+              ) : (
+                <div className="brand-tracking-grid">
+                  {brandTrackingGroups.map((group) => (
+                    <article className="brand-tracking-card" key={group.brandName}>
+                      <div>
+                        <strong>{group.brandName}</strong>
+                        <span>{group.platforms.join(' · ') || 'All'} · {group.countries.join(', ') || '국가 미확인'}</span>
+                      </div>
+                      <div className="brand-tracking-metrics">
+                        <span>콘텐츠 {group.items.length}개</span>
+                        <span>조회 {compactNumber(group.views)}</span>
+                        <span>좋아요 {compactNumber(group.likes)}</span>
+                        <span>댓글 {compactNumber(group.comments)}</span>
+                        <span>공유 {compactNumber(group.shares)}</span>
+                      </div>
+                      <p>{group.latestItem?.title || '최근 저장 콘텐츠 없음'}</p>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {referenceMode === 'content' && (
+            <div className="content-tracking-dashboard">
+              <strong>저장 콘텐츠 리스트</strong>
+              <p>콘텐츠 추적에서 저장한 개별 영상/이미지는 아래 검색 결과 목록과 하단 제작 저장 리스트에서 확인합니다.</p>
+              <span>{contentTrackingReferences.length}개 콘텐츠 raw · 제작 저장 {savedProductionReferences.length}개</span>
+            </div>
+          )}
 
           <div className="reference-summary">
             <Stat label="레퍼런스" value={`${visibleReferences.length}/${selectedCampaignReferences.length}개`} />

@@ -6627,6 +6627,96 @@
   color: var(--accent);
 }
 
+.brand-tracking-dashboard,
+.content-tracking-dashboard {
+  display: grid;
+  gap: 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 16px;
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+}
+
+.brand-tracking-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+}
+
+.brand-tracking-head strong,
+.content-tracking-dashboard strong {
+  display: block;
+  color: var(--text-strong);
+  font-size: 17px;
+}
+
+.brand-tracking-head p,
+.content-tracking-dashboard p {
+  margin: 6px 0 0;
+  color: var(--text-soft);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.brand-tracking-head > span,
+.content-tracking-dashboard > span {
+  white-space: nowrap;
+  border-radius: 999px;
+  background: rgba(0, 113, 227, 0.08);
+  color: var(--accent);
+  font-size: 12px;
+  font-weight: 900;
+  padding: 7px 10px;
+}
+
+.brand-tracking-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 12px;
+}
+
+.brand-tracking-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--surface-muted);
+}
+
+.brand-tracking-card strong {
+  display: block;
+  color: var(--text-strong);
+  font-size: 16px;
+}
+
+.brand-tracking-card span,
+.brand-tracking-card p {
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.brand-tracking-card p {
+  margin: 0;
+}
+
+.brand-tracking-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+}
+
+.brand-tracking-metrics span {
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  font-weight: 800;
+  padding: 6px 8px;
+}
+
 .creator-groups-panel {
   display: grid;
   gap: 18px;
