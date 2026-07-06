@@ -174,6 +174,17 @@ CreatorOps는 브랜드에 맞는 인플루언서를 발굴하고, 섭외 메시
 - `server/index.js`에 Node/Express API 서버가 추가되었다.
 - API 서버는 YouTube, Google Programmable Search, OpenAI, Gmail 예약 엔드포인트를 제공한다.
 
+### 4.14 어드민 데이터룸과 기능-데이터 커버리지
+
+- 데이터룸은 프론트 대시보드와 각 기능의 원천 데이터 기준 화면이다.
+- 원칙은 `데이터룸 raw 데이터 -> 계산지표 -> 프론트 시각화/액션` 순서다.
+- 프론트에 존재하는 기능은 데이터룸의 raw 데이터 ID와 계산지표 ID에 연결되어야 한다.
+- 데이터룸에 없는 데이터는 기능에서 확정값으로 사용하지 않고, `번외 데이터 번들`에 보류/대체 수집 기준으로 등록한다.
+- 추가된 raw 번들은 외부 검색 원본 결과, AI 생성 실행 로그, 내보내기/다운로드 로그, 팀 계정/권한 데이터, 데이터 품질 판정 로그, 미지원/부분지원 플랫폼 지표 보류 번들이다.
+- 추가된 계산지표 번들은 AI 매칭/가치생성, 콘텐츠 가이드, 데이터 운영, 내보내기, 팀/권한이다.
+- `기능-데이터 커버리지` 보드는 대시보드, 캠페인, 발굴, AI 추천, 메시지 전 후보 풀, 메시지, 리포트, 레퍼런스, 가이드 생성, 내보내기, 권한 설정이 어떤 raw/metric에 의존하는지 보여준다.
+- Instagram/TikTok 저장, 공유, 정확 조회수, 정확 팔로워처럼 공식 권한 없이는 완전 수집이 어려운 지표는 `RAW-EXT-UNSUPPORTED-001`로 분리하고 UI에는 수집 필요 또는 검증 필요로 표시한다.
+
 ## 5. 데이터 구조
 
 | 데이터 | 주요 필드 |
@@ -189,6 +200,10 @@ CreatorOps는 브랜드에 맞는 인플루언서를 발굴하고, 섭외 메시
 | fulfillmentRecord | id, campaignId, creatorId, recipient, handle, phone, address, bank, accountNumber, accountHolder, paymentAmount, courier, trackingNumber, deliveryStatus, memo |
 | trackedPost | id, campaignId, creatorId, platform, title, url, status, views, likes, comments, shares, saves, conversions, metricsSource, lastChecked |
 | contentReference | id, campaignId, mediaType, platform, country, title, url, thumbnailUrl, views, accountFollowers, likes, comments, shares, publishedAt, hook, analysis, applyIdea |
+| dataRoomRawData | id, name, scope, category, description, purpose, method, cycle, lastCollectedAt, nextCollectAt, status, sourceLocation, storageLocation, dashboardArea, metricIds, ownerDept, opsOwner, techOwner, qualityIssue, logLocation, note, active |
+| dataRoomMetric | id, name, bundle, scope, description, formula, rawIds, rawNames, period, refreshCycle, lastCalculatedAt, status, displayLocation, interpretation, outlierRule, reliability, ownerDept, errorLocation, note |
+| dataRoomWorkflowCoverage | id, featureName, frontendArea, rawIds, metricIds, algorithm, rule, status, missingRaw, missingMetrics |
+| dataRoomPendingBundle | id, name, status, reason, source, storage, nextAction |
 | workspace | team, accounts, activeAccountId, brands, campaigns, creators, recommendations, outreach, recruitedPool, fulfillmentRecords, trackedPosts, contentReferences, activities |
 | workspaceSnapshot | workspace_id, payload, updated_at, created_at |
 | auditLog | workspace_id, actor_id, action, target_type, target_id, metadata, created_at |

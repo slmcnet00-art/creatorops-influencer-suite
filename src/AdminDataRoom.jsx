@@ -1,7 +1,9 @@
 import {
+  AlertTriangle,
   ClipboardList,
   Database,
   Filter,
+  GitBranch,
   RefreshCw,
   Search,
   UsersRound,
@@ -9,7 +11,7 @@ import {
 
 function statusClass(status = '') {
   if (status === '정상') return 'ok'
-  if (status === '지연' || status === '검증 필요') return 'warning'
+  if (status === '지연' || status === '검증 필요' || status === '부분지원') return 'warning'
   if (status === '오류') return 'error'
   if (status === '중단') return 'paused'
   return 'empty'
@@ -42,10 +44,29 @@ function MiniStat({ label, value }) {
   )
 }
 
+function LinkedChipList({ label, items, emptyText, onClick }) {
+  return (
+    <div className="linked-chip-list">
+      <span>{label}</span>
+      {items?.length ? (
+        items.map((item) => (
+          <button type="button" key={item} onClick={() => onClick?.(item)}>
+            {item}
+          </button>
+        ))
+      ) : (
+        <small>{emptyText}</small>
+      )}
+    </div>
+  )
+}
+
 export default function AdminDataRoom({
   summary,
   rawData,
   groupedMetrics,
+  workflowCoverage,
+  pendingBundles,
   rawTab,
   setRawTab,
   rawStatus,
@@ -81,6 +102,9 @@ export default function AdminDataRoom({
   onMetricLog,
   onRecalculate,
 }) {
+  const selectRaw = (rawId) => setSelectedItem({ type: 'raw', id: rawId })
+  const selectMetric = (metricId) => setSelectedItem({ type: 'metric', id: metricId })
+
   return (
     <section className="data-room-page">
       <section className="data-room-summary" aria-label="어드민 데이터룸 요약">
@@ -153,7 +177,7 @@ export default function AdminDataRoom({
                     <tr
                       key={item.id}
                       className={selectedItem.type === 'raw' && selectedItem.id === item.id ? 'active' : ''}
-                      onClick={() => setSelectedItem({ type: 'raw', id: item.id })}
+                      onClick={() => selectRaw(item.id)}
                     >
                       <td><strong>{item.id}</strong></td>
                       <td>
@@ -235,7 +259,7 @@ export default function AdminDataRoom({
                         type="button"
                         className={`metric-row-button ${selectedItem.type === 'metric' && selectedItem.id === metric.id ? 'active' : ''}`}
                         key={metric.id}
-                        onClick={() => setSelectedItem({ type: 'metric', id: metric.id })}
+                        onClick={() => selectMetric(metric.id)}
                       >
                         <div>
                           <span>{metric.id}</span>
@@ -255,6 +279,63 @@ export default function AdminDataRoom({
             <div className="data-room-actions-row">
               <button className="secondary-button compact-button" type="button" onClick={onMetricLog}>오류 로그 확인</button>
               <button className="primary-button compact-button" type="button" onClick={onRecalculate}>재계산 요청</button>
+            </div>
+          </section>
+
+          <section className="panel data-room-panel">
+            <div className="panel-heading">
+              <div>
+                <span className="mini-label">Admin Workflow Coverage</span>
+                <h2>기능-데이터 커버리지</h2>
+                <p>프론트 화면은 이 표에 연결된 raw 데이터와 계산지표를 기준으로만 운영합니다.</p>
+              </div>
+              <StatusPill status={workflowCoverage.every((item) => item.status === '정상') ? '정상' : '검증 필요'} />
+            </div>
+
+            <div className="workflow-coverage-list">
+              {workflowCoverage.map((item) => (
+                <article className="workflow-coverage-card" key={item.id}>
+                  <div className="workflow-coverage-title">
+                    <GitBranch size={16} />
+                    <div>
+                      <strong>{item.featureName}</strong>
+                      <span>{item.frontendArea}</span>
+                    </div>
+                    <StatusPill status={item.status} />
+                  </div>
+                  <p>{item.algorithm}</p>
+                  <LinkedChipList label="사용 raw 데이터" items={item.rawIds} emptyText="연결 raw 없음" onClick={selectRaw} />
+                  <LinkedChipList label="생성/사용 지표" items={item.metricIds} emptyText="연결 지표 없음" onClick={selectMetric} />
+                  <small>{item.rule}</small>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <section className="panel data-room-panel">
+            <div className="panel-heading">
+              <div>
+                <span className="mini-label">Exception Data Bundles</span>
+                <h2>번외 데이터 번들</h2>
+                <p>공식 API나 현재 저장소로 완전히 구현되지 않은 기능은 여기에서 보류/대체 수집 기준을 추적합니다.</p>
+              </div>
+              <AlertTriangle size={18} />
+            </div>
+            <div className="pending-bundle-list">
+              {pendingBundles.map((bundle) => (
+                <article className="pending-bundle-card" key={bundle.id}>
+                  <div>
+                    <strong>{bundle.name}</strong>
+                    <StatusPill status={bundle.status} />
+                  </div>
+                  <p>{bundle.reason}</p>
+                  <dl>
+                    <div><dt>대체 원천</dt><dd>{bundle.source}</dd></div>
+                    <div><dt>저장 위치</dt><dd>{bundle.storage}</dd></div>
+                    <div><dt>다음 액션</dt><dd>{bundle.nextAction}</dd></div>
+                  </dl>
+                </article>
+              ))}
             </div>
           </section>
         </div>
@@ -280,21 +361,16 @@ export default function AdminDataRoom({
                 <div><dt>최근/다음 수집</dt><dd>{activeDetail.lastCollectedAt} / {activeDetail.nextCollectAt}</dd></div>
                 <div><dt>원천 위치</dt><dd>{activeDetail.sourceLocation}</dd></div>
                 <div><dt>저장 위치</dt><dd>{activeDetail.storageLocation}</dd></div>
-                <div><dt>대시보드 활용</dt><dd>{activeDetail.dashboardArea}</dd></div>
+                <div><dt>대시보드 사용</dt><dd>{activeDetail.dashboardArea}</dd></div>
                 <div><dt>품질 이슈</dt><dd>{activeDetail.qualityIssue}</dd></div>
                 <div><dt>오류 로그</dt><dd>{activeDetail.logLocation}</dd></div>
                 <div><dt>담당</dt><dd>{activeDetail.ownerDept} · {activeDetail.opsOwner} · {activeDetail.techOwner}</dd></div>
                 <div><dt>활성 상태</dt><dd>{activeDetail.active ? '활성' : '비활성/검증 필요'}</dd></div>
               </dl>
-              <div className="linked-chip-list">
-                <span>연결 계산지표</span>
-                {activeDetail.metricIds.length ? activeDetail.metricIds.map((metricId) => (
-                  <button type="button" key={metricId} onClick={() => setSelectedItem({ type: 'metric', id: metricId })}>{metricId}</button>
-                )) : <small>연결 지표 없음</small>}
-              </div>
+              <LinkedChipList label="연결 계산지표" items={activeDetail.metricIds} emptyText="연결 지표 없음" onClick={selectMetric} />
               <label className="ops-note-box">
                 <span>운영 메모</span>
-                <textarea readOnly value={`${activeDetail.note}\n담당자는 품질 이슈를 확인하고 필요 시 재수집/비활성 처리합니다.`} />
+                <textarea readOnly value={`${activeDetail.note}\n담당자는 품질 이슈와 수집 로그를 확인하고 필요 시 재수집 또는 비활성 처리합니다.`} />
               </label>
             </div>
           )}
@@ -317,12 +393,7 @@ export default function AdminDataRoom({
                 <div><dt>담당 부서</dt><dd>{activeDetail.ownerDept}</dd></div>
                 <div><dt>오류 확인 위치</dt><dd>{activeDetail.errorLocation}</dd></div>
               </dl>
-              <div className="linked-chip-list">
-                <span>사용 raw 데이터</span>
-                {activeDetail.rawIds.map((rawId) => (
-                  <button type="button" key={rawId} onClick={() => setSelectedItem({ type: 'raw', id: rawId })}>{rawId}</button>
-                ))}
-              </div>
+              <LinkedChipList label="사용 raw 데이터" items={activeDetail.rawIds} emptyText="연결 raw 없음" onClick={selectRaw} />
               <label className="ops-note-box">
                 <span>운영 메모</span>
                 <textarea readOnly value={`${activeDetail.note}\n계산 오류 시 raw 데이터 수집 상태와 계산 로그를 함께 확인합니다.`} />

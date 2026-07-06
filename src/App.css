@@ -6453,6 +6453,115 @@
   line-height: 1.5;
 }
 
+.workflow-coverage-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 0 18px 18px;
+}
+
+.workflow-coverage-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  background: rgba(255, 255, 255, 0.7);
+}
+
+.workflow-coverage-title {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 10px;
+  align-items: start;
+}
+
+.workflow-coverage-title svg {
+  color: var(--accent);
+  margin-top: 2px;
+}
+
+.workflow-coverage-title strong,
+.workflow-coverage-title span {
+  display: block;
+}
+
+.workflow-coverage-title strong {
+  color: var(--text-strong);
+}
+
+.workflow-coverage-title span,
+.workflow-coverage-card small {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.workflow-coverage-card p {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.pending-bundle-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  padding: 0 18px 18px;
+}
+
+.pending-bundle-card {
+  display: grid;
+  gap: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px;
+  background: var(--surface-muted);
+}
+
+.pending-bundle-card > div:first-child {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.pending-bundle-card strong {
+  color: var(--text-strong);
+}
+
+.pending-bundle-card p {
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.pending-bundle-card dl {
+  display: grid;
+  gap: 7px;
+  margin: 0;
+}
+
+.pending-bundle-card dl div {
+  display: grid;
+  gap: 3px;
+}
+
+.pending-bundle-card dt {
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.pending-bundle-card dd {
+  margin: 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 @media (max-width: 1180px) {
   .data-room-summary {
     grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -6465,6 +6574,11 @@
   .data-room-detail-panel {
     position: static;
     max-height: none;
+  }
+
+  .workflow-coverage-list,
+  .pending-bundle-list {
+    grid-template-columns: 1fr;
   }
 }
 

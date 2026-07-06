@@ -3297,6 +3297,281 @@ function buildAdminMetricCatalog({ rawData, outreach, creators, campaigns, recru
   }))
 }
 
+function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, outreach, contentReferences }) {
+  const nowText = new Date().toLocaleString('ko-KR')
+  const storageBase = backendConfig?.hasSupabase ? 'Supabase public schema' : 'localStorage creatorops.workspace.v2'
+  const apiStatus = backendConfig?.apiBaseUrl ? '정상' : '지연'
+  const baseIds = new Set(rawData.map((item) => item.id))
+  const append = (items) => [...rawData, ...items.filter((item) => !baseIds.has(item.id))]
+
+  return append([
+    {
+      id: 'RAW-EXT-SEARCH-001',
+      name: '외부 검색 원본 결과',
+      scope: '외부',
+      category: '검색 원천',
+      description: 'YouTube, Google/Brave, TikTok Commercial Content API 검색 요청과 원본 응답',
+      purpose: '발굴/레퍼런스 결과가 어떤 검색어, 국가, 플랫폼, 페이지에서 나왔는지 추적',
+      method: 'API / 검색 연동',
+      cycle: '검색 요청 시',
+      lastCollectedAt: nowText,
+      nextCollectAt: '검색 요청 시',
+      status: apiStatus,
+      sourceLocation: 'server /discovery/*, /references/search',
+      storageLocation: `${storageBase} / future: external_search_events`,
+      dashboardArea: '발굴, 레퍼런스, 데이터룸 수집 로그',
+      metricIds: ['MET-OPS-001', 'MET-AI-003', 'MET-BENCH-001'],
+      ownerDept: '데이터팀',
+      opsOwner: 'Data Operator',
+      techOwner: 'Backend/Data',
+      qualityIssue: '검색 API가 요약 결과만 주는 경우 원문 페이지/노출 순위 보존 필요',
+      logLocation: 'Render API logs / future: external_search_events',
+      note: '키워드별 수동 검수가 아니라 검색 원본을 저장해 재현 가능성을 확보',
+      active: true,
+    },
+    {
+      id: 'RAW-INT-AI-001',
+      name: 'AI 생성 실행 로그',
+      scope: '내부',
+      category: 'AI 생성',
+      description: 'AI 추천, 전략, 제안 메시지, 콘텐츠 가이드 생성 입력값/출력값/모델/버전',
+      purpose: 'AI가 어떤 raw 데이터 조합으로 추천/메시지/가이드를 만들었는지 설명 가능하게 저장',
+      method: 'API / DB 연동',
+      cycle: 'AI 실행 시',
+      lastCollectedAt: nowText,
+      nextCollectAt: 'AI 실행 시',
+      status: backendConfig?.apiBaseUrl ? '검증 필요' : '지연',
+      sourceLocation: 'OpenAI API, local scoring engine',
+      storageLocation: `${storageBase} / future: ai_generation_runs`,
+      dashboardArea: 'AI 추천, 메시지, 캠페인 전략, 가이드 생성',
+      metricIds: ['MET-AI-001', 'MET-AI-002', 'MET-AI-003', 'MET-GUIDE-001'],
+      ownerDept: 'PM/데이터',
+      opsOwner: 'PM',
+      techOwner: 'AI/Data',
+      qualityIssue: '프롬프트 버전과 사용 raw 데이터 ID를 함께 저장해야 재현 가능',
+      logLocation: 'server logs / future: ai_generation_runs',
+      note: `${outreach.length}건 메시지와 ${creators.length}명 후보를 AI 입력으로 사용 가능`,
+      active: true,
+    },
+    {
+      id: 'RAW-INT-EXPORT-001',
+      name: '내보내기/다운로드 로그',
+      scope: '내부',
+      category: '내보내기',
+      description: '엑셀, Google Sheets, DOCX, PPT, 보고서 다운로드 실행 이력',
+      purpose: '광고주 전달본과 내부 데이터 버전을 연결하고 고객사 전달 이력을 추적',
+      method: '프론트 이벤트 / DB 연동',
+      cycle: '내보내기 실행 시',
+      lastCollectedAt: nowText,
+      nextCollectAt: '내보내기 실행 시',
+      status: '검증 필요',
+      sourceLocation: 'export handlers, Google Sheets/Docs export flow',
+      storageLocation: `${storageBase} / future: export_events`,
+      dashboardArea: '발굴, AI 추천, 리포트, 캠페인 가이드',
+      metricIds: ['MET-EXPORT-001'],
+      ownerDept: '운영/CS',
+      opsOwner: 'Campaign Operator',
+      techOwner: 'Frontend/Data',
+      qualityIssue: '현재는 파일 생성 중심이라 다운로드 결과와 버전 로그 테이블 필요',
+      logLocation: 'browser local log / future: export_events',
+      note: '광고주 전달 리스트와 리포트 산출물의 원천 버전을 남기는 번들',
+      active: true,
+    },
+    {
+      id: 'RAW-INT-AUTH-001',
+      name: '팀 계정/권한 데이터',
+      scope: '내부',
+      category: '권한/계정',
+      description: '팀, 계정, 역할, 브랜드/캠페인 접근 권한, 초대 상태',
+      purpose: '같은 팀이 같은 풀을 보고 Google Ads처럼 관리 권한을 부여',
+      method: 'Auth / DB 연동',
+      cycle: '권한 변경 시',
+      lastCollectedAt: nowText,
+      nextCollectAt: '권한 변경 시',
+      status: backendConfig?.hasSupabase ? '정상' : '지연',
+      sourceLocation: 'Supabase Auth, Settings > 팀 권한',
+      storageLocation: `${storageBase} / workspaces, workspace_members`,
+      dashboardArea: '설정, 데이터룸, 전체 메뉴 접근 제어',
+      metricIds: ['MET-AUTH-001'],
+      ownerDept: '운영/개발',
+      opsOwner: 'Admin',
+      techOwner: 'Backend/Auth',
+      qualityIssue: '초대/역할 변경 감사 로그와 캠페인 단위 권한 분리 필요',
+      logLocation: 'Supabase auth logs / future: permission_audit_logs',
+      note: '프론트 접근 가능 섹션과 데이터 접근 권한의 기준 데이터',
+      active: true,
+    },
+    {
+      id: 'RAW-INT-QUALITY-001',
+      name: '데이터 품질 판정 로그',
+      scope: '내부',
+      category: '데이터 품질',
+      description: '운영 가능, 검증 대기, 보류 권장, 중복/국가/팔로워/조회수 필터 판정 사유',
+      purpose: '후보와 레퍼런스가 왜 노출/제외됐는지 운영자가 추적',
+      method: '계산 엔진 / DB 연동',
+      cycle: '수집/매칭/필터 실행 시',
+      lastCollectedAt: nowText,
+      nextCollectAt: '수집/매칭/필터 실행 시',
+      status: '검증 필요',
+      sourceLocation: 'creator scoring, reference filter, country/platform validation',
+      storageLocation: `${storageBase} / future: data_quality_reviews`,
+      dashboardArea: '발굴, AI 추천, 레퍼런스, 데이터룸',
+      metricIds: ['MET-AI-002', 'MET-OPS-002'],
+      ownerDept: '데이터팀',
+      opsOwner: 'Data QA',
+      techOwner: 'Data Engineer',
+      qualityIssue: '국가 추정, 팔로워 미수집, 낮은 조회수 레퍼런스 제외 기준을 로그로 남겨야 함',
+      logLocation: 'future: data_quality_reviews',
+      note: '모든 키워드를 사람이 검수하지 않기 위한 자동 판정 근거 저장소',
+      active: true,
+    },
+    {
+      id: 'RAW-EXT-UNSUPPORTED-001',
+      name: '미지원/부분지원 플랫폼 지표 보류 번들',
+      scope: '외부',
+      category: '플랫폼 제한',
+      description: 'Instagram/TikTok 저장, 공유, 정확한 팔로워/조회수 등 공식 권한 없이는 제한되는 지표',
+      purpose: '데이터룸에 없는 지표가 프론트에서 임의로 보이지 않도록 보류/대체 수집 상태를 명시',
+      method: '인증 인사이트 / 수동 업로드 / 대체 공개 지표',
+      cycle: '권한 확보 또는 수동 업로드 시',
+      lastCollectedAt: '-',
+      nextCollectAt: '권한 확보 후',
+      status: '부분지원',
+      sourceLocation: 'Instagram Graph API, TikTok Research/Commercial API, creator screenshot',
+      storageLocation: `${storageBase} / future: unsupported_metric_requests`,
+      dashboardArea: '발굴, 레퍼런스, 리포트',
+      metricIds: ['MET-OPS-002', 'MET-SNS-004', 'MET-SNS-005'],
+      ownerDept: '데이터/PM',
+      opsOwner: 'PM',
+      techOwner: 'Backend/Data',
+      qualityIssue: '공개 검색만으로는 정확 수치가 보장되지 않으므로 UI에는 수집 필요/검증 필요로 표시',
+      logLocation: 'future: unsupported_metric_requests',
+      note: '데이터 구현 전에는 기능을 과장하지 않고 보류 번들에서 관리',
+      active: true,
+    },
+  ])
+}
+
+function buildDataRoomExtendedMetricCatalog({ metrics, rawData, creators, contentReferences }) {
+  const rawName = (id) => rawData.find((item) => item.id === id)?.name ?? id
+  const nowText = new Date().toLocaleString('ko-KR')
+  const rows = [
+    ['MET-AI-001', '브랜드-크리에이터 적합도', 'AI 매칭/가치생성 번들', '내부', '브랜드 브리프와 후보 프로필/성과를 조합한 매칭 점수', 'weighted(brand_keywords, category_fit, avg_views, engagement, risk)', ['RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-EXT-CHN-001', 'RAW-INT-QUALITY-001'], '캠페인 기준', '후보 갱신 시', '정상', '발굴, AI 추천', '80점 이상 우선 제안, 60점 미만 보류', '데이터 품질 50점 미만', '중간', 'PM/데이터', 'ai_generation_runs + data_quality_reviews', `${creators.length}명 후보 기준`],
+    ['MET-AI-002', '데이터 품질 점수', 'AI 매칭/가치생성 번들', '내부', '공식 API 여부, 최신성, 국가/플랫폼 일치, 팔로워/조회수 확인 여부', 'official_source*35 + freshness*20 + metric_completeness*25 + country_match*20', ['RAW-INT-QUALITY-001', 'RAW-EXT-SEARCH-001', 'RAW-EXT-UNSUPPORTED-001'], '검색/저장 시', '실시간', '검증 필요', '발굴, 레퍼런스, 데이터룸', '80점 이상 운영 가능, 60점 이하는 보류 권장', '팔로워 미수집+국가 불일치', '중간', '데이터팀', 'data_quality_reviews', '키워드별 수동 검수 대체 지표'],
+    ['MET-AI-003', '후보 우선순위 점수', 'AI 매칭/가치생성 번들', '내부', '조회수 성장성, 팔로워 대비 터진 콘텐츠, 브랜드 적합도, 연락 가능성 결합', 'fit_score*0.35 + virality_score*0.3 + engagement_score*0.2 + contactability*0.15', ['RAW-INT-INF-001', 'RAW-EXT-SEARCH-001', 'RAW-EXT-CHN-001', 'RAW-INT-AI-001'], '캠페인 기준', '후보 매칭 시', '정상', 'AI 추천, 메시지 전 후보 풀', '상위 점수부터 메시지 후보로 전환', '연락처 없음+데이터 품질 낮음', '중간', 'PM/데이터', 'creator scoring logs', '팔로워보다 조회수/터진 콘텐츠 우선 전략 반영'],
+    ['MET-GUIDE-001', '레퍼런스 변형 가이드 생성률', '콘텐츠 가이드 번들', '내부', '저장 레퍼런스가 캠페인 가이드/스크립트로 전환된 비율', 'guide_reference_count / saved_reference_count * 100', ['RAW-EXT-REF-001', 'RAW-INT-AI-001'], '캠페인 기준', '가이드 생성 시', '검증 필요', '캠페인 상세, 레퍼런스', '저장만 하고 가이드 반영이 안 되면 운영 누락', '저장 레퍼런스 5개 이상인데 0%', '중간', '콘텐츠팀', 'ai_generation_runs / content_guides', `${contentReferences.length}개 레퍼런스`],
+    ['MET-OPS-001', '외부 수집 성공률', '데이터 운영 번들', '외부', '외부 검색/API 요청 중 성공한 요청 비율', 'successful_collection_jobs / total_collection_jobs * 100', ['RAW-EXT-SEARCH-001'], '최근 24시간', '실시간', '검증 필요', '데이터룸, 설정 API 테스트', '95% 이상 정상, 80% 미만 장애 검토', '연속 3회 실패', '중간', '데이터/개발', 'Render API logs', '수집 로그 테이블 연결 필요'],
+    ['MET-OPS-002', '미지원 데이터 비율', '데이터 운영 번들', '외부', '프론트 표시 항목 중 부분지원/미지원 raw에 의존하는 비율', 'unsupported_metric_count / visible_metric_count * 100', ['RAW-EXT-UNSUPPORTED-001', 'RAW-INT-QUALITY-001'], '전체', '일 1회', '검증 필요', '데이터룸, 리포트', '비율이 높을수록 공식 API/OAuth 우선순위 상승', '30% 이상', '중간', 'PM/데이터', 'unsupported_metric_requests', '프론트에는 검증 필요/수집 필요로 표시'],
+    ['MET-EXPORT-001', '전달 산출물 생성 수', '내보내기 번들', '내부', '엑셀/시트/문서/리포트로 광고주에게 전달 가능한 산출물 생성 수', 'count(export_events)', ['RAW-INT-EXPORT-001'], '최근 30일', '실시간', '검증 필요', '대시보드, 리포트, 발굴', '클라이언트 전달 이력과 연결', '다운로드 실패 1건 이상', '중간', 'CS/운영', 'export_events', '실제 DB 로그 연결 전까지 브라우저 이벤트 중심'],
+    ['MET-AUTH-001', '권한 커버리지', '팀/권한 번들', '내부', '팀 멤버가 접근 가능한 브랜드/캠페인/데이터룸 범위', 'assigned_permission_count / required_permission_count * 100', ['RAW-INT-AUTH-001', 'RAW-INT-OPS-001'], '전체', '권한 변경 시', '정상', '설정, 데이터룸', '팀 단위 풀 공유와 관리권한 기준', 'Owner 없는 워크스페이스', '높음', '운영/개발', 'permission_audit_logs', 'Supabase Auth와 workspace_members 기준'],
+  ]
+
+  const existingIds = new Set(metrics.map((item) => item.id))
+  const extraMetrics = rows
+    .filter(([id]) => !existingIds.has(id))
+    .map(([id, name, bundle, scope, description, formula, rawIds, period, refreshCycle, status, displayLocation, interpretation, outlierRule, reliability, ownerDept, errorLocation, note]) => ({
+      id,
+      name,
+      bundle,
+      scope,
+      description,
+      formula,
+      rawIds,
+      rawNames: rawIds.map(rawName),
+      period,
+      refreshCycle,
+      lastCalculatedAt: nowText,
+      status,
+      displayLocation,
+      interpretation,
+      outlierRule,
+      reliability,
+      ownerDept,
+      errorLocation,
+      note,
+    }))
+
+  return [...metrics, ...extraMetrics]
+}
+
+function buildDataRoomWorkflowCoverage({ rawData, metrics }) {
+  const rawIds = new Set(rawData.map((item) => item.id))
+  const metricIds = new Set(metrics.map((item) => item.id))
+  const coverage = [
+    ['WF-DASHBOARD', '대시보드 운영 현황', '대시보드', ['RAW-INT-CRM-001', 'RAW-INT-INF-001', 'RAW-INT-CMP-001', 'RAW-EXT-CONT-001'], ['MET-CRM-004', 'MET-CMP-001', 'MET-SNS-001'], '캠페인/메시지/콘텐츠 성과를 현재 워크스페이스 기준으로 집계', '프론트 카드 수치는 데이터룸 계산지표 기준으로 표시'],
+    ['WF-CAMPAIGN', '캠페인 파이프라인', '캠페인', ['RAW-INT-CMP-001', 'RAW-INT-BRD-001', 'RAW-INT-FIN-001'], ['MET-CMP-001', 'MET-CMP-002', 'MET-CMP-004'], '캠페인 브리프, 일정, 섭외 완료, 배송/정산 레코드를 캠페인 ID로 묶음', '캠페인 없는 배송/정산/후보 풀은 노출하지 않음'],
+    ['WF-DISCOVERY', '크리에이터 발굴 검색', '발굴', ['RAW-EXT-SEARCH-001', 'RAW-EXT-CHN-001', 'RAW-INT-QUALITY-001'], ['MET-AI-002', 'MET-AI-003'], '검색 원본 결과를 수집하고 국가/플랫폼/최소 팔로워/평균 조회수 기준으로 품질 판정', '데이터룸에 검색 원천이 없으면 실제 발굴 결과로 쓰지 않음'],
+    ['WF-AI-RECOMMEND', 'AI 추천 후보와 근거', '발굴', ['RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-001', 'RAW-INT-QUALITY-001'], ['MET-AI-001', 'MET-AI-002', 'MET-AI-003'], '브랜드 브리프와 후보 성과/품질 점수를 조합해 추천 이유와 리스크 생성', '추천 근거에는 사용 raw ID와 품질 점수가 남아야 함'],
+    ['WF-CANDIDATE-POOL', '메시지 전 후보 풀', '발굴/메시지', ['RAW-INT-INF-001', 'RAW-INT-QUALITY-001'], ['MET-POOL-001', 'MET-AI-003'], '저장된 후보만 메시지 전 풀로 이동하고 삭제 시 메시지 대기 리스트와 함께 정리', '풀에 없는 후보는 메시지 일괄 생성 대상이 아님'],
+    ['WF-MESSAGE', '제안/응답 발송', '메시지', ['RAW-INT-CRM-001', 'RAW-INT-AI-001', 'RAW-INT-EXPORT-001'], ['MET-CRM-001', 'MET-CRM-004', 'MET-CRM-005'], '이메일 가능 후보는 발송 로그, DM 대상은 작업용 엑셀/복사 로그로 분리', 'DM 우회 자동화는 정책상 raw로 두지 않고 작업 로그만 관리'],
+    ['WF-REPORT', '콘텐츠 추적/리포트', '리포트', ['RAW-INT-CMP-001', 'RAW-EXT-CONT-001', 'RAW-EXT-ENG-001', 'RAW-EXT-UNSUPPORTED-001'], ['MET-SNS-001', 'MET-SNS-006', 'MET-CONT-001', 'MET-CONT-004'], '업로드 URL 기준으로 공개 지표를 갱신하고 미지원 지표는 수집 필요로 표시', '데이터룸에 저장되지 않은 수치는 보고서에 확정값으로 표시하지 않음'],
+    ['WF-REFERENCE', '콘텐츠 레퍼런스 검색/저장', '레퍼런스', ['RAW-EXT-SEARCH-001', 'RAW-EXT-REF-001', 'RAW-EXT-BENCH-001', 'RAW-INT-QUALITY-001'], ['MET-BENCH-001', 'MET-BENCH-002', 'MET-BENCH-003'], '50만 이상 또는 팔로워 대비 터진 콘텐츠를 우선 수집하고 품질 기준 미달은 제외', '검색 결과 원문이 없는 레퍼런스는 저장 링크 검증 대상으로 둠'],
+    ['WF-GUIDE', '전략/콘텐츠 가이드 생성', '캠페인 상세/레퍼런스', ['RAW-INT-BRD-001', 'RAW-INT-CMP-001', 'RAW-EXT-REF-001', 'RAW-INT-AI-001'], ['MET-GUIDE-001', 'MET-BENCH-002'], '브리프와 저장 레퍼런스를 원메시지/후킹/스크립트 구조로 변환', '가이드 생성 산출물은 AI 실행 로그와 export 로그에 남김'],
+    ['WF-EXPORT', '엑셀/시트/DOCX/PPT 내보내기', '발굴/리포트/캠페인', ['RAW-INT-EXPORT-001', 'RAW-INT-INF-001', 'RAW-INT-CMP-001'], ['MET-EXPORT-001'], '광고주 전달 산출물 생성 시 데이터 버전과 다운로드 종류를 기록', '내보내기 로그가 없으면 전달본 기준 추적 불가'],
+    ['WF-AUTH', '팀/권한 설정', '설정/데이터룸', ['RAW-INT-AUTH-001', 'RAW-INT-OPS-001'], ['MET-AUTH-001'], '워크스페이스/브랜드/캠페인 단위 권한으로 같은 풀 접근 범위 제어', '권한 데이터룸 없는 화면은 내부 운영자 전용으로 제한'],
+  ]
+
+  return coverage.map(([id, featureName, frontendArea, itemRawIds, itemMetricIds, algorithm, rule]) => {
+    const missingRaw = itemRawIds.filter((rawId) => !rawIds.has(rawId))
+    const missingMetrics = itemMetricIds.filter((metricId) => !metricIds.has(metricId))
+    const hasUnsupported = itemRawIds.includes('RAW-EXT-UNSUPPORTED-001')
+    return {
+      id,
+      featureName,
+      frontendArea,
+      rawIds: itemRawIds,
+      metricIds: itemMetricIds,
+      algorithm,
+      rule,
+      status: missingRaw.length || missingMetrics.length ? '오류' : hasUnsupported ? '검증 필요' : '정상',
+      missingRaw,
+      missingMetrics,
+    }
+  })
+}
+
+function buildDataRoomPendingBundles({ backendConfig }) {
+  const storageBase = backendConfig?.hasSupabase ? 'Supabase public schema' : 'localStorage creatorops.workspace.v2'
+  return [
+    {
+      id: 'PENDING-INSIGHTS-001',
+      name: 'Instagram/TikTok 인증 인사이트',
+      status: '부분지원',
+      reason: '공개 검색만으로는 저장/공유/정확 조회수/정확 팔로워를 항상 보장할 수 없음',
+      source: '크리에이터 OAuth, TikTok/Instagram 승인 API, 업로드 스크린샷',
+      storage: `${storageBase} / future: creator_authenticated_insights`,
+      nextAction: '공식 권한 승인 전까지 프론트에는 수집 필요/검증 필요로 표시',
+    },
+    {
+      id: 'PENDING-DM-001',
+      name: 'DM 대량 발송 자동화',
+      status: '중단',
+      reason: '플랫폼 정책상 사람처럼 우회 발송하는 자동화는 운영 리스크가 큼',
+      source: '이메일 발송 로그, DM 작업용 엑셀, 프로필 열기/복사 로그',
+      storage: `${storageBase} / future: dm_work_orders`,
+      nextAction: '이메일 가능한 후보는 이메일, 그 외는 작업 큐/엑셀로 분리',
+    },
+    {
+      id: 'PENDING-RAW-ARCHIVE-001',
+      name: '검색 원문 아카이브',
+      status: '검증 필요',
+      reason: '외부 검색 결과가 변동되므로 검색 시점의 원본 응답과 필터 사유를 저장해야 함',
+      source: 'Brave/Google/YouTube/TikTok search responses',
+      storage: `${storageBase} / future: external_search_events`,
+      nextAction: 'API 응답 payload, query, country, platform, rejected reason 저장',
+    },
+    {
+      id: 'PENDING-PROMPT-001',
+      name: 'AI 프롬프트/모델 버전 레지스트리',
+      status: '검증 필요',
+      reason: '추천/전략/가이드 결과를 재현하려면 프롬프트와 raw ID 조합이 필요',
+      source: 'OpenAI request/response metadata',
+      storage: `${storageBase} / future: ai_generation_runs`,
+      nextAction: '모델명, 프롬프트 버전, 입력 raw ID, 출력 요약 저장',
+    },
+  ]
+}
+
 function App() {
   const [workspace, setWorkspace] = usePersistentState(STORE_KEY, defaultWorkspace)
   const backendConfig = useMemo(() => getBackendConfig(), [])
@@ -4212,33 +4487,52 @@ function App() {
 
   const dataRoomRawData = useMemo(
     () =>
-      buildAdminRawDataCatalog({
+      buildDataRoomExtendedRawCatalog({
+        rawData: buildAdminRawDataCatalog({
+          creators,
+          outreach,
+          campaigns,
+          recruitedPool,
+          fulfillmentRecords,
+          trackedPosts,
+          contentReferences,
+          brands,
+          backendConfig,
+          activeBrand,
+        }),
+        backendConfig,
         creators,
         outreach,
-        campaigns,
-        recruitedPool,
-        fulfillmentRecords,
-        trackedPosts,
         contentReferences,
-        brands,
-        backendConfig,
-        activeBrand,
       }),
     [activeBrand, backendConfig, brands, campaigns, contentReferences, creators, fulfillmentRecords, outreach, recruitedPool, trackedPosts],
   )
   const dataRoomMetrics = useMemo(
     () =>
-      buildAdminMetricCatalog({
+      buildDataRoomExtendedMetricCatalog({
+        metrics: buildAdminMetricCatalog({
+          rawData: dataRoomRawData,
+          outreach,
+          creators,
+          campaigns,
+          recruitedPool,
+          fulfillmentRecords,
+          trackedPosts,
+          contentReferences,
+        }),
         rawData: dataRoomRawData,
-        outreach,
         creators,
-        campaigns,
-        recruitedPool,
-        fulfillmentRecords,
-        trackedPosts,
         contentReferences,
       }),
     [campaigns, contentReferences, creators, dataRoomRawData, fulfillmentRecords, outreach, recruitedPool, trackedPosts],
+  )
+  const dataRoomWorkflowCoverage = useMemo(
+    () => buildDataRoomWorkflowCoverage({ rawData: dataRoomRawData, metrics: dataRoomMetrics }),
+    [dataRoomMetrics, dataRoomRawData],
+  )
+  const dataRoomPendingBundles = useMemo(
+    () => buildDataRoomPendingBundles({ backendConfig }),
+    [backendConfig],
   )
   const dataRoomRawCategories = useMemo(
     () => ['전체', ...new Set(dataRoomRawData.map((item) => item.category))],
@@ -7924,6 +8218,8 @@ function App() {
             summary={dataRoomSummary}
             rawData={filteredDataRoomRawData}
             groupedMetrics={groupedDataRoomMetrics}
+            workflowCoverage={dataRoomWorkflowCoverage}
+            pendingBundles={dataRoomPendingBundles}
             rawTab={dataRoomRawTab}
             setRawTab={setDataRoomRawTab}
             rawStatus={dataRoomRawStatus}
