@@ -445,7 +445,7 @@ async function searchYouTubeCreators(query, maxResults, country = 'KR') {
       }
     }
 
-    const creators = filterAndRankDiscoveryIntent(results, query)
+    const creators = filterAndRankDiscoveryIntent(filterProductSpecificEvidence(results, query), query)
       .filter(passesMinimumDiscoveryScale)
       .slice(0, maxResults)
     writeSearchCache(cacheKey, creators)
@@ -661,7 +661,7 @@ async function searchContentReferences({ query, country, platform, sort, maxResu
     results.push(...webResults)
   }
 
-  const deduped = dedupeContentReferences(results)
+  const deduped = filterProductSpecificEvidence(dedupeContentReferences(results), query)
   const qualified = filterReferenceQuality(deduped, query)
   const relaxed = qualified.length ? qualified : buildRelaxedContentReferences(deduped, query)
   const relevant = filterAndRankDiscoveryIntent(relaxed, query)
@@ -3017,7 +3017,8 @@ function dedupeProfileResults(results) {
 
 function filterProfileDiscoveryResults(results, query) {
   const context = buildProfileDiscoveryQueryContextV2(query)
-  const scoredResults = results.map((profile) => ({
+  const evidenceResults = filterProductSpecificEvidence(results, query)
+  const scoredResults = evidenceResults.map((profile) => ({
     ...profile,
     discoveryRelevanceScore: scoreProfileDiscoveryRelevance(profile, context),
   }))
@@ -3261,6 +3262,51 @@ function isUsableProfileDiscoveryResultV2(profile, context, mode = 'strict') {
   }
 
   return true
+}
+
+function filterProductSpecificEvidence(items, query) {
+  const terms = getProductSpecificEvidenceTerms(query)
+  if (!terms.length) return items
+  return (items || []).filter((item) => {
+    const text = normalizeSearchEvidenceText([
+      item.name,
+      item.handle,
+      item.title,
+      item.description,
+      item.snippet,
+      item.sourceTitle,
+      item.sourceSnippet,
+      item.channelTitle,
+      item.profileUrl,
+      item.url,
+      item.matchedContentUrl,
+      item.hook,
+      item.analysis,
+    ].filter(Boolean).join(' '))
+    return terms.some((term) => text.includes(term))
+  })
+}
+
+function getProductSpecificEvidenceTerms(query) {
+  const text = normalizeSearchEvidenceText(query)
+  const terms = []
+  if (text.includes('바닐라코') || text.includes('banila')) {
+    terms.push('바닐라코', 'banila', 'banila co')
+  }
+  if (text.includes('클렌징밤') || text.includes('cleansing balm') || text.includes('clean it zero')) {
+    terms.push('클렌징밤', 'cleansing balm', 'clean it zero', 'cleanitzero')
+  }
+  return [...new Set(terms)]
+}
+
+function normalizeSearchEvidenceText(value) {
+  return String(value || '')
+    .toLowerCase()
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    .replace(/clean\s*it\s*zero/g, 'clean it zero')
+    .replace(/clean[\s_-]*itzero/g, 'cleanitzero')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 function looksLikeBrandOrPlatformAccount(profile = {}) {
