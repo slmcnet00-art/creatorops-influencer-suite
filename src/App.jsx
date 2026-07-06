@@ -3973,6 +3973,7 @@ function App() {
   const [isReferenceManualFormOpen, setIsReferenceManualFormOpen] = useState(false)
   const [creatorGroupQuery, setCreatorGroupQuery] = useState('')
   const [creatorGroupTypeFilter, setCreatorGroupTypeFilter] = useState('전체')
+  const [selectedCreatorGroupId, setSelectedCreatorGroupId] = useState(defaultCreatorGroups[0]?.id ?? '')
   const [dataRoomRawTab, setDataRoomRawTab] = useState('전체')
   const [dataRoomRawStatus, setDataRoomRawStatus] = useState('전체')
   const [dataRoomRawCategory, setDataRoomRawCategory] = useState('전체')
@@ -4421,6 +4422,14 @@ function App() {
         { groups: 0, creators: 0, avgFollowers: 0, avgViews: 0 },
       ),
     [creators, safeCreatorGroups],
+  )
+  const selectedCreatorGroup = useMemo(
+    () => visibleCreatorGroups.find((group) => group.id === selectedCreatorGroupId) ?? visibleCreatorGroups[0] ?? null,
+    [selectedCreatorGroupId, visibleCreatorGroups],
+  )
+  const selectedCreatorGroupCreators = useMemo(
+    () => (selectedCreatorGroup ? getCreatorsByIds(creators, selectedCreatorGroup.creatorIds || []) : []),
+    [creators, selectedCreatorGroup],
   )
   const candidatePoolAllCreators = useMemo(() => {
     return getCreatorsByIds(creators, shortlist)
@@ -9816,6 +9825,7 @@ function App() {
             </select>
           </div>
 
+          <div className="creator-group-workspace">
           <div className="creator-group-grid">
             {visibleCreatorGroups.length === 0 ? (
               <div className="empty-state compact-empty">
@@ -9829,9 +9839,22 @@ function App() {
                 const platforms = Array.from(new Set(groupCreators.map((creator) => creator.platform).filter(Boolean))).slice(0, 3)
                 const groupViews = groupCreators.reduce((sum, creator) => sum + Number(creator.avgViews || 0), 0)
                 const groupFollowers = groupCreators.reduce((sum, creator) => sum + Number(creator.followers || 0), 0)
+                const active = selectedCreatorGroup?.id === group.id
 
                 return (
-                  <article className="creator-group-card" key={group.id}>
+                  <article
+                    className={`creator-group-card ${active ? 'active' : ''}`}
+                    key={group.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => setSelectedCreatorGroupId(group.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault()
+                        setSelectedCreatorGroupId(group.id)
+                      }
+                    }}
+                  >
                     <div className="creator-group-folder-tab" />
                     <div className="creator-group-card-head">
                       <div>
@@ -9858,10 +9881,24 @@ function App() {
                       {groupCreators.length > 7 && <span>+{groupCreators.length - 7}</span>}
                     </div>
                     <div className="creator-group-actions">
-                      <button className="secondary-button compact-button" type="button" onClick={() => addCreatorGroupToCandidatePool(group)}>
+                      <button
+                        className="secondary-button compact-button"
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          addCreatorGroupToCandidatePool(group)
+                        }}
+                      >
                         후보 풀 저장
                       </button>
-                      <button className="primary-button compact-button" type="button" onClick={() => assignCreatorGroupToCampaign(group)}>
+                      <button
+                        className="primary-button compact-button"
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          assignCreatorGroupToCampaign(group)
+                        }}
+                      >
                         캠페인 배정
                       </button>
                     </div>
@@ -9869,6 +9906,73 @@ function App() {
                 )
               })
             )}
+          </div>
+          <aside className="creator-group-detail-panel">
+            {selectedCreatorGroup ? (
+              <>
+                <div className="creator-group-detail-head">
+                  <div>
+                    <span className="mini-label">Group Members</span>
+                    <h3>{selectedCreatorGroup.name}</h3>
+                    <p>{selectedCreatorGroup.description}</p>
+                  </div>
+                  <span>{selectedCreatorGroupCreators.length}명</span>
+                </div>
+                <div className="creator-group-detail-actions">
+                  <button className="secondary-button compact-button" type="button" onClick={() => addCreatorGroupToCandidatePool(selectedCreatorGroup)}>
+                    후보 풀 저장
+                  </button>
+                  <button className="primary-button compact-button" type="button" onClick={() => assignCreatorGroupToCampaign(selectedCreatorGroup)}>
+                    캠페인 배정
+                  </button>
+                </div>
+                {selectedCreatorGroupCreators.length ? (
+                  <div className="creator-group-member-list">
+                    {selectedCreatorGroupCreators.map((creator) => (
+                      <article className="creator-group-member-row" key={creator.id}>
+                        <img src={creator.avatar} alt="" />
+                        <div>
+                          <strong>{creator.name}</strong>
+                          <span>{creator.handle} · {creator.category}</span>
+                        </div>
+                        <div>
+                          <strong>{creator.platform}</strong>
+                          <span>{creator.country}</span>
+                        </div>
+                        <div>
+                          <strong>{compactNumber(creator.followers)}</strong>
+                          <span>팔로워</span>
+                        </div>
+                        <div>
+                          <strong>{compactNumber(creator.avgViews || creator.averageViews)}</strong>
+                          <span>평균조회</span>
+                        </div>
+                        <div>
+                          <strong>{percent(creator.engagement)}</strong>
+                          <span>참여율</span>
+                        </div>
+                        <a href={creator.profileUrl || '#'} target="_blank" rel="noreferrer" aria-label={`${creator.name} 채널 보기`}>
+                          채널 보기
+                        </a>
+                      </article>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="empty-state compact-empty">
+                    <FolderOpen size={22} />
+                    <strong>아직 이 그룹에 연결된 인플루언서가 없습니다.</strong>
+                    <p>발굴 후보나 메시지 전 후보 풀에서 그룹을 만들면 여기에 멤버가 표시됩니다.</p>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="empty-state compact-empty">
+                <FolderOpen size={22} />
+                <strong>그룹을 선택하세요.</strong>
+                <p>왼쪽 그룹 카드를 누르면 멤버 리스트가 열립니다.</p>
+              </div>
+            )}
+          </aside>
           </div>
         </section>
         )}
