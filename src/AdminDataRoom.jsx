@@ -65,26 +65,32 @@ function LinkedChipList({ label, items, emptyText, onClick }) {
 
 const externalReportRawTypes = [
   {
-    id: 'RAW-EXT-MON-INF-001',
-    name: '브랜드 모니터 인플루언서 리포트',
-    source: '외부 리포트 엑셀 업로드',
-    use: '브랜드/경쟁사 기준 관련 크리에이터, 언급량, 예상 노출을 행 단위로 적재',
-  },
-  {
-    id: 'RAW-EXT-MON-VIDEO-001',
-    name: 'Video Monitor Data 리포트',
-    source: '외부 리포트 엑셀 업로드',
-    use: '영상별 조회수, 좋아요, 댓글, 참여율, 일자별 변화 raw를 적재',
-  },
-  {
     id: 'RAW-EXT-MON-WB-001',
     name: 'Video Monitor Workbench 리포트',
     source: '외부 리포트 엑셀 업로드',
     use: '워크벤치 요약, 랭킹, 변화량, 기여도 테이블을 벤치마크 raw로 적재',
   },
+  {
+    id: 'RAW-EXT-MANUAL-001',
+    name: '수동 외부 보고서 보완 raw',
+    source: '외부 리포트 엑셀 업로드',
+    use: 'API로 재수집할 수 없는 과거 보고서/광고주 전달 파일을 보완 원천으로 적재',
+  },
 ]
 
 const apiRawTypes = [
+  {
+    id: 'RAW-EXT-MON-INF-001',
+    name: '브랜드 모니터 인플루언서 API raw',
+    source: '외부 모니터링 API',
+    use: '브랜드/경쟁사 기준 관련 크리에이터, 언급량, 예상 노출을 행 단위로 적재',
+  },
+  {
+    id: 'RAW-EXT-MON-VIDEO-001',
+    name: 'Video Monitor Data API raw',
+    source: '외부 모니터링 API',
+    use: '영상별 조회수, 좋아요, 댓글, 참여율, 일자별 변화 raw를 적재',
+  },
   {
     id: 'RAW-EXT-SEARCH-001',
     name: '검색/발굴 API raw',
@@ -186,15 +192,15 @@ export default function AdminDataRoom({
       <section className="panel data-room-import-panel">
         <div>
           <span className="mini-label">Raw Report Ingestion</span>
-          <h2>외부 리포트 raw 적재</h2>
+          <h2>외부 리포트 보완 raw 적재</h2>
           <p>
-            브랜드 모니터, Video Monitor Data, Workbench 엑셀을 업로드하면 데이터룸의 외부 raw 저장소에 행 단위로 적재합니다.
+            API로 직접 적재하지 못한 과거 보고서나 Workbench 엑셀은 보완 raw로 업로드합니다. 브랜드 모니터/Video Monitor Data는 외부 API 적재 대상입니다.
           </p>
         </div>
         <div className="data-room-import-actions">
           <span>{importStatus}</span>
           <button className="secondary-button compact-button" type="button" onClick={onDownloadExternalReportTemplate}>
-            통합 양식 다운로드
+            보완 raw 양식 다운로드
           </button>
           <label className="primary-button compact-button">
             엑셀 업로드
@@ -207,14 +213,14 @@ export default function AdminDataRoom({
         <div className="panel-heading">
           <div>
             <span className="mini-label">Raw Source Map</span>
-            <h2>외부 리포트 raw / API raw 구분</h2>
+            <h2>외부 리포트 raw / 외부 API raw 구분</h2>
             <p>데이터룸에 없으면 대시보드 기능에도 쓰지 않는다는 기준으로, 원천별 적재 대상을 분리합니다.</p>
           </div>
         </div>
         <div className="raw-source-map-grid">
           <article>
             <strong>외부 리포트 raw</strong>
-            <p>광고주/외부 플랫폼에서 받은 엑셀 보고서를 행 단위로 보관합니다. API로 바로 수집되지 않는 과거/경쟁 리포트가 필요할 때 업로드합니다.</p>
+            <p>광고주/외부 플랫폼에서 받은 엑셀 보고서를 행 단위로 보관합니다. API로 재수집할 수 없는 과거/보완 리포트가 필요할 때 업로드합니다.</p>
             <ul>
               {externalReportRawTypes.map((item) => (
                 <li key={item.id}>
@@ -226,8 +232,8 @@ export default function AdminDataRoom({
             </ul>
           </article>
           <article>
-            <strong>API raw</strong>
-            <p>발굴, 콘텐츠 추적, 레퍼런스 검색을 실행할 때 서버가 API 응답과 공개 수집 결과를 데이터룸 이벤트로 남깁니다.</p>
+            <strong>외부 API raw</strong>
+            <p>브랜드 모니터링, 영상 모니터링, 발굴, 콘텐츠 추적, 레퍼런스 검색을 실행할 때 서버가 API 응답과 공개 수집 결과를 데이터룸 이벤트로 남깁니다.</p>
             <ul>
               {apiRawTypes.map((item) => (
                 <li key={item.id}>

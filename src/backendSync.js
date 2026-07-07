@@ -399,8 +399,6 @@ export async function importExternalReport({ reportType = 'custom', sourceName =
   if (updateError) throw updateError
 
   const metricByReportType = {
-    brand_monitor_influencers: 'MET-EXT-INF-001',
-    video_monitor_data: 'MET-EXT-VIDEO-001',
     video_monitor_workbench: 'MET-EXT-WB-001',
   }
   const metricId = metricByReportType[reportType]
