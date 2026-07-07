@@ -63,6 +63,54 @@ function LinkedChipList({ label, items, emptyText, onClick }) {
   )
 }
 
+const externalReportRawTypes = [
+  {
+    id: 'RAW-EXT-MON-INF-001',
+    name: '브랜드 모니터 인플루언서 리포트',
+    source: '외부 리포트 엑셀 업로드',
+    use: '브랜드/경쟁사 기준 관련 크리에이터, 언급량, 예상 노출을 행 단위로 적재',
+  },
+  {
+    id: 'RAW-EXT-MON-VIDEO-001',
+    name: 'Video Monitor Data 리포트',
+    source: '외부 리포트 엑셀 업로드',
+    use: '영상별 조회수, 좋아요, 댓글, 참여율, 일자별 변화 raw를 적재',
+  },
+  {
+    id: 'RAW-EXT-MON-WB-001',
+    name: 'Video Monitor Workbench 리포트',
+    source: '외부 리포트 엑셀 업로드',
+    use: '워크벤치 요약, 랭킹, 변화량, 기여도 테이블을 벤치마크 raw로 적재',
+  },
+]
+
+const apiRawTypes = [
+  {
+    id: 'RAW-EXT-SEARCH-001',
+    name: '검색/발굴 API raw',
+    source: 'YouTube Data API, Search API, 공개 프로필 수집',
+    use: '키워드/국가/플랫폼 조건으로 후보 URL과 기본 프로필 후보를 수집',
+  },
+  {
+    id: 'RAW-EXT-CHN-001',
+    name: '채널/프로필 API raw',
+    source: 'YouTube channels, Instagram/TikTok 공개 프로필 확인',
+    use: '팔로워, 채널명, 국가 추정, 검증 상태와 원천 URL을 저장',
+  },
+  {
+    id: 'RAW-EXT-CONT-001',
+    name: '콘텐츠 성과 API raw',
+    source: 'YouTube videos, 공개 콘텐츠 링크 스냅샷',
+    use: '업로드 링크의 조회수, 좋아요, 댓글, 저장/공유 가능 지표를 추적',
+  },
+  {
+    id: 'RAW-EXT-REF-001',
+    name: '콘텐츠 레퍼런스 API raw',
+    source: 'Search API + 공개 메타데이터',
+    use: '터진 콘텐츠 검색 결과와 저장 레퍼런스를 제작 가이드 재료로 저장',
+  },
+]
+
 export default function AdminDataRoom({
   summary,
   rawData,
@@ -101,6 +149,7 @@ export default function AdminDataRoom({
   scopes,
   importStatus,
   onImportExternalReport,
+  onDownloadExternalReportTemplate,
   apiStatus,
   onRefreshApiStatus,
   apiEvents,
@@ -144,10 +193,51 @@ export default function AdminDataRoom({
         </div>
         <div className="data-room-import-actions">
           <span>{importStatus}</span>
+          <button className="secondary-button compact-button" type="button" onClick={onDownloadExternalReportTemplate}>
+            통합 양식 다운로드
+          </button>
           <label className="primary-button compact-button">
             엑셀 업로드
             <input type="file" accept=".xlsx,.xls" hidden onChange={onImportExternalReport} />
           </label>
+        </div>
+      </section>
+
+      <section className="panel data-room-source-map-panel">
+        <div className="panel-heading">
+          <div>
+            <span className="mini-label">Raw Source Map</span>
+            <h2>외부 리포트 raw / API raw 구분</h2>
+            <p>데이터룸에 없으면 대시보드 기능에도 쓰지 않는다는 기준으로, 원천별 적재 대상을 분리합니다.</p>
+          </div>
+        </div>
+        <div className="raw-source-map-grid">
+          <article>
+            <strong>외부 리포트 raw</strong>
+            <p>광고주/외부 플랫폼에서 받은 엑셀 보고서를 행 단위로 보관합니다. API로 바로 수집되지 않는 과거/경쟁 리포트가 필요할 때 업로드합니다.</p>
+            <ul>
+              {externalReportRawTypes.map((item) => (
+                <li key={item.id}>
+                  <span>{item.id}</span>
+                  <b>{item.name}</b>
+                  <small>{item.use}</small>
+                </li>
+              ))}
+            </ul>
+          </article>
+          <article>
+            <strong>API raw</strong>
+            <p>발굴, 콘텐츠 추적, 레퍼런스 검색을 실행할 때 서버가 API 응답과 공개 수집 결과를 데이터룸 이벤트로 남깁니다.</p>
+            <ul>
+              {apiRawTypes.map((item) => (
+                <li key={item.id}>
+                  <span>{item.id}</span>
+                  <b>{item.name}</b>
+                  <small>{item.use}</small>
+                </li>
+              ))}
+            </ul>
+          </article>
         </div>
       </section>
 
@@ -459,8 +549,7 @@ export default function AdminDataRoom({
         </div>
 
         {detailOpen && activeDetail && (
-        <div className="modal-backdrop data-room-detail-backdrop" role="presentation" onMouseDown={() => setDetailOpen(false)}>
-        <aside className="panel data-room-detail-panel data-room-detail-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
+        <aside className="panel data-room-detail-panel data-room-detail-drawer" role="complementary" aria-label="데이터룸 상세">
           <div className="panel-heading">
             <div>
               <span className="mini-label">Detail Inspector</span>
@@ -526,7 +615,6 @@ export default function AdminDataRoom({
             </div>
           )}
         </aside>
-        </div>
         )}
       </section>
     </section>

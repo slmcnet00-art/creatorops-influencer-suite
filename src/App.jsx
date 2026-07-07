@@ -4254,6 +4254,7 @@ function App() {
   })
   const [referenceSearchResultUrls, setReferenceSearchResultUrls] = useState(null)
   const [isReferenceManualFormOpen, setIsReferenceManualFormOpen] = useState(false)
+  const [referenceGuideUsage, setReferenceGuideUsage] = useState(null)
   const [creatorGroupQuery, setCreatorGroupQuery] = useState('')
   const [creatorGroupTypeFilter, setCreatorGroupTypeFilter] = useState('전체')
   const [selectedCreatorGroupId, setSelectedCreatorGroupId] = useState(defaultCreatorGroups[0]?.id ?? '')
@@ -5438,6 +5439,116 @@ function App() {
       setDataRoomImportStatus(`외부 리포트 적재 실패: ${message}`)
       showToast(message)
     }
+  }
+
+  const downloadExternalReportTemplate = () => {
+    exportExcelFile('creatorops-external-raw-template.xls', 'external_raw_template', [
+      [
+        'report_type',
+        'source_name',
+        'source_row_id',
+        'source_sheet',
+        'brand_name',
+        'creator_name',
+        'creator_handle',
+        'platform',
+        'country',
+        'content_title',
+        'content_url',
+        'profile_url',
+        'published_at',
+        'followers',
+        'views',
+        'likes',
+        'comments',
+        'shares',
+        'saves',
+        'engagement_rate',
+        'category',
+        'keyword',
+        'collected_at',
+        'raw_note',
+      ],
+      [
+        'brand_monitor_influencers',
+        'Brand Monitor Influencers',
+        'row-001',
+        'Influencers',
+        '예: Anua',
+        '예: creator name',
+        '@handle',
+        'YouTube',
+        'KR',
+        '',
+        '',
+        'https://...',
+        '',
+        100000,
+        '',
+        '',
+        '',
+        '',
+        '',
+        '',
+        'Beauty',
+        'cleansing balm',
+        '2026-07-07',
+        '외부 브랜드 모니터 리포트에서 받은 크리에이터 행',
+      ],
+      [
+        'video_monitor_data',
+        'Video Monitor Data',
+        'row-002',
+        'Monitor Project Details',
+        '예: BANILA CO',
+        '예: creator name',
+        '@handle',
+        'Instagram',
+        'KR',
+        '콘텐츠 제목',
+        'https://...',
+        '',
+        '2026-07-01',
+        250000,
+        850000,
+        32000,
+        410,
+        1200,
+        900,
+        '3.8%',
+        'Beauty',
+        'cleansing balm',
+        '2026-07-07',
+        '영상 성과/일자별 변화 raw',
+      ],
+      [
+        'video_monitor_workbench',
+        'Video Monitor Workbench',
+        'row-003',
+        'Delta Ranking',
+        '예: competitor brand',
+        '',
+        '',
+        'TikTok',
+        'US',
+        '벤치마크 콘텐츠',
+        'https://...',
+        '',
+        '',
+        '',
+        1200000,
+        90000,
+        1800,
+        7000,
+        '',
+        '8.2%',
+        'Benchmark',
+        'viral creative',
+        '2026-07-07',
+        '워크벤치 랭킹/기여도 raw',
+      ],
+    ])
+    showToast('외부 리포트 raw 통합 양식을 다운로드했어요.')
   }
 
   const activeDataRoomDetail =
@@ -9013,6 +9124,14 @@ function App() {
     if (!reference) return
 
     const material = buildProductionReferenceMaterial(reference, brandBrief, selectedCampaign)
+    setReferenceGuideUsage({
+      referenceId: reference.id,
+      referenceTitle: reference.title,
+      campaignName: selectedCampaign?.name ?? '선택 캠페인',
+      sourceUrl: reference.url,
+      sourceLabel: material.sourceName,
+      material,
+    })
 
     updateWorkspace((current) =>
       appendActivity(
@@ -9360,6 +9479,7 @@ function App() {
             scopes={dataRoomScopes}
             importStatus={dataRoomImportStatus}
             onImportExternalReport={handleExternalReportImport}
+            onDownloadExternalReportTemplate={downloadExternalReportTemplate}
             apiStatus={dataRoomApiStatus}
             onRefreshApiStatus={refreshDataRoomApiStatus}
             apiEvents={dataRoomApiEvents}
@@ -11319,6 +11439,30 @@ function App() {
                     </div>
                   </article>
                 ))}
+              </div>
+            )}
+            {referenceGuideUsage && (
+              <div className="production-reference-usage">
+                <div>
+                  <span className="mini-label">Guide Usage Preview</span>
+                  <strong>{referenceGuideUsage.referenceTitle}</strong>
+                  <p>
+                    {referenceGuideUsage.campaignName} 가이드의 브랜드 학습자료에 추가됐고, 다음 가이드 생성부터 후킹/컷 구성/CTA 변형 재료로 사용됩니다.
+                  </p>
+                </div>
+                <div className="reference-usage-grid">
+                  <article>
+                    <span>원천</span>
+                    <strong>{referenceGuideUsage.sourceLabel}</strong>
+                    <small>{referenceGuideUsage.sourceUrl || '링크 미입력'}</small>
+                  </article>
+                  <article>
+                    <span>가이드 적용 방식</span>
+                    <strong>구조 차용 · 문안 재작성</strong>
+                    <small>원본 자막/구도/문장은 복제하지 않고 문제 제기, 제품 등장, 근거, CTA 순서만 변형합니다.</small>
+                  </article>
+                </div>
+                <pre>{referenceGuideUsage.material.doSay}</pre>
               </div>
             )}
           </div>
