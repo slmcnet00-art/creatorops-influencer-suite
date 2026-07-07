@@ -11726,6 +11726,7 @@ function App() {
             <div className="tracking-metrics">
               <Stat label="추적 콘텐츠" value={`${selectedCampaignTrackedPosts.length}건`} />
               <Stat label="조회수" value={compactNumber(selectedCampaignTrackedTotals.views)} />
+              <Stat label="좋아요" value={compactNumber(selectedCampaignTrackedTotals.likes)} />
               <Stat label="댓글" value={compactNumber(selectedCampaignTrackedTotals.comments)} />
               <Stat label="공유" value={compactNumber(selectedCampaignTrackedTotals.shares)} />
               <Stat label="저장" value={compactNumber(selectedCampaignTrackedTotals.saves)} />
@@ -11753,6 +11754,27 @@ function App() {
                   </article>
                 )
               })}
+            </div>
+
+            <div className="report-raw-source-grid">
+              <article>
+                <span className="mini-label">RAW-EXT-MON-VIDEO-001</span>
+                <strong>Video Monitor Data API raw</strong>
+                <p>영상별 조회수, 좋아요, 댓글, 공유, 저장, 참여율, 전환, 일별 변화 원천입니다.</p>
+                <small>{selectedCampaignTrackedPosts.length ? `${selectedCampaignTrackedPosts.length}건 콘텐츠가 리포트에 연결됨` : '콘텐츠 추적 링크 등록 대기'}</small>
+              </article>
+              <article>
+                <span className="mini-label">RAW-EXT-MON-INF-001</span>
+                <strong>브랜드 모니터 인플루언서 API raw</strong>
+                <p>브랜드/경쟁사 기준 관련 크리에이터, 언급량, 예상 노출, 평균 조회, 단가 벤치마크 원천입니다.</p>
+                <small>{brandTrackingGroups.length ? `${brandTrackingGroups.length}개 브랜드 모니터링 raw 연결` : '브랜드 검색 및 추적 저장 대기'}</small>
+              </article>
+              <article>
+                <span className="mini-label">계산지표</span>
+                <strong>리포트 표시 지표</strong>
+                <p>MET-SNS-001~006, MET-CONT-001~004, MET-EXT-VIDEO-001~003 기준으로 집계합니다.</p>
+                <small>일별 변화는 API 스냅샷 적재 후 추이 차트로 확장됩니다.</small>
+              </article>
             </div>
 
             <div className="tracked-content-list">

@@ -4945,6 +4945,42 @@
   line-height: 1.4;
 }
 
+
+.report-raw-source-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.report-raw-source-grid article {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 12px;
+}
+
+.report-raw-source-grid strong {
+  display: block;
+  margin: 4px 0 6px;
+  font-size: 14px;
+}
+
+.report-raw-source-grid p,
+.report-raw-source-grid small {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+
+@media (max-width: 900px) {
+  .report-raw-source-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .tracked-content-list {
   display: grid;
   gap: 8px;
