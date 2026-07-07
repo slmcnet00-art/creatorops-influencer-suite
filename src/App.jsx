@@ -2155,19 +2155,22 @@ function getReferenceBrandName(item) {
   }
 }
 
-function isBrandLevelReference(item) {
-  if ((item.referenceKind || item.trackingType) !== 'brand') return false
-  if (item.trackingType === 'competitor' || item.source === 'Brand insight monitoring') return true
-
-  const url = String(item.url || '').toLowerCase()
-  const isContentUrl =
+function isContentReferenceUrl(urlValue = '') {
+  const url = String(urlValue || '').toLowerCase()
+  return (
     url.includes('youtube.com/watch') ||
     url.includes('youtu.be/') ||
     url.includes('instagram.com/reel') ||
     url.includes('instagram.com/p/') ||
-    url.includes('tiktok.com/') && url.includes('/video/')
+    (url.includes('tiktok.com/') && url.includes('/video/'))
+  )
+}
 
-  return !isContentUrl
+function isBrandLevelReference(item) {
+  if ((item.referenceKind || item.trackingType) !== 'brand') return false
+  if (isContentReferenceUrl(item.url)) return false
+  if (item.trackingType === 'competitor' || item.source === 'Brand insight monitoring') return true
+  return true
 }
 
 function isValidReferenceContentUrl(value, platform = inferPlatformFromUrl(value)) {
@@ -8904,8 +8907,13 @@ function App() {
         return
       }
 
+      const rawReferences = payload.references || []
+      const referencesForMode =
+        referenceMode === 'brand'
+          ? rawReferences.filter((item) => item.url && !isContentReferenceUrl(item.url))
+          : rawReferences
       const incoming = normalizeContentReferences(
-        (payload.references || []).map((item, index) => ({
+        referencesForMode.map((item, index) => ({
           ...item,
           id: item.id || `reference-${createId()}-${index}`,
           campaignId: selectedCampaign.id,
@@ -8918,6 +8926,16 @@ function App() {
           savedAt: nowLabel(),
         })),
       )
+      if (!incoming.length) {
+        setReferenceSearchStatus({
+          mode: 'error',
+          message:
+            referenceMode === 'brand'
+              ? '브랜드 홈페이지/공식 계정 후보를 찾지 못했어요. 영상 링크는 콘텐츠 추적에서만 저장됩니다.'
+              : '조건에 맞는 콘텐츠 레퍼런스를 찾지 못했어요.',
+        })
+        return
+      }
       const resultUrls = incoming.map((item) => item.url).filter(Boolean)
       const existingUrls = new Set((contentReferences ?? []).map((item) => String(item.url || '').toLowerCase()))
       const newCount = incoming.filter((item) => !existingUrls.has(String(item.url || '').toLowerCase())).length
@@ -10711,14 +10729,14 @@ function App() {
                         <button
                           className={`brand-insight-row ${active ? 'active' : ''}`}
                           type="button"
-                          key={row.name}
+                          key={`${row.source}-${row.name}-${row.url || index}`}
                           onClick={() => {
                             setSelectedBrandInsightName(row.name)
                             setBrandInsightTab('collection')
                             setBrandInsightView('detail')
                           }}
                         >
-                          <span className="brand-rank-chip">{row.rank || index + 1}</span>
+                          <span className="brand-rank-chip">{index + 1}</span>
                           <span className="brand-row-name">
                             <strong>{row.name}</strong>
                             <small>{row.url}</small>
