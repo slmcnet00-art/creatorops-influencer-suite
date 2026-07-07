@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import {
   AlertTriangle,
   ClipboardList,
@@ -7,6 +8,7 @@ import {
   RefreshCw,
   Search,
   UsersRound,
+  X,
 } from 'lucide-react'
 
 function statusClass(status = '') {
@@ -108,8 +110,15 @@ export default function AdminDataRoom({
   onMetricLog,
   onRecalculate,
 }) {
-  const selectRaw = (rawId) => setSelectedItem({ type: 'raw', id: rawId })
-  const selectMetric = (metricId) => setSelectedItem({ type: 'metric', id: metricId })
+  const [detailOpen, setDetailOpen] = useState(false)
+  const selectRaw = (rawId) => {
+    setSelectedItem({ type: 'raw', id: rawId })
+    setDetailOpen(true)
+  }
+  const selectMetric = (metricId) => {
+    setSelectedItem({ type: 'metric', id: metricId })
+    setDetailOpen(true)
+  }
 
   return (
     <section className="data-room-page">
@@ -449,13 +458,20 @@ export default function AdminDataRoom({
           </section>
         </div>
 
-        <aside className="panel data-room-detail-panel">
+        {detailOpen && activeDetail && (
+        <div className="modal-backdrop data-room-detail-backdrop" role="presentation" onMouseDown={() => setDetailOpen(false)}>
+        <aside className="panel data-room-detail-panel data-room-detail-modal" role="dialog" aria-modal="true" onMouseDown={(event) => event.stopPropagation()}>
           <div className="panel-heading">
             <div>
               <span className="mini-label">Detail Inspector</span>
               <h2>{selectedItem.type === 'metric' ? '지표 상세' : 'Raw 데이터 상세'}</h2>
             </div>
-            <StatusPill status={activeDetail?.status} />
+            <div className="panel-heading-actions">
+              <StatusPill status={activeDetail?.status} />
+              <button className="icon-button" type="button" title="닫기" onClick={() => setDetailOpen(false)}>
+                <X size={18} />
+              </button>
+            </div>
           </div>
 
           {activeDetail && selectedItem.type === 'raw' && (
@@ -510,6 +526,8 @@ export default function AdminDataRoom({
             </div>
           )}
         </aside>
+        </div>
+        )}
       </section>
     </section>
   )

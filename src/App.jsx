@@ -4078,6 +4078,7 @@ function App() {
     workspace.campaigns.find((campaign) => campaign.brandId === workspace.activeBrandId)?.id ?? workspace.campaigns[0]?.id,
   )
   const [activeSection, setActiveSection] = useState('dashboard')
+  const [campaignDetailMode, setCampaignDetailMode] = useState(false)
   const [toast, setToast] = useState('')
   const [modal, setModal] = useState(null)
   const [youtubeSyncing, setYoutubeSyncing] = useState(false)
@@ -4253,6 +4254,7 @@ function App() {
   const [creatorGroupQuery, setCreatorGroupQuery] = useState('')
   const [creatorGroupTypeFilter, setCreatorGroupTypeFilter] = useState('전체')
   const [selectedCreatorGroupId, setSelectedCreatorGroupId] = useState(defaultCreatorGroups[0]?.id ?? '')
+  const [selectedCreatorGroupMemberIds, setSelectedCreatorGroupMemberIds] = useState([])
   const [dataRoomRawTab, setDataRoomRawTab] = useState('전체')
   const [dataRoomRawStatus, setDataRoomRawStatus] = useState('전체')
   const [dataRoomRawCategory, setDataRoomRawCategory] = useState('전체')
@@ -4713,6 +4715,13 @@ function App() {
     () => (selectedCreatorGroup ? getCreatorsByIds(creators, selectedCreatorGroup.creatorIds || []) : []),
     [creators, selectedCreatorGroup],
   )
+  const selectedCreatorGroupMembers = useMemo(
+    () => selectedCreatorGroupCreators.filter((creator) => selectedCreatorGroupMemberIds.includes(creator.id)),
+    [selectedCreatorGroupCreators, selectedCreatorGroupMemberIds],
+  )
+  const allCreatorGroupMembersSelected =
+    selectedCreatorGroupCreators.length > 0 &&
+    selectedCreatorGroupCreators.every((creator) => selectedCreatorGroupMemberIds.includes(creator.id))
   const candidatePoolAllCreators = useMemo(() => {
     return getCreatorsByIds(creators, shortlist)
   }, [creators, shortlist])
@@ -5101,6 +5110,61 @@ function App() {
     ],
   )
 
+  const dashboardActionItems = useMemo(
+    () => [
+      {
+        label: '캠페인 기준 확인',
+        title: selectedCampaign ? selectedCampaign.name : '캠페인을 먼저 선택하세요',
+        detail: selectedCampaign
+          ? `${selectedCampaign.status} · 마감 ${selectedCampaign.deadline} · 목표 ${getCampaignRecommendationTarget(selectedCampaign)}명`
+          : '발굴, 메시지, 리포트는 캠페인 기준으로 이어집니다.',
+        action: '캠페인 열기',
+        enabled: Boolean(selectedCampaign),
+        onClick: () => selectedCampaign && openCampaign(selectedCampaign),
+      },
+      {
+        label: '후보 발굴',
+        title: `${selectedCampaignRecommendations.length}/${getCampaignRecommendationTarget(selectedCampaign)}명 추천 완료`,
+        detail: filteredCreators.length
+          ? `검색 풀 ${filteredCreators.length}명 · 메시지 전 후보 ${candidatePoolCreators.length}명`
+          : '브리프 기준으로 실제 후보 검색을 먼저 실행하세요.',
+        action: '발굴로 이동',
+        enabled: true,
+        onClick: () => setActiveSection('discovery'),
+      },
+      {
+        label: '메시지 발송',
+        title: `${selectedCampaignOutreach.length}건 검토 대상`,
+        detail: `${filteredCampaignOutreach.length}건 표시 · 이메일 ${selectedEmailOutreachItems.length}건 · DM ${selectedDmOutreachItems.length}건`,
+        action: '메시지 열기',
+        enabled: true,
+        onClick: () => setActiveSection('messages'),
+      },
+      {
+        label: '콘텐츠/브랜드 추적',
+        title: `${selectedCampaignTrackedPosts.length}건 콘텐츠 추적 · ${brandTrackingGroups.length}개 브랜드 저장`,
+        detail: selectedCampaignTrackedPosts.length
+          ? '업로드 링크 성과와 경쟁/레퍼런스 변화를 같이 확인합니다.'
+          : '업로드 링크를 등록하면 리포트와 레퍼런스 분석에 반영됩니다.',
+        action: '리포트 보기',
+        enabled: true,
+        onClick: () => setActiveSection('report'),
+      },
+    ],
+    [
+      brandTrackingGroups.length,
+      candidatePoolCreators.length,
+      filteredCampaignOutreach.length,
+      filteredCreators.length,
+      selectedCampaign,
+      selectedCampaignOutreach.length,
+      selectedCampaignRecommendations.length,
+      selectedCampaignTrackedPosts.length,
+      selectedDmOutreachItems.length,
+      selectedEmailOutreachItems.length,
+    ],
+  )
+
   const dataRoomRawData = useMemo(
     () =>
       buildDataRoomExtendedRawCatalog({
@@ -5395,9 +5459,9 @@ function App() {
       description: `${selectedCampaign?.name ?? activeBrand.name} 제작에 차용할 영상/이미지 레퍼런스`,
     },
     groups: {
-      eyebrow: 'Candidate Segments',
-      title: '후보 그룹·세그먼트 관리',
-      description: '메시지 발송 전 후보를 목적별 세그먼트로 묶고 후보 풀, 캠페인, 메시지에 연결',
+      eyebrow: 'Reusable Candidate Groups',
+      title: '재사용 후보 그룹',
+      description: '반복 섭외 가능한 크리에이터 묶음을 저장하고 캠페인/메시지로 다시 연결',
     },
     dataRoom: {
       eyebrow: 'Admin Data Room',
@@ -7285,7 +7349,44 @@ function App() {
   const openCampaign = (campaign) => {
     setSelectedCampaignId(campaign.id)
     setCampaignEditDraft(null)
-    setModal({ type: 'campaign', campaignId: campaign.id })
+    setCampaignDetailMode(true)
+    setActiveSection('campaigns')
+    setModal(null)
+  }
+
+  const closeCampaignDetail = () => {
+    setCampaignEditDraft(null)
+    setCampaignDetailMode(false)
+  }
+
+  const deleteCampaign = (campaignId) => {
+    const target = campaigns.find((campaign) => campaign.id === campaignId)
+    if (!target) return
+    if (!window.confirm(`${target.name} 캠페인을 삭제할까요? 연결된 메시지, 섭외 완료 풀, 배송/정산, 추적 콘텐츠도 함께 정리됩니다.`)) return
+
+    const nextCampaigns = campaigns.filter((campaign) => campaign.id !== campaignId)
+    const nextSelectedCampaign =
+      nextCampaigns.find((campaign) => campaign.brandId === activeBrand.id) ?? nextCampaigns[0]
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          campaigns: current.campaigns.filter((campaign) => campaign.id !== campaignId),
+          recommendations: current.recommendations.filter((item) => item.campaignId !== campaignId),
+          outreach: current.outreach.filter((item) => item.campaignId !== campaignId),
+          recruitedPool: current.recruitedPool.filter((item) => item.campaignId !== campaignId),
+          fulfillmentRecords: current.fulfillmentRecords.filter((item) => item.campaignId !== campaignId),
+          trackedPosts: current.trackedPosts.filter((item) => item.campaignId !== campaignId),
+        },
+        'campaign',
+        `${target.name} 캠페인 삭제`,
+      ),
+    )
+    setSelectedCampaignId(nextSelectedCampaign?.id)
+    setCampaignEditDraft(null)
+    setCampaignDetailMode(false)
+    showToast(`${target.name} 캠페인을 삭제했어요.`)
   }
 
   const buildCampaignEditDraft = (campaign = {}) => ({
@@ -8542,6 +8643,51 @@ function App() {
     showToast(`${selectedCampaign.name}에 ${creatorIds.length}명을 배정했습니다.`)
   }
 
+  const toggleCreatorGroupMemberSelection = (creatorId) => {
+    setSelectedCreatorGroupMemberIds((current) =>
+      current.includes(creatorId) ? current.filter((id) => id !== creatorId) : [...current, creatorId],
+    )
+  }
+
+  const toggleAllCreatorGroupMembers = () => {
+    if (!selectedCreatorGroupCreators.length) return
+    const currentGroupIds = selectedCreatorGroupCreators.map((creator) => creator.id)
+    setSelectedCreatorGroupMemberIds((current) => {
+      const currentWithoutGroup = current.filter((id) => !currentGroupIds.includes(id))
+      return allCreatorGroupMembersSelected ? currentWithoutGroup : [...currentWithoutGroup, ...currentGroupIds]
+    })
+  }
+
+  const assignSelectedCreatorGroupMembersToCampaign = () => {
+    if (!selectedCampaign) {
+      showToast('선택 인원을 배정할 캠페인을 먼저 선택하세요.')
+      return
+    }
+
+    const creatorIds = selectedCreatorGroupMembers.map((creator) => creator.id)
+    if (!creatorIds.length) {
+      showToast('캠페인에 배정할 후보를 먼저 선택하세요.')
+      return
+    }
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          campaigns: current.campaigns.map((campaign) =>
+            campaign.id === selectedCampaign.id
+              ? { ...campaign, creatorIds: Array.from(new Set([...(campaign.creatorIds ?? []), ...creatorIds])) }
+              : campaign,
+          ),
+        },
+        'campaign',
+        `${selectedCampaign.name} 캠페인에 후보 그룹 선택 인원 ${creatorIds.length}명 배정`,
+      ),
+    )
+    showToast(`${selectedCampaign.name}에 선택한 ${creatorIds.length}명을 배정했습니다.`)
+    setSelectedCreatorGroupMemberIds((current) => current.filter((id) => !creatorIds.includes(id)))
+  }
+
   const saveBrandForMonitoring = (brandRow) => {
     if (!selectedCampaign) {
       showToast('브랜드를 저장할 캠페인을 먼저 선택하세요.')
@@ -9003,14 +9149,6 @@ function App() {
           )}
         </nav>
 
-        <div className="team-block">
-          <span className="mini-label">Team Access</span>
-          <strong>{accounts.length}개 계정 · {accessibleBrands.length}개 브랜드 접근</strong>
-          <div className="team-meter">
-            <span style={{ width: `${Math.min(40 + accounts.length * 12 + accessibleBrands.length * 8, 94)}%` }} />
-          </div>
-          <p>{currentRole.description}</p>
-        </div>
         <div className="sidebar-bottom-actions">
           <button
             className={`sidebar-settings-button ${visibleSection === 'settings' ? 'active' : ''}`}
@@ -9096,6 +9234,36 @@ function App() {
 
         {visibleSection === 'dashboard' && (
           <>
+            <section className="dashboard-action-board" aria-label="오늘의 운영 액션">
+              <div className="dashboard-action-head">
+                <div>
+                  <span className="mini-label">Next Actions</span>
+                  <h2>오늘 먼저 처리할 일</h2>
+                </div>
+                <p>캠페인 기준으로 발굴, 후보 저장, 메시지 발송, 성과 추적을 이어서 진행합니다.</p>
+              </div>
+              <div className="dashboard-action-list">
+                {dashboardActionItems.map((item, index) => (
+                  <article className="dashboard-action-card" key={item.label}>
+                    <span className="dashboard-action-index">{index + 1}</span>
+                    <div>
+                      <small>{item.label}</small>
+                      <strong>{item.title}</strong>
+                      <p>{item.detail}</p>
+                    </div>
+                    <button
+                      className={index === 0 ? 'primary-button compact-button' : 'secondary-button compact-button'}
+                      type="button"
+                      disabled={!item.enabled}
+                      onClick={item.onClick}
+                    >
+                      {item.action}
+                    </button>
+                  </article>
+                ))}
+              </div>
+            </section>
+
             <section className="workflow-strip" aria-label="인플루언서 운영 흐름">
               {workflowSignals.map((signal) => (
                 <WorkflowSignal key={signal.label} signal={signal} />
@@ -9470,9 +9638,9 @@ function App() {
                 <h2>발굴 조건 준비</h2>
               </div>
               <div className="panel-heading-actions">
-                <button className="primary-button compact-button" type="button" onClick={runAiDiscovery}>
-                  <Target size={16} />
-                  AI 매칭 실행
+                <button className="primary-button compact-button" type="button" onClick={runRealDiscoverySearch} disabled={realDiscoverySearching}>
+                  <Search size={16} />
+                  {realDiscoverySearching ? '검색 중' : '실제 웹 발굴'}
                 </button>
               </div>
             </div>
@@ -9633,7 +9801,7 @@ function App() {
                 <div className="empty-state compact-empty">
                   <Target size={22} />
                   <strong>아직 AI 추천 결과가 없습니다.</strong>
-                  <p>2단계 실제 후보 발굴을 먼저 실행한 뒤, 1단계의 AI 매칭 실행 버튼을 누르세요.</p>
+                  <p>2단계 크리에이터 발굴에서 실제 웹 발굴을 실행한 뒤, AI 매칭 실행 버튼을 누르세요.</p>
                 </div>
               ) : (
                 selectedCampaignRecommendations.map((recommendation) => (
@@ -9692,9 +9860,9 @@ function App() {
                   <Plus size={16} />
                   후보 등록
                 </button>
-                <button className="primary-button compact-button" type="button" onClick={runRealDiscoverySearch} disabled={realDiscoverySearching}>
-                  <Search size={16} />
-                  {realDiscoverySearching ? '검색 중' : '실제 웹 발굴'}
+                <button className="primary-button compact-button" type="button" onClick={runAiDiscovery}>
+                  <Target size={16} />
+                  AI 매칭 실행
                 </button>
               </div>
             </div>
@@ -9793,10 +9961,6 @@ function App() {
                 </div>
               )}
               <div className="real-discovery-actions">
-                <button className="primary-button compact-button" type="button" onClick={runRealDiscoverySearch} disabled={realDiscoverySearching}>
-                  <Search size={16} />
-                  {realDiscoverySearching ? '검색 중' : '실제 검색'}
-                </button>
                 <button
                   className="secondary-button compact-button"
                   type="button"
@@ -10225,13 +10389,31 @@ function App() {
         <section className="panel creator-groups-panel">
           <div className="panel-heading">
             <div>
-              <span className="mini-label">Candidate Segments</span>
-              <h2>후보 그룹·세그먼트 관리</h2>
+              <span className="mini-label">Reusable Candidate Groups</span>
+              <h2>재사용 후보 그룹</h2>
             </div>
             <button className="primary-button compact-button" type="button" onClick={createCreatorGroup}>
               <Plus size={15} />
               새 후보 그룹 만들기
             </button>
+          </div>
+
+          <div className="creator-group-position-note">
+            <article>
+              <span>메시지 전 후보 풀</span>
+              <strong>이번 캠페인 발송 대기열</strong>
+              <p>발굴에서 고른 후보를 캠페인 기준으로 잠시 모아 제안 메시지를 만드는 곳입니다.</p>
+            </article>
+            <article>
+              <span>재사용 후보 그룹</span>
+              <strong>반복 섭외용 저장 폴더</strong>
+              <p>좋았던 후보를 주제, 채널, 성과 기준으로 묶어 다음 캠페인에도 다시 쓰는 운영 자산입니다.</p>
+            </article>
+            <article>
+              <span>위치 기준</span>
+              <strong>발굴 다음, 메시지 전</strong>
+              <p>레퍼런스는 콘텐츠 아이디어 저장소이고, 후보 그룹은 사람/계정 풀이라 현재 흐름에 두는 게 맞습니다.</p>
+            </article>
           </div>
 
           <div className="creator-group-summary">
@@ -10351,17 +10533,30 @@ function App() {
                   <span>{selectedCreatorGroupCreators.length}명</span>
                 </div>
                 <div className="creator-group-detail-actions">
+                  <button className="secondary-button compact-button" type="button" onClick={toggleAllCreatorGroupMembers} disabled={!selectedCreatorGroupCreators.length}>
+                    {allCreatorGroupMembersSelected ? '선택 해제' : '멤버 전체 선택'}
+                  </button>
                   <button className="secondary-button compact-button" type="button" onClick={() => addCreatorGroupToCandidatePool(selectedCreatorGroup)}>
                     후보 풀 저장
                   </button>
                   <button className="primary-button compact-button" type="button" onClick={() => assignCreatorGroupToCampaign(selectedCreatorGroup)}>
-                    캠페인 배정
+                    그룹 전체 배정
+                  </button>
+                  <button className="primary-button compact-button" type="button" onClick={assignSelectedCreatorGroupMembersToCampaign} disabled={!selectedCreatorGroupMembers.length}>
+                    선택 {selectedCreatorGroupMembers.length}명 캠페인 배정
                   </button>
                 </div>
                 {selectedCreatorGroupCreators.length ? (
                   <div className="creator-group-member-list">
                     {selectedCreatorGroupCreators.map((creator) => (
                       <article className="creator-group-member-row" key={creator.id}>
+                        <label className="creator-group-member-check" aria-label={`${creator.name} 선택`}>
+                          <input
+                            type="checkbox"
+                            checked={selectedCreatorGroupMemberIds.includes(creator.id)}
+                            onChange={() => toggleCreatorGroupMemberSelection(creator.id)}
+                          />
+                        </label>
                         <img src={creator.avatar} alt="" />
                         <div>
                           <strong>{creator.name}</strong>
@@ -11139,6 +11334,227 @@ function App() {
               </div>
             </div>
 
+            {campaignDetailMode && activeCampaignForModal ? (
+              <div className="campaign-detail-page-shell">
+                <div className="campaign-detail-page-toolbar">
+                  <button className="secondary-button compact-button" type="button" onClick={closeCampaignDetail}>
+                    목록으로
+                  </button>
+                  <div>
+                    <span className="mini-label">Campaign Detail</span>
+                    <strong>{activeCampaignForModal.name}</strong>
+                    <p>{activeCampaignForModal.objective} · {activeCampaignForModal.owner} · 마감 {activeCampaignForModal.deadline ?? '미정'}</p>
+                  </div>
+                  <div className="campaign-detail-page-actions">
+                    {campaignEditDraft ? (
+                      <>
+                        <button className="primary-button compact-button" type="button" onClick={saveCampaignEdit}>
+                          <CheckCircle2 size={16} />
+                          수정 저장
+                        </button>
+                        <button className="secondary-button compact-button" type="button" onClick={() => setCampaignEditDraft(null)}>
+                          취소
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        className="secondary-button compact-button"
+                        type="button"
+                        onClick={() => setCampaignEditDraft(buildCampaignEditDraft(activeCampaignForModal))}
+                      >
+                        <SlidersHorizontal size={16} />
+                        캠페인 수정
+                      </button>
+                    )}
+                    <button className="danger-button compact-button" type="button" onClick={() => deleteCampaign(activeCampaignForModal.id)}>
+                      캠페인 삭제
+                    </button>
+                  </div>
+                </div>
+
+                {campaignEditDraft && (
+                  <div className="campaign-edit-panel">
+                    <div>
+                      <span className="mini-label">Edit Campaign</span>
+                      <strong>캠페인 입력값 수정</strong>
+                      <p>저장하면 상세, 발굴 조건, 리포트 KPI 기준에 바로 반영됩니다.</p>
+                    </div>
+                    <div className="modal-two-col">
+                      <label>
+                        캠페인명
+                        <input value={campaignEditDraft.name} onChange={(event) => updateCampaignEditField('name', event.target.value)} />
+                      </label>
+                      <label>
+                        제품/서비스
+                        <input value={campaignEditDraft.product} onChange={(event) => updateCampaignEditField('product', event.target.value)} />
+                      </label>
+                    </div>
+                    <div className="modal-two-col">
+                      <label>
+                        타깃
+                        <input value={campaignEditDraft.targetPersona} onChange={(event) => updateCampaignEditField('targetPersona', event.target.value)} />
+                      </label>
+                      <label>
+                        검색 키워드
+                        <input value={campaignEditDraft.searchKeywords} onChange={(event) => updateCampaignEditField('searchKeywords', event.target.value)} />
+                      </label>
+                    </div>
+                    <div className="campaign-edit-schedule-grid">
+                      <label>
+                        모집 시작일
+                        <input value={campaignEditDraft.recruitStartDate} onChange={(event) => updateCampaignEditField('recruitStartDate', event.target.value)} />
+                      </label>
+                      <label>
+                        모집 마감일
+                        <input value={campaignEditDraft.recruitEndDate} onChange={(event) => updateCampaignEditField('recruitEndDate', event.target.value)} />
+                      </label>
+                      <label>
+                        업로드 완료일
+                        <input value={campaignEditDraft.uploadDueDate} onChange={(event) => updateCampaignEditField('uploadDueDate', event.target.value)} />
+                      </label>
+                      <label>
+                        보고 완료일
+                        <input value={campaignEditDraft.reportDueDate} onChange={(event) => updateCampaignEditField('reportDueDate', event.target.value)} />
+                      </label>
+                    </div>
+                    <div className="campaign-edit-schedule-grid">
+                      <label>
+                        목표 조회수
+                        <input inputMode="numeric" value={campaignEditDraft.targetViews} onChange={(event) => updateCampaignEditField('targetViews', event.target.value)} />
+                      </label>
+                      <label>
+                        목표 전환
+                        <input inputMode="numeric" value={campaignEditDraft.targetConversions} onChange={(event) => updateCampaignEditField('targetConversions', event.target.value)} />
+                      </label>
+                      <label>
+                        AI 추천 목표 인원
+                        <input inputMode="numeric" value={campaignEditDraft.recommendationTargetCount} onChange={(event) => updateCampaignEditField('recommendationTargetCount', event.target.value)} />
+                      </label>
+                      <label>
+                        셀러 섭외 목표
+                        <input inputMode="numeric" value={campaignEditDraft.sellerRecruitTarget} onChange={(event) => updateCampaignEditField('sellerRecruitTarget', event.target.value)} />
+                      </label>
+                    </div>
+                    <label>
+                      미션/가이드라인
+                      <textarea value={campaignEditDraft.mission} onChange={(event) => updateCampaignEditField('mission', event.target.value)} />
+                    </label>
+                  </div>
+                )}
+
+                <div className="campaign-stat-strip">
+                  <Stat label="예산" value={won(activeCampaignForModal.budget)} />
+                  <Stat label="집행" value={won(activeCampaignForModal.spend)} />
+                  <Stat label="예상 매출" value={won(activeCampaignForModal.revenue)} />
+                  <Stat label="진행률" value={`${activeCampaignForModal.progress}%`} />
+                  <Stat label={'AI 추천 목표'} value={`${getCampaignRecommendationTarget(activeCampaignForModal)}명`} />
+                  <Stat label="셀러 목표" value={`${activeCampaignForModal.sellerRecruitTarget ?? 0}명`} />
+                </div>
+
+                <div className="campaign-schedule-timeline">
+                  <div className="campaign-schedule-head">
+                    <div>
+                      <span className="mini-label">Campaign Schedule</span>
+                      <strong>모집부터 보고까지 일정</strong>
+                    </div>
+                    <span className="campaign-context-chip">마감 {activeCampaignForModal.deadline ?? '미정'}</span>
+                  </div>
+                  <div className="campaign-schedule-steps">
+                    {getCampaignSchedule(activeCampaignForModal).map((step, index) => (
+                      <article className={step.date ? '' : 'schedule-empty'} key={step.key}>
+                        <span>{index + 1}</span>
+                        <div>
+                          <strong>{step.label}</strong>
+                          <p>{step.date || '일정 미정'}</p>
+                          <small>{step.helper}</small>
+                        </div>
+                      </article>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="campaign-playbook">
+                  <article>
+                    <span>제품/서비스</span>
+                    <p>{activeCampaignForModal.product || brandBrief.product || '제품/서비스 미입력'}</p>
+                  </article>
+                  <article>
+                    <span>타깃/검색 키워드</span>
+                    <p>{[activeCampaignForModal.targetPersona, activeCampaignForModal.searchKeywords].filter(Boolean).join(' · ') || '타깃/키워드 미입력'}</p>
+                  </article>
+                  <article>
+                    <span>후보 조건</span>
+                    <p>{[
+                      activeCampaignForModal.preferredPlatforms,
+                      activeCampaignForModal.minFollowers ? `최소 ${compactNumber(activeCampaignForModal.minFollowers)} 팔로워` : '',
+                      activeCampaignForModal.maxCreatorFee ? `최대 ${won(activeCampaignForModal.maxCreatorFee)}` : '',
+                    ].filter(Boolean).join(' · ') || '브랜드 공통 프로필의 기본 발굴 조건 사용'}</p>
+                  </article>
+                  <article>
+                    <span>KPI 목표</span>
+                    <p>{activeCampaignForModal.kpiGoal ?? '조회수/전환 KPI 미정'}</p>
+                  </article>
+                  <article>
+                    <span>미션/가이드라인</span>
+                    <p>{activeCampaignForModal.mission ?? '캠페인 미션을 아직 입력하지 않았습니다.'}</p>
+                  </article>
+                  <article>
+                    <span>검수/승인 플로우</span>
+                    <p>{activeCampaignForModal.approvalFlow ?? '브리프 전달 → 콘텐츠 검수 → 게시 확인 → 리포트'}</p>
+                  </article>
+                </div>
+
+                <ClientApprovalBoard
+                  campaign={activeCampaignForModal}
+                  poolItems={campaignModalPool}
+                  creators={creators}
+                  trackedPosts={campaignModalTrackedPosts}
+                  trackedTotals={campaignModalTrackedTotals}
+                  averageEngagement={campaignModalAverageEngagement}
+                  kpi={campaignModalKpi}
+                  onReport={() => jumpTo('report')}
+                />
+
+                <section className="campaign-ops-detail">
+                  <div className="campaign-ops-detail-head">
+                    <div>
+                      <span className="mini-label">Logistics</span>
+                      <strong>이 캠페인의 배송/수동 정산</strong>
+                    </div>
+                    <div className="campaign-ops-actions">
+                      <span className="campaign-context-chip">{campaignModalFulfillment.length}건 · {won(campaignModalFulfillmentAmount)}</span>
+                      <button
+                        className="secondary-button compact-button"
+                        type="button"
+                        onClick={() => openFulfillmentModal(activeCampaignForModal)}
+                      >
+                        <Plus size={15} />
+                        기록 추가
+                      </button>
+                    </div>
+                  </div>
+                  <div className="fulfillment-list compact-list">
+                    {campaignModalFulfillment.length === 0 ? (
+                      <div className="empty-state compact-empty">
+                        <WalletCards size={22} />
+                        <strong>이 캠페인에 연결된 배송/정산 기록이 없습니다.</strong>
+                        <p>기록 추가를 누르면 이 캠페인이 자동으로 선택됩니다.</p>
+                      </div>
+                    ) : (
+                      campaignModalFulfillment.map((item) => (
+                        <FulfillmentItem
+                          key={item.id}
+                          item={item}
+                          creator={creators.find((creator) => creator.id === item.creatorId)}
+                          campaign={activeCampaignForModal}
+                          onAdvance={() => advanceFulfillmentStatus(item.id)}
+                        />
+                      ))
+                    )}
+                  </div>
+                </section>
+              </div>
+            ) : (
             <div className="campaign-list">
               {brandCampaigns.length === 0 ? (
                 <div className="empty-state compact-empty">
@@ -11156,10 +11572,12 @@ function App() {
                     creators={getCreatorsByIds(creators, campaign.creatorIds)}
                     kpiSummary={campaignKpiSummaries.find((summary) => summary.campaignId === campaign.id)}
                     onOpen={() => openCampaign(campaign)}
+                    onDelete={() => deleteCampaign(campaign.id)}
                   />
                 ))
               )}
             </div>
+            )}
           </section>
           )}
           {visibleSection === 'report' && (
@@ -11463,7 +11881,7 @@ function App() {
               <History size={19} />
             </div>
             <div className="activity-list">
-              {activities.slice(0, 8).map((activity) => (
+              {activities.slice(0, 24).map((activity) => (
                 <article className="activity-item" key={activity.id}>
                   <span>{activity.type}</span>
                   <strong>{activity.text}</strong>
@@ -12754,12 +13172,6 @@ function App() {
                   </button>
                 </div>
               </div>
-              <div className="assignment-list">
-                <span className="mini-label">배정 크리에이터</span>
-                {getCreatorsByIds(creators, activeCampaignForModal.creatorIds).map((creator) => (
-                  <span key={creator.id}>{creator.name}</span>
-                ))}
-              </div>
               <ClientApprovalBoard
                 campaign={activeCampaignForModal}
                 poolItems={campaignModalPool}
@@ -12871,35 +13283,56 @@ function App() {
                     {activeOutreachDetailPlan?.shortLabel ?? '수동'}
                   </span>
                 </div>
-                <strong>{activeOutreachDetailCreator?.name ?? '크리에이터 정보 없음'}</strong>
-                <p>{activeOutreachDetailCampaign?.name ?? '캠페인 없음'} · {activeOutreachDetail.createdAt}</p>
+                <strong>💌 {activeOutreachDetailCreator?.name ?? '크리에이터'}에게 보낼 제안 메시지</strong>
+                <p>{activeOutreachDetailCampaign?.name ?? '캠페인 없음'} · {activeOutreachDetail.createdAt} · {activeOutreachDetailPlan?.label ?? '연락 채널 확인'}</p>
               </div>
-              <div className="outreach-detail-grid">
-                <article>
-                  <span>연락 방식</span>
-                  <strong>{activeOutreachDetailPlan?.label ?? '수동 확인'}</strong>
-                  <p>{activeOutreachDetailPlan?.description}</p>
-                </article>
+              <div className="outreach-message-preview friendly-message-preview">
+                <span>메시지 미리보기</span>
+                <pre>{activeOutreachDetail.message}</pre>
+              </div>
+              <div className="outreach-send-card">
+                <div>
+                  <strong>다음 액션</strong>
+                  <p>{activeOutreachDetailPlan?.description || '메시지를 복사한 뒤 연락 채널에서 발송하고 상태를 저장하세요.'}</p>
+                </div>
+                <div className="outreach-detail-actions">
+                  <button className="secondary-button compact-button" type="button" onClick={() => copyOutreachMessage(activeOutreachDetail.message)}>
+                    ✨ 메시지 복사
+                  </button>
+                  {activeOutreachDetailPlan?.url && (
+                    <a className="secondary-button compact-button" href={activeOutreachDetailPlan.url} target="_blank" rel="noreferrer">
+                      <ArrowUpRight size={14} />
+                      채널 열기
+                    </a>
+                  )}
+                  {activeOutreachDetail.status === '승인 대기' && (
+                    <button className="primary-button compact-button" type="button" onClick={() => markOutreachSent(activeOutreachDetail.id)}>
+                      📩 발송 완료
+                    </button>
+                  )}
+                  {activeOutreachDetail.status !== '응답' && (
+                    <button className="secondary-button compact-button" type="button" onClick={() => markOutreachResponse(activeOutreachDetail.id)}>
+                      💬 응답 처리
+                    </button>
+                  )}
+                  {(activeOutreachDetail.status === '응답' || activeOutreachDetail.status === '발송 완료') && (
+                    <button className="primary-button compact-button" type="button" onClick={() => completeRecruitment(activeOutreachDetail.id)}>
+                      ✅ 섭외 완료 저장
+                    </button>
+                  )}
+                </div>
+              </div>
+              <div className="outreach-detail-grid compact-outreach-grid">
                 <article>
                   <span>추천/발송 근거</span>
                   <strong>{activeOutreachDetail.source ?? '수동'}</strong>
                   <p>{activeOutreachDetail.reason || '캠페인 조건에 맞춰 생성한 제안 메시지입니다.'}</p>
                 </article>
-              </div>
-              <div className="outreach-timeline-panel">
-                <div className="timeline-heading">
+                <article>
                   <span>발송/응답 로그</span>
-                  <strong>{buildOutreachTimeline(activeOutreachDetail).length}건 기록</strong>
-                </div>
-                <div className="outreach-timeline-list">
-                  {buildOutreachTimeline(activeOutreachDetail).map((event, index) => (
-                    <article key={`${event.label}-${event.createdAt}-${index}`}>
-                      <span>{event.createdAt}</span>
-                      <strong>{event.label}</strong>
-                      <p>{event.detail}</p>
-                    </article>
-                  ))}
-                </div>
+                  <strong>{buildOutreachTimeline(activeOutreachDetail).length}건</strong>
+                  <p>{buildOutreachTimeline(activeOutreachDetail).map((event) => `${event.label} ${event.createdAt}`).join(' · ')}</p>
+                </article>
               </div>
               <div className="response-note-panel">
                 <label>
@@ -12912,38 +13345,8 @@ function App() {
                   />
                 </label>
                 <button className="secondary-button compact-button" type="button" onClick={() => saveOutreachResponseNote(activeOutreachDetail.id)}>
-                  응답 메모 저장
+                  메모 저장
                 </button>
-              </div>
-              <div className="outreach-message-preview">
-                <span>제안 메시지 전문</span>
-                <pre>{activeOutreachDetail.message}</pre>
-              </div>
-              <div className="outreach-detail-actions">
-                <button className="secondary-button compact-button" type="button" onClick={() => copyOutreachMessage(activeOutreachDetail.message)}>
-                  복사
-                </button>
-                {activeOutreachDetailPlan?.url && (
-                  <a className="secondary-button compact-button" href={activeOutreachDetailPlan.url} target="_blank" rel="noreferrer">
-                    <ArrowUpRight size={14} />
-                    연락 채널 열기
-                  </a>
-                )}
-                {activeOutreachDetail.status === '승인 대기' && (
-                  <button className="secondary-button compact-button" type="button" onClick={() => markOutreachSent(activeOutreachDetail.id)}>
-                    발송 완료
-                  </button>
-                )}
-                {activeOutreachDetail.status !== '응답' && (
-                  <button className="secondary-button compact-button" type="button" onClick={() => markOutreachResponse(activeOutreachDetail.id)}>
-                    응답 처리
-                  </button>
-                )}
-                {(activeOutreachDetail.status === '응답' || activeOutreachDetail.status === '발송 완료') && (
-                  <button className="primary-button compact-button" type="button" onClick={() => completeRecruitment(activeOutreachDetail.id)}>
-                    섭외 완료 풀 저장
-                  </button>
-                )}
               </div>
             </div>
           )}
@@ -13520,7 +13923,7 @@ function RecommendationCard({
   )
 }
 
-function CampaignCard({ campaign, creators, kpiSummary, onOpen }) {
+function CampaignCard({ campaign, creators, kpiSummary, onOpen, onDelete }) {
   return (
     <article className="campaign-row">
       <div className="campaign-main">
@@ -13534,20 +13937,7 @@ function CampaignCard({ campaign, creators, kpiSummary, onOpen }) {
             {campaign.owner} · {creators.length}명 배정
           </p>
         </div>
-        <button className="icon-button" type="button" title="열기" onClick={onOpen}>
-          <ArrowUpRight size={18} />
-        </button>
       </div>
-      <button
-        className="stage-bars stage-button"
-        type="button"
-        aria-label={`${campaign.name} 상세 열기`}
-        onClick={onOpen}
-      >
-        {campaign.stages.map((stage, index) => (
-          <span key={`${campaign.id}-${stage}-${index}`} style={{ height: `${stage + 18}px` }} />
-        ))}
-      </button>
       <div className="campaign-meta">
         <span>
           <CalendarDays size={15} />
@@ -13577,6 +13967,14 @@ function CampaignCard({ campaign, creators, kpiSummary, onOpen }) {
         {creators.slice(0, 3).map((creator) => (
           <span key={creator.id}>{creator.name}</span>
         ))}
+      </div>
+      <div className="campaign-card-actions">
+        <button className="primary-button compact-button" type="button" onClick={onOpen}>
+          캠페인 상세 보기
+        </button>
+        <button className="danger-button compact-button" type="button" onClick={onDelete}>
+          캠페인 삭제
+        </button>
       </div>
       <div className="progress-line">
         <span style={{ width: `${campaign.progress}%` }} />
@@ -13805,7 +14203,7 @@ function ClientApprovalBoard({
         <Stat label="KPI 달성률" value={`${kpi?.progress ?? 0}%`} />
       </div>
       <div className="client-approval-list">
-        {poolItems.slice(0, 6).map((poolItem) => {
+        {poolItems.map((poolItem) => {
           const creator = creators.find((item) => item.id === poolItem.creatorId)
           const quality = getCreatorDataQuality(creator)
           return (
