@@ -2586,6 +2586,41 @@ function exportExcelFile(filename, sheetName, rows) {
   exportFile(filename, 'application/vnd.ms-excel;charset=utf-8', workbook)
 }
 
+function exportExcelWorkbook(filename, sheets) {
+  const worksheets = sheets
+    .map((sheet) => {
+      const safeSheetName = String(sheet.name || 'Sheet')
+        .replace(/[\\/?*[\]:]/g, ' ')
+        .slice(0, 31) || 'Sheet'
+      const xmlRows = sheet.rows
+        .map(
+          (row) =>
+            `<Row>${row
+              .map((cell) => {
+                const isNumber = typeof cell === 'number' && Number.isFinite(cell)
+                return `<Cell><Data ss:Type="${isNumber ? 'Number' : 'String'}">${escapeXml(cell)}</Data></Cell>`
+              })
+              .join('')}</Row>`,
+        )
+        .join('')
+
+      return `<Worksheet ss:Name="${escapeXml(safeSheetName)}"><Table>${xmlRows}</Table></Worksheet>`
+    })
+    .join('')
+
+  const workbook = `<?xml version="1.0" encoding="UTF-8"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:html="http://www.w3.org/TR/REC-html40">
+ ${worksheets}
+</Workbook>`
+
+  exportFile(filename, 'application/vnd.ms-excel;charset=utf-8', workbook)
+}
+
 function rowsToTsv(rows) {
   return rows
     .map((row) =>
@@ -6930,7 +6965,50 @@ function App() {
   }
 
   const exportPerformanceReport = () => {
-    const rows = [
+    const reportName = selectedCampaign?.name ?? activeBrand.name
+    const exportedAt = new Date().toLocaleString('ko-KR')
+    const rawSourceRows = [
+      ['raw_id', 'raw_name', 'scope', 'description', 'storage', 'metric_bundle', 'status'],
+      [
+        'RAW-EXT-MON-VIDEO-001',
+        'Video Monitor Data API raw',
+        'content/video performance',
+        'content-level views, likes, comments, shares, saves, engagement, conversions, daily snapshot values',
+        'external_api_raw(type=video_monitor_data), trackedPosts',
+        'MET-SNS-001~006, MET-CONT-001~004, MET-EXT-VIDEO-001~003',
+        selectedCampaignTrackedPosts.length ? 'connected' : 'pending_content_links',
+      ],
+      [
+        'RAW-EXT-MON-INF-001',
+        'Brand Monitor Influencer API raw',
+        'brand/competitor related creators',
+        'creator rows, mention volume, estimated reach, average views, engagement benchmark, pricing benchmark',
+        'external_api_raw(type=brand_monitor_influencers), brandTrackingGroups',
+        'MET-EXT-BRAND-001~003, MET-EXT-INF-001~003',
+        brandTrackingGroups.length ? 'connected' : 'pending_brand_tracking',
+      ],
+    ]
+
+    const summaryRows = [
+      ['metric', 'value', 'source_raw'],
+      ['brand', activeBrand.name, 'workspace.brands'],
+      ['campaign', reportName, 'workspace.campaigns'],
+      ['exported_at', exportedAt, 'browser_export'],
+      ['tracked_content_count', selectedCampaignTrackedPosts.length, 'RAW-EXT-MON-VIDEO-001'],
+      ['uploaded_creator_count', new Set(selectedCampaignTrackedPosts.map((post) => post.creatorId)).size, 'RAW-EXT-MON-VIDEO-001'],
+      ['views', selectedCampaignTrackedTotals.views, 'RAW-EXT-MON-VIDEO-001'],
+      ['likes', selectedCampaignTrackedTotals.likes, 'RAW-EXT-MON-VIDEO-001'],
+      ['comments', selectedCampaignTrackedTotals.comments, 'RAW-EXT-MON-VIDEO-001'],
+      ['shares', selectedCampaignTrackedTotals.shares, 'RAW-EXT-MON-VIDEO-001'],
+      ['saves', selectedCampaignTrackedTotals.saves, 'RAW-EXT-MON-VIDEO-001'],
+      ['conversions', selectedCampaignTrackedTotals.conversions, 'RAW-EXT-MON-VIDEO-001'],
+      ['average_engagement_rate', percent(selectedCampaignTrackedAverageEngagement), 'RAW-EXT-MON-VIDEO-001'],
+      ['recruited_creator_count', selectedCampaignRecruitedPool.length, 'RAW-INT-INF-001'],
+      ['brand_monitor_count', brandTrackingGroups.length, 'RAW-EXT-MON-INF-001'],
+      ['kpi_progress', `${selectedCampaignKpi?.progress ?? 0}%`, 'calculated_metrics'],
+    ]
+
+    const videoMonitorRows = [
       [
         'campaign',
         'campaign_status',
@@ -6944,7 +7022,7 @@ function App() {
         'creator_data_quality',
         'profile_url',
         'content_title',
-        'url',
+        'content_url',
         'content_status',
         'views',
         'likes',
@@ -6954,10 +7032,12 @@ function App() {
         'content_engagement_rate',
         'conversions',
         'last_checked',
+        'raw_id',
       ],
       ...selectedCampaignTrackedPosts.map((post) => {
         const campaign = brandCampaigns.find((item) => item.id === post.campaignId)
         const creator = creators.find((item) => item.id === post.creatorId)
+        const quality = creator ? getCreatorDataQuality(creator) : null
         return [
           campaign?.name ?? '',
           campaign?.status ?? '',
@@ -6968,7 +7048,7 @@ function App() {
           creator?.followers ?? '',
           creator?.averageViews ?? '',
           creator ? percent(creator.engagement) : '',
-          creator ? `${getCreatorDataQuality(creator).score}% ${getCreatorDataQuality(creator).level}` : '',
+          quality ? `${quality.score}% ${quality.level}` : '',
           creator?.profileUrl ?? '',
           post.title,
           post.url,
@@ -6981,33 +7061,88 @@ function App() {
           percent(contentEngagementRate(post)),
           post.conversions,
           post.lastChecked,
+          'RAW-EXT-MON-VIDEO-001',
         ]
       }),
     ]
-    const csv = rows.map((row) => row.map((cell) => `"${String(cell).replaceAll('"', '""')}"`).join(',')).join('\n')
-    const reportName = selectedCampaign?.name ?? activeBrand.name
-    const topPosts = [...selectedCampaignTrackedPosts]
-      .sort((a, b) => Number(b.views || 0) - Number(a.views || 0))
-      .slice(0, 3)
-    const recruitedRows = selectedCampaignRecruitedPool
-      .map((poolItem) => {
-        const creator = creators.find((item) => item.id === poolItem.creatorId)
-        const quality = getCreatorDataQuality(creator)
-        return `<tr><td>${escapeXml(creator?.name ?? '')}</td><td>${escapeXml(creator?.handle ?? '')}</td><td>${escapeXml(creator?.platform ?? '')}</td><td>${escapeXml(creator ? compactNumber(creator.followers) : '-')}</td><td>${escapeXml(creator ? compactNumber(creator.averageViews) : '-')}</td><td>${escapeXml(creator ? percent(creator.engagement) : '-')}</td><td>${quality.score}% ${escapeXml(quality.level)}</td><td>${escapeXml(poolItem.status)}</td></tr>`
-      })
-      .join('')
-    const topPostRows = topPosts
-      .map((post) => {
-        const creator = creators.find((item) => item.id === post.creatorId)
-        return `<tr><td>${escapeXml(post.title)}</td><td>${escapeXml(creator?.name ?? '')}</td><td><a href="${escapeXml(post.url)}" target="_blank">${escapeXml(post.url)}</a></td><td>${escapeXml(compactNumber(post.views))}</td><td>${escapeXml(percent(contentEngagementRate(post)))}</td><td>${escapeXml(compactNumber(post.conversions))}</td></tr>`
-      })
-      .join('')
-    const enrichedSummary = `<section class="block"><h2>Client Summary</h2><div class="metric"><strong>KPI progress</strong><span>${selectedCampaignKpi?.progress ?? 0}%</span></div><div class="metric"><strong>Recruited creators</strong><span>${selectedCampaignRecruitedPool.length}</span></div><div class="metric"><strong>Avg engagement</strong><span>${percent(selectedCampaignTrackedAverageEngagement)}</span></div><p class="sub">Report scope: ${escapeXml(reportName)} campaign. Recruitment, uploads, and performance are grouped by the selected campaign context.</p></section><section class="block"><h2>Approved Creator Pool</h2><table><thead><tr><th>creator</th><th>handle</th><th>platform</th><th>followers</th><th>average_views</th><th>engagement</th><th>data_quality</th><th>status</th></tr></thead><tbody>${recruitedRows || '<tr><td colspan="8">No recruited creator pool yet.</td></tr>'}</tbody></table></section><section class="block"><h2>Top Content</h2><table><thead><tr><th>content</th><th>creator</th><th>url</th><th>views</th><th>engagement</th><th>conversions</th></tr></thead><tbody>${topPostRows || '<tr><td colspan="6">No tracked content yet.</td></tr>'}</tbody></table></section><section class="block"><h2>Next Actions</h2><ul><li>Prioritize creators with high engagement-to-view efficiency for a second post or TikTok seller conversion.</li><li>Re-verify candidates below 72 data quality points with official APIs, profile snapshots, or upload links.</li><li>Before client delivery, fill missing upload links and refresh latest views/comments/shares.</li></ul></section>`
-    const html = `<!doctype html><html lang="ko"><meta charset="utf-8"><title>CreatorOps Performance Report</title><style>body{font-family:system-ui,sans-serif;margin:32px;color:#15201d}h1{margin-bottom:4px}.sub{color:#66736f;margin:0 0 22px}.metric{display:inline-block;min-width:140px;margin:0 10px 14px 0;padding:12px;border:1px solid #dce4e1;border-radius:8px;background:#f7faf9}.metric strong{display:block;color:#68736f;font-size:12px}.metric span{display:block;margin-top:5px;font-size:22px;font-weight:800}table{border-collapse:collapse;width:100%;font-size:12px}td,th{border:1px solid #dce4e1;padding:8px;text-align:left;vertical-align:top}th{position:sticky;top:0;background:#eef2f1}a{color:#0071e3}</style><h1>CreatorOps 성과 보고서</h1><p class="sub">${activeBrand.name} · ${reportName} · 업로드 인플루언서/계정/링크/성과 지표 상세</p><div class="metric"><strong>업로드 콘텐츠</strong><span>${selectedCampaignTrackedPosts.length}건</span></div><div class="metric"><strong>조회수</strong><span>${compactNumber(selectedCampaignTrackedTotals.views)}</span></div><div class="metric"><strong>댓글</strong><span>${compactNumber(selectedCampaignTrackedTotals.comments)}</span></div><div class="metric"><strong>공유</strong><span>${compactNumber(selectedCampaignTrackedTotals.shares)}</span></div><div class="metric"><strong>전환</strong><span>${compactNumber(selectedCampaignTrackedTotals.conversions)}</span></div><table><thead><tr>${rows[0].map((cell) => `<th>${escapeXml(cell)}</th>`).join('')}</tr></thead><tbody>${rows.slice(1).map((row) => `<tr>${row.map((cell, index) => index === 10 || index === 12 ? `<td><a href="${escapeXml(cell)}" target="_blank">${escapeXml(cell)}</a></td>` : `<td>${escapeXml(cell)}</td>`).join('')}</tr>`).join('')}</tbody></table></html>`
-    exportFile(`creatorops-performance-report-${normalizeHandleSegment(reportName)}.csv`, 'text/csv;charset=utf-8', csv)
-    const enrichedHtml = html.replace('<style>', '<style>.block{margin-top:28px}ul{padding-left:20px;line-height:1.7}').replace('</html>', `${enrichedSummary}</html>`)
-    exportFile(`creatorops-performance-report-${normalizeHandleSegment(reportName)}.html`, 'text/html;charset=utf-8', enrichedHtml)
-    showToast('성과 CSV와 HTML 보고서를 다운로드했어요.')
+
+    const brandMonitorRows = [
+      [
+        'brand_or_competitor',
+        'platforms',
+        'countries',
+        'related_content_count',
+        'estimated_mentions',
+        'estimated_reach_views',
+        'likes',
+        'comments',
+        'shares',
+        'engagement_rate',
+        'latest_source_url',
+        'latest_content_title',
+        'raw_id',
+      ],
+      ...brandTrackingGroups.map((group) => [
+        group.brandName,
+        group.platforms.join(', '),
+        group.countries.join(', '),
+        group.items.length,
+        group.items.length,
+        group.views,
+        group.likes,
+        group.comments,
+        group.shares,
+        group.views ? percent((group.likes + group.comments + group.shares) / group.views) : '0.0%',
+        group.latestItem?.url || '',
+        group.latestItem?.title || '',
+        'RAW-EXT-MON-INF-001',
+      ]),
+    ]
+
+    const dailyChangeRows = [
+      [
+        'snapshot_date',
+        'campaign',
+        'content_title',
+        'content_url',
+        'platform',
+        'views',
+        'likes',
+        'comments',
+        'shares',
+        'saves',
+        'engagement_rate',
+        'raw_id',
+        'note',
+      ],
+      ...selectedCampaignTrackedPosts.map((post) => {
+        const campaign = brandCampaigns.find((item) => item.id === post.campaignId)
+        return [
+          post.lastChecked || exportedAt,
+          campaign?.name ?? reportName,
+          post.title,
+          post.url,
+          post.platform,
+          post.views,
+          post.likes,
+          post.comments,
+          post.shares,
+          post.saves,
+          percent(contentEngagementRate(post)),
+          'RAW-EXT-MON-VIDEO-001',
+          'Current snapshot. Historical daily deltas require scheduled API snapshots.',
+        ]
+      }),
+    ]
+
+    exportExcelWorkbook(`creatorops-monitor-report-${normalizeHandleSegment(reportName)}.xls`, [
+      { name: 'Summary', rows: summaryRows },
+      { name: 'Raw Sources', rows: rawSourceRows },
+      { name: 'Video Monitor Data', rows: videoMonitorRows },
+      { name: 'Brand Monitor Influencers', rows: brandMonitorRows },
+      { name: 'Daily Changes', rows: dailyChangeRows },
+    ])
+    showToast('Report Excel workbook downloaded.')
   }
 
   const getRecommendationRows = () => [
