@@ -5395,6 +5395,52 @@ function App() {
     [reportBrandInfluencerRows],
   )
   const reportUsesExternalRaw = externalVideoReportRows.length > 0 || externalBrandInfluencerRows.length > 0
+  const reportSourceStatus = useMemo(() => {
+    const externalRows = externalVideoReportRows.length + externalBrandInfluencerRows.length
+    const trackedRows = fallbackTrackedReportRows.length
+    const rawIds = [
+      externalVideoReportRows.length ? 'RAW-EXT-MON-VIDEO-001' : null,
+      externalBrandInfluencerRows.length ? 'RAW-EXT-MON-INF-001' : null,
+      !externalVideoReportRows.length && trackedRows ? 'RAW-EXT-CONT-001' : null,
+    ].filter(Boolean)
+    const rowsWithMissingUrl = reportVideoRows.filter((row) => !row.url).length
+    const rowsWithMissingViews = reportVideoRows.filter((row) => !Number(row.views || 0)).length
+    const missingItems = [
+      !reportVideoRows.length ? '콘텐츠 raw' : null,
+      rowsWithMissingUrl ? `URL ${rowsWithMissingUrl}건` : null,
+      rowsWithMissingViews ? `조회수 ${rowsWithMissingViews}건` : null,
+    ].filter(Boolean)
+    const hasApiRefresh = Boolean(backendConfig.apiBaseUrl)
+    const confidence = externalRows
+      ? Math.max(72, Math.min(92, 86 - missingItems.length * 6))
+      : trackedRows
+        ? Math.max(55, Math.min(78, (hasApiRefresh ? 76 : 64) - missingItems.length * 6))
+        : 0
+
+    return {
+      sourceLabel: externalRows ? '외부 리포트 raw' : trackedRows ? '콘텐츠 추적 raw' : hasApiRefresh ? 'API 수집 대기' : '데이터 연결 필요',
+      status: missingItems.length ? '검증 필요' : reportVideoRows.length ? '정상' : '지연',
+      confidence,
+      rawIds,
+      primaryRawId: rawIds[0] || 'RAW-EXT-CONT-001',
+      rowCount: reportVideoRows.length + reportBrandInfluencerRows.length,
+      missingItems,
+      nextAction: reportVideoRows.length
+        ? missingItems.length
+          ? '누락된 URL/조회수는 콘텐츠 추적 등록 또는 리포트 raw 업로드로 보완하세요.'
+          : hasApiRefresh
+            ? 'API 갱신을 눌러 최신 수치를 확인하고 보고서를 다운로드하세요.'
+            : 'API 서버 연결 전까지 현재 raw 스냅샷 기준으로 보고서를 생성합니다.'
+        : '데이터룸에서 Video Monitor Data 리포트를 업로드하거나 콘텐츠 URL을 먼저 등록하세요.',
+    }
+  }, [
+    backendConfig.apiBaseUrl,
+    externalBrandInfluencerRows.length,
+    externalVideoReportRows.length,
+    fallbackTrackedReportRows.length,
+    reportBrandInfluencerRows.length,
+    reportVideoRows,
+  ])
 
   const campaignKpiSummaries = useMemo(
     () =>
@@ -6651,6 +6697,17 @@ function App() {
     }
     setActiveSection(section)
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const openDataRoomRaw = (rawId) => {
+    setSelectedDataRoomItem({ type: 'raw', id: rawId })
+    setDataRoomRawTab('전체')
+    setDataRoomRawStatus('전체')
+    setDataRoomRawCategory('전체')
+    setDataRoomRawMethod('전체')
+    setDataRoomRawOwner('전체')
+    setDataRoomRawQuery('')
+    jumpTo('dataRoom')
   }
 
   const openPracticeTour = () => {
@@ -12406,6 +12463,27 @@ function App() {
               <small>
                 {'\ucf58\ud150\uce20 '}{reportVideoRows.length}{'\uac74 / \uad00\ub828 \ud06c\ub9ac\uc5d0\uc774\ud130 '}{reportBrandInfluencerRows.length}{'\ud589 / \uc870\ud68c\uc218 '}{compactNumber(reportMetricTotals.views)}{' / \ud3c9\uade0 \ucc38\uc5ec\uc728 '}{percent(reportAverageEngagement)}
               </small>
+            </div>
+
+            <div className="report-lineage-panel">
+              <article>
+                <span>수치 원천</span>
+                <strong>{reportSourceStatus.sourceLabel}</strong>
+                <small>{reportSourceStatus.rowCount}개 raw 행 · 신뢰도 {reportSourceStatus.confidence}%</small>
+              </article>
+              <article>
+                <span>검증 상태</span>
+                <strong className={reportSourceStatus.status === '정상' ? 'lineage-ok' : 'lineage-warning'}>{reportSourceStatus.status}</strong>
+                <small>{reportSourceStatus.missingItems.length ? reportSourceStatus.missingItems.join(' · ') : '누락 핵심값 없음'}</small>
+              </article>
+              <article className="report-lineage-next">
+                <span>다음 액션</span>
+                <strong>{reportSourceStatus.nextAction}</strong>
+                <small>{reportSourceStatus.rawIds.length ? reportSourceStatus.rawIds.join(', ') : 'RAW-EXT-CONT-001 대기'}</small>
+              </article>
+              <button className="secondary-button compact-button" type="button" onClick={() => openDataRoomRaw(reportSourceStatus.primaryRawId)}>
+                데이터룸에서 보기
+              </button>
             </div>
 
             {reportBrandInfluencerRows.length > 0 && (

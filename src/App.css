@@ -5027,6 +5027,58 @@
   font-size: 12px;
 }
 
+.report-lineage-panel {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.55fr) minmax(140px, 0.45fr) minmax(220px, 1fr) auto;
+  gap: 10px;
+  align-items: stretch;
+  margin: 10px 18px 0;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #ffffff;
+}
+
+.report-lineage-panel article {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.report-lineage-panel span {
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.report-lineage-panel strong {
+  color: var(--text-strong);
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+.report-lineage-panel small {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.report-lineage-panel .compact-button {
+  align-self: center;
+  white-space: nowrap;
+}
+
+.lineage-ok {
+  color: #047857 !important;
+}
+
+.lineage-warning {
+  color: #b45309 !important;
+}
+
 .report-brand-monitor-list {
   margin: 12px 18px;
   overflow: hidden;
@@ -5081,6 +5133,10 @@
   .report-data-note {
     flex-direction: column;
     align-items: flex-start;
+  }
+
+  .report-lineage-panel {
+    grid-template-columns: 1fr;
   }
 
   .report-brand-monitor-list article {
