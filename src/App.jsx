@@ -3647,7 +3647,7 @@ function buildAdminRawDataCatalog({
       sourceLocation: '발굴, 메시지 전 후보 풀, 캠페인 섭외 완료 풀',
       storageLocation: `${storageBase} / creators, recruitedPool`,
       dashboardArea: '대시보드, 발굴, 캠페인, 메시지',
-      metricIds: ['MET-POOL-001', 'MET-POOL-002', 'MET-POOL-003', 'MET-POOL-004', 'MET-POOL-005'],
+      metricIds: ['MET-POOL-001', 'MET-POOL-002', 'MET-POOL-003', 'MET-POOL-004', 'MET-POOL-005', 'MET-CONT-005'],
       ownerDept: '운영팀',
       opsOwner: 'Creator Manager',
       techOwner: 'Frontend/Data',
@@ -3671,7 +3671,7 @@ function buildAdminRawDataCatalog({
       sourceLocation: '캠페인 상세, 리포트 > 콘텐츠 추적 등록',
       storageLocation: `${storageBase} / campaigns, trackedPosts`,
       dashboardArea: '캠페인, 리포트, 고객사 보고서',
-      metricIds: ['MET-CMP-001', 'MET-CMP-002', 'MET-CMP-003', 'MET-CMP-004'],
+      metricIds: ['MET-CMP-001', 'MET-CMP-002', 'MET-CMP-003', 'MET-CMP-004', 'MET-CONT-005'],
       ownerDept: 'PM/운영팀',
       opsOwner: 'Campaign PM',
       techOwner: 'Frontend/Data',
@@ -3767,7 +3767,7 @@ function buildAdminRawDataCatalog({
       sourceLocation: 'YouTube Data API, Brave Search, public profile snapshot',
       storageLocation: `${storageBase} / creators.metricSources`,
       dashboardArea: '발굴, 메시지 전 후보 풀, 데이터 품질 배지',
-      metricIds: ['MET-POOL-001', 'MET-SNS-006', 'MET-CONT-003'],
+      metricIds: ['MET-POOL-001', 'MET-SNS-006', 'MET-CONT-003', 'MET-CONT-005'],
       ownerDept: '데이터팀',
       opsOwner: 'Data Operator',
       techOwner: 'API/Data',
@@ -3791,7 +3791,7 @@ function buildAdminRawDataCatalog({
       sourceLocation: 'server/index.js profile-snapshot endpoints',
       storageLocation: `${storageBase} / publicSnapshotStatus, metricSources`,
       dashboardArea: '발굴, 리포트, 어드민 데이터룸',
-      metricIds: ['MET-SNS-001', 'MET-CONT-001', 'MET-CONT-002'],
+      metricIds: ['MET-SNS-001', 'MET-CONT-001', 'MET-CONT-002', 'MET-CONT-005'],
       ownerDept: '데이터팀',
       opsOwner: 'Data QA',
       techOwner: 'Backend',
@@ -3908,8 +3908,10 @@ function buildAdminMetricCatalog({ rawData, outreach, creators, campaigns, recru
     campaign: ['RAW-INT-CMP-001', 'RAW-INT-BRD-001'],
     finance: ['RAW-INT-FIN-001'],
     sns: ['RAW-EXT-CONT-001', 'RAW-EXT-ENG-001'],
+    expectedViews: ['RAW-INT-INF-001', 'RAW-INT-CMP-001', 'RAW-EXT-CHN-001', 'RAW-EXT-SNS-001'],
     reference: ['RAW-EXT-REF-001', 'RAW-EXT-BENCH-001'],
   }
+  const expectedViewsTotal = creators.reduce((sum, creator) => sum + Number(creator.averageViews || 0), 0)
   const rows = [
     ['MET-CRM-001', '발송 수', 'CRM 효율 번들', '내부', '발송 완료 상태의 메시지 수', 'count(outreach.status = 발송 완료 or 응답)', rawRefs.crm, '최근 30일', '실시간', '정상', '어드민 대시보드, 메시지', '증가 추세가 정상이나 중복 발송은 별도 경고', '동일 creator/campaign/channel 2회 이상', '높음', '운영팀', 'outreach_events / Gmail send logs', `${outreach.length}건`],
     ['MET-CRM-002', '오픈율', 'CRM 효율 번들', '내부', '이메일 오픈 수 / 발송 수', 'opened_count / sent_count * 100', rawRefs.crm, '최근 30일', '일 1회', '검증 필요', '내부 보고서', 'Gmail/메일 추적 픽셀 연동 전까지 검증 필요', '0% 또는 90% 이상', '중간', '운영/개발', 'mail_tracking_events', '이메일 추적 연동 후 활성'],
@@ -3939,6 +3941,7 @@ function buildAdminMetricCatalog({ rawData, outreach, creators, campaigns, recru
     ['MET-CONT-002', '콘텐츠별 반응률', '콘텐츠 성과 번들', '외부', '콘텐츠별 참여율', 'engagement / views * 100 by content', rawRefs.sns, '캠페인 기간', '매일/즉시', '정상', '리포트 상세', '소형 계정은 변동성 큼', '평균 대비 3표준편차', '중간', '데이터팀', 'metric calculation logs', '콘텐츠별 이상치 확인'],
     ['MET-CONT-003', '채널별 성과 비교', '콘텐츠 성과 번들', '외부', 'YouTube/Instagram/TikTok별 조회/참여 비교', 'groupBy(platform).sum/views/engagement', ['RAW-EXT-CHN-001', 'RAW-EXT-CONT-001'], '캠페인 기간', '일 1회', '정상', '리포트', '플랫폼별 알고리즘 차이를 감안', '한 채널만 80% 이상 편중', '중간', 'PM/데이터', 'platform group metrics', '채널 믹스 최적화에 사용'],
     ['MET-CONT-004', '콘텐츠 성장률', '콘텐츠 성과 번들', '외부', '전일 대비 조회수 증가율', '(views_today-views_yesterday)/views_yesterday*100', ['RAW-EXT-CONT-001'], '최근 7일', '매일', '검증 필요', '리포트', '일별 스냅샷 저장 후 활성화', '음수 전환', '중간', '데이터팀', 'daily_content_snapshots', '스냅샷 테이블 필요'],
+    ['MET-CONT-005', '후보 예상 조회수', '콘텐츠 성과 번들', '외부', '발굴/저장 후보의 평균 조회수를 캠페인 후보 기준으로 합산한 예상 조회수', 'sum(creators.averageViews where candidate matches current campaign/filter)', rawRefs.expectedViews, '현재 캠페인/필터 기준', '후보 검색/필터 변경 시', creators.length ? '검증 필요' : '지연', '대시보드, 발굴', '실제 업로드 성과가 아니라 섭외 전 후보 raw 기반 추정치로 해석', '평균 조회수 0 또는 상위 1개 후보가 예상 조회수의 80% 이상', '중간', 'PM/데이터', 'creator.metricSources + campaign filter logs', `${compactNumber(expectedViewsTotal)} 예상 조회`],
     ['MET-BENCH-001', '레퍼런스 콘텐츠 수', '레퍼런스/벤치마크 번들', '외부', '저장된 제작 레퍼런스 콘텐츠 수', 'count(contentReferences)', ['RAW-EXT-REF-001'], '전체', '실시간', '정상', '레퍼런스', '저장된 레퍼런스만 계산', '0건', '높음', '콘텐츠팀', 'contentReferences', `${contentReferences.length}개`],
     ['MET-BENCH-002', '벤치마크 평균 조회수', '레퍼런스/벤치마크 번들', '외부', '벤치마크 콘텐츠 조회수 평균', 'avg(reference.views)', rawRefs.reference, '최근 30일', '검색/저장 시', contentReferences.length ? '정상' : '지연', '전략, 리포트', '50만 이상 터진 콘텐츠 중심', '평균 5만 미만', '중간', '전략/데이터', 'references/search logs', '검색 품질에 따라 변동'],
     ['MET-BENCH-003', '카테고리별 평균 반응률', '레퍼런스/벤치마크 번들', '외부', '카테고리별 레퍼런스 참여율 평균', 'groupBy(category).avg(engagementRate)', rawRefs.reference, '최근 30일', '주 1회', '검증 필요', '전략, 가이드 생성', '카테고리 태깅 정확도 확인', '태깅 없음 30% 이상', '중간', '전략/데이터', 'benchmark tag logs', '카테고리 태깅 자동화 필요'],
@@ -4310,7 +4313,7 @@ function buildDataRoomWorkflowCoverage({ rawData, metrics }) {
   const rawIds = new Set(rawData.map((item) => item.id))
   const metricIds = new Set(metrics.map((item) => item.id))
   const coverage = [
-    ['WF-DASHBOARD', '대시보드 운영 현황', '대시보드', ['RAW-INT-CRM-001', 'RAW-INT-INF-001', 'RAW-INT-CMP-001', 'RAW-EXT-CONT-001'], ['MET-CRM-004', 'MET-CMP-001', 'MET-SNS-001'], '캠페인/메시지/콘텐츠 성과를 현재 워크스페이스 기준으로 집계', '프론트 카드 수치는 데이터룸 계산지표 기준으로 표시'],
+    ['WF-DASHBOARD', '대시보드 운영 현황', '대시보드', ['RAW-INT-CRM-001', 'RAW-INT-INF-001', 'RAW-INT-CMP-001', 'RAW-EXT-CHN-001', 'RAW-EXT-SNS-001', 'RAW-EXT-CONT-001'], ['MET-CRM-004', 'MET-CMP-001', 'MET-CONT-005', 'MET-SNS-001'], '캠페인/메시지/콘텐츠 성과를 현재 워크스페이스 기준으로 집계', '프론트 카드 수치는 데이터룸 계산지표 기준으로 표시'],
     ['WF-CAMPAIGN', '캠페인 파이프라인', '캠페인', ['RAW-INT-CMP-001', 'RAW-INT-BRD-001', 'RAW-INT-FIN-001'], ['MET-CMP-001', 'MET-CMP-002', 'MET-CMP-004'], '캠페인 브리프, 일정, 섭외 완료, 배송/정산 레코드를 캠페인 ID로 묶음', '캠페인 없는 배송/정산/후보 풀은 노출하지 않음'],
     ['WF-DISCOVERY', '크리에이터 발굴 검색', '발굴', ['RAW-EXT-SEARCH-001', 'RAW-EXT-CHN-001', 'RAW-INT-QUALITY-001'], ['MET-AI-002', 'MET-AI-003'], '검색 원본 결과를 수집하고 국가/플랫폼/최소 팔로워/평균 조회수 기준으로 품질 판정', '데이터룸에 검색 원천이 없으면 실제 발굴 결과로 쓰지 않음'],
     ['WF-AI-RECOMMEND', 'AI 추천 후보와 근거', '발굴', ['RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-001', 'RAW-INT-QUALITY-001'], ['MET-AI-001', 'MET-AI-002', 'MET-AI-003'], '브랜드 브리프와 후보 성과/품질 점수를 조합해 추천 이유와 리스크 생성', '추천 근거에는 사용 raw ID와 품질 점수가 남아야 함'],
@@ -5759,13 +5762,13 @@ function App() {
           contract: { rawIds: ['RAW-INT-INF-001', 'RAW-EXT-CHN-001'], metricIds: ['MET-POOL-001'] },
         },
         {
-          key: 'tracked-views',
+          key: 'expected-views',
           icon: <Eye size={19} />,
-          label: '누적 조회수',
-          value: compactNumber(trackedTotals.views),
-          delta: `${activeTrackedPosts.length}건 콘텐츠`,
-          detail: '콘텐츠 추적 raw 기준',
-          contract: { rawIds: ['RAW-EXT-CONT-001'], metricIds: ['MET-SNS-001'] },
+          label: '예상 조회수',
+          value: compactNumber(totals.views),
+          delta: `${filteredCreators.length}명 후보 평균조회 합산`,
+          detail: '후보 평균조회 raw 기반 추정',
+          contract: { rawIds: ['RAW-INT-INF-001', 'RAW-INT-CMP-001', 'RAW-EXT-CHN-001', 'RAW-EXT-SNS-001'], metricIds: ['MET-CONT-005'] },
         },
         {
           key: 'average-engagement',
@@ -5790,7 +5793,6 @@ function App() {
         .map((card) => ({ ...card, lineage: dataRoomDisplayGate.lineage(card.contract) })),
     [
       activeRecruitedPool.length,
-      activeTrackedPosts.length,
       dataRoomDisplayGate,
       filteredCreators.length,
       reportAverageEngagement,
@@ -5799,7 +5801,7 @@ function App() {
       selectedCampaignKpi,
       shortlist.length,
       totals.reach,
-      trackedTotals.views,
+      totals.views,
     ],
   )
   const reportMetricCards = useMemo(() => {
