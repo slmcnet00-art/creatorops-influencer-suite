@@ -1211,6 +1211,11 @@
   background: rgba(255, 255, 255, 0.72);
 }
 
+.production-reference-list article.is-selected {
+  border-color: rgba(0, 113, 227, 0.42);
+  background: rgba(0, 113, 227, 0.08);
+}
+
 .production-reference-actions {
   flex-shrink: 0;
   gap: 8px;
@@ -1273,6 +1278,11 @@
   line-height: 1.55;
   white-space: pre-wrap;
   padding: 12px;
+}
+
+.production-reference-usage-actions {
+  display: flex;
+  justify-content: flex-end;
 }
 
 .reference-card {

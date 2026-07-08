@@ -9499,7 +9499,7 @@ function App() {
     )
   }
 
-  const borrowReferenceForGuide = (reference) => {
+  const analyzeReferenceForGuide = (reference) => {
     if (!reference) return
 
     const material = buildProductionReferenceMaterial(reference, brandBrief, selectedCampaign)
@@ -9511,7 +9511,17 @@ function App() {
       sourceLabel: material.sourceName,
       material,
     })
+    showToast('제작 레퍼런스 분석을 열었어요. 내용을 확인한 뒤 가이드에 차용하세요.')
+  }
 
+  const borrowReferenceForGuide = () => {
+    if (!referenceGuideUsage) return
+
+    const material = {
+      ...referenceGuideUsage.material,
+      id: createId(),
+      createdAt: nowLabel(),
+    }
     updateWorkspace((current) =>
       appendActivity(
         {
@@ -9529,7 +9539,7 @@ function App() {
           ),
         },
         'reference',
-        `${reference.title} 제작 레퍼런스를 브랜드 학습자료에 차용`,
+        `${referenceGuideUsage.referenceTitle} 제작 레퍼런스를 브랜드 학습자료에 차용`,
       ),
     )
     showToast('제작 레퍼런스를 브랜드 학습자료에 차용했어요.')
@@ -11804,14 +11814,14 @@ function App() {
             ) : (
               <div className="production-reference-list">
                 {savedProductionReferences.map((item) => (
-                  <article key={item.id}>
+                  <article key={item.id} className={referenceGuideUsage?.referenceId === item.id ? 'is-selected' : undefined}>
                     <div>
                       <strong>{item.title}</strong>
                       <span>{item.mediaType} · {item.platform} · {item.country || '국가 미입력'} · 폭발 {getReferenceVirality(item) ? `${getReferenceVirality(item).toFixed(1)}x` : '-'}</span>
                     </div>
                     <div className="production-reference-actions">
-                      <button className="secondary-button compact-button" type="button" onClick={() => borrowReferenceForGuide(item)}>
-                        제작 가이드에 차용
+                      <button className="secondary-button compact-button" type="button" onClick={() => analyzeReferenceForGuide(item)}>
+                        {referenceGuideUsage?.referenceId === item.id ? '분석 보기' : '분석'}
                       </button>
                       <button className="icon-button" type="button" title="저장 해제" onClick={() => toggleProductionReference(item.id)}>
                         <BookmarkCheck size={17} />
@@ -11824,10 +11834,11 @@ function App() {
             {referenceGuideUsage && (
               <div className="production-reference-usage">
                 <div>
-                  <span className="mini-label">Guide Usage Preview</span>
+                  <span className="mini-label">Reference Analysis</span>
                   <strong>{referenceGuideUsage.referenceTitle}</strong>
                   <p>
-                    {referenceGuideUsage.campaignName} 가이드의 브랜드 학습자료에 추가됐고, 다음 가이드 생성부터 후킹/컷 구성/CTA 변형 재료로 사용됩니다.
+                    아래 분석 내용을 읽어보고 괜찮으면 {referenceGuideUsage.campaignName} 가이드의 브랜드 학습자료에 차용하세요.
+                    차용 후 다음 가이드 생성부터 후킹/컷 구성/CTA 변형 재료로 사용됩니다.
                   </p>
                 </div>
                 <div className="reference-usage-grid">
@@ -11843,6 +11854,11 @@ function App() {
                   </article>
                 </div>
                 <pre>{referenceGuideUsage.material.doSay}</pre>
+                <div className="production-reference-usage-actions">
+                  <button className="primary-button compact-button" type="button" onClick={borrowReferenceForGuide}>
+                    가이드 차용
+                  </button>
+                </div>
               </div>
             )}
           </div>
