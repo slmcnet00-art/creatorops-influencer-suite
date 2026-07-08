@@ -154,7 +154,6 @@ export default function AdminDataRoom({
   rawStatuses,
   metricStatuses,
   scopes,
-  importStatus,
   onImportExternalReport,
   onDownloadExternalReportTemplate,
   apiStatus,
@@ -249,14 +248,11 @@ export default function AdminDataRoom({
         <div>
           <span className="mini-label">Raw Report Ingestion</span>
           <h2>리포트 raw 적재</h2>
-          <p>엑셀 보완 raw는 여기서 업로드하고, API raw 상태는 아래 API 적재 영역에서 확인합니다.</p>
           <div className="data-room-source-counters" aria-label="raw source counters">
             <button type="button" onClick={showExternalReportRaw}>리포트 raw {externalReportRawCount}개</button>
-            <button type="button" onClick={showAllRaw}>전체 raw 보기</button>
           </div>
         </div>
         <div className="data-room-import-actions">
-          <span>{importStatus}</span>
           <button className="secondary-button compact-button" type="button" onClick={onDownloadExternalReportTemplate}>
             보완 raw 양식
           </button>
@@ -272,7 +268,6 @@ export default function AdminDataRoom({
           <div>
             <span className="mini-label">API Raw Logging Status</span>
             <h2>API raw 적재 상태</h2>
-            <p>{apiStatus?.message || 'Render/Supabase 연결 상태를 확인합니다.'}</p>
           </div>
           <div className="api-status-compact-actions">
             <span className={`data-status ${apiStatus?.ok ? 'ok' : 'warning'}`}>

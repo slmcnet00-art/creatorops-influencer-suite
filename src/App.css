@@ -7026,13 +7026,6 @@
   font-size: 18px;
 }
 
-.data-room-import-panel p {
-  margin: 0;
-  color: var(--text-soft);
-  font-size: 13px;
-  line-height: 1.5;
-}
-
 .data-room-source-counters {
   display: flex;
   flex-wrap: wrap;
@@ -7068,15 +7061,6 @@
   gap: 10px;
 }
 
-.data-room-import-actions span {
-  max-width: 360px;
-  color: var(--text-soft);
-  font-size: 12px;
-  font-weight: 800;
-  text-align: right;
-  line-height: 1.45;
-}
-
 .data-room-api-status-panel {
   display: grid;
   gap: 10px;
@@ -7094,13 +7078,6 @@
   margin: 3px 0 4px;
   color: var(--text-strong);
   font-size: 17px;
-}
-
-.api-status-compact-row p {
-  margin: 0;
-  color: var(--text-soft);
-  font-size: 12px;
-  line-height: 1.45;
 }
 
 .api-status-compact-actions {
@@ -7734,11 +7711,6 @@
 
   .data-room-import-actions {
     min-width: 0;
-  }
-
-  .data-room-import-actions span {
-    max-width: none;
-    text-align: left;
   }
 
   .api-event-row {
