@@ -120,6 +120,7 @@ const apiRawTypes = [
 export default function AdminDataRoom({
   summary,
   rawData,
+  allRawData = rawData,
   groupedMetrics,
   workflowCoverage,
   pendingBundles,
@@ -166,6 +167,7 @@ export default function AdminDataRoom({
   onRecalculate,
 }) {
   const [detailOpen, setDetailOpen] = useState(false)
+  const [apiDiagnosticsOpen, setApiDiagnosticsOpen] = useState(false)
   const selectRaw = (rawId) => {
     setSelectedItem({ type: 'raw', id: rawId })
     setDetailOpen(true)
@@ -173,6 +175,36 @@ export default function AdminDataRoom({
   const selectMetric = (metricId) => {
     setSelectedItem({ type: 'metric', id: metricId })
     setDetailOpen(true)
+  }
+  const rawRegistry = allRawData?.length ? allRawData : rawData
+  const externalReportRawIds = new Set(externalReportRawTypes.map((item) => item.id))
+  const apiRawIds = new Set(apiRawTypes.map((item) => item.id))
+  const externalReportRawCount = rawRegistry.filter((item) => externalReportRawIds.has(item.id)).length
+  const externalApiRawCount = rawRegistry.filter((item) => apiRawIds.has(item.id)).length
+  const apiLogCount = apiEvents?.length || 0
+  const showAllRaw = () => {
+    setRawTab('전체')
+    setRawStatus('전체')
+    setRawCategory('전체')
+    setRawMethod('전체')
+    setRawOwner('전체')
+    setRawQuery('')
+  }
+  const showExternalReportRaw = () => {
+    setRawTab('외부')
+    setRawStatus('전체')
+    setRawCategory('전체')
+    setRawMethod('전체')
+    setRawOwner('전체')
+    setRawQuery('RAW-EXT-MON')
+  }
+  const showExternalApiRaw = () => {
+    setRawTab('외부')
+    setRawStatus('전체')
+    setRawCategory('전체')
+    setRawMethod('전체')
+    setRawOwner('전체')
+    setRawQuery('API raw')
   }
 
   return (
@@ -192,15 +224,18 @@ export default function AdminDataRoom({
       <section className="panel data-room-import-panel">
         <div>
           <span className="mini-label">Raw Report Ingestion</span>
-          <h2>외부 리포트 보완 raw 적재</h2>
-          <p>
-            API로 직접 적재하지 못한 과거 보고서나 Workbench 엑셀은 보완 raw로 업로드합니다. 브랜드 모니터/Video Monitor Data는 외부 API 적재 대상입니다.
-          </p>
+          <h2>외부 raw 적재</h2>
+          <p>엑셀 보완 raw는 업로드하고, API raw 상태와 원천은 아래 Raw 데이터 관리에서 확인합니다.</p>
+          <div className="data-room-source-counters" aria-label="raw source counters">
+            <button type="button" onClick={showExternalReportRaw}>외부 리포트 raw {externalReportRawCount}개</button>
+            <button type="button" onClick={showExternalApiRaw}>외부 API raw {externalApiRawCount}개</button>
+            <button type="button" onClick={showAllRaw}>전체 raw 보기</button>
+          </div>
         </div>
         <div className="data-room-import-actions">
           <span>{importStatus}</span>
           <button className="secondary-button compact-button" type="button" onClick={onDownloadExternalReportTemplate}>
-            보완 raw 양식 다운로드
+            보완 raw 양식
           </button>
           <label className="primary-button compact-button">
             엑셀 업로드
@@ -209,69 +244,40 @@ export default function AdminDataRoom({
         </div>
       </section>
 
-      <section className="panel data-room-source-map-panel">
-        <div className="panel-heading">
-          <div>
-            <span className="mini-label">Raw Source Map</span>
-            <h2>외부 리포트 raw / 외부 API raw 구분</h2>
-            <p>데이터룸에 없으면 대시보드 기능에도 쓰지 않는다는 기준으로, 원천별 적재 대상을 분리합니다.</p>
-          </div>
-        </div>
-        <div className="raw-source-map-grid">
-          <article>
-            <strong>외부 리포트 raw</strong>
-            <p>광고주/외부 플랫폼에서 받은 엑셀 보고서를 행 단위로 보관합니다. API로 재수집할 수 없는 과거/보완 리포트가 필요할 때 업로드합니다.</p>
-            <ul>
-              {externalReportRawTypes.map((item) => (
-                <li key={item.id}>
-                  <span>{item.id}</span>
-                  <b>{item.name}</b>
-                  <small>{item.use}</small>
-                </li>
-              ))}
-            </ul>
-          </article>
-          <article>
-            <strong>외부 API raw</strong>
-            <p>브랜드 모니터링, 영상 모니터링, 발굴, 콘텐츠 추적, 레퍼런스 검색을 실행할 때 서버가 API 응답과 공개 수집 결과를 데이터룸 이벤트로 남깁니다.</p>
-            <ul>
-              {apiRawTypes.map((item) => (
-                <li key={item.id}>
-                  <span>{item.id}</span>
-                  <b>{item.name}</b>
-                  <small>{item.use}</small>
-                </li>
-              ))}
-            </ul>
-          </article>
-        </div>
-      </section>
-
       <section className="panel data-room-api-status-panel">
-        <div className="panel-heading">
+        <div className="api-status-compact-row">
           <div>
             <span className="mini-label">API Raw Logging Status</span>
             <h2>API raw 적재 상태</h2>
+            <p>{apiStatus?.message || 'Render/Supabase 연결 상태를 확인합니다.'}</p>
           </div>
-          <button className="secondary-button compact-button" type="button" onClick={onRefreshApiStatus}>
-            상태 확인
-          </button>
+          <div className="api-status-compact-actions">
+            <span className={`data-status ${apiStatus?.ok ? 'ok' : 'warning'}`}>
+              {apiStatus?.ok ? '연결됨' : '설정 확인 필요'}
+            </span>
+            <span className="api-log-count">로그 {apiLogCount}건</span>
+            <button className="secondary-button compact-button" type="button" onClick={onRefreshApiStatus}>
+              상태 확인
+            </button>
+            <button className="secondary-button compact-button" type="button" onClick={() => setApiDiagnosticsOpen((value) => !value)}>
+              {apiDiagnosticsOpen ? '진단 닫기' : '진단 보기'}
+            </button>
+          </div>
         </div>
-        <div className={`sync-status-card ${apiStatus?.ok ? 'success' : 'warning'}`}>
-          <Database size={22} />
-          <div>
-            <strong>{apiStatus?.ok ? 'Data room API logging ready' : 'Data room API logging needs setup'}</strong>
-            <p>{apiStatus?.message || 'API status has not been checked yet.'}</p>
-            {apiStatus?.payload?.dataRoomLogging && (
+        {apiDiagnosticsOpen && apiStatus?.payload?.dataRoomLogging && (
+          <div className={`sync-status-card ${apiStatus?.ok ? 'success' : 'warning'}`}>
+            <Database size={22} />
+            <div>
+              <strong>{apiStatus?.ok ? 'Data room API logging ready' : 'Data room API logging needs setup'}</strong>
               <small>
                 workspace {apiStatus.payload.dataRoomLogging.workspaceId} · SUPABASE_URL{' '}
                 {apiStatus.payload.dataRoomLogging.hasSupabaseUrl ? 'OK' : 'missing'} · SERVICE_ROLE{' '}
                 {apiStatus.payload.dataRoomLogging.hasServiceRoleKey ? 'OK' : 'missing'}
               </small>
-            )}
+            </div>
           </div>
-        </div>
-        {apiStatus?.payload?.checks && (
+        )}
+        {apiDiagnosticsOpen && apiStatus?.payload?.checks && (
           <div className="api-status-check-grid">
             {Object.entries(apiStatus.payload.checks).map(([table, check]) => (
               <span className={`api-status-check ${check.ok ? 'ok' : 'error'}`} key={table}>
@@ -280,7 +286,7 @@ export default function AdminDataRoom({
             ))}
           </div>
         )}
-        {apiStatus?.payload?.dataRoomLogging?.missingEnv?.length > 0 && (
+        {apiDiagnosticsOpen && apiStatus?.payload?.dataRoomLogging?.missingEnv?.length > 0 && (
           <div className="api-status-action-box">
             <strong>Missing backend environment</strong>
             <div className="api-status-check-grid">
@@ -290,7 +296,7 @@ export default function AdminDataRoom({
             </div>
           </div>
         )}
-        {apiStatus?.payload?.dataRoomLogging?.nextActions?.length > 0 && (
+        {apiDiagnosticsOpen && apiStatus?.payload?.dataRoomLogging?.nextActions?.length > 0 && (
           <div className="api-status-action-box">
             <strong>Next actions</strong>
             <ol>
@@ -302,7 +308,7 @@ export default function AdminDataRoom({
         )}
       </section>
 
-      <section className="panel data-room-api-log-panel">
+      <section className={`panel data-room-api-log-panel ${apiEvents?.length ? '' : 'compact'}`}>
         <div className="panel-heading">
           <div>
             <span className="mini-label">API Raw Event Log</span>
@@ -368,6 +374,14 @@ export default function AdminDataRoom({
               <SelectPill label="카테고리" icon={<Database size={15} />} value={rawCategory} options={rawCategories} onChange={setRawCategory} />
               <SelectPill label="수집 방식" icon={<RefreshCw size={15} />} value={rawMethod} options={rawMethods} onChange={setRawMethod} />
               <SelectPill label="소유 부서" icon={<UsersRound size={15} />} value={rawOwner} options={rawOwners} onChange={setRawOwner} />
+            </div>
+
+            <div className="raw-source-shortcuts">
+              <span>원천 구분</span>
+              <button type="button" onClick={showExternalReportRaw}>외부 리포트 raw</button>
+              <button type="button" onClick={showExternalApiRaw}>외부 API raw</button>
+              <button type="button" onClick={showAllRaw}>전체 raw</button>
+              <small>긴 설명은 상단이 아니라 행 클릭 후 상세에서 확인합니다.</small>
             </div>
 
             <div className="data-room-table-wrap">

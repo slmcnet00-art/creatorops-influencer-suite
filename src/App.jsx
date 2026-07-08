@@ -9823,6 +9823,7 @@ function App() {
           <AdminDataRoom
             summary={dataRoomSummary}
             rawData={filteredDataRoomRawData}
+            allRawData={dataRoomRawData}
             groupedMetrics={groupedDataRoomMetrics}
             workflowCoverage={dataRoomWorkflowCoverage}
             pendingBundles={dataRoomPendingBundles}
