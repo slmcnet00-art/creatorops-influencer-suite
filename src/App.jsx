@@ -71,6 +71,22 @@ const GMAIL_MIN_SEND_DELAY_MS = 20000
 const GMAIL_MAX_SEND_DELAY_MS = 60000
 const EXTERNAL_REPORT_PROFILES = [
   {
+    match: /brand.*monitor.*influencer|monitor.*influencer/i,
+    reportType: 'brand_monitor_influencers',
+    sourceName: 'Brand monitor influencer report',
+    rawSourceId: 'RAW-EXT-MON-INF-001',
+    normalizedType: 'brand_monitor_influencer',
+    sheets: [{ label: 'First Sheet', option: 1, fallback: true }],
+  },
+  {
+    match: /video_monitor_data/i,
+    reportType: 'video_monitor_data',
+    sourceName: 'Video monitor data report',
+    rawSourceId: 'RAW-EXT-MON-VIDEO-001',
+    normalizedType: 'video_monitor_data',
+    sheets: [{ label: 'First Sheet', option: 1, fallback: true }],
+  },
+  {
     match: /video_monitor_workbench/i,
     reportType: 'video_monitor_workbench',
     sourceName: 'External video monitor workbench',
@@ -929,6 +945,7 @@ const defaultWorkspace = {
   ],
   fulfillmentRecords: defaultFulfillmentRecords,
   trackedPosts: defaultTrackedPosts,
+  externalReportRows: [],
   contentReferences: defaultContentReferences,
   creatorGroups: defaultCreatorGroups,
   savedProductionReferenceIds: [],
@@ -1389,6 +1406,7 @@ function normalizeWorkspace(saved) {
     quotes: saved?.quotes ?? defaultWorkspace.quotes,
     fulfillmentRecords: saved?.fulfillmentRecords ?? defaultWorkspace.fulfillmentRecords,
     trackedPosts: saved?.trackedPosts ?? defaultWorkspace.trackedPosts,
+    externalReportRows: dedupeExternalReportRows(saved?.externalReportRows ?? defaultWorkspace.externalReportRows),
     contentReferences: normalizeContentReferences(saved?.contentReferences ?? defaultWorkspace.contentReferences),
     creatorGroups: normalizeCreatorGroups(saved?.creatorGroups ?? defaultWorkspace.creatorGroups, normalizedCreators),
     savedProductionReferenceIds: saved?.savedProductionReferenceIds ?? defaultWorkspace.savedProductionReferenceIds,
@@ -2621,6 +2639,209 @@ function exportExcelWorkbook(filename, sheets) {
   exportFile(filename, 'application/vnd.ms-excel;charset=utf-8', workbook)
 }
 
+
+function normalizeRawKey(value) {
+  return String(value ?? '').toLowerCase().replace(/[^\u3131-\u318e\uac00-\ud7a3a-z0-9]+/gi, '')
+}
+
+function getPayloadValue(payload = {}, aliases = []) {
+  const entries = Object.entries(payload)
+  const normalizedAliases = aliases.map(normalizeRawKey).filter(Boolean)
+  const exact = entries.find(([key]) => normalizedAliases.includes(normalizeRawKey(key)))
+  if (exact) return exact[1]
+  const fuzzy = entries.find(([key]) =>
+    normalizedAliases.some((alias) => {
+      const normalizedKey = normalizeRawKey(key)
+      return normalizedKey && (normalizedKey.includes(alias) || alias.includes(normalizedKey))
+    }),
+  )
+  return fuzzy?.[1]
+}
+
+function parseMetricNumber(value) {
+  if (value === null || value === undefined || value === '') return 0
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+  const raw = String(value).trim()
+  if (!raw || raw === '-' || raw.toLowerCase() === 'n/a') return 0
+  const lower = raw.toLowerCase()
+  const multiplier = raw.includes('\uc5b5')
+    ? 100000000
+    : raw.includes('\ub9cc')
+      ? 10000
+      : /m|million/.test(lower)
+        ? 1000000
+        : /k|thousand/.test(lower)
+          ? 1000
+          : 1
+  const number = Number(raw.replace(/,/g, '').replace(/[^0-9.-]/g, ''))
+  return Number.isFinite(number) ? number * multiplier : 0
+}
+
+function parseRatePercent(value) {
+  if (value === null || value === undefined || value === '') return 0
+  if (typeof value === 'number') return Math.abs(value) <= 1 ? value * 100 : value
+  const parsed = Number(String(value).replace(/,/g, '').replace(/[^0-9.-]/g, ''))
+  return Number.isFinite(parsed) ? parsed : 0
+}
+
+const REPORT_URL_ALIASES = [
+  'url',
+  'link',
+  'content url',
+  'video url',
+  'post url',
+  'profile url',
+  'channel url',
+  'content_link',
+  'video_link',
+  'profile_link',
+  '\ub9c1\ud06c',
+  '\uc601\uc0c1\ub9c1\ud06c',
+  '\uc601\uc0c1url',
+  '\ucf58\ud150\uce20url',
+  '\ucc44\ub110url',
+  '\ud504\ub85c\ud544url',
+]
+
+const REPORT_CREATOR_ALIASES = [
+  'creator',
+  'creator name',
+  'influencer',
+  'influencer name',
+  'brand',
+  'channel',
+  'account',
+  'author',
+  '\ud06c\ub9ac\uc5d0\uc774\ud130',
+  '\uc778\ud50c\ub8e8\uc5b8\uc11c',
+  '\ucc44\ub110',
+  '\uacc4\uc815',
+  '\ube0c\ub79c\ub4dc',
+]
+
+const REPORT_TITLE_ALIASES = [
+  'title',
+  'content title',
+  'video title',
+  'caption',
+  'name',
+  '\uc81c\ubaa9',
+  '\ucf58\ud150\uce20\uc81c\ubaa9',
+  '\uc601\uc0c1\uc81c\ubaa9',
+  '\ucea1\uc158',
+]
+
+function externalRowUrl(payload = {}) {
+  return String(getPayloadValue(payload, REPORT_URL_ALIASES) ?? '').trim()
+}
+
+function dedupeExternalReportRows(rows = []) {
+  const seen = new Set()
+  return rows.filter((row) => {
+    const payload = row?.payload ?? {}
+    const key = [
+      row?.rawSourceId,
+      row?.normalizedType,
+      externalRowUrl(payload),
+      getPayloadValue(payload, REPORT_CREATOR_ALIASES),
+      getPayloadValue(payload, REPORT_TITLE_ALIASES),
+      row?.sheetName,
+      row?.rowIndex,
+    ]
+      .filter(Boolean)
+      .map((value) => String(value).trim())
+      .join('|')
+    if (!key) return true
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
+function normalizeImportedExternalRows({ sheets = [], profile, fileName, importedAt }) {
+  return dedupeExternalReportRows(
+    sheets.flatMap((sheet) =>
+      sheet.rows.map((row) => ({
+        ...row,
+        id: [profile.rawSourceId || 'RAW-EXT-CUSTOM', sheet.sheetName, row.rowIndex, importedAt].join('-'),
+        rawSourceId: profile.rawSourceId,
+        reportType: profile.reportType,
+        sourceName: profile.sourceName,
+        normalizedType: row.normalizedType || profile.normalizedType,
+        fileName,
+        sheetName: sheet.sheetName,
+        importedAt,
+      })),
+    ),
+  )
+}
+
+function isExternalVideoRawRow(row) {
+  return row?.normalizedType === 'video_monitor_data' || row?.rawSourceId === 'RAW-EXT-MON-VIDEO-001'
+}
+
+function isExternalBrandInfluencerRawRow(row) {
+  return row?.normalizedType === 'brand_monitor_influencer' || row?.rawSourceId === 'RAW-EXT-MON-INF-001'
+}
+
+function normalizeExternalVideoRow(row) {
+  const payload = row?.payload ?? {}
+  const views = parseMetricNumber(getPayloadValue(payload, ['views', 'view count', 'play count', '\uc870\ud68c\uc218', '\uc7ac\uc0dd\uc218']))
+  const likes = parseMetricNumber(getPayloadValue(payload, ['likes', 'like count', '\uc88b\uc544\uc694']))
+  const comments = parseMetricNumber(getPayloadValue(payload, ['comments', 'comment count', '\ub313\uae00']))
+  const shares = parseMetricNumber(getPayloadValue(payload, ['shares', 'share count', '\uacf5\uc720']))
+  const saves = parseMetricNumber(getPayloadValue(payload, ['saves', 'collects', 'bookmarks', '\uc800\uc7a5']))
+  const explicitRate = parseRatePercent(getPayloadValue(payload, ['engagement rate', 'er', 'engagement', '\ucc38\uc5ec\uc728', '\uc778\uac8c\uc774\uc9c0\uba3c\ud2b8']))
+  return {
+    id: row?.id,
+    rawSourceId: row?.rawSourceId || 'RAW-EXT-MON-VIDEO-001',
+    sourceName: row?.sourceName || 'Video monitor data report',
+    fileName: row?.fileName || '',
+    sheetName: row?.sheetName || '',
+    title: String(getPayloadValue(payload, REPORT_TITLE_ALIASES) ?? 'Untitled content'),
+    creatorName: String(getPayloadValue(payload, REPORT_CREATOR_ALIASES) ?? ''),
+    handle: String(getPayloadValue(payload, ['handle', 'username', 'id', 'account id', '\uc544\uc774\ub514', '\ud578\ub4e4']) ?? ''),
+    platform: String(getPayloadValue(payload, ['platform', 'channel type', 'sns', '\ud50c\ub7ab\ud3fc', '\ucc44\ub110']) ?? ''),
+    country: String(getPayloadValue(payload, ['country', 'region', '\uad6d\uac00', '\uc9c0\uc5ed']) ?? ''),
+    language: String(getPayloadValue(payload, ['language', '\uc5b8\uc5b4']) ?? ''),
+    profileUrl: String(getPayloadValue(payload, ['profile url', 'channel url', 'account url', '\ud504\ub85c\ud544url', '\ucc44\ub110url']) ?? ''),
+    url: externalRowUrl(payload),
+    publishedAt: String(getPayloadValue(payload, ['published at', 'upload date', 'date', '\uac8c\uc2dc\uc77c', '\uc5c5\ub85c\ub4dc\uc77c', '\ub0a0\uc9dc']) ?? row?.importedAt ?? ''),
+    followers: parseMetricNumber(getPayloadValue(payload, ['followers', 'subscribers', 'fans', '\ud314\ub85c\uc6cc', '\uad6c\ub3c5\uc790'])),
+    views,
+    likes,
+    comments,
+    shares,
+    saves,
+    conversions: parseMetricNumber(getPayloadValue(payload, ['conversions', 'orders', 'purchase', '\uc804\ud658', '\uc8fc\ubb38', '\uad6c\ub9e4'])),
+    engagementRate: explicitRate || (views ? ((likes + comments + shares + saves) / views) * 100 : 0),
+  }
+}
+
+function normalizeExternalBrandInfluencerRow(row) {
+  const payload = row?.payload ?? {}
+  const totalViews = parseMetricNumber(getPayloadValue(payload, ['total views', 'views', 'exposure', 'estimated exposure', '\ucd1d\uc870\ud68c\uc218', '\uc608\uc0c1\ub178\ucd9c', '\ub178\ucd9c']))
+  const averageViews = parseMetricNumber(getPayloadValue(payload, ['average views', 'avg views', '\ud3c9\uade0\uc870\ud68c\uc218']))
+  return {
+    id: row?.id,
+    rawSourceId: row?.rawSourceId || 'RAW-EXT-MON-INF-001',
+    sourceName: row?.sourceName || 'Brand monitor influencer report',
+    fileName: row?.fileName || '',
+    sheetName: row?.sheetName || '',
+    creatorName: String(getPayloadValue(payload, REPORT_CREATOR_ALIASES) ?? ''),
+    profileUrl: externalRowUrl(payload),
+    followers: parseMetricNumber(getPayloadValue(payload, ['followers', 'subscribers', 'fans', '\ud314\ub85c\uc6cc', '\uad6c\ub3c5\uc790'])),
+    region: String(getPayloadValue(payload, ['region', 'country', '\uc9c0\uc5ed', '\uad6d\uac00']) ?? ''),
+    language: String(getPayloadValue(payload, ['language', '\uc5b8\uc5b4']) ?? ''),
+    averageViews,
+    totalViews,
+    engagementRate: parseRatePercent(getPayloadValue(payload, ['engagement rate', 'er', '\ucc38\uc5ec\uc728', '\uc778\uac8c\uc774\uc9c0\uba3c\ud2b8'])),
+    videos: parseMetricNumber(getPayloadValue(payload, ['videos', 'content count', 'mentions', 'video count', '\uc601\uc0c1\uc218', '\ucf58\ud150\uce20\uc218', '\uc5b8\uae09\ub7c9'])),
+    lastVideo: String(getPayloadValue(payload, ['last video', 'latest upload', 'last upload', '\ucd5c\uc2e0\uc601\uc0c1', '\ucd5c\uc2e0\uc5c5\ub85c\ub4dc']) ?? ''),
+    price: String(getPayloadValue(payload, ['price', 'cost', 'estimated budget', '\ub2e8\uac00', '\ube44\uc6a9', '\uc608\uc0c1\uc608\uc0b0']) ?? ''),
+  }
+}
+
 function rowsToTsv(rows) {
   return rows
     .map((row) =>
@@ -3653,10 +3874,17 @@ function buildAdminMetricCatalog({ rawData, outreach, creators, campaigns, recru
   }))
 }
 
-function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, outreach, contentReferences, creatorGroups = [] }) {
+function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, outreach, contentReferences, creatorGroups = [], externalReportRows = [] }) {
   const nowText = new Date().toLocaleString('ko-KR')
   const storageBase = backendConfig?.hasSupabase ? 'Supabase public schema' : 'localStorage creatorops.workspace.v2'
   const apiStatus = backendConfig?.apiBaseUrl ? '정상' : '지연'
+  const externalVideoRawCount = externalReportRows.filter(isExternalVideoRawRow).length
+  const externalBrandRawCount = externalReportRows.filter(isExternalBrandInfluencerRawRow).length
+  const latestExternalImportAt = externalReportRows
+    .map((row) => row.importedAt)
+    .filter(Boolean)
+    .sort()
+    .at(-1)
   const baseIds = new Set(rawData.map((item) => item.id))
   const append = (items) => [...rawData, ...items.filter((item) => !baseIds.has(item.id))]
 
@@ -3814,9 +4042,9 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       purpose: '경쟁 브랜드 주변의 협업 인플루언서 풀과 예상 단가/성과 기준을 데이터룸에 적재해 발굴 조건과 벤치마크 근거로 사용',
       method: '외부 API / 예약 수집',
       cycle: '일 1회 / 브랜드 저장 직후',
-      lastCollectedAt: '-',
-      nextCollectAt: '브랜드 저장 또는 예약 수집 시',
-      status: '미수집',
+      lastCollectedAt: latestExternalImportAt || '-',
+      nextCollectAt: externalBrandRawCount ? 'Next scheduled import' : 'Import required',
+      status: externalBrandRawCount ? apiStatus : '\ubbf8\uc218\uc9d1',
       sourceLocation: 'external brand monitor API / influencers endpoint',
       storageLocation: `${storageBase} / future: external_api_raw(type=brand_monitor_influencers)`,
       dashboardArea: '브랜드 검색 및 추적, 발굴, 데이터룸',
@@ -3826,7 +4054,7 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       techOwner: 'Data Engineer',
       qualityIssue: '외부 API 기준 수치이므로 수집일, 원천 서비스, 채널 URL 중복, 예상 단가 산식 버전을 같이 보존해야 함',
       logLocation: 'future: external_api_ingestion_logs / brand_monitor_sources',
-      note: 'API 필드: influencers, channel_url, subscribers, region, language, average_views, total_views, engagement_rate, videos, last_video, price',
+      note: `Loaded rows: ${externalBrandRawCount}. Fields: influencers, channel_url, subscribers, region, language, average_views, total_views, engagement_rate, videos, last_video, price`,
       active: true,
     },
     {
@@ -3838,9 +4066,9 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       purpose: '광고주 캠페인 콘텐츠의 조회수/좋아요/댓글/공유/저장/전환/비용 지표와 일별 누적 변화를 추적',
       method: '외부 API / 예약 수집',
       cycle: '일 1회 / 새로고침 요청 시',
-      lastCollectedAt: '-',
-      nextCollectAt: '콘텐츠 추적 등록 또는 예약 수집 시',
-      status: '미수집',
+      lastCollectedAt: latestExternalImportAt || '-',
+      nextCollectAt: externalVideoRawCount ? 'Next scheduled import' : 'Import required',
+      status: externalVideoRawCount ? apiStatus : '\ubbf8\uc218\uc9d1',
       sourceLocation: 'external video monitor API / projects, videos, daily-change endpoints',
       storageLocation: `${storageBase} / future: external_api_raw(type=video_monitor_data)`,
       dashboardArea: '리포트, 브랜드 검색 및 추적, 데이터룸',
@@ -3850,7 +4078,7 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       techOwner: 'Data Engineer',
       qualityIssue: '플랫폼별 공개 지표 누락, API 응답 지연, 날짜/프로젝트명/콘텐츠 URL 매칭 오류를 검증해야 함',
       logLocation: 'future: external_api_ingestion_logs / report_metric_snapshots',
-      note: 'API 필드: project, platform, kol_channel, url, followers, views, comments, likes, shares, collects, er, cpm/cpe/cpc/roas/roi, est_video_value',
+      note: `Loaded rows: ${externalVideoRawCount}. Fields: project, platform, kol_channel, url, followers, views, comments, likes, shares, collects, er, cpm/cpe/cpc/roas/roi, est_video_value`,
       active: true,
     },
     {
@@ -4098,6 +4326,7 @@ function App() {
   const [activeSection, setActiveSection] = useState('dashboard')
   const [campaignDetailMode, setCampaignDetailMode] = useState(false)
   const [toast, setToast] = useState('')
+  const showToast = (message) => setToast(message)
   const [modal, setModal] = useState(null)
   const [youtubeSyncing, setYoutubeSyncing] = useState(false)
   const [realDiscoverySearching, setRealDiscoverySearching] = useState(false)
@@ -4306,6 +4535,7 @@ function App() {
     quotes,
     fulfillmentRecords,
     trackedPosts,
+    externalReportRows,
     contentReferences,
     creatorGroups,
     savedProductionReferenceIds,
@@ -4528,7 +4758,7 @@ function App() {
     () => selectedOutreachItems.filter((item) => hasDuplicateSentOutreach(item, outreach)).length,
     [outreach, selectedOutreachItems],
   )
-  const gmailConnected = Boolean(gmailAuth?.accessToken && Number(gmailAuth.expiresAt || 0) > Date.now() + 60000)
+  const gmailConnected = Boolean(gmailAuth?.accessToken && Number(gmailAuth.expiresAt || 0) > 0)
   const allOutreachSelected =
     filteredCampaignOutreach.length > 0 &&
     filteredCampaignOutreach.every((item) => selectedOutreachIds.includes(item.id))
@@ -4805,8 +5035,8 @@ function App() {
 
     const unsubscribe = onAuthStateChange((event, session) => {
       setAuthSession(session)
-      if (event === 'SIGNED_IN') showToast('팀 공유 DB 로그인 세션이 연결됐어요.')
-      if (event === 'SIGNED_OUT') showToast('팀 공유 DB에서 로그아웃했어요.')
+      if (event === 'SIGNED_IN') setToast('팀 공유 DB 로그인 세션이 연결됐어요.')
+      if (event === 'SIGNED_OUT') setToast('팀 공유 DB에서 로그아웃했어요.')
     })
 
     return () => {
@@ -4821,6 +5051,7 @@ function App() {
     if (window.localStorage.getItem(TRACKING_DAILY_REFRESH_KEY) === today) return undefined
 
     const timer = window.setTimeout(() => {
+      // eslint-disable-next-line react-hooks/immutability
       refreshTracking({ mode: 'daily-auto' })
     }, 250)
 
@@ -4941,29 +5172,113 @@ function App() {
       ),
     [activeTrackedPosts],
   )
-  const selectedCampaignTrackedTotals = useMemo(
+  const externalVideoReportRows = useMemo(
     () =>
-      selectedCampaignTrackedPosts.reduce(
-        (summary, post) => ({
-          views: summary.views + Number(post.views || 0),
-          likes: summary.likes + Number(post.likes || 0),
-          comments: summary.comments + Number(post.comments || 0),
-          shares: summary.shares + Number(post.shares || 0),
-          saves: summary.saves + Number(post.saves || 0),
-          conversions: summary.conversions + Number(post.conversions || 0),
+      dedupeExternalReportRows(externalReportRows.filter(isExternalVideoRawRow))
+        .map(normalizeExternalVideoRow)
+        .filter((row) => row.url || row.views || row.title !== 'Untitled content'),
+    [externalReportRows],
+  )
+  const externalBrandInfluencerRows = useMemo(
+    () =>
+      dedupeExternalReportRows(externalReportRows.filter(isExternalBrandInfluencerRawRow))
+        .map(normalizeExternalBrandInfluencerRow)
+        .filter((row) => row.creatorName || row.profileUrl || row.totalViews || row.followers),
+    [externalReportRows],
+  )
+  const fallbackTrackedReportRows = useMemo(
+    () =>
+      selectedCampaignTrackedPosts.map((post) => {
+        const creator = creators.find((item) => item.id === post.creatorId)
+        const campaign = brandCampaigns.find((item) => item.id === post.campaignId)
+        return {
+          id: post.id,
+          rawSourceId: 'RAW-EXT-MON-VIDEO-001',
+          sourceName: 'Manual content tracking',
+          fileName: '',
+          sheetName: 'trackedPosts',
+          title: post.title,
+          creatorName: creator?.name || '',
+          handle: creator?.handle || '',
+          platform: post.platform,
+          country: creator?.country || '',
+          language: '',
+          profileUrl: creator?.profileUrl || '',
+          url: post.url,
+          publishedAt: post.lastChecked,
+          followers: creator?.followers || 0,
+          views: Number(post.views || 0),
+          likes: Number(post.likes || 0),
+          comments: Number(post.comments || 0),
+          shares: Number(post.shares || 0),
+          saves: Number(post.saves || 0),
+          conversions: Number(post.conversions || 0),
+          engagementRate: contentEngagementRate(post),
+          campaignName: campaign?.name || '',
+        }
+      }),
+    [brandCampaigns, creators, selectedCampaignTrackedPosts],
+  )
+  const reportVideoRows = useMemo(
+    () => (externalVideoReportRows.length ? externalVideoReportRows : fallbackTrackedReportRows),
+    [externalVideoReportRows, fallbackTrackedReportRows],
+  )
+  const reportBrandInfluencerRows = useMemo(
+    () =>
+      externalBrandInfluencerRows.length
+        ? externalBrandInfluencerRows
+        : brandTrackingGroups.map((group) => ({
+            id: group.brandName,
+            rawSourceId: 'RAW-EXT-MON-INF-001',
+            creatorName: group.brandName,
+            profileUrl: group.latestItem?.url || '',
+            followers: 0,
+            region: group.countries.join(', '),
+            language: '',
+            averageViews: group.items.length ? group.views / group.items.length : 0,
+            totalViews: group.views,
+            engagementRate: group.views ? ((group.likes + group.comments + group.shares) / group.views) * 100 : 0,
+            videos: group.items.length,
+            lastVideo: group.latestItem?.uploadedAt || '',
+            price: '',
+          })),
+    [brandTrackingGroups, externalBrandInfluencerRows],
+  )
+  const reportMetricTotals = useMemo(
+    () =>
+      reportVideoRows.reduce(
+        (summary, row) => ({
+          views: summary.views + Number(row.views || 0),
+          likes: summary.likes + Number(row.likes || 0),
+          comments: summary.comments + Number(row.comments || 0),
+          shares: summary.shares + Number(row.shares || 0),
+          saves: summary.saves + Number(row.saves || 0),
+          conversions: summary.conversions + Number(row.conversions || 0),
         }),
         { views: 0, likes: 0, comments: 0, shares: 0, saves: 0, conversions: 0 },
       ),
-    [selectedCampaignTrackedPosts],
+    [reportVideoRows],
   )
-  const selectedCampaignTrackedAverageEngagement = useMemo(
+  const reportAverageEngagement = useMemo(
     () =>
-      selectedCampaignTrackedPosts.length
-        ? selectedCampaignTrackedPosts.reduce((sum, post) => sum + contentEngagementRate(post), 0) /
-          selectedCampaignTrackedPosts.length
+      reportVideoRows.length
+        ? reportVideoRows.reduce((sum, row) => sum + Number(row.engagementRate || 0), 0) / reportVideoRows.length
         : 0,
-    [selectedCampaignTrackedPosts],
+    [reportVideoRows],
   )
+  const reportUploadedCreatorCount = useMemo(
+    () => new Set(reportVideoRows.map((row) => row.creatorName || row.handle || row.profileUrl).filter(Boolean)).size,
+    [reportVideoRows],
+  )
+  const reportMentionCount = useMemo(
+    () => reportBrandInfluencerRows.reduce((sum, row) => sum + Math.max(1, Number(row.videos || 0)), 0),
+    [reportBrandInfluencerRows],
+  )
+  const reportEstimatedExposure = useMemo(
+    () => reportBrandInfluencerRows.reduce((sum, row) => sum + Number(row.totalViews || row.averageViews || 0), 0),
+    [reportBrandInfluencerRows],
+  )
+  const reportUsesExternalRaw = externalVideoReportRows.length > 0 || externalBrandInfluencerRows.length > 0
 
   const campaignKpiSummaries = useMemo(
     () =>
@@ -5198,14 +5513,16 @@ function App() {
           brands,
           backendConfig,
           activeBrand,
+          externalReportRows,
         }),
         backendConfig,
         creators,
         outreach,
         contentReferences,
         creatorGroups,
+        externalReportRows,
       }),
-    [activeBrand, backendConfig, brands, campaigns, contentReferences, creatorGroups, creators, fulfillmentRecords, outreach, recruitedPool, trackedPosts],
+    [activeBrand, backendConfig, brands, campaigns, contentReferences, creatorGroups, creators, externalReportRows, fulfillmentRecords, outreach, recruitedPool, trackedPosts],
   )
   const dataRoomMetrics = useMemo(
     () =>
@@ -5224,8 +5541,9 @@ function App() {
         creators,
         contentReferences,
         creatorGroups,
+        externalReportRows,
       }),
-    [campaigns, contentReferences, creatorGroups, creators, dataRoomRawData, fulfillmentRecords, outreach, recruitedPool, trackedPosts],
+    [campaigns, contentReferences, creatorGroups, creators, dataRoomRawData, externalReportRows, fulfillmentRecords, outreach, recruitedPool, trackedPosts],
   )
   const dataRoomWorkflowCoverage = useMemo(
     () => buildDataRoomWorkflowCoverage({ rawData: dataRoomRawData, metrics: dataRoomMetrics }),
@@ -5424,6 +5742,12 @@ function App() {
     try {
       const sheets = await readExternalReportWorkbook(file, profile)
       const rowCount = sheets.reduce((total, sheet) => total + sheet.rows.length, 0)
+      const importedAt = new Date().toISOString()
+      const localRows = normalizeImportedExternalRows({ sheets, profile, fileName: file.name, importedAt })
+      updateWorkspace((current) => ({
+        ...current,
+        externalReportRows: dedupeExternalReportRows([...(current.externalReportRows ?? []), ...localRows]).slice(-12000),
+      }))
       if (!rowCount) {
         setDataRoomImportStatus(`${file.name}에서 적재할 행을 찾지 못했어요.`)
         showToast('엑셀 첫 행을 헤더로 보고 두 번째 행부터 적재합니다. 파일 구조를 확인해주세요.')
@@ -5669,12 +5993,12 @@ function App() {
     window.history.replaceState({}, document.title, cleanUrl)
 
     if (error) {
-      showToast('Gmail connection failed: ' + error)
+      window.setTimeout(() => showToast('Gmail connection failed: ' + error), 0)
       return undefined
     }
 
     if (!apiBaseUrl || !code) {
-      showToast('Gmail connection needs the API server and authorization code.')
+      window.setTimeout(() => showToast('Gmail connection needs the API server and authorization code.'), 0)
       return undefined
     }
 
@@ -5712,7 +6036,6 @@ function App() {
     }
   }, [backendConfig.apiBaseUrl])
 
-  const showToast = (message) => setToast(message)
 
   const updateWorkspace = (mutator) => {
     setWorkspace((current) => mutator(current))
@@ -6968,24 +7291,26 @@ function App() {
     const reportName = selectedCampaign?.name ?? activeBrand.name
     const exportedAt = new Date().toLocaleString('ko-KR')
     const rawSourceRows = [
-      ['raw_id', 'raw_name', 'scope', 'description', 'storage', 'metric_bundle', 'status'],
+      ['raw_id', 'raw_name', 'scope', 'description', 'storage', 'metric_bundle', 'status', 'loaded_rows'],
       [
         'RAW-EXT-MON-VIDEO-001',
-        'Video Monitor Data API raw',
+        'Video Monitor Data raw',
         'content/video performance',
         'content-level views, likes, comments, shares, saves, engagement, conversions, daily snapshot values',
-        'external_api_raw(type=video_monitor_data), trackedPosts',
+        'externalReportRows(type=video_monitor_data), trackedPosts fallback',
         'MET-SNS-001~006, MET-CONT-001~004, MET-EXT-VIDEO-001~003',
-        selectedCampaignTrackedPosts.length ? 'connected' : 'pending_content_links',
+        reportVideoRows.length ? 'connected' : 'pending_content_links',
+        reportVideoRows.length,
       ],
       [
         'RAW-EXT-MON-INF-001',
-        'Brand Monitor Influencer API raw',
+        'Brand Monitor Influencer raw',
         'brand/competitor related creators',
         'creator rows, mention volume, estimated reach, average views, engagement benchmark, pricing benchmark',
-        'external_api_raw(type=brand_monitor_influencers), brandTrackingGroups',
+        'externalReportRows(type=brand_monitor_influencers), brandTrackingGroups fallback',
         'MET-EXT-BRAND-001~003, MET-EXT-INF-001~003',
-        brandTrackingGroups.length ? 'connected' : 'pending_brand_tracking',
+        reportBrandInfluencerRows.length ? 'connected' : 'pending_brand_tracking',
+        reportBrandInfluencerRows.length,
       ],
     ]
 
@@ -6994,36 +7319,35 @@ function App() {
       ['brand', activeBrand.name, 'workspace.brands'],
       ['campaign', reportName, 'workspace.campaigns'],
       ['exported_at', exportedAt, 'browser_export'],
-      ['tracked_content_count', selectedCampaignTrackedPosts.length, 'RAW-EXT-MON-VIDEO-001'],
-      ['uploaded_creator_count', new Set(selectedCampaignTrackedPosts.map((post) => post.creatorId)).size, 'RAW-EXT-MON-VIDEO-001'],
-      ['views', selectedCampaignTrackedTotals.views, 'RAW-EXT-MON-VIDEO-001'],
-      ['likes', selectedCampaignTrackedTotals.likes, 'RAW-EXT-MON-VIDEO-001'],
-      ['comments', selectedCampaignTrackedTotals.comments, 'RAW-EXT-MON-VIDEO-001'],
-      ['shares', selectedCampaignTrackedTotals.shares, 'RAW-EXT-MON-VIDEO-001'],
-      ['saves', selectedCampaignTrackedTotals.saves, 'RAW-EXT-MON-VIDEO-001'],
-      ['conversions', selectedCampaignTrackedTotals.conversions, 'RAW-EXT-MON-VIDEO-001'],
-      ['average_engagement_rate', percent(selectedCampaignTrackedAverageEngagement), 'RAW-EXT-MON-VIDEO-001'],
+      ['uses_external_raw', reportUsesExternalRaw ? 'yes' : 'no', 'externalReportRows'],
+      ['tracked_content_count', reportVideoRows.length, 'RAW-EXT-MON-VIDEO-001'],
+      ['uploaded_creator_count', reportUploadedCreatorCount, 'RAW-EXT-MON-VIDEO-001'],
+      ['views', reportMetricTotals.views, 'RAW-EXT-MON-VIDEO-001'],
+      ['likes', reportMetricTotals.likes, 'RAW-EXT-MON-VIDEO-001'],
+      ['comments', reportMetricTotals.comments, 'RAW-EXT-MON-VIDEO-001'],
+      ['shares', reportMetricTotals.shares, 'RAW-EXT-MON-VIDEO-001'],
+      ['saves', reportMetricTotals.saves, 'RAW-EXT-MON-VIDEO-001'],
+      ['conversions', reportMetricTotals.conversions, 'RAW-EXT-MON-VIDEO-001'],
+      ['average_engagement_rate', percent(reportAverageEngagement), 'RAW-EXT-MON-VIDEO-001'],
+      ['brand_monitor_creator_rows', reportBrandInfluencerRows.length, 'RAW-EXT-MON-INF-001'],
+      ['brand_monitor_mentions', reportMentionCount, 'RAW-EXT-MON-INF-001'],
+      ['brand_monitor_estimated_exposure', reportEstimatedExposure, 'RAW-EXT-MON-INF-001'],
       ['recruited_creator_count', selectedCampaignRecruitedPool.length, 'RAW-INT-INF-001'],
-      ['brand_monitor_count', brandTrackingGroups.length, 'RAW-EXT-MON-INF-001'],
-      ['kpi_progress', `${selectedCampaignKpi?.progress ?? 0}%`, 'calculated_metrics'],
+      ['kpi_progress', String(selectedCampaignKpi?.progress ?? 0) + '%', 'calculated_metrics'],
     ]
 
     const videoMonitorRows = [
       [
-        'campaign',
-        'campaign_status',
         'creator',
         'handle',
         'platform',
-        'category',
+        'country',
+        'language',
         'followers',
-        'creator_average_views',
-        'creator_engagement_rate',
-        'creator_data_quality',
         'profile_url',
         'content_title',
         'content_url',
-        'content_status',
+        'published_at',
         'views',
         'likes',
         'comments',
@@ -7031,71 +7355,66 @@ function App() {
         'saves',
         'content_engagement_rate',
         'conversions',
-        'last_checked',
+        'source_file',
+        'source_sheet',
         'raw_id',
       ],
-      ...selectedCampaignTrackedPosts.map((post) => {
-        const campaign = brandCampaigns.find((item) => item.id === post.campaignId)
-        const creator = creators.find((item) => item.id === post.creatorId)
-        const quality = creator ? getCreatorDataQuality(creator) : null
-        return [
-          campaign?.name ?? '',
-          campaign?.status ?? '',
-          creator?.name ?? '',
-          creator?.handle ?? '',
-          post.platform,
-          creator?.category ?? '',
-          creator?.followers ?? '',
-          creator?.averageViews ?? '',
-          creator ? percent(creator.engagement) : '',
-          quality ? `${quality.score}% ${quality.level}` : '',
-          creator?.profileUrl ?? '',
-          post.title,
-          post.url,
-          post.status,
-          post.views,
-          post.likes,
-          post.comments,
-          post.shares,
-          post.saves,
-          percent(contentEngagementRate(post)),
-          post.conversions,
-          post.lastChecked,
-          'RAW-EXT-MON-VIDEO-001',
-        ]
-      }),
+      ...reportVideoRows.map((row) => [
+        row.creatorName,
+        row.handle,
+        row.platform,
+        row.country,
+        row.language,
+        row.followers,
+        row.profileUrl,
+        row.title,
+        row.url,
+        row.publishedAt,
+        row.views,
+        row.likes,
+        row.comments,
+        row.shares,
+        row.saves,
+        percent(row.engagementRate),
+        row.conversions,
+        row.fileName,
+        row.sheetName,
+        row.rawSourceId,
+      ]),
     ]
 
     const brandMonitorRows = [
       [
-        'brand_or_competitor',
-        'platforms',
-        'countries',
-        'related_content_count',
-        'estimated_mentions',
-        'estimated_reach_views',
-        'likes',
-        'comments',
-        'shares',
+        'creator_or_brand',
+        'profile_url',
+        'followers',
+        'region',
+        'language',
+        'average_views',
+        'total_views',
         'engagement_rate',
-        'latest_source_url',
-        'latest_content_title',
+        'videos',
+        'last_video',
+        'price',
+        'source_file',
+        'source_sheet',
         'raw_id',
       ],
-      ...brandTrackingGroups.map((group) => [
-        group.brandName,
-        group.platforms.join(', '),
-        group.countries.join(', '),
-        group.items.length,
-        group.items.length,
-        group.views,
-        group.likes,
-        group.comments,
-        group.shares,
-        group.views ? percent((group.likes + group.comments + group.shares) / group.views) : '0.0%',
-        group.latestItem?.url || '',
-        group.latestItem?.title || '',
-        'RAW-EXT-MON-INF-001',
+      ...reportBrandInfluencerRows.map((row) => [
+        row.creatorName,
+        row.profileUrl,
+        row.followers,
+        row.region,
+        row.language,
+        row.averageViews,
+        row.totalViews,
+        percent(row.engagementRate),
+        row.videos,
+        row.lastVideo,
+        row.price,
+        row.fileName,
+        row.sheetName,
+        row.rawSourceId,
       ]),
     ]
 
@@ -7115,27 +7434,24 @@ function App() {
         'raw_id',
         'note',
       ],
-      ...selectedCampaignTrackedPosts.map((post) => {
-        const campaign = brandCampaigns.find((item) => item.id === post.campaignId)
-        return [
-          post.lastChecked || exportedAt,
-          campaign?.name ?? reportName,
-          post.title,
-          post.url,
-          post.platform,
-          post.views,
-          post.likes,
-          post.comments,
-          post.shares,
-          post.saves,
-          percent(contentEngagementRate(post)),
-          'RAW-EXT-MON-VIDEO-001',
-          'Current snapshot. Historical daily deltas require scheduled API snapshots.',
-        ]
-      }),
+      ...reportVideoRows.map((row) => [
+        row.publishedAt || exportedAt,
+        reportName,
+        row.title,
+        row.url,
+        row.platform,
+        row.views,
+        row.likes,
+        row.comments,
+        row.shares,
+        row.saves,
+        percent(row.engagementRate),
+        row.rawSourceId,
+        reportUsesExternalRaw ? 'External raw row snapshot.' : 'Manual tracked post snapshot. Historical daily deltas require scheduled API snapshots.',
+      ]),
     ]
 
-    exportExcelWorkbook(`creatorops-monitor-report-${normalizeHandleSegment(reportName)}.xls`, [
+    exportExcelWorkbook('creatorops-monitor-report-' + normalizeHandleSegment(reportName) + '.xls', [
       { name: 'Summary', rows: summaryRows },
       { name: 'Raw Sources', rows: rawSourceRows },
       { name: 'Video Monitor Data', rows: videoMonitorRows },
@@ -11859,15 +12175,18 @@ function App() {
             </div>
 
             <div className="tracking-metrics">
-              <Stat label="추적 콘텐츠" value={`${selectedCampaignTrackedPosts.length}건`} />
-              <Stat label="조회수" value={compactNumber(selectedCampaignTrackedTotals.views)} />
-              <Stat label="좋아요" value={compactNumber(selectedCampaignTrackedTotals.likes)} />
-              <Stat label="댓글" value={compactNumber(selectedCampaignTrackedTotals.comments)} />
-              <Stat label="공유" value={compactNumber(selectedCampaignTrackedTotals.shares)} />
-              <Stat label="저장" value={compactNumber(selectedCampaignTrackedTotals.saves)} />
-              <Stat label="전환" value={compactNumber(selectedCampaignTrackedTotals.conversions)} />
-              <Stat label="평균 참여율" value={percent(selectedCampaignTrackedAverageEngagement)} />
-              <Stat label="업로드 인플루언서" value={`${new Set(selectedCampaignTrackedPosts.map((post) => post.creatorId)).size}명`} />
+              <Stat label={'\ucf58\ud150\uce20'} value={String(reportVideoRows.length) + '\uac74'} />
+              <Stat label={'\uc870\ud68c\uc218'} value={compactNumber(reportMetricTotals.views)} />
+              <Stat label={'\uc88b\uc544\uc694'} value={compactNumber(reportMetricTotals.likes)} />
+              <Stat label={'\ub313\uae00'} value={compactNumber(reportMetricTotals.comments)} />
+              <Stat label={'\uacf5\uc720'} value={compactNumber(reportMetricTotals.shares)} />
+              <Stat label={'\uc800\uc7a5'} value={compactNumber(reportMetricTotals.saves)} />
+              <Stat label={'\uc804\ud658'} value={compactNumber(reportMetricTotals.conversions)} />
+              <Stat label={'\ud3c9\uade0 \ucc38\uc5ec\uc728'} value={percent(reportAverageEngagement)} />
+              <Stat label={'\uc5c5\ub85c\ub4dc \ud06c\ub9ac\uc5d0\uc774\ud130'} value={String(reportUploadedCreatorCount) + '\uba85'} />
+              <Stat label={'\uad00\ub828 \ud06c\ub9ac\uc5d0\uc774\ud130'} value={String(reportBrandInfluencerRows.length) + '\ud589'} />
+              <Stat label={'\uc5b8\uae09\ub7c9'} value={compactNumber(reportMentionCount)} />
+              <Stat label={'\uc608\uc0c1 \ub178\ucd9c'} value={compactNumber(reportEstimatedExposure)} />
             </div>
 
             <div className="campaign-kpi-report">
@@ -11876,98 +12195,104 @@ function App() {
                 return (
                   <article key={summary.campaignId}>
                     <div>
-                      <strong>{campaign?.name ?? '캠페인'}</strong>
-                      <span>{summary.metrics.length ? `목표 대비 ${summary.progress}%` : '구조화 KPI 필요'}</span>
+                      <strong>{campaign?.name ?? 'Campaign'}</strong>
+                      <span>{summary.metrics.length ? 'Progress ' + summary.progress + '%' : 'KPI setup needed'}</span>
                     </div>
                     <div className="pm-progress-bar">
-                      <span style={{ width: `${summary.progress}%` }} />
+                      <span style={{ width: String(summary.progress) + '%' }} />
                     </div>
                     <p>
-                      {summary.metrics.slice(0, 3).map((metric) => `${metric.label} ${metric.displayActual}/${metric.displayTarget}`).join(' · ') ||
-                        '캠페인 생성에서 목표 조회수/전환/주문/매출을 입력하세요.'}
+                      {summary.metrics.slice(0, 3).map((metric) => metric.label + ' ' + metric.displayActual + '/' + metric.displayTarget).join(' ? ') ||
+                        'Set target views, conversions, orders, or revenue in campaign setup.'}
                     </p>
                   </article>
                 )
               })}
             </div>
 
-            <div className="report-raw-source-grid">
-              <article>
-                <span className="mini-label">RAW-EXT-MON-VIDEO-001</span>
-                <strong>Video Monitor Data API raw</strong>
-                <p>영상별 조회수, 좋아요, 댓글, 공유, 저장, 참여율, 전환, 일별 변화 원천입니다.</p>
-                <small>{selectedCampaignTrackedPosts.length ? `${selectedCampaignTrackedPosts.length}건 콘텐츠가 리포트에 연결됨` : '콘텐츠 추적 링크 등록 대기'}</small>
-              </article>
-              <article>
-                <span className="mini-label">RAW-EXT-MON-INF-001</span>
-                <strong>브랜드 모니터 인플루언서 API raw</strong>
-                <p>브랜드/경쟁사 기준 관련 크리에이터, 언급량, 예상 노출, 평균 조회, 단가 벤치마크 원천입니다.</p>
-                <small>{brandTrackingGroups.length ? `${brandTrackingGroups.length}개 브랜드 모니터링 raw 연결` : '브랜드 검색 및 추적 저장 대기'}</small>
-              </article>
-              <article>
-                <span className="mini-label">계산지표</span>
-                <strong>리포트 표시 지표</strong>
-                <p>MET-SNS-001~006, MET-CONT-001~004, MET-EXT-VIDEO-001~003 기준으로 집계합니다.</p>
-                <small>일별 변화는 API 스냅샷 적재 후 추이 차트로 확장됩니다.</small>
-              </article>
+            <div className="report-data-note">
+              <span>{reportUsesExternalRaw ? '\uc678\ubd80 \ub9ac\ud3ec\ud2b8 \uae30\uc900' : '\uc218\ub3d9 \ucd94\uc801 \uae30\uc900'}</span>
+              <small>
+                {'\ucf58\ud150\uce20 '}{reportVideoRows.length}{'\uac74 / \uad00\ub828 \ud06c\ub9ac\uc5d0\uc774\ud130 '}{reportBrandInfluencerRows.length}{'\ud589 / \uc870\ud68c\uc218 '}{compactNumber(reportMetricTotals.views)}{' / \ud3c9\uade0 \ucc38\uc5ec\uc728 '}{percent(reportAverageEngagement)}
+              </small>
             </div>
 
-            <div className="tracked-content-list">
-              {selectedCampaignTrackedPosts.map((post) => {
-                const creator = creators.find((item) => item.id === post.creatorId)
-                const campaign = brandCampaigns.find((item) => item.id === post.campaignId)
-                const engagementRate = contentEngagementRate(post)
-                return (
-                  <article className="tracked-post" key={post.id}>
-                    <div className="tracked-post-main">
-                      <div className="tracked-post-head">
-                        <span className="status-chip success-chip">{post.status}</span>
-                        <span className="type-chip">{campaign?.name ?? '캠페인 미지정'}</span>
-                      </div>
-                      <strong>{post.title}</strong>
-                      <p>{creator?.name ?? '알 수 없음'} · {creator?.handle ?? '핸들 미입력'} · {post.platform} · {post.lastChecked}</p>
-                      <div className="tracked-account-meta">
-                        <span>팔로워 {creator ? compactNumber(creator.followers) : '-'}</span>
-                        <span>평균 조회 {creator ? compactNumber(creator.averageViews) : '-'}</span>
-                        <span>계정 참여율 {creator ? percent(creator.engagement) : '-'}</span>
-                        <span>{creator?.category ?? '카테고리 미입력'}</span>
-                      </div>
-                    <div className="tracked-links">
-                      <span className="tracking-source-chip">{post.metricsSource || post.status || '추적 중'}</span>
-                      {creator?.profileUrl && (
-                        <a href={creator.profileUrl} target="_blank" rel="noreferrer">
-                          계정 보기
-                          </a>
-                        )}
-                        <a href={post.url} target="_blank" rel="noreferrer">
-                          업로드 링크
-                        </a>
-                      </div>
+            {reportBrandInfluencerRows.length > 0 && (
+              <div className="report-brand-monitor-list">
+                <div className="report-section-title">
+                  <strong>{'\ube0c\ub79c\ub4dc/\uacbd\uc7c1\uc0ac \uad00\ub828 \ud06c\ub9ac\uc5d0\uc774\ud130'}</strong>
+                  <span>{'\uc911\ubcf5 \uc81c\uac70 \ud6c4 \uc0c1\uc704 6\uac1c \ud589'}</span>
+                </div>
+                {reportBrandInfluencerRows.slice(0, 6).map((row) => (
+                  <article key={row.id || row.profileUrl || row.creatorName}>
+                    <div>
+                      <strong>{row.creatorName || 'Unnamed creator'}</strong>
+                      <span>{row.region || '-'} / {row.language || '-'}</span>
                     </div>
-                    <div className="post-metrics">
-                      <span>{compactNumber(post.views)} 조회</span>
-                      <span>{compactNumber(post.likes)} 좋아요</span>
-                      <span>{compactNumber(post.comments)} 댓글</span>
-                      <span>{compactNumber(post.shares)} 공유</span>
-                      <span>{compactNumber(post.saves)} 저장</span>
-                      <span>{compactNumber(post.conversions)} 전환</span>
-                      <strong>{percent(engagementRate)} 참여율</strong>
-                    </div>
+                    <span>Followers {compactNumber(row.followers)}</span>
+                    <span>Avg views {compactNumber(row.averageViews)}</span>
+                    <span>Total views {compactNumber(row.totalViews)}</span>
+                    <span>ER {percent(row.engagementRate)}</span>
+                    {row.profileUrl ? <a href={row.profileUrl} target="_blank" rel="noreferrer">Open</a> : <span>-</span>}
                   </article>
-                )
-              })}
-              {!selectedCampaignTrackedPosts.length && (
+                ))}
+              </div>
+            )}
+
+            <div className="tracked-content-list">
+              {reportVideoRows.map((row) => (
+                <article className="tracked-post" key={row.id || row.url || row.title}>
+                  <div className="tracked-post-main">
+                    <div className="tracked-post-head">
+                      <span className="status-chip success-chip">{reportUsesExternalRaw ? '\uc678\ubd80 \ub9ac\ud3ec\ud2b8' : '\ucd94\uc801'}</span>
+                      <span className="type-chip">{row.platform || 'platform'}</span>
+                      <span className="type-chip">{reportUsesExternalRaw ? '\uc678\ubd80 \ub370\uc774\ud130' : '\uc218\ub3d9 \ub4f1\ub85d'}</span>
+                    </div>
+                    <strong>{row.title}</strong>
+                    <p>{row.creatorName || 'Creator missing'} / {row.handle || 'Handle missing'} / {row.publishedAt || 'Date missing'}</p>
+                    <div className="tracked-account-meta">
+                      <span>Followers {row.followers ? compactNumber(row.followers) : '-'}</span>
+                      <span>Country {row.country || '-'}</span>
+                      <span>Language {row.language || '-'}</span>
+                      <span>{row.sheetName || row.sourceName}</span>
+                    </div>
+                    <div className="tracked-links">
+                      <span className="tracking-source-chip">{row.fileName || row.sourceName || 'workspace'}</span>
+                      {row.profileUrl && (
+                        <a href={row.profileUrl} target="_blank" rel="noreferrer">
+                          Open profile
+                        </a>
+                      )}
+                      {row.url && (
+                        <a href={row.url} target="_blank" rel="noreferrer">
+                          Open content
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                  <div className="post-metrics">
+                    <span>{compactNumber(row.views)} views</span>
+                    <span>{compactNumber(row.likes)} likes</span>
+                    <span>{compactNumber(row.comments)} comments</span>
+                    <span>{compactNumber(row.shares)} shares</span>
+                    <span>{compactNumber(row.saves)} saves</span>
+                    <span>{compactNumber(row.conversions)} conv.</span>
+                    <strong>{percent(row.engagementRate)} ER</strong>
+                  </div>
+                </article>
+              ))}
+              {!reportVideoRows.length && (
                 <div className="empty-state compact-empty">
                   <BarChart3 size={22} />
-                  <strong>아직 추적 중인 업로드 콘텐츠가 없습니다.</strong>
-                  <p>콘텐츠 추적 등록에서 인플루언서와 업로드 링크를 먼저 저장하세요. 조회수/댓글/공유는 자동 갱신 또는 수동 보정으로 누적합니다.</p>
+                  <strong>No content raw is connected to this report yet.</strong>
+                  <p>Upload a Video Monitor Data report in Data Room or register content tracking links first.</p>
                 </div>
               )}
             </div>
 
             <div className="insight-strip">
               <Target size={18} />
-              <p>현재 쇼트리스트 예상 총 단가 {won(getCreatorsByIds(creators, shortlist).reduce((sum, creator) => sum + creator.price, 0))} · 선택 캠페인 추적 전환 {compactNumber(selectedCampaignTrackedTotals.conversions)}</p>
+              <p>현재 쇼트리스트 예상 총 단가 {won(getCreatorsByIds(creators, shortlist).reduce((sum, creator) => sum + creator.price, 0))} · 선택 캠페인 추적 전환 {compactNumber(reportMetricTotals.conversions)}</p>
             </div>
           </section>
           )}
