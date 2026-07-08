@@ -93,9 +93,17 @@
 .sidebar-bottom-actions {
   margin-top: auto;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
+}
+
+.sidebar-bottom-button-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .legal-links {
@@ -136,6 +144,28 @@
   color: var(--text-strong);
   background: var(--surface-strong);
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.08);
+}
+
+.sidebar-practice-button {
+  flex: 1;
+  height: 42px;
+  border: 1px solid rgba(0, 113, 227, 0.18);
+  border-radius: 8px;
+  color: var(--accent);
+  background: rgba(0, 113, 227, 0.08);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.sidebar-practice-button:hover {
+  border-color: rgba(0, 113, 227, 0.32);
+  background: rgba(0, 113, 227, 0.12);
 }
 
 .brand-switcher {
@@ -5181,6 +5211,185 @@
   font-weight: 800;
 }
 
+.practice-tour-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 26;
+  padding: 24px;
+  background: rgba(15, 15, 18, 0.28);
+  backdrop-filter: blur(8px);
+  display: grid;
+  place-items: center;
+}
+
+.practice-tour-card {
+  width: min(920px, 100%);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow: auto;
+  border: 1px solid rgba(255, 255, 255, 0.72);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.24);
+}
+
+.practice-tour-header {
+  padding: 20px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.practice-tour-header h2 {
+  margin: 4px 0 0;
+  color: var(--text-strong);
+  font-size: 24px;
+  line-height: 1.2;
+}
+
+.practice-tour-header p {
+  margin: 8px 0 0;
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.45;
+}
+
+.practice-tour-body {
+  display: grid;
+  grid-template-columns: minmax(190px, 0.5fr) minmax(0, 1fr);
+  gap: 16px;
+  padding: 18px 20px;
+}
+
+.practice-step-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+
+.practice-step-list button {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: var(--text);
+  background: rgba(255, 255, 255, 0.76);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+}
+
+.practice-step-list button.active {
+  color: var(--accent);
+  border-color: rgba(0, 113, 227, 0.3);
+  background: rgba(0, 113, 227, 0.09);
+}
+
+.practice-step-list span {
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  color: var(--accent);
+  background: var(--accent-soft);
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.practice-step-list strong {
+  font-size: 13px;
+}
+
+.practice-step-detail {
+  min-height: 300px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 18px;
+  background: linear-gradient(180deg, rgba(245, 249, 255, 0.96), rgba(255, 255, 255, 0.94));
+  display: grid;
+  align-content: start;
+  gap: 12px;
+}
+
+.practice-step-detail h3 {
+  margin: 0;
+  color: var(--text-strong);
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.practice-step-detail p {
+  margin: 0;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 750;
+  line-height: 1.6;
+}
+
+.practice-task-box {
+  padding: 13px;
+  border: 1px solid rgba(0, 113, 227, 0.16);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.74);
+  display: grid;
+  gap: 5px;
+}
+
+.practice-task-box strong,
+.practice-task-box span {
+  display: block;
+}
+
+.practice-task-box strong {
+  color: var(--accent);
+  font-size: 12px;
+}
+
+.practice-task-box span {
+  color: var(--text-soft);
+  font-size: 13px;
+  font-weight: 750;
+  line-height: 1.5;
+}
+
+.practice-progress-bar {
+  height: 8px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: #e5e7eb;
+}
+
+.practice-progress-bar span {
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  display: block;
+}
+
+.practice-tour-actions {
+  padding: 14px 20px 18px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.practice-tour-actions > div {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -6487,6 +6696,37 @@
   .sidebar-bottom-actions {
     margin-top: 0;
     justify-content: flex-end;
+  }
+
+  .sidebar-bottom-button-row {
+    justify-content: flex-end;
+  }
+
+  .sidebar-practice-button {
+    max-width: 150px;
+  }
+
+  .practice-tour-backdrop {
+    padding: 12px;
+  }
+
+  .practice-tour-header,
+  .practice-tour-actions {
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .practice-tour-body {
+    grid-template-columns: 1fr;
+    padding: 14px;
+  }
+
+  .practice-step-list {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .practice-tour-actions {
+    flex-direction: column;
   }
 
   .workspace {

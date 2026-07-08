@@ -67,6 +67,7 @@ import {
 const STORE_KEY = 'creatorops.workspace.v2'
 const TRACKING_DAILY_REFRESH_KEY = 'creatorops.tracking.lastDailyRefresh'
 const GMAIL_AUTH_STORE_KEY = 'creatorops.gmailAuth.v1'
+const PRACTICE_TOUR_STORE_KEY = 'creatorops.practiceTour.completed.v1'
 const GMAIL_MIN_SEND_DELAY_MS = 20000
 const GMAIL_MAX_SEND_DELAY_MS = 60000
 const EXTERNAL_REPORT_PROFILES = [
@@ -101,6 +102,73 @@ const EXTERNAL_REPORT_PROFILES = [
       { label: 'Label Distribution', option: 'Label Distribution' },
       { label: 'First Sheet', option: 1, fallback: true },
     ],
+  },
+]
+
+const practiceTourSteps = [
+  {
+    section: 'dashboard',
+    title: '전체 운영 흐름 보기',
+    label: '대시보드',
+    detail: '오늘 먼저 처리할 일, 캠페인 진행현황, 메시지/리포트 병목을 한 화면에서 확인합니다.',
+    task: '먼저 캠페인이 살아 있는지 보고, 다음 액션 카드에서 어디로 이동할지 결정하세요.',
+    action: '대시보드 보기',
+  },
+  {
+    section: 'campaigns',
+    title: '캠페인 기준 잡기',
+    label: '캠페인',
+    detail: '브랜드, 제품, 목표 인원, 일정, KPI를 먼저 확정해야 발굴과 메시지가 같은 기준으로 움직입니다.',
+    task: '캠페인을 열어 브리프, 목표 인원, 일정, 섭외 완료 풀과 배송/정산 기록을 확인하세요.',
+    action: '캠페인 보기',
+  },
+  {
+    section: 'discovery',
+    title: '크리에이터 발굴 연습',
+    label: '발굴',
+    detail: '캠페인 조건을 기준으로 실제 웹 발굴을 실행하고, 결과 중 보낼 후보만 메시지 전 후보 풀로 저장합니다.',
+    task: '검색어, 국가, 플랫폼, 팔로워/조회수 조건을 확인한 뒤 실제 웹 발굴과 AI 매칭을 순서대로 실행하세요.',
+    action: '발굴 화면 열기',
+  },
+  {
+    section: 'groups',
+    title: '반복 섭외 후보 묶기',
+    label: '후보 그룹',
+    detail: '자주 쓰는 후보군은 그룹으로 저장해 캠페인마다 다시 찾지 않고 배정할 수 있습니다.',
+    task: '후보 그룹을 열어 멤버를 확인하고, 필요한 후보를 선택해 캠페인에 배정하세요.',
+    action: '후보 그룹 보기',
+  },
+  {
+    section: 'messages',
+    title: '제안 메시지 검토와 발송',
+    label: '메시지',
+    detail: '메시지 전 후보 풀에서 넘어온 후보에게 이메일/DM 작업용 메시지를 검토하고 발송 상태를 관리합니다.',
+    task: '상세 보기에서 문구를 확인하고, 이메일 후보는 발송, DM 후보는 작업 엑셀 또는 복사로 처리하세요.',
+    action: '메시지 보기',
+  },
+  {
+    section: 'report',
+    title: '성과 추적과 리포트 확인',
+    label: '리포트',
+    detail: '업로드 링크, 조회수, 댓글, 참여율, 전환 데이터를 캠페인 단위로 누적해 리포트로 확인합니다.',
+    task: '콘텐츠 추적 등록에서 URL을 저장하고, 수집된 수치가 보고서에 반영되는지 확인하세요.',
+    action: '리포트 보기',
+  },
+  {
+    section: 'references',
+    title: '레퍼런스 저장과 가이드 차용',
+    label: '레퍼런스',
+    detail: '터진 콘텐츠를 저장하고 분석한 뒤, 괜찮은 구조만 캠페인 가이드에 차용합니다.',
+    task: '저장 리스트에서 분석을 열어 후킹/컷 구성/CTA를 읽고, 괜찮을 때만 가이드 차용을 누르세요.',
+    action: '레퍼런스 보기',
+  },
+  {
+    section: 'dataRoom',
+    title: '데이터 원천 확인',
+    label: '데이터룸',
+    detail: '대시보드와 리포트 수치가 어떤 raw 데이터와 계산지표에서 나왔는지 점검합니다.',
+    task: 'Raw 데이터와 연결 계산지표를 눌러 수집 상태, 원천 위치, 계산식을 확인하세요.',
+    action: '데이터룸 보기',
   },
 ]
 
@@ -4328,6 +4396,8 @@ function App() {
   const [toast, setToast] = useState('')
   const showToast = (message) => setToast(message)
   const [modal, setModal] = useState(null)
+  const [practiceOpen, setPracticeOpen] = useState(false)
+  const [practiceStepIndex, setPracticeStepIndex] = useState(0)
   const [youtubeSyncing, setYoutubeSyncing] = useState(false)
   const [realDiscoverySearching, setRealDiscoverySearching] = useState(false)
   const [showExampleCreators, setShowExampleCreators] = useState(false)
@@ -4555,6 +4625,12 @@ function App() {
   }, [currentAccount?.role])
   const visibleSection = accessibleSectionIds.includes(activeSection) ? activeSection : accessibleSectionIds[0]
   const canAccessSection = (sectionId) => accessibleSectionIds.includes(sectionId)
+  const practiceSteps = useMemo(
+    () => practiceTourSteps.filter((step) => accessibleSectionIds.includes(step.section)),
+    [accessibleSectionIds],
+  )
+  const safePracticeStepIndex = Math.min(Math.max(practiceStepIndex, 0), Math.max(practiceSteps.length - 1, 0))
+  const currentPracticeStep = practiceSteps[safePracticeStepIndex] ?? practiceTourSteps[0]
   const accessibleBrands = useMemo(
     () =>
       currentAccount?.role === 'Owner' || currentAccount?.role === 'Admin'
@@ -5020,6 +5096,20 @@ function App() {
     const timer = window.setTimeout(() => setToast(''), 2800)
     return () => window.clearTimeout(timer)
   }, [toast])
+
+  useEffect(() => {
+    let timer
+    try {
+      if (!window.localStorage.getItem(PRACTICE_TOUR_STORE_KEY)) {
+        timer = window.setTimeout(() => setPracticeOpen(true), 500)
+      }
+    } catch {
+      timer = window.setTimeout(() => setPracticeOpen(true), 500)
+    }
+    return () => {
+      if (timer) window.clearTimeout(timer)
+    }
+  }, [])
 
   useEffect(() => {
     if (!backendConfig.hasSupabase) return undefined
@@ -6535,6 +6625,34 @@ function App() {
     }
     setActiveSection(section)
     window.scrollTo({ top: 0, behavior: 'smooth' })
+  }
+
+  const openPracticeTour = () => {
+    setPracticeStepIndex(0)
+    setPracticeOpen(true)
+  }
+
+  const closePracticeTour = (remember = false) => {
+    if (remember) {
+      try {
+        window.localStorage.setItem(PRACTICE_TOUR_STORE_KEY, 'completed')
+      } catch {
+        // localStorage can be unavailable in private or embedded contexts.
+      }
+    }
+    setPracticeOpen(false)
+  }
+
+  const goToPracticeStep = (index) => {
+    const nextIndex = Math.min(Math.max(index, 0), Math.max(practiceSteps.length - 1, 0))
+    const nextStep = practiceSteps[nextIndex]
+    setPracticeStepIndex(nextIndex)
+    if (nextStep) jumpTo(nextStep.section)
+  }
+
+  const completePracticeTour = () => {
+    closePracticeTour(true)
+    showToast('프랙티스 모드를 완료했어요. 좌측 하단에서 다시 열 수 있습니다.')
   }
 
   const toggleShortlist = (creator) => {
@@ -9676,15 +9794,21 @@ function App() {
         </nav>
 
         <div className="sidebar-bottom-actions">
-          <button
-            className={`sidebar-settings-button ${visibleSection === 'settings' ? 'active' : ''}`}
-            type="button"
-            title="??"
-            aria-label="??"
-            onClick={() => jumpTo('settings')}
-          >
-            <Settings size={19} />
-          </button>
+          <div className="sidebar-bottom-button-row">
+            <button
+              className={`sidebar-settings-button ${visibleSection === 'settings' ? 'active' : ''}`}
+              type="button"
+              title="설정"
+              aria-label="설정"
+              onClick={() => jumpTo('settings')}
+            >
+              <Settings size={19} />
+            </button>
+            <button className="sidebar-practice-button" type="button" onClick={openPracticeTour}>
+              <ClipboardList size={16} />
+              <span>프랙티스</span>
+            </button>
+          </div>
           <div className="legal-links" aria-label="Legal links">
             <a href="/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>
             <span>·</span>
@@ -12465,6 +12589,18 @@ function App() {
         )}
       </main>
 
+      {practiceOpen && (
+        <PracticeTour
+          steps={practiceSteps}
+          currentIndex={safePracticeStepIndex}
+          currentStep={currentPracticeStep}
+          onClose={() => closePracticeTour(false)}
+          onDismiss={() => closePracticeTour(true)}
+          onStepChange={goToPracticeStep}
+          onComplete={completePracticeTour}
+        />
+      )}
+
       {toast && <div className="toast">{toast}</div>}
 
       {modal && (
@@ -14296,6 +14432,93 @@ function NavButton({ active, icon, label, onClick }) {
       {icon}
       <span>{label}</span>
     </button>
+  )
+}
+
+function PracticeTour({ steps, currentIndex, currentStep, onClose, onDismiss, onStepChange, onComplete }) {
+  const totalSteps = steps.length || 1
+  const isFirst = currentIndex <= 0
+  const isLast = currentIndex >= totalSteps - 1
+
+  return (
+    <div className="practice-tour-backdrop" role="dialog" aria-modal="true" aria-label="프랙티스 모드">
+      <section className="practice-tour-card">
+        <header className="practice-tour-header">
+          <div>
+            <span className="mini-label">Practice Mode</span>
+            <h2>처음 사용자를 위한 실습 네비게이션</h2>
+            <p>실제 메뉴를 하나씩 열어보면서 캠페인 운영 흐름을 빠르게 익힙니다.</p>
+          </div>
+          <button className="icon-button" type="button" title="닫기" onClick={onClose}>
+            <X size={18} />
+          </button>
+        </header>
+
+        <div className="practice-tour-body">
+          <ol className="practice-step-list">
+            {steps.map((step, index) => (
+              <li key={step.section}>
+                <button
+                  className={index === currentIndex ? 'active' : ''}
+                  type="button"
+                  onClick={() => onStepChange(index)}
+                >
+                  <span>{index + 1}</span>
+                  <strong>{step.label}</strong>
+                </button>
+              </li>
+            ))}
+          </ol>
+
+          <article className="practice-step-detail">
+            <span className="mini-label">
+              Step {currentIndex + 1} / {totalSteps}
+            </span>
+            <h3>{currentStep.title}</h3>
+            <p>{currentStep.detail}</p>
+            <div className="practice-task-box">
+              <strong>연습 과제</strong>
+              <span>{currentStep.task}</span>
+            </div>
+            <div className="practice-progress-bar" aria-hidden="true">
+              <span style={{ width: `${((currentIndex + 1) / totalSteps) * 100}%` }} />
+            </div>
+          </article>
+        </div>
+
+        <footer className="practice-tour-actions">
+          <button className="secondary-button compact-button" type="button" onClick={onDismiss}>
+            다시 보지 않기
+          </button>
+          <div>
+            <button
+              className="secondary-button compact-button"
+              type="button"
+              onClick={() => onStepChange(currentIndex - 1)}
+              disabled={isFirst}
+            >
+              이전
+            </button>
+            <button
+              className="secondary-button compact-button"
+              type="button"
+              onClick={() => onStepChange(currentIndex)}
+            >
+              {currentStep.action}
+            </button>
+            {isLast ? (
+              <button className="primary-button compact-button" type="button" onClick={onComplete}>
+                완료
+              </button>
+            ) : (
+              <button className="primary-button compact-button" type="button" onClick={() => onStepChange(currentIndex + 1)}>
+                다음 단계
+              </button>
+            )}
+          </div>
+        </footer>
+      </section>
+    </div>
   )
 }
 
