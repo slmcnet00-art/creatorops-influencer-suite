@@ -83,6 +83,8 @@ data_room
 
 ## 외부 엑셀 리포트 적재 설계
 
+컬럼 단위로 API raw, 계산지표, 보완 raw 중 어디에서 가져와야 하는지는 [REPORT_FIELD_SOURCE_AUDIT.md](./REPORT_FIELD_SOURCE_AUDIT.md)를 기준으로 한다. 프론트에 표시되는 수치는 이 판정표에 있는 raw ID와 metric ID를 연결해야 하며, 연결되지 않은 값은 표시하지 않는다.
+
 ### 1. 외부 브랜드 모니터 인플루언서
 
 파일 예시:
