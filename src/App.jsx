@@ -7169,44 +7169,61 @@ function App() {
     try {
       const results = []
       const wantsYouTube = platform === '전체' || platform === 'YouTube'
+      const discoveryWarnings = []
+      const rememberDiscoveryWarning = (label, error) => {
+        const message = error instanceof Error ? error.message : String(error || '')
+        discoveryWarnings.push(`${label}: ${message.slice(0, 80)}`)
+      }
 
       if (wantsYouTube && (hasServerApi || youtubeApiKey)) {
-        results.push(
-          ...(await searchYouTubeCreatorDiscovery({
-            apiKey: youtubeApiKey,
-            query: searchText,
-            country: discoveryCountry,
-            maxResults,
-          })),
-        )
+        try {
+          results.push(
+            ...(await searchYouTubeCreatorDiscovery({
+              apiKey: youtubeApiKey,
+              query: searchText,
+              country: discoveryCountry,
+              maxResults,
+            })),
+          )
+        } catch (error) {
+          rememberDiscoveryWarning('YouTube Data API', error)
+        }
       }
 
-      if (hasProfileSearch && platform !== 'YouTube') {
-        results.push(
-          ...(await searchGoogleProfileDiscovery({
-            apiKey: realDiscoveryDraft.googleApiKey,
-            cx: realDiscoveryDraft.googleCx,
-            query: searchText,
-            platform,
-            country: discoveryCountry,
-            maxResults,
-          })),
-        )
+      if (hasProfileSearch && (platform !== 'YouTube' || !results.length)) {
+        try {
+          results.push(
+            ...(await searchGoogleProfileDiscovery({
+              apiKey: realDiscoveryDraft.googleApiKey,
+              cx: realDiscoveryDraft.googleCx,
+              query: searchText,
+              platform: platform === '전체' ? 'all' : platform,
+              country: discoveryCountry,
+              maxResults,
+            })),
+          )
+        } catch (error) {
+          rememberDiscoveryWarning('프로필 공개 검색', error)
+        }
       }
 
-      if (hasServerApi && platform !== 'YouTube' && results.length < maxResults) {
-        const referencePlatform = platform === '?꾩껜' ? 'all' : platform
-        const referencePayload = await searchContentReferences({
-          query: searchText,
-          country: discoveryCountry,
-          platform: referencePlatform,
-          sort: 'virality',
-          maxResults: Math.min(maxResults * 2, 120),
-        })
-        const referenceCandidates = (referencePayload?.references || [])
-          .map((reference, index) => buildDiscoveryResultFromReference(reference, index))
-          .filter(Boolean)
-        results.push(...referenceCandidates)
+      if (hasServerApi && results.length < maxResults) {
+        try {
+          const referencePlatform = platform === '전체' ? 'all' : platform
+          const referencePayload = await searchContentReferences({
+            query: searchText,
+            country: discoveryCountry,
+            platform: referencePlatform,
+            sort: 'virality',
+            maxResults: Math.min(maxResults * 2, 120),
+          })
+          const referenceCandidates = (referencePayload?.references || [])
+            .map((reference, index) => buildDiscoveryResultFromReference(reference, index))
+            .filter(Boolean)
+          results.push(...referenceCandidates)
+        } catch (error) {
+          rememberDiscoveryWarning('콘텐츠 레퍼런스 검색', error)
+        }
       }
 
       const matchingResults = intentTerms.length
@@ -7225,7 +7242,9 @@ function App() {
         showToast(
           results.length
             ? '검색 결과가 현재 키워드/카테고리 조건과 맞지 않아 저장하지 않았어요. 검색어를 조금 넓혀주세요.'
-            : '실제 검색 결과에서 가져올 프로필을 찾지 못했어요. 검색어를 더 구체화해주세요.',
+            : discoveryWarnings.length
+              ? `연결된 검색 API가 실패했습니다. ${discoveryWarnings[0]}`
+              : '실제 검색 결과에서 가져올 프로필을 찾지 못했어요. 검색어를 더 구체화해주세요.',
         )
         return
       }
@@ -7275,7 +7294,11 @@ function App() {
       setShowExampleCreators(false)
       setSelectedCreatorId(selectedNextId)
       setDiscoveryPage(1)
-      showToast(`실제 공개 검색 결과 ${discoveredCreators.length}명을 발굴 리스트에 저장했어요.`)
+      showToast(
+        discoveryWarnings.length
+          ? `실제 공개 검색 결과 ${discoveredCreators.length}명을 저장했어요. 일부 API는 우회했습니다.`
+          : `실제 공개 검색 결과 ${discoveredCreators.length}명을 발굴 리스트에 저장했어요.`,
+      )
     } catch (error) {
       showToast(error instanceof Error ? error.message : '실제 발굴 검색 중 오류가 발생했어요.')
     } finally {

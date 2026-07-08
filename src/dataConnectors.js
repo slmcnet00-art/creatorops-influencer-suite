@@ -371,7 +371,7 @@ export async function searchGoogleProfileDiscovery({ apiKey, cx, query, platform
   const cleanCountry = normalizeDiscoveryCountry(country)
   const cleanCx = String(cx || '').trim()
   const cleanQuery = String(query || '').trim()
-  const cleanPlatform = platform === '전체' ? '' : platform
+  const cleanPlatform = platform === '전체' || String(platform || '').toLowerCase() === 'all' ? '' : platform
 
   if (CREATOROPS_API_BASE_URL) {
     return callCreatorOpsApi('/discovery/google-profiles/search', {
