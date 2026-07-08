@@ -1144,6 +1144,31 @@
   gap: 10px;
 }
 
+.tracking-url-check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-muted);
+}
+
+.tracking-url-check-row .compact-button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.tracking-url-check-row span {
+  min-width: 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+}
+
 .reference-form label {
   display: grid;
   gap: 6px;

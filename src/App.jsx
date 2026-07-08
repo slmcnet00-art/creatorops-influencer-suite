@@ -13492,7 +13492,7 @@ function App() {
                   placeholder="https://www.youtube.com/watch?v=... 또는 Instagram/TikTok 업로드 링크"
                 />
               </label>
-              <div className="reference-url-check-row">
+              <div className="tracking-url-check-row">
                 <button
                   className="secondary-button compact-button"
                   type="button"
@@ -13502,7 +13502,7 @@ function App() {
                   <RefreshCw size={15} />
                   {trackingSnapshotLoading ? '확인 중' : '링크 확인'}
                 </button>
-                <span>{trackingDraft.snapshotSource ? trackingDraft.snapshotSource : '공개 데이터가 확인되면 제목, 플랫폼, 크리에이터, 조회수/좋아요/댓글을 자동으로 채웁니다.'}</span>
+                <span>{trackingDraft.snapshotSource ? trackingDraft.snapshotSource : '링크 확인 시 공개 데이터로 제목, 플랫폼, 크리에이터, 조회수/좋아요/댓글을 자동 입력합니다.'}</span>
               </div>
               {(trackingDraft.creatorName || trackingDraft.creatorHandle || trackingDraft.creatorFollowers) && (
                 <div className="quote-box compact-note-box">
