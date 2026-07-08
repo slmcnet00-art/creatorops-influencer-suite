@@ -1771,7 +1771,7 @@
   line-height: 1.1;
 }
 
-.metric-card div:last-child {
+.metric-card-meta {
   margin-top: 12px;
   display: flex;
   align-items: center;
@@ -1787,6 +1787,33 @@
 
 .metric-card small {
   font-size: 12px;
+}
+
+.data-room-source-tag,
+.workflow-lineage {
+  margin-top: 10px;
+  color: var(--text-muted);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
+.workflow-lineage {
+  display: inline-block;
+  margin-top: 5px;
+}
+
+.data-room-gated-empty {
+  grid-column: 1 / -1;
+  min-height: 78px;
+  padding: 18px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  color: var(--text-soft);
+  background: var(--surface-strong);
+  display: grid;
+  place-items: center;
+  text-align: center;
+  font-size: 13px;
 }
 
 .pm-progress-bar {
@@ -4936,7 +4963,8 @@
 }
 
 .tracking-metrics span,
-.tracking-metrics strong {
+.tracking-metrics strong,
+.tracking-metrics small {
   display: block;
 }
 
@@ -4948,6 +4976,12 @@
 .tracking-metrics strong {
   margin-top: 4px;
   color: var(--text-strong);
+}
+
+.tracking-metrics small {
+  margin-top: 5px;
+  color: var(--text-muted);
+  font-size: 10px;
 }
 
 .campaign-kpi-report {

@@ -4389,6 +4389,27 @@ function buildDataRoomPendingBundles({ backendConfig }) {
   ]
 }
 
+const DATA_ROOM_BLOCKING_STATUSES = new Set(['오류', '중단', '미수집'])
+
+function createDataRoomDisplayGate(rawData = [], metrics = []) {
+  const rawMap = new Map(rawData.map((item) => [item.id, item]))
+  const metricMap = new Map(metrics.map((item) => [item.id, item]))
+  const isReady = (item) => Boolean(item) && item.active !== false && !DATA_ROOM_BLOCKING_STATUSES.has(item.status)
+  const hasRaw = (ids = []) => ids.every((id) => isReady(rawMap.get(id)))
+  const hasMetrics = (ids = []) => ids.every((id) => isReady(metricMap.get(id)))
+
+  return {
+    canShow(contract = {}) {
+      return hasRaw(contract.rawIds) && hasMetrics(contract.metricIds)
+    },
+    lineage(contract = {}) {
+      const metricIds = (contract.metricIds || []).filter((id) => metricMap.has(id))
+      const rawIds = (contract.rawIds || []).filter((id) => rawMap.has(id))
+      return [...metricIds, ...rawIds]
+    },
+  }
+}
+
 function App() {
   const [workspace, setWorkspace] = usePersistentState(STORE_KEY, defaultWorkspace)
   const backendConfig = useMemo(() => getBackendConfig(), [])
@@ -5544,6 +5565,7 @@ function App() {
         detail: activeDiscoveryFilterCount > 0 ? `${activeDiscoveryFilterCount}개 조건` : '전체 후보',
         icon: <Search size={17} />,
         tone: 'blue',
+        contract: { rawIds: ['RAW-INT-INF-001', 'RAW-EXT-SEARCH-001'], metricIds: ['MET-POOL-001', 'MET-OPS-001'] },
       },
       {
         label: 'AI 추천',
@@ -5551,6 +5573,7 @@ function App() {
         detail: '근거/페르소나 생성',
         icon: <Target size={17} />,
         tone: 'green',
+        contract: { rawIds: ['RAW-INT-AI-001', 'RAW-INT-INF-001', 'RAW-INT-QUALITY-001'], metricIds: ['MET-AI-003'] },
       },
       {
         label: '틱톡 셀러',
@@ -5558,6 +5581,7 @@ function App() {
         detail: '공동구매 대량 섭외 후보',
         icon: <UsersRound size={17} />,
         tone: 'violet',
+        contract: { rawIds: ['RAW-INT-INF-001', 'RAW-EXT-CHN-001'], metricIds: ['MET-POOL-001', 'MET-AI-003'] },
       },
       {
         label: '메시지 검토함',
@@ -5565,6 +5589,7 @@ function App() {
         detail: `자동 ${autoOutreachCount} · 대량 ${bulkOutreachCount} · 수동 ${manualOutreachCount}`,
         icon: <Send size={17} />,
         tone: 'amber',
+        contract: { rawIds: ['RAW-INT-CRM-001', 'RAW-INT-AI-001'], metricIds: ['MET-CRM-001', 'MET-CRM-004'] },
       },
       {
         label: '성과 추적',
@@ -5572,6 +5597,7 @@ function App() {
         detail: `${compactNumber(trackedTotals.views)} 조회`,
         icon: <BarChart3 size={17} />,
         tone: 'slate',
+        contract: { rawIds: ['RAW-EXT-CONT-001'], metricIds: ['MET-SNS-001', 'MET-SNS-006'] },
       },
       {
         label: '리소스 풀',
@@ -5579,6 +5605,7 @@ function App() {
         detail: '재섭외 자산',
         icon: <UsersRound size={17} />,
         tone: 'violet',
+        contract: { rawIds: ['RAW-INT-INF-001'], metricIds: ['MET-POOL-001'] },
       },
       {
         label: '배송/수동 정산',
@@ -5586,6 +5613,7 @@ function App() {
         detail: `미완료 ${fulfillmentTotals.pending} · ${won(fulfillmentTotals.amount)}`,
         icon: <WalletCards size={17} />,
         tone: 'slate',
+        contract: { rawIds: ['RAW-INT-FIN-001'], metricIds: ['MET-FIN-002', 'MET-FIN-003'] },
       },
     ],
     [
@@ -5707,6 +5735,169 @@ function App() {
       }),
     [campaigns, contentReferences, creatorGroups, creators, dataRoomRawData, externalReportRows, fulfillmentRecords, outreach, recruitedPool, trackedPosts],
   )
+  const dataRoomDisplayGate = useMemo(
+    () => createDataRoomDisplayGate(dataRoomRawData, dataRoomMetrics),
+    [dataRoomMetrics, dataRoomRawData],
+  )
+  const visibleWorkflowSignals = useMemo(
+    () =>
+      workflowSignals
+        .filter((signal) => dataRoomDisplayGate.canShow(signal.contract))
+        .map((signal) => ({ ...signal, lineage: dataRoomDisplayGate.lineage(signal.contract) })),
+    [dataRoomDisplayGate, workflowSignals],
+  )
+  const dashboardMetricCards = useMemo(
+    () =>
+      [
+        {
+          key: 'search-reach',
+          icon: <UsersRound size={19} />,
+          label: '검색 도달',
+          value: compactNumber(totals.reach),
+          delta: `${shortlist.length}명 저장`,
+          detail: `${filteredCreators.length}명 후보`,
+          contract: { rawIds: ['RAW-INT-INF-001', 'RAW-EXT-CHN-001'], metricIds: ['MET-POOL-001'] },
+        },
+        {
+          key: 'tracked-views',
+          icon: <Eye size={19} />,
+          label: '누적 조회수',
+          value: compactNumber(trackedTotals.views),
+          delta: `${activeTrackedPosts.length}건 콘텐츠`,
+          detail: '콘텐츠 추적 raw 기준',
+          contract: { rawIds: ['RAW-EXT-CONT-001'], metricIds: ['MET-SNS-001'] },
+        },
+        {
+          key: 'average-engagement',
+          icon: <TrendingUp size={19} />,
+          label: '평균 참여율',
+          value: percent(reportAverageEngagement),
+          delta: `${reportVideoRows.length}건 계산`,
+          detail: '조회/반응 raw 기준',
+          contract: { rawIds: ['RAW-EXT-CONT-001', 'RAW-EXT-ENG-001'], metricIds: ['MET-SNS-006'] },
+        },
+        {
+          key: 'recruiting-progress',
+          icon: <WalletCards size={19} />,
+          label: '섭외 진행률',
+          value: `${selectedCampaignKpi?.progress ?? 0}%`,
+          delta: `${activeRecruitedPool.length}명 섭외 완료`,
+          detail: selectedCampaign ? selectedCampaign.name : '캠페인 선택 필요',
+          contract: { rawIds: ['RAW-INT-CMP-001', 'RAW-INT-INF-001'], metricIds: ['MET-CMP-001', 'MET-CRM-005'] },
+        },
+      ]
+        .filter((card) => dataRoomDisplayGate.canShow(card.contract))
+        .map((card) => ({ ...card, lineage: dataRoomDisplayGate.lineage(card.contract) })),
+    [
+      activeRecruitedPool.length,
+      activeTrackedPosts.length,
+      dataRoomDisplayGate,
+      filteredCreators.length,
+      reportAverageEngagement,
+      reportVideoRows.length,
+      selectedCampaign,
+      selectedCampaignKpi,
+      shortlist.length,
+      totals.reach,
+      trackedTotals.views,
+    ],
+  )
+  const reportMetricCards = useMemo(() => {
+    if (!reportVideoRows.length && !reportBrandInfluencerRows.length) return []
+
+    const videoRawIds = reportUsesExternalRaw ? ['RAW-EXT-MON-VIDEO-001'] : ['RAW-EXT-CONT-001']
+    const engagementRawIds = reportUsesExternalRaw ? ['RAW-EXT-MON-VIDEO-001'] : ['RAW-EXT-CONT-001', 'RAW-EXT-ENG-001']
+    const cards = [
+      {
+        key: 'content-count',
+        label: '콘텐츠',
+        value: `${reportVideoRows.length}건`,
+        contract: { rawIds: videoRawIds, metricIds: reportUsesExternalRaw ? ['MET-EXT-VIDEO-001'] : ['MET-SNS-001'] },
+      },
+      {
+        key: 'views',
+        label: '조회수',
+        value: compactNumber(reportMetricTotals.views),
+        contract: { rawIds: videoRawIds, metricIds: reportUsesExternalRaw ? ['MET-EXT-VIDEO-001', 'MET-SNS-001'] : ['MET-SNS-001'] },
+      },
+      {
+        key: 'likes',
+        label: '좋아요',
+        value: compactNumber(reportMetricTotals.likes),
+        contract: { rawIds: engagementRawIds, metricIds: ['MET-SNS-002'] },
+      },
+      {
+        key: 'comments',
+        label: '댓글',
+        value: compactNumber(reportMetricTotals.comments),
+        contract: { rawIds: engagementRawIds, metricIds: ['MET-SNS-003'] },
+      },
+      {
+        key: 'shares',
+        label: '공유',
+        value: compactNumber(reportMetricTotals.shares),
+        contract: { rawIds: engagementRawIds, metricIds: ['MET-SNS-004'] },
+      },
+      {
+        key: 'saves',
+        label: '저장',
+        value: compactNumber(reportMetricTotals.saves),
+        contract: { rawIds: engagementRawIds, metricIds: ['MET-SNS-005'] },
+      },
+      {
+        key: 'engagement',
+        label: '평균 참여율',
+        value: percent(reportAverageEngagement),
+        contract: { rawIds: engagementRawIds, metricIds: reportUsesExternalRaw ? ['MET-EXT-VIDEO-002', 'MET-SNS-006'] : ['MET-SNS-006'] },
+      },
+      {
+        key: 'uploaded-creators',
+        label: '업로드 크리에이터',
+        value: `${reportUploadedCreatorCount}명`,
+        contract: { rawIds: videoRawIds, metricIds: reportUsesExternalRaw ? ['MET-EXT-VIDEO-001'] : ['MET-CMP-002'] },
+      },
+      ...(reportBrandInfluencerRows.length
+        ? [
+            {
+              key: 'brand-creators',
+              label: '관련 크리에이터',
+              value: `${reportBrandInfluencerRows.length}행`,
+              contract: { rawIds: ['RAW-EXT-MON-INF-001'], metricIds: ['MET-EXT-INF-001'] },
+            },
+            {
+              key: 'mentions',
+              label: '언급량',
+              value: compactNumber(reportMentionCount),
+              contract: { rawIds: ['RAW-EXT-MON-INF-001'], metricIds: ['MET-EXT-INF-002'] },
+            },
+            {
+              key: 'estimated-exposure',
+              label: '예상 노출',
+              value: compactNumber(reportEstimatedExposure),
+              contract: { rawIds: ['RAW-EXT-MON-INF-001'], metricIds: ['MET-EXT-INF-002'] },
+            },
+          ]
+        : []),
+    ]
+
+    return cards
+      .filter((card) => dataRoomDisplayGate.canShow(card.contract))
+      .map((card) => ({ ...card, lineage: dataRoomDisplayGate.lineage(card.contract) }))
+  }, [
+    dataRoomDisplayGate,
+    reportAverageEngagement,
+    reportBrandInfluencerRows.length,
+    reportEstimatedExposure,
+    reportMentionCount,
+    reportMetricTotals.comments,
+    reportMetricTotals.likes,
+    reportMetricTotals.saves,
+    reportMetricTotals.shares,
+    reportMetricTotals.views,
+    reportUploadedCreatorCount,
+    reportUsesExternalRaw,
+    reportVideoRows.length,
+  ])
   const dataRoomWorkflowCoverage = useMemo(
     () => buildDataRoomWorkflowCoverage({ rawData: dataRoomRawData, metrics: dataRoomMetrics }),
     [dataRoomMetrics, dataRoomRawData],
@@ -10037,40 +10228,19 @@ function App() {
             </section>
 
             <section className="workflow-strip" aria-label="인플루언서 운영 흐름">
-              {workflowSignals.map((signal) => (
+              {visibleWorkflowSignals.map((signal) => (
                 <WorkflowSignal key={signal.label} signal={signal} />
               ))}
             </section>
 
             <section className="metric-grid" aria-label="핵심 지표">
-              <MetricCard
-                icon={<UsersRound size={19} />}
-                label="검색 도달"
-                value={compactNumber(totals.reach)}
-                delta={`${shortlist.length}명 저장`}
-                detail={`${filteredCreators.length}명 후보`}
-              />
-              <MetricCard
-                icon={<Eye size={19} />}
-                label="예상 조회수"
-                value={compactNumber(totals.views)}
-                delta={`자동 ${autoOutreachCount} · 수동 ${manualOutreachCount}`}
-                detail="필터 후보 합산"
-              />
-              <MetricCard
-                icon={<TrendingUp size={19} />}
-                label="평균 참여율"
-                value={percent(totals.engagement)}
-                delta={`${activeQuotes.length}건 견적`}
-                detail="현재 검색 결과"
-              />
-              <MetricCard
-                icon={<WalletCards size={19} />}
-                label="섭외 완료 풀"
-                value={`${totals.roi.toFixed(2)}x`}
-                delta={`${activeRecruitedPool.length}명 저장`}
-                detail={won(totals.revenue)}
-              />
+              {dashboardMetricCards.length ? (
+                dashboardMetricCards.map((card) => <MetricCard key={card.key} {...card} />)
+              ) : (
+                <div className="data-room-gated-empty">
+                  데이터룸에 연결된 raw/계산지표가 없어 대시보드 수치를 숨겼습니다. 데이터룸에서 수집 상태를 먼저 확인하세요.
+                </div>
+              )}
             </section>
           </>
         )}
@@ -12539,18 +12709,13 @@ function App() {
             </div>
 
             <div className="tracking-metrics">
-              <Stat label={'\ucf58\ud150\uce20'} value={String(reportVideoRows.length) + '\uac74'} />
-              <Stat label={'\uc870\ud68c\uc218'} value={compactNumber(reportMetricTotals.views)} />
-              <Stat label={'\uc88b\uc544\uc694'} value={compactNumber(reportMetricTotals.likes)} />
-              <Stat label={'\ub313\uae00'} value={compactNumber(reportMetricTotals.comments)} />
-              <Stat label={'\uacf5\uc720'} value={compactNumber(reportMetricTotals.shares)} />
-              <Stat label={'\uc800\uc7a5'} value={compactNumber(reportMetricTotals.saves)} />
-              <Stat label={'\uc804\ud658'} value={compactNumber(reportMetricTotals.conversions)} />
-              <Stat label={'\ud3c9\uade0 \ucc38\uc5ec\uc728'} value={percent(reportAverageEngagement)} />
-              <Stat label={'\uc5c5\ub85c\ub4dc \ud06c\ub9ac\uc5d0\uc774\ud130'} value={String(reportUploadedCreatorCount) + '\uba85'} />
-              <Stat label={'\uad00\ub828 \ud06c\ub9ac\uc5d0\uc774\ud130'} value={String(reportBrandInfluencerRows.length) + '\ud589'} />
-              <Stat label={'\uc5b8\uae09\ub7c9'} value={compactNumber(reportMentionCount)} />
-              <Stat label={'\uc608\uc0c1 \ub178\ucd9c'} value={compactNumber(reportEstimatedExposure)} />
+              {reportMetricCards.length ? (
+                reportMetricCards.map((card) => <Stat key={card.key} label={card.label} value={card.value} source={card.lineage?.[0]} />)
+              ) : (
+                <div className="data-room-gated-empty">
+                  데이터룸에 적재된 콘텐츠 raw가 없어 리포트 수치를 확정값으로 표시하지 않습니다.
+                </div>
+              )}
             </div>
 
             <div className="campaign-kpi-report">
@@ -14773,16 +14938,17 @@ function PracticeTour({ steps, currentIndex, currentStep, onClose, onDismiss, on
   )
 }
 
-function MetricCard({ icon, label, value, delta, detail }) {
+function MetricCard({ icon, label, value, delta, detail, lineage = [] }) {
   return (
     <article className="metric-card">
       <div className="metric-icon">{icon}</div>
       <span>{label}</span>
       <strong>{value}</strong>
-      <div>
+      <div className="metric-card-meta">
         <em>{delta}</em>
         <small>{detail}</small>
       </div>
+      {lineage.length ? <small className="data-room-source-tag">Data room · {lineage.slice(0, 2).join(' · ')}</small> : null}
     </article>
   )
 }
@@ -14795,6 +14961,7 @@ function WorkflowSignal({ signal }) {
         <span>{signal.label}</span>
         <strong>{signal.value}</strong>
         <small>{signal.detail}</small>
+        {signal.lineage?.length ? <small className="workflow-lineage">{signal.lineage[0]}</small> : null}
       </div>
     </article>
   )
@@ -15283,11 +15450,12 @@ function ClientApprovalBoard({
   )
 }
 
-function Stat({ label, value }) {
+function Stat({ label, value, source }) {
   return (
     <div>
       <span>{label}</span>
       <strong>{value}</strong>
+      {source ? <small>{source}</small> : null}
     </div>
   )
 }
