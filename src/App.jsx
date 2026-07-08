@@ -14757,8 +14757,8 @@ function ClientApprovalBoard({
     <section className="panel client-view-panel client-view-panel-embedded">
       <div className="panel-heading">
         <div>
-          <span className="mini-label">Client Approval View</span>
-          <h2>광고주 컨펌 보드</h2>
+          <span className="mini-label">Campaign Progress</span>
+          <h2>캠페인 진행현황</h2>
         </div>
         {onReport && (
           <button className="primary-button compact-button" type="button" onClick={onReport}>
