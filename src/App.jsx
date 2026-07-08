@@ -12293,6 +12293,99 @@ function App() {
                   </article>
                 </div>
 
+                <div className="campaign-guide-detail">
+                  <span className="mini-label">Influencer Strategy</span>
+                  <strong>인플루언서 전략</strong>
+                  <p>캠페인 조건, 후보 풀, KPI를 바탕으로 캐스팅 믹스와 메시지 방향을 생성합니다.</p>
+                  <div className="campaign-guide-actions">
+                    <button
+                      className="primary-button compact-button"
+                      type="button"
+                      onClick={() => generateCampaignStrategyForDetail(activeCampaignForModal)}
+                    >
+                      <Target size={16} />
+                      전략 생성
+                    </button>
+                    {activeCampaignForModal.influencerStrategy && (
+                      <button
+                        className="secondary-button compact-button"
+                        type="button"
+                        onClick={() => exportFile(
+                          `creatorops-${safeFilePart(activeBrand.name || 'brand')}-${safeFilePart(activeCampaignForModal.name || 'campaign')}-influencer-strategy.md`,
+                          'text/markdown;charset=utf-8',
+                          activeCampaignForModal.influencerStrategy,
+                        )}
+                      >
+                        <Download size={16} />
+                        전략 다운로드
+                      </button>
+                    )}
+                  </div>
+                  {activeCampaignForModal.influencerStrategy && (
+                    <div className="content-guide-preview">
+                      <span>전략 미리보기</span>
+                      <pre>{activeCampaignForModal.influencerStrategy.slice(0, 900)}</pre>
+                    </div>
+                  )}
+                </div>
+
+                {(activeCampaignForModal.brandGuideAttachments ?? []).length > 0 && (
+                  <div className="campaign-guide-detail">
+                    <span className="mini-label">Brand Guide Attachments</span>
+                    <strong>첨부된 인플루언서 브랜드 가이드</strong>
+                    <div className="guide-attachment-list">
+                      {activeCampaignForModal.brandGuideAttachments.map((item) => (
+                        <span key={item.id}>
+                          {item.name} · {item.uploadedAt}
+                          {item.learningMaterialCount ? ` · 학습자료 ${item.learningMaterialCount}건 반영` : ''}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="campaign-guide-detail">
+                  <span className="mini-label">Generated Content Guide</span>
+                  <strong>인플루언서 전달용 콘텐츠 가이드</strong>
+                  <p>
+                    {activeCampaignForModal.guideSeedType ?? '무가시딩'} · {activeCampaignForModal.guideChannel ?? 'Instagram Reels'} · 원메시지/후킹포인트 기반
+                  </p>
+                  <div className="campaign-guide-actions">
+                    <button
+                      className="secondary-button compact-button"
+                      type="button"
+                      onClick={() => generateCampaignGuideForDetail(activeCampaignForModal)}
+                    >
+                      <FileText size={16} />
+                      가이드 생성
+                    </button>
+                    <button
+                      className="primary-button compact-button"
+                      type="button"
+                      onClick={() => downloadCampaignContentGuide(activeCampaignForModal, 'docx')}
+                    >
+                      <Download size={16} />
+                      DOCX 다운로드
+                    </button>
+                    <button
+                      className="secondary-button compact-button"
+                      type="button"
+                      onClick={() => downloadCampaignContentGuide(activeCampaignForModal, 'pptx')}
+                    >
+                      <Download size={16} />
+                      PPT 다운로드
+                    </button>
+                    <button
+                      className="secondary-button compact-button"
+                      type="button"
+                      onClick={() => downloadCampaignContentGuide(activeCampaignForModal, 'google')}
+                    >
+                      <FileText size={16} />
+                      Google 문서 열기
+                    </button>
+                  </div>
+                </div>
+
                 <ClientApprovalBoard
                   campaign={activeCampaignForModal}
                   poolItems={campaignModalPool}
