@@ -10022,6 +10022,24 @@ function App() {
                   </select>
                 </label>
               </div>
+              <div className="settings-role-summary">
+                <div className="settings-role-summary-head">
+                  <div>
+                    <span className="mini-label">Role Matrix</span>
+                    <strong>관리 권한</strong>
+                  </div>
+                  <p>역할별로 볼 수 있는 데이터와 수정 권한을 한 번에 확인합니다.</p>
+                </div>
+                <div className="role-permission-grid settings-role-grid">
+                  {Object.values(teamRoleCatalog).map((role) => (
+                    <article key={role.label}>
+                      <strong>{role.label}</strong>
+                      <p>{role.description}</p>
+                      <span>{role.permissions.join(' · ')}</span>
+                    </article>
+                  ))}
+                </div>
+              </div>
               <div className="team-account-list settings-account-list">
                 {accounts.map((account) => {
                   const role = teamRoleCatalog[account.role] ?? teamRoleCatalog.Manager
@@ -10062,43 +10080,6 @@ function App() {
                 })}
               </div>
             </section>
-
-            <aside className="settings-side-panel">
-              <section className="panel">
-                <div className="panel-heading">
-                  <div>
-                    <span className="mini-label">Role Matrix</span>
-                    <h2>관리 권한</h2>
-                  </div>
-                </div>
-                <div className="role-permission-grid settings-role-grid">
-                  {Object.values(teamRoleCatalog).map((role) => (
-                    <article key={role.label}>
-                      <strong>{role.label}</strong>
-                      <p>{role.description}</p>
-                      <span>{role.permissions.join(' · ')}</span>
-                    </article>
-                  ))}
-                </div>
-              </section>
-
-              <section className="panel">
-                <div className="panel-heading">
-                  <div>
-                    <span className="mini-label">Data Accuracy</span>
-                    <h2>정확도 운영 기준</h2>
-                  </div>
-                </div>
-                <div className="accuracy-roadmap-grid settings-accuracy-grid">
-                  {dataAccuracyRoadmap.map((item) => (
-                    <article key={item.title}>
-                      <strong>{item.title}</strong>
-                      <p>{item.detail}</p>
-                    </article>
-                  ))}
-                </div>
-              </section>
-            </aside>
           </section>
         )}
 
