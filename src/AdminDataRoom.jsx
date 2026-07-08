@@ -224,11 +224,10 @@ export default function AdminDataRoom({
       <section className="panel data-room-import-panel">
         <div>
           <span className="mini-label">Raw Report Ingestion</span>
-          <h2>외부 raw 적재</h2>
-          <p>엑셀 보완 raw는 업로드하고, API raw 상태와 원천은 아래 Raw 데이터 관리에서 확인합니다.</p>
+          <h2>리포트 raw 적재</h2>
+          <p>엑셀 보완 raw는 여기서 업로드하고, API raw 상태는 아래 API 적재 영역에서 확인합니다.</p>
           <div className="data-room-source-counters" aria-label="raw source counters">
-            <button type="button" onClick={showExternalReportRaw}>외부 리포트 raw {externalReportRawCount}개</button>
-            <button type="button" onClick={showExternalApiRaw}>외부 API raw {externalApiRawCount}개</button>
+            <button type="button" onClick={showExternalReportRaw}>리포트 raw {externalReportRawCount}개</button>
             <button type="button" onClick={showAllRaw}>전체 raw 보기</button>
           </div>
         </div>
@@ -256,6 +255,9 @@ export default function AdminDataRoom({
               {apiStatus?.ok ? '연결됨' : '설정 확인 필요'}
             </span>
             <span className="api-log-count">로그 {apiLogCount}건</span>
+            <button className="secondary-button compact-button" type="button" onClick={showExternalApiRaw}>
+              API raw {externalApiRawCount}개
+            </button>
             <button className="secondary-button compact-button" type="button" onClick={onRefreshApiStatus}>
               상태 확인
             </button>
@@ -378,8 +380,8 @@ export default function AdminDataRoom({
 
             <div className="raw-source-shortcuts">
               <span>원천 구분</span>
-              <button type="button" onClick={showExternalReportRaw}>외부 리포트 raw</button>
-              <button type="button" onClick={showExternalApiRaw}>외부 API raw</button>
+              <button type="button" onClick={showExternalReportRaw}>리포트 raw</button>
+              <button type="button" onClick={showExternalApiRaw}>API raw</button>
               <button type="button" onClick={showAllRaw}>전체 raw</button>
               <small>긴 설명은 상단이 아니라 행 클릭 후 상세에서 확인합니다.</small>
             </div>
