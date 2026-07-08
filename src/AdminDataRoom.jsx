@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import {
   AlertTriangle,
   ClipboardList,
@@ -168,13 +168,37 @@ export default function AdminDataRoom({
 }) {
   const [detailOpen, setDetailOpen] = useState(false)
   const [apiDiagnosticsOpen, setApiDiagnosticsOpen] = useState(false)
-  const selectRaw = (rawId) => {
+  const rawRegistryRef = useRef(null)
+  const metricRegistryRef = useRef(null)
+  const scrollToRegistryTarget = (selector, fallbackRef) => {
+    window.setTimeout(() => {
+      const target = document.querySelector(selector)
+      ;(target || fallbackRef.current)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }, 120)
+  }
+  const selectRaw = (rawId, options = {}) => {
     setSelectedItem({ type: 'raw', id: rawId })
     setDetailOpen(true)
+    if (options.scroll) {
+      setRawTab('전체')
+      setRawStatus('전체')
+      setRawCategory('전체')
+      setRawMethod('전체')
+      setRawOwner('전체')
+      setRawQuery('')
+      scrollToRegistryTarget(`[data-raw-id="${String(rawId).replace(/"/g, '\\"')}"]`, rawRegistryRef)
+    }
   }
-  const selectMetric = (metricId) => {
+  const selectMetric = (metricId, options = {}) => {
     setSelectedItem({ type: 'metric', id: metricId })
     setDetailOpen(true)
+    if (options.scroll) {
+      setMetricTab('전체')
+      setMetricStatus('전체')
+      setMetricBundle('전체')
+      setMetricQuery('')
+      scrollToRegistryTarget(`[data-metric-id="${String(metricId).replace(/"/g, '\\"')}"]`, metricRegistryRef)
+    }
   }
   const rawRegistry = allRawData?.length ? allRawData : rawData
   const externalReportRawIds = new Set(externalReportRawTypes.map((item) => item.id))
@@ -343,7 +367,7 @@ export default function AdminDataRoom({
 
       <section className="data-room-layout">
         <div className="data-room-main">
-          <section className="panel data-room-panel">
+          <section className="panel data-room-panel" ref={rawRegistryRef}>
             <div className="panel-heading">
               <div>
                 <span className="mini-label">Raw Data Registry</span>
@@ -406,6 +430,7 @@ export default function AdminDataRoom({
                   {rawData.map((item) => (
                     <tr
                       key={item.id}
+                      data-raw-id={item.id}
                       className={selectedItem.type === 'raw' && selectedItem.id === item.id ? 'active' : ''}
                       onClick={() => selectRaw(item.id)}
                     >
@@ -443,7 +468,7 @@ export default function AdminDataRoom({
             </div>
           </section>
 
-          <section className="panel data-room-panel">
+          <section className="panel data-room-panel" ref={metricRegistryRef}>
             <div className="panel-heading">
               <div>
                 <span className="mini-label">Calculated Metrics Registry</span>
@@ -487,6 +512,7 @@ export default function AdminDataRoom({
                     {group.metrics.map((metric) => (
                       <button
                         type="button"
+                        data-metric-id={metric.id}
                         className={`metric-row-button ${selectedItem.type === 'metric' && selectedItem.id === metric.id ? 'active' : ''}`}
                         key={metric.id}
                         onClick={() => selectMetric(metric.id)}
@@ -534,8 +560,8 @@ export default function AdminDataRoom({
                     <StatusPill status={item.status} />
                   </div>
                   <p>{item.algorithm}</p>
-                  <LinkedChipList label="사용 raw 데이터" items={item.rawIds} emptyText="연결 raw 없음" onClick={selectRaw} />
-                  <LinkedChipList label="생성/사용 지표" items={item.metricIds} emptyText="연결 지표 없음" onClick={selectMetric} />
+                  <LinkedChipList label="사용 raw 데이터" items={item.rawIds} emptyText="연결 raw 없음" onClick={(id) => selectRaw(id, { scroll: true })} />
+                  <LinkedChipList label="생성/사용 지표" items={item.metricIds} emptyText="연결 지표 없음" onClick={(id) => selectMetric(id, { scroll: true })} />
                   <small>{item.rule}</small>
                 </article>
               ))}
@@ -603,7 +629,7 @@ export default function AdminDataRoom({
                 <div><dt>담당</dt><dd>{activeDetail.ownerDept} · {activeDetail.opsOwner} · {activeDetail.techOwner}</dd></div>
                 <div><dt>활성 상태</dt><dd>{activeDetail.active ? '활성' : '비활성/검증 필요'}</dd></div>
               </dl>
-              <LinkedChipList label="연결 계산지표" items={activeDetail.metricIds} emptyText="연결 지표 없음" onClick={selectMetric} />
+              <LinkedChipList label="연결 계산지표" items={activeDetail.metricIds} emptyText="연결 지표 없음" onClick={(id) => selectMetric(id, { scroll: true })} />
               <label className="ops-note-box">
                 <span>운영 메모</span>
                 <textarea readOnly value={`${activeDetail.note}\n담당자는 품질 이슈와 수집 로그를 확인하고 필요 시 재수집 또는 비활성 처리합니다.`} />
@@ -629,7 +655,7 @@ export default function AdminDataRoom({
                 <div><dt>담당 부서</dt><dd>{activeDetail.ownerDept}</dd></div>
                 <div><dt>오류 확인 위치</dt><dd>{activeDetail.errorLocation}</dd></div>
               </dl>
-              <LinkedChipList label="사용 raw 데이터" items={activeDetail.rawIds} emptyText="연결 raw 없음" onClick={selectRaw} />
+              <LinkedChipList label="사용 raw 데이터" items={activeDetail.rawIds} emptyText="연결 raw 없음" onClick={(id) => selectRaw(id, { scroll: true })} />
               <label className="ops-note-box">
                 <span>운영 메모</span>
                 <textarea readOnly value={`${activeDetail.note}\n계산 오류 시 raw 데이터 수집 상태와 계산 로그를 함께 확인합니다.`} />
