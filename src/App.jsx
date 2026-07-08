@@ -1053,7 +1053,33 @@ const discoveryCategoryIntentTerms = {
   '\uACF5\uB3D9\uAD6C\uB9E4': ['\uACF5\uB3D9\uAD6C\uB9E4', '\uACF5\uAD6C', '\uC140\uB7EC', '\uCEE4\uBA38\uC2A4', 'commerce', 'seller'],
 }
 const referenceCountryPresets = ['전체', 'KR', 'US', 'JP', 'CN', 'SEA', 'EU']
-const discoveryCountryOptions = ['전체', 'KR', 'US', 'JP', 'CN', 'GB', 'VN', 'TH', 'ID', 'PH', 'SG', 'MY', 'TW']
+const discoveryCountryPresets = ['전체', 'KR', 'US', 'JP', 'CN', 'SEA', 'EU']
+const discoveryCountryOptions = ['전체', 'KR', 'US', 'JP', 'CN', 'SEA', 'EU', 'GB', 'VN', 'TH', 'ID', 'PH', 'SG', 'MY', 'TW']
+const discoveryCountryGroups = {
+  SEA: ['VN', 'TH', 'ID', 'PH', 'SG', 'MY'],
+  EU: ['GB', 'FR', 'DE', 'ES', 'IT', 'NL', 'SE', 'PL'],
+}
+const discoveryApiCountryFallbacks = {
+  SEA: 'SG',
+  EU: 'GB',
+}
+
+function matchesDiscoveryCountry(value, selectedCountry) {
+  const normalizedSelected = String(selectedCountry || '전체').toUpperCase()
+  if (normalizedSelected === '전체') return true
+
+  const normalizedValue = String(value || '').toUpperCase()
+  if (!normalizedValue) return false
+  if (normalizedValue === normalizedSelected) return true
+
+  return discoveryCountryGroups[normalizedSelected]?.includes(normalizedValue) ?? false
+}
+
+function resolveDiscoveryApiCountry(country, fallback = 'KR') {
+  const normalizedCountry = String(country || '').toUpperCase()
+  if (!normalizedCountry || normalizedCountry === '전체') return fallback || 'KR'
+  return discoveryApiCountryFallbacks[normalizedCountry] || normalizedCountry
+}
 const campaignStatuses = ['섭외', '콘텐츠 제작', '라이브', '리포트', '완료']
 const campaignTypeOptions = ['제안형', '공개모집', '앰배서더', '커머스/제휴', 'UGC/숏폼', '틱톡 공동구매 셀러']
 
@@ -5183,7 +5209,7 @@ function App() {
           (!queryTerms.length || queryTerms.some((term) => searchable.includes(term))) &&
           (platform === '전체' || creator.platform === platform) &&
           (category === '전체' || creator.category === category) &&
-          (selectedCountry === '전체' || creator.country === selectedCountry || creator.city === selectedCountry) &&
+          (matchesDiscoveryCountry(creator.country, selectedCountry) || matchesDiscoveryCountry(creator.city, selectedCountry)) &&
           (pendingMetrics || creator.followers >= effectiveMinFollowers) &&
           (pendingMetrics || maxFollowers === null || creator.followers <= maxFollowers) &&
           (pendingMetrics || minAverageViews === null || creator.averageViews >= minAverageViews) &&
@@ -7074,10 +7100,7 @@ function App() {
     const youtubeApiKey = realDiscoveryDraft.youtubeApiKey.trim() || youtubeDraft.apiKey.trim()
     const hasServerApi = Boolean(backendConfig.apiBaseUrl)
     const hasProfileSearch = hasServerApi || (realDiscoveryDraft.googleApiKey.trim() && realDiscoveryDraft.googleCx.trim())
-    const discoveryCountry =
-      discoveryFilters.country && discoveryFilters.country !== '전체'
-        ? discoveryFilters.country
-        : activeBrand.country || 'KR'
+    const discoveryCountry = resolveDiscoveryApiCountry(discoveryFilters.country, activeBrand.country || 'KR')
 
     if (!hasServerApi && !youtubeApiKey && !hasProfileSearch) {
       showToast('실제 발굴은 CreatorOps API 서버 또는 YouTube/프로필 검색 API 키를 연결해야 합니다.')
@@ -8502,7 +8525,7 @@ function App() {
   const importTrackingSnapshot = async () => {
     const url = trackingDraft.url.trim()
     if (!url) {
-      showToast('Enter the uploaded content URL first.')
+      showToast('업로드된 콘텐츠 URL을 먼저 입력하세요.')
       return
     }
 
@@ -8510,14 +8533,14 @@ function App() {
       setTrackingSnapshotLoading(true)
       const snapshot = await fetchPublicProfileSnapshot(url)
       if (!snapshot) {
-        showToast('API server is required to read public content data.')
+        showToast('공개 콘텐츠 데이터를 읽으려면 API 서버 연결이 필요합니다.')
         return
       }
 
       setTrackingDraft((current) => mergeTrackingSnapshotDraft(current, snapshot, url))
-      showToast('Public content data was added. Empty fields can be edited manually.')
+      showToast('공개 콘텐츠 데이터를 채웠어요. 빈 값은 수동으로 수정할 수 있습니다.')
     } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Could not read public content data.')
+      showToast(error instanceof Error ? error.message : '공개 콘텐츠 데이터를 읽지 못했어요.')
     } finally {
       setTrackingSnapshotLoading(false)
     }
@@ -8529,11 +8552,11 @@ function App() {
     const uploadedUrl = trackingDraft.url.trim()
 
     if (!campaignId) {
-      showToast('Select a campaign to track this content.')
+      showToast('콘텐츠를 추적할 캠페인을 선택하세요.')
       return
     }
     if (!uploadedUrl) {
-      showToast('The uploaded content URL is required for tracking.')
+      showToast('콘텐츠 URL은 필수입니다.')
       return
     }
 
@@ -8572,7 +8595,7 @@ function App() {
       effectiveDraft.conversions,
     ].some((value) => String(value || '').trim())
 
-    const savedPostTitle = effectiveDraft.title || 'New campaign content'
+    const savedPostTitle = effectiveDraft.title || '새 캠페인 콘텐츠'
     let savedCreatorName = creatorName
 
     updateWorkspace((current) => {
@@ -8624,10 +8647,10 @@ function App() {
             fakeRisk: 0,
             cpm: 0,
             price: views ? Math.max(200000, Math.round(views * (platform === 'YouTube' ? 18 : 14))) : 0,
-            audience: 'Content tracking URL import',
+            audience: '콘텐츠 추적 URL에서 자동 생성',
             city: '',
             lastPost: nowLabel(),
-            status: 'Content uploaded',
+            status: '업로드 콘텐츠',
             topics: [activeBrand.category || 'Campaign', platform],
             source: effectiveDraft.snapshotSource || 'Content tracking URL',
             sourceUrl: uploadedUrl,
@@ -8665,7 +8688,7 @@ function App() {
           trackedPosts: [nextPost, ...current.trackedPosts],
         },
         'tracking',
-        savedPostTitle + ' content tracking registered - ' + savedCreatorName,
+        savedPostTitle + ' 콘텐츠 추적 등록 - ' + savedCreatorName,
       )
     })
 
@@ -8690,7 +8713,7 @@ function App() {
       conversions: '',
     })
     setModal(null)
-    showToast('Content tracking was saved. New creators are added automatically from the link.')
+    showToast('콘텐츠 추적을 저장했어요. 새 크리에이터는 링크 기준으로 자동 추가됩니다.')
   }
 
   const createFulfillmentRecord = (event) => {
@@ -9228,6 +9251,25 @@ function App() {
       ),
     )
     showToast(`${group.name} 그룹을 메시지 전 후보 풀에 보냈습니다.`)
+  }
+
+  const deleteCreatorGroup = (group) => {
+    if (!group) return
+    if (!window.confirm(`${group.name} 후보 그룹을 삭제할까요? 멤버 크리에이터 원본은 삭제되지 않습니다.`)) return
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          creatorGroups: (current.creatorGroups ?? []).filter((item) => item.id !== group.id),
+        },
+        'group',
+        `${group.name} 후보 그룹 삭제`,
+      ),
+    )
+    setSelectedCreatorGroupMemberIds([])
+    setSelectedCreatorGroupId((currentId) => (currentId === group.id ? '' : currentId))
+    showToast(`${group.name} 후보 그룹을 삭제했어요.`)
   }
 
   const assignCreatorGroupToCampaign = (group) => {
@@ -10542,6 +10584,20 @@ function App() {
               />
             </div>
 
+            <div className="discovery-country-tabs" aria-label="발굴 국가 빠른 선택">
+              <span>국가</span>
+              {discoveryCountryPresets.map((countryOption) => (
+                <button
+                  className={discoveryFilters.country === countryOption ? 'active' : ''}
+                  key={countryOption}
+                  type="button"
+                  onClick={() => updateDiscoveryFilter('country', countryOption)}
+                >
+                  {countryOption}
+                </button>
+              ))}
+            </div>
+
             <div className="real-discovery-panel">
               <div className="real-discovery-copy">
                 <span className="mini-label">Live Discovery</span>
@@ -11148,6 +11204,16 @@ function App() {
                       >
                         캠페인 배정
                       </button>
+                      <button
+                        className="danger-button compact-button"
+                        type="button"
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          deleteCreatorGroup(group)
+                        }}
+                      >
+                        삭제
+                      </button>
                     </div>
                   </article>
                 )
@@ -11177,6 +11243,9 @@ function App() {
                   </button>
                   <button className="primary-button compact-button" type="button" onClick={assignSelectedCreatorGroupMembersToCampaign} disabled={!selectedCreatorGroupMembers.length}>
                     선택 {selectedCreatorGroupMembers.length}명 캠페인 배정
+                  </button>
+                  <button className="danger-button compact-button" type="button" onClick={() => deleteCreatorGroup(selectedCreatorGroup)}>
+                    그룹 삭제
                   </button>
                 </div>
                 {selectedCreatorGroupCreators.length ? (
@@ -13206,8 +13275,8 @@ function App() {
               <div className="quote-box">
                 <BarChart3 size={22} />
                 <div>
-                  <strong>업로드 링크 기준으로 추적합니다</strong>
-                  <span>조회수, 좋아요, 댓글, 공유는 매일 바뀌므로 필수값이 아닙니다. 링크를 먼저 저장하고 API/수동 갱신으로 최신화합니다.</span>
+                  <strong>콘텐츠 URL만 먼저 등록하세요</strong>
+                  <span>링크를 확인하면 제목, 플랫폼, 크리에이터, 공개 성과 수치를 자동으로 채우고 부족한 값만 수동 보정합니다.</span>
                 </div>
               </div>
               <label>
@@ -13220,26 +13289,6 @@ function App() {
                     <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
                   ))}
                 </select>
-              </label>
-              <label>
-                크리에이터
-                <select
-                  value={trackingDraft.creatorId || 'auto'}
-                  onChange={(event) => setTrackingDraft({ ...trackingDraft, creatorId: event.target.value })}
-                >
-                  <option value="auto">Auto from content link</option>
-                  {creators.map((creator) => (
-                    <option key={creator.id} value={creator.id}>{creator.name}</option>
-                  ))}
-                </select>
-              </label>
-              <label>
-                콘텐츠 제목
-                <input
-                  value={trackingDraft.title}
-                  onChange={(event) => setTrackingDraft({ ...trackingDraft, title: event.target.value })}
-                  placeholder="예: 세럼 7일 사용 리뷰"
-                />
               </label>
               <label>
                 콘텐츠 URL · 필수
@@ -13257,19 +13306,27 @@ function App() {
                   disabled={!trackingDraft.url.trim() || trackingSnapshotLoading}
                 >
                   <RefreshCw size={15} />
-                  {trackingSnapshotLoading ? 'Checking' : 'Check link'}
+                  {trackingSnapshotLoading ? '확인 중' : '링크 확인'}
                 </button>
-                <span>{trackingDraft.snapshotSource ? trackingDraft.snapshotSource : 'Title, platform, metrics, and creator identity are filled from public data when available.'}</span>
+                <span>{trackingDraft.snapshotSource ? trackingDraft.snapshotSource : '공개 데이터가 확인되면 제목, 플랫폼, 크리에이터, 조회수/좋아요/댓글을 자동으로 채웁니다.'}</span>
               </div>
               {(trackingDraft.creatorName || trackingDraft.creatorHandle || trackingDraft.creatorFollowers) && (
                 <div className="quote-box compact-note-box">
                   <UsersRound size={18} />
                   <div>
-                    <strong>{trackingDraft.creatorName || 'Auto creator'}</strong>
-                    <span>{[trackingDraft.creatorHandle, trackingDraft.creatorFollowers ? 'Followers ' + displayMetric(Number(trackingDraft.creatorFollowers)) : '', trackingDraft.snapshotCheckedAt].filter(Boolean).join(' / ')}</span>
+                    <strong>{trackingDraft.creatorName || '자동 인식 크리에이터'}</strong>
+                    <span>{[trackingDraft.creatorHandle, trackingDraft.creatorFollowers ? `팔로워 ${displayMetric(Number(trackingDraft.creatorFollowers))}` : '', trackingDraft.snapshotCheckedAt].filter(Boolean).join(' / ')}</span>
                   </div>
                 </div>
               )}
+              <label>
+                콘텐츠 제목 · 자동 채움/수정 가능
+                <input
+                  value={trackingDraft.title}
+                  onChange={(event) => setTrackingDraft({ ...trackingDraft, title: event.target.value })}
+                  placeholder="링크 확인 시 자동으로 채워집니다"
+                />
+              </label>
               <div className="modal-two-col">
                 <label>
                   플랫폼

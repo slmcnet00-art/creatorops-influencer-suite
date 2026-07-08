@@ -949,14 +949,27 @@
   padding: 4px 18px 14px;
 }
 
-.reference-country-tabs {
+.reference-country-tabs,
+.discovery-country-tabs {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
   padding: 0 18px 12px;
 }
 
-.reference-country-tabs button {
+.discovery-country-tabs {
+  align-items: center;
+  padding: 0 0 12px;
+}
+
+.discovery-country-tabs > span {
+  color: var(--text-soft);
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.reference-country-tabs button,
+.discovery-country-tabs button {
   min-height: 32px;
   padding: 0 12px;
   border: 1px solid var(--border);
@@ -969,7 +982,8 @@
   cursor: pointer;
 }
 
-.reference-country-tabs button.active {
+.reference-country-tabs button.active,
+.discovery-country-tabs button.active {
   color: var(--accent);
   border-color: rgba(0, 113, 227, 0.2);
   background: var(--accent-soft);
