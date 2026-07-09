@@ -26,18 +26,34 @@ export const competitorDataBlueprints = [
 ]
 
 const CREATOROPS_API_BASE_URL = import.meta.env.VITE_CREATOROPS_API_BASE_URL || ''
+const CREATOROPS_API_TIMEOUT_MS = 15000
 
 async function callCreatorOpsApi(path, body) {
   if (!CREATOROPS_API_BASE_URL) return null
 
-  const response = await fetch(`${CREATOROPS_API_BASE_URL.replace(/\/$/, '')}${path}`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(body),
-  })
-  const payload = await response.json().catch(() => ({}))
+  const controller = new AbortController()
+  const timeoutId = window.setTimeout(() => controller.abort(), CREATOROPS_API_TIMEOUT_MS)
+  let response
+  let payload
+
+  try {
+    response = await fetch(`${CREATOROPS_API_BASE_URL.replace(/\/$/, '')}${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    })
+    payload = await response.json().catch(() => ({}))
+  } catch (error) {
+    if (error?.name === 'AbortError') {
+      throw new Error('CreatorOps API response timed out. Check quota, billing, or server logs.', { cause: error })
+    }
+    throw error
+  } finally {
+    window.clearTimeout(timeoutId)
+  }
 
   if (!response.ok) {
     throw new Error(payload?.message || payload?.error || 'CreatorOps API 요청에 실패했습니다.')

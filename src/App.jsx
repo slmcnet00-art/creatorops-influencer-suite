@@ -5567,8 +5567,8 @@ function App() {
     return candidatePoolCreators.slice(start, start + candidatePoolPageSize)
   }, [candidatePoolCreators, safeCandidatePoolPage])
   const selectedCandidatePoolCreators = useMemo(
-    () => candidatePoolCreators.filter((creator) => selectedCandidatePoolIds.includes(creator.id)),
-    [candidatePoolCreators, selectedCandidatePoolIds],
+    () => candidatePoolAllCreators.filter((creator) => selectedCandidatePoolIds.includes(creator.id)),
+    [candidatePoolAllCreators, selectedCandidatePoolIds],
   )
   const selectedVisibleCandidatePoolCreators = useMemo(
     () => visibleCandidatePoolCreators.filter((creator) => selectedCandidatePoolIds.includes(creator.id)),
@@ -5582,20 +5582,6 @@ function App() {
     const timer = window.setTimeout(() => setToast(''), 2800)
     return () => window.clearTimeout(timer)
   }, [toast])
-
-  useEffect(() => {
-    let timer
-    try {
-      if (!window.localStorage.getItem(PRACTICE_TOUR_STORE_KEY)) {
-        timer = window.setTimeout(() => setPracticeOpen(true), 500)
-      }
-    } catch {
-      timer = window.setTimeout(() => setPracticeOpen(true), 500)
-    }
-    return () => {
-      if (timer) window.clearTimeout(timer)
-    }
-  }, [])
 
   useEffect(() => {
     if (!backendConfig.hasSupabase) return undefined
@@ -7328,6 +7314,13 @@ function App() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
+  const openOutreachReviewInbox = (recordIds = []) => {
+    setOutreachStatusFilter('승인 대기')
+    setOutreachSearchQuery('')
+    if (recordIds.length) setSelectedOutreachIds(recordIds)
+    jumpTo('messages')
+  }
+
   const openDataRoomRaw = (rawId) => {
     setSelectedDataRoomItem({ type: 'raw', id: rawId })
     setDataRoomRawTab('전체')
@@ -7531,6 +7524,7 @@ function App() {
     setCandidatePoolPage(1)
     setActiveDiscoveryPoolView('candidate')
     setSelectedDiscoveryCreatorIds([])
+    openOutreachReviewInbox(records.map((record) => record.id))
     showToast(`선택한 인플루언서 ${records.length}명을 후보 풀에 저장하고 제안 메시지를 검토함에 넣었어요.`)
   }
 
@@ -7561,6 +7555,7 @@ function App() {
       ),
     )
     setSelectedCandidatePoolIds([])
+    openOutreachReviewInbox(records.map((record) => record.id))
     showToast(`후보 풀 ${records.length}명의 제안 메시지를 검토함에 넣었어요.`)
   }
 
@@ -8028,6 +8023,7 @@ function App() {
         `${creator.name} 제안 메시지 검토함 저장`,
       ),
     )
+    openOutreachReviewInbox([record.id])
     showToast(`${creator.name} 제안 메시지를 검토함에 저장했어요.`)
   }
 
@@ -8095,6 +8091,7 @@ function App() {
       ),
     )
     setSelectedRecommendationIds([])
+    openOutreachReviewInbox(records.map((record) => record.id))
     showToast(`선택한 AI 후보 ${records.length}명의 제안 메시지를 검토함에 저장했어요.`)
   }
 
@@ -9459,6 +9456,7 @@ function App() {
       ),
     )
     setModal(null)
+    openOutreachReviewInbox([record.id])
     showToast(`${selectedCreator.name} 제안 메시지를 검토함에 저장했어요.`)
   }
 
@@ -12054,8 +12052,8 @@ function App() {
         <section className="panel creator-groups-panel">
           <div className="panel-heading">
             <div>
-              <span className="mini-label">재사용 후보 그룹</span>
-              <h2>재사용 후보 그룹</h2>
+              <span className="mini-label">저장 목록</span>
+              <h2>후보 그룹 {creatorGroupSummary.groups}개</h2>
             </div>
             <button className="primary-button compact-button" type="button" onClick={createCreatorGroup}>
               <Plus size={15} />
@@ -12064,21 +12062,11 @@ function App() {
           </div>
 
           <div className="creator-group-position-note">
-            <article>
-              <span>메시지 전 후보 풀</span>
-              <strong>이번 캠페인 발송 대기열</strong>
-              <p>발굴에서 고른 후보를 캠페인 기준으로 잠시 모아 제안 메시지를 만드는 곳입니다.</p>
-            </article>
-            <article>
-              <span>재사용 후보 그룹</span>
-              <strong>반복 섭외용 저장 폴더</strong>
-              <p>좋았던 후보를 주제, 채널, 성과 기준으로 묶어 다음 캠페인에도 다시 쓰는 운영 자산입니다.</p>
-            </article>
-            <article>
-              <span>위치 기준</span>
-              <strong>발굴 다음, 메시지 전</strong>
-              <p>레퍼런스는 콘텐츠 아이디어 저장소이고, 후보 그룹은 사람/계정 풀이라 현재 흐름에 두는 게 맞습니다.</p>
-            </article>
+            <span>메시지 전 후보 풀</span>
+            <strong>이번 캠페인 발송 대기열</strong>
+            <span>·</span>
+            <span>재사용 후보 그룹</span>
+            <strong>반복 섭외용 저장 폴더</strong>
           </div>
 
           <div className="creator-group-summary">
@@ -12141,7 +12129,17 @@ function App() {
                         <strong>{group.name}</strong>
                         <p>{group.description}</p>
                       </div>
-                      <FolderOpen size={24} />
+                      <button
+                        className="ghost-icon-button creator-group-delete-button"
+                        type="button"
+                        aria-label={`${group.name} 후보 그룹 삭제`}
+                        onClick={(event) => {
+                          event.stopPropagation()
+                          deleteCreatorGroup(group)
+                        }}
+                      >
+                        삭제
+                      </button>
                     </div>
                     <div className="creator-group-metrics">
                       <span>멤버 {groupCreators.length}명</span>
@@ -12179,16 +12177,6 @@ function App() {
                         }}
                       >
                         캠페인 배정
-                      </button>
-                      <button
-                        className="danger-button compact-button"
-                        type="button"
-                        onClick={(event) => {
-                          event.stopPropagation()
-                          deleteCreatorGroup(group)
-                        }}
-                      >
-                        삭제
                       </button>
                     </div>
                   </article>
