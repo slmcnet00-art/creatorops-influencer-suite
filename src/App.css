@@ -4289,7 +4289,7 @@
 
 .message-stage-board {
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
   padding: 0 18px 14px;
 }
@@ -4442,9 +4442,9 @@
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
   gap: 8px;
-  max-width: none;
+  max-width: 520px;
   white-space: nowrap;
 }
 
@@ -6463,6 +6463,53 @@
   align-items: center;
 }
 
+.individual-guide-list {
+  display: grid;
+  gap: 10px;
+  margin-top: 2px;
+}
+
+.individual-guide-list article {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.72);
+}
+
+.individual-guide-list strong,
+.individual-guide-list p,
+.individual-guide-list small {
+  display: block;
+}
+
+.individual-guide-list p {
+  margin: 4px 0 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.individual-guide-list small {
+  margin-top: 4px;
+  color: var(--text-soft);
+  font-size: 11px;
+}
+
+.compact-guide-actions {
+  justify-content: flex-end;
+}
+
+.muted-note {
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
 .guide-file-input {
   min-height: 34px;
   padding: 0 10px;
@@ -6552,6 +6599,16 @@
   font: inherit;
   font-size: 12px;
   line-height: 1.45;
+}
+
+@media (max-width: 780px) {
+  .individual-guide-list article {
+    grid-template-columns: 1fr;
+  }
+
+  .compact-guide-actions {
+    justify-content: flex-start;
+  }
 }
 
 .youtube-sync-form,

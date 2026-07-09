@@ -23,7 +23,6 @@ import {
   Plus,
   Radio,
   RefreshCw,
-  RotateCcw,
   Search,
   Send,
   Settings,
@@ -55,7 +54,6 @@ import {
 import {
   buildCreatorSourceEvidence,
   calculateDataCoverage,
-  dataConnectorBlueprints,
   fetchYouTubeChannelSnapshot,
   fetchPublicProfileSnapshot,
   refreshContentMetrics,
@@ -126,7 +124,7 @@ const practiceTourSteps = [
     section: 'discovery',
     title: '크리에이터 발굴 연습',
     label: '발굴',
-    detail: '캠페인 조건을 기준으로 실제 웹 발굴을 실행하고, 결과 중 보낼 후보만 메시지 전 후보 풀로 저장합니다.',
+    detail: '캠페인 조건을 기준으로 실제 웹 발굴을 실행하고, 보낼 후보만 메시지 전 후보 풀로 저장합니다.',
     task: '검색어, 국가, 플랫폼, 팔로워/조회수 조건을 확인한 뒤 실제 웹 발굴과 AI 매칭을 순서대로 실행하세요.',
     action: '발굴 화면 열기',
   },
@@ -1797,6 +1795,49 @@ function buildGuideLearningMaterial(text, sourceName = '') {
   }
 }
 
+async function extractDocxText(fileOrBlob) {
+  const { default: JSZip } = await import('jszip')
+  const zip = await JSZip.loadAsync(fileOrBlob)
+  const documentFile = zip.file('word/document.xml')
+  if (!documentFile) return ''
+  const xml = await documentFile.async('text')
+  return cleanReferenceDisplayText(
+    xml
+      .replace(/<w:tab\/>/g, ' ')
+      .replace(/<w:br\/>/g, '\n')
+      .replace(/<\/w:p>/g, '\n')
+      .replace(/<[^>]+>/g, ' '),
+  )
+}
+
+async function buildLearningMaterialsFromZipFile(file) {
+  const { default: JSZip } = await import('jszip')
+  const zip = await JSZip.loadAsync(file)
+  const entries = Object.values(zip.files).filter((entry) => !entry.dir)
+  const materials = []
+
+  for (const entry of entries) {
+    if (materials.length >= 30) break
+    const lowerName = entry.name.toLowerCase()
+    try {
+      if (/\.(md|txt|csv|tsv)$/i.test(lowerName)) {
+        const text = await entry.async('text')
+        const material = buildGuideLearningMaterial(text, `${file.name}/${entry.name}`)
+        if (material) materials.push(material)
+      } else if (/\.docx$/i.test(lowerName)) {
+        const blob = await entry.async('blob')
+        const text = await extractDocxText(blob)
+        const material = buildGuideLearningMaterial(text, `${file.name}/${entry.name}`)
+        if (material) materials.push(material)
+      }
+    } catch {
+      // 개별 파일이 깨져도 나머지 학습자료는 계속 반영합니다.
+    }
+  }
+
+  return materials
+}
+
 function buildFriendlyProposalMessage(creator, brief, campaign) {
   const topicText = creator.topics.slice(0, 3).join(', ')
   const campaignName = campaign?.name ?? `${brief.product} 캠페인`
@@ -1828,6 +1869,7 @@ function buildInfluencerContentGuide({ brand, brief, campaign, creators = [] }) 
   const seedType = campaign.guideSeedType || '무가시딩'
   const channel = campaign.guideChannel || 'Instagram Reels'
   const campaignName = campaign.name || `${brief.product} 인플루언서 캠페인`
+  const materialDigest = buildLearningMaterialDigest(getLearningMaterials(brief))
   const oneMessage =
     campaign.oneMessage ||
     `${brief.product}는 ${brief.persona || '타깃 고객'}에게 실제 사용 맥락에서 설득되는 선택지입니다.`
@@ -1835,15 +1877,21 @@ function buildInfluencerContentGuide({ brand, brief, campaign, creators = [] }) 
     campaign.hookPoints ||
     [
       `${brief.product}를 처음 봤을 때 생기는 궁금증`,
-      `가격, 성분, 사용성, 상황 중 하나를 첫 3초에 제시`,
-      `직접 사용 장면과 결과 느낌을 과장 없이 연결`,
-      `댓글로 질문이 나올 만한 비교 포인트`,
+      '가격, 성분, 사용 상황 중 하나를 첫 3초에 제시',
+      '직접 사용 장면과 결과 판단을 과장 없이 연결',
+      '댓글로 질문이 나올 만한 비교 포인트',
     ].join('\n')
   const hooks = rawHooks
     .split(/\r?\n/)
     .map((item) => item.replace(/^[-*•\d.\s]+/, '').trim())
     .filter(Boolean)
     .slice(0, 12)
+  const hookRows = buildStrategyHookRows({
+    productText: brief.product || '제품',
+    personaText: brief.persona || '핵심 고객',
+    problemType: getStrategyProblemType(campaign, brief),
+    proofPoints: materialDigest.proofPoints,
+  })
   const creatorSummary = creators.length
     ? creators
         .slice(0, 8)
@@ -1853,26 +1901,21 @@ function buildInfluencerContentGuide({ brand, brief, campaign, creators = [] }) 
   const learningContext = buildLearningContext(brief)
   const seedingRule = {
     무가시딩:
-      '제품 제공 중심. 금전 리워드가 없는 대신 크리에이터의 자연스러운 사용 경험과 자율 표현을 존중한다. 업로드 강제처럼 보이는 표현은 피하고, 필수 고지/금지 표현만 명확히 전달한다.',
+      '제품 제공 중심. 금전 리뷰어가 없는 대신 크리에이터의 자연스러운 사용 경험과 자율 표현을 존중합니다. 업로드 강제처럼 보이는 표현은 피하고, 필수 고지/금지 표현만 명확히 전달합니다.',
     유가시딩:
-      '유료 협업. 산출물, 일정, 검수, 수정 범위, 광고/협찬 표기를 명확히 합의한다. 원메시지는 지키되 크리에이터 말투를 살릴 수 있게 예시형으로 제공한다.',
+      '유료 작업. 산출물, 일정, 검수, 수정 범위, 광고/협찬 표기를 명확히 합의합니다. 원메시지는 지키되 크리에이터 말투를 살릴 수 있게 예시형으로 제공합니다.',
     '공동구매 셀러':
-      '조회수보다 전환과 구매 맥락이 중요하다. 가격/혜택/사용 시나리오/구매 링크 또는 코드 안내를 자연스럽게 연결하고, 판매 압박보다 문제 해결 흐름을 우선한다.',
+      '조회수보다 전환과 구매 맥락이 중요합니다. 가격 혜택, 사용 시나리오, 구매 링크 또는 코드 안내를 자연스럽게 연결하고, 과장된 판매 압박보다 문제 해결 흐름을 우선합니다.',
     '모집형 체험단':
-      '다수 크리에이터가 같은 기준으로 제작할 수 있게 공통 미션, 필수 컷, 제출 방식, 마감일을 선명하게 제시한다. 과장된 후기나 결과 보장 표현은 금지한다.',
-  }[seedType]
+      '다수 크리에이터가 같은 기준으로 시작할 수 있게 공통 미션, 필수 컷, 제출 방식, 마감일을 선명하게 제시합니다. 과장된 후기나 결과 보장 표현은 금지합니다.',
+  }[seedType] || '캠페인 조건에 맞춰 필수 고지와 금지 표현을 명확히 전달합니다.'
   const channelRule = {
-    'Instagram Reels':
-      '첫 1-2초 썸네일/자막 후킹이 중요하다. 세로 9:16, 15-45초, 자막 중심으로 제품 사용 장면과 감정 반응을 빠르게 보여준다.',
-    TikTok:
-      '문제 제기-반전-사용 장면-댓글 유도 흐름이 적합하다. 말투는 짧고 직접적으로, 챌린지/비교/실험형 구성이 잘 맞는다.',
-    'YouTube Shorts':
-      '검색/추천 유입을 고려해 제목형 첫 문장과 명확한 결론이 필요하다. 30-60초 안에 문제, 사용, 판단, CTA를 닫는다.',
-    'YouTube Longform':
-      '상세 리뷰, 비교, 사용 전후 맥락을 충분히 설명한다. 챕터형 구성과 고정댓글 링크/쿠폰 안내를 포함한다.',
-    'Multi Channel':
-      '릴스/틱톡/쇼츠는 첫 3초 후킹과 사용 장면, YouTube 롱폼은 정보 구조와 비교 포인트를 강화한다.',
-  }[channel]
+    'Instagram Reels': '첫 1-2초 썸네일 자막 후킹이 중요합니다. 세로 9:16, 15-45초, 자막 중심으로 제품 사용 장면과 감정 반응을 빠르게 보여줍니다.',
+    TikTok: '문제 제기-반전-사용 장면-댓글 유도 흐름이 적합합니다. 말투는 직접적이고, 챌린지/비교/실험형 구조가 잘 맞습니다.',
+    'YouTube Shorts': '검색/추천 유입을 고려해 제목 첫 문장과 명확한 결론이 필요합니다. 30-60초 안에 문제, 사용, 판단, CTA를 넣습니다.',
+    'YouTube Longform': '상세 리뷰, 비교, 사용 전후 맥락을 충분히 설명합니다. 챕터형 구성과 고정댓글 링크/쿠폰 안내를 포함합니다.',
+    'Multi Channel': '숏폼은 후킹/사용 장면, 롱폼은 상세 비교/구매 정보, 전 채널 협찬 고지를 분리합니다.',
+  }[channel] || '채널 특성에 맞춰 첫 3초 후킹, 사용 장면, CTA를 분리합니다.'
 
   return `# ${brand.name} ${campaignName} 인플루언서 콘텐츠 가이드
 
@@ -1881,16 +1924,24 @@ function buildInfluencerContentGuide({ brand, brief, campaign, creators = [] }) 
 - 제품/서비스: ${brief.product || '-'}
 - 협업 유형: ${seedType}
 - 권장 채널: ${channel}
+- 캠페인 유형: ${getStrategyProblemType(campaign, brief)}
 - 캠페인 목표: ${campaign.objective || brief.goal || '-'}
 - KPI: ${campaign.kpiGoal || '조회수, 댓글, 저장/공유, 전환 링크 클릭, 구매/문의'}
 - 마감/업로드 일정: ${campaign.deadline || '협의'}
-- 리워드/제공 조건: ${campaign.reward || '제품 제공 및 조건 협의'}
+- 리뷰 제공 조건: ${campaign.reward || '제품 제공 및 조건 협의'}
 
 ## 2. 콘텐츠 원메시지
 ${oneMessage}
 
-## 3. 후킹포인트
+## 3. Big Idea & 후킹포인트
+### Big Idea
+"${oneMessage}"
+
+### 후크 카피 후보
 ${hooks.map((hook, index) => `${index + 1}. ${hook}`).join('\n')}
+
+### 적용 메커니즘
+${hookRows.map((item) => `- ${item.code} ${item.name}: ${item.copy}`).join('\n')}
 
 ## 4. ${seedType} 운영 원칙
 ${seedingRule}
@@ -1899,62 +1950,130 @@ ${seedingRule}
 ${channelRule}
 
 ## 6. 권장 구성
-1. 첫 3초: 가격, 문제, 상황, 비교, 감정 중 하나로 시청 이유를 만든다.
-2. 문제 공감: 타깃 고객이 겪는 불편을 실제 상황으로 보여준다.
-3. 제품 사용: 손에 들고 쓰는 장면, 디테일 컷, 사용 전후 느낌을 담는다.
-4. 판단 근거: 왜 이 제품을 선택할 만한지 한 문장으로 정리한다.
-5. CTA: 댓글 질문, 링크 확인, 쿠폰/공동구매, 저장 유도 중 캠페인 목적에 맞게 마무리한다.
+1. 첫 3초: 가격, 문제, 상황, 비교, 감정 중 하나로 시청 이유를 만듭니다.
+2. 문제 공감: 타깃 고객이 겪는 불편을 실제 상황으로 보여줍니다.
+3. 제품 사용: 손에 들고 쓰는 장면, 디테일 컷, 사용 전후 판단을 넣습니다.
+4. 판단 근거: 왜 이 제품을 선택할 만한지 한 문장으로 정리합니다.
+5. CTA: 댓글 질문, 링크 확인, 쿠폰/공동구매, 저장 유도 중 캠페인 목적에 맞게 마무리합니다.
 
-## 7. UGC 공통 가이드라인
-- 영상 비율: 9:16 세로형, 최소 1080×1920 권장
-- 자막: 나레이션 동시 자막 필수, 핵심 키워드는 색상 또는 굵기로 강조
-- 컷 전환: 한 장면 1-3초 기준, "나레이션 한 문장 = 컷 하나" 원칙
-- 제품 노출: 라벨/패키지 정면 노출, 최종 컷에 제품 풀샷 포함
-- 톤: 과장 리액션보다 실험 리포터/뷰티 에디터처럼 담백하게, 감정보다 팩트와 사용 근거 중심
-
-## 8. STEP별 자막/나레이션/연출 가이드
-| STEP | 구간 | 자막/화면 문구 | 나레이션 방향 | 연출 |
-| --- | --- | --- | --- | --- |
-| 1. Hook | 0-3초 | ${hooks[0] || oneMessage} | 시청자가 바로 멈출 수 있게 문제/가격/상황을 단정적으로 제시 | 얼굴 클로즈업, 제품/상황 컷, 강한 자막 |
-| 2. Problem | 3-10초 | 타깃이 겪는 불편 한 문장 | "저도 이럴 때 불편했어요"처럼 공감형으로 연결 | 실제 사용 전 상황, 비교 컷 |
-| 3. Solution | 10-25초 | ${brief.product || '제품'} 핵심 포인트 | 제품이 문제를 어떻게 해결하는지 원메시지 중심으로 설명 | 제품 라벨, 손 사용, 디테일 컷 |
-| 4. Proof | 25-40초 | 근거/성분/수치/사용감 | 과장 없이 사용감과 판단 근거 제시 | 텍스트 그래픽, 전후 느낌, 테스트 컷 |
-| 5. CTA | 마지막 | 댓글/링크/저장/공동구매 안내 | 강요보다 자연스러운 다음 행동 안내 | 제품 풀샷, 고정댓글/링크 안내 |
-
-## 9. 필수 포함 요소
+## 7. 필수 포함 요소
 - 제품명 또는 브랜드명이 자연스럽게 노출되는 장면
-- 원메시지를 크리에이터 본인 말투로 풀어낸 문장
+- 원메시지를 크리에이터 본인 말투로 재해석한 문장
 - 사용 장면 또는 제품 디테일 컷
 - 협찬/광고 표기 등 채널 정책에 맞는 고지
 - 금지 표현을 피한 캡션과 자막
+${materialDigest.proofPoints.slice(0, 5).map((item) => `- 학습자료 기반 증명점: ${item}`).join('\n')}
 
-## 10. 금지/주의 표현
+## 8. 금지/주의 표현
 - 의학적 효능, 치료, 즉각 개선, 과장 전후 비교
 - 경쟁사 실명 비방
 - 실제와 다른 가격/혜택/성분/성능 표현
 - 크리에이터가 경험하지 않은 내용을 경험처럼 말하는 표현
+${materialDigest.riskPoints.slice(0, 5).map((item) => `- 자료 기반 주의: ${item}`).join('\n')}
 ${brief.exclusions ? `- 브랜드 추가 제외 표현: ${brief.exclusions}` : ''}
 
-## 11. 캡션 예시
-${brief.product || '제품'}를 직접 써보면서 가장 먼저 느낀 포인트는 "${oneMessage}"였어요.  
-자세한 사용감과 구매/참여 정보는 본문 또는 고정댓글에서 확인해주세요.
+## 9. 제작 전 체크리스트
+- 첫 3초 안에 시청자가 멈출 이유가 보이나요?
+- 제품을 실제로 쓰는 장면이 최소 2컷 이상 들어가 있나요?
+- 원메시지가 크리에이터의 말투로 자연스럽게 바뀌었나요?
+- 광고/협찬 고지가 캡션 또는 영상 안에 명확히 들어가 있나요?
+- 댓글, 저장, 링크 확인, 구매/문의 중 하나의 CTA가 있나요?
+- 금지 표현과 과장 전후 비교가 빠져 있나요?
 
-## 12. 필수 키워드
-${keywordList(`${brief.product}, ${brief.keywords}`).slice(0, 8).map((keyword) => `- ${keyword}`).join('\n') || '- 제품명 / 브랜드명 / 캠페인 핵심 키워드'}
-
-## 13. 채널별 체크리스트
-- Instagram Reels/TikTok/Shorts: 9:16, 첫 3초 자막, 제품 사용 장면, 짧은 CTA
-- YouTube Longform: 챕터, 장단점, 링크/쿠폰 고정댓글, 상세 사용 조건
-- Multi Channel: 숏폼은 후킹/사용 장면, 롱폼은 상세 비교/구매 정보, 전 채널 협찬 고지
-
-## 14. 검수/제출
+## 10. 검수/제출
 - 초안 제출: ${campaign.approvalFlow || '브리프 전달 → 초안 검수 → 수정 반영 → 게시 확인'}
 - 제출물: 영상 원본 또는 게시 링크, 썸네일/캡션, 성과 확인용 링크
 - 성과 기록: 조회수, 댓글, 저장/공유, 클릭, 구매/문의 전환
 
-## 15. 배정 후보
+## 11. 배정 후보
 ${creatorSummary}
-${learningContext ? `\n## 16. 브랜드 학습자료 반영 메모\n${learningContext}` : ''}
+${learningContext ? `\n## 12. 브랜드 학습자료 반영 메모\n${learningContext}` : ''}
+`
+}
+
+function buildCreatorSpecificContentGuide({ brand, brief, campaign, creator, commonGuide = '' }) {
+  const campaignName = campaign?.name || `${brief.product} 인플루언서 캠페인`
+  const platform = creator?.platform || campaign?.guideChannel || 'Instagram Reels'
+  const oneMessage =
+    campaign?.oneMessage ||
+    `${brief.product}를 ${brief.persona || '핵심 타깃'}의 실제 사용 장면 안에서 자연스럽게 설득합니다.`
+  const materialDigest = buildLearningMaterialDigest(getLearningMaterials(brief))
+  const channelBrief = {
+    YouTube:
+      '검색 유입과 신뢰 증명을 같이 가져가야 합니다. 제목/첫 멘트에 문제를 명확히 두고, 사용 과정과 판단 근거를 충분히 보여주세요.',
+    Instagram:
+      '첫 화면 자막, 썸네일 감정, 저장 욕구가 중요합니다. 컷 전환은 짧게 가져가고 제품 디테일과 사용 장면을 보기 좋게 배치하세요.',
+    TikTok:
+      '첫 1초 후킹과 빠른 반전이 중요합니다. 문제 제기, 사용 장면, 댓글 유도 질문을 짧고 직접적인 말투로 연결하세요.',
+  }[platform] || '채널 특성에 맞게 첫 3초 후킹, 실제 사용 장면, CTA를 분리하세요.'
+  const creatorAngle = creator
+    ? `${creator.name} 계정은 ${creator.category || '콘텐츠'} 카테고리에서 팔로워 ${compactNumber(creator.followers)}, 평균 조회 ${compactNumber(creator.averageViews)}, 참여율 ${percent(creator.engagement)} 수준으로 확인됩니다.`
+    : '크리에이터별 계정 정보가 연결되면 톤과 컷 구성을 개인화합니다.'
+  const hookLines = buildStrategyHookCopyLines({
+    productText: brief.product || campaign?.product || '제품',
+    personaText: brief.persona || campaign?.targetPersona || '타깃 고객',
+    hookRows: buildStrategyHookRows({
+      productText: brief.product || campaign?.product || '제품',
+      personaText: brief.persona || campaign?.targetPersona || '타깃 고객',
+      problemType: getStrategyProblemType(campaign, brief),
+      proofPoints: materialDigest.proofPoints,
+    }),
+    materialDigest,
+    campaign,
+  }).slice(0, 6)
+  const creatorTone =
+    creator?.platform === 'YouTube'
+      ? '리뷰어처럼 차분하게 근거를 쌓고, 과장보다 실제 판단 과정을 보여주세요.'
+      : creator?.platform === 'TikTok'
+        ? '짧고 직관적인 말투로 시작하고, 댓글이 달릴 질문을 마지막에 남겨주세요.'
+        : '일상 속 발견처럼 자연스럽게 시작하고, 캡션에는 저장할 이유를 남겨주세요.'
+
+  return `# ${creator?.name || '크리에이터'} 전용 콘텐츠 가이드
+
+## 1. 캠페인
+- 브랜드: ${brand.name}
+- 캠페인: ${campaignName}
+- 제품/서비스: ${brief.product || campaign?.product || '-'}
+- 협업 유형: ${campaign?.guideSeedType || '무가시딩'}
+- 권장 채널: ${platform}
+- 업로드 일정: ${campaign?.uploadDueDate || campaign?.deadline || '협의'}
+
+## 2. 이 크리에이터에게 맡길 역할
+${creatorAngle}
+
+- 역할: ${creator?.category || brief.categories?.[0] || '제품 사용 맥락'} 관점에서 제품을 직접 써보고 판단하는 콘텐츠
+- 톤: ${creatorTone}
+- 핵심 메시지: ${oneMessage}
+
+## 3. 개인화 후킹 후보
+${hookLines.map((line, index) => `${index + 1}. ${line}`).join('\n')}
+
+## 4. 컷 구성 제안
+1. 첫 화면: 시청자가 멈출 문제, 가격, 상황, 감정 중 하나를 크게 보여줍니다.
+2. 사용 맥락: 왜 이 제품이 필요한지 본인 일상이나 계정 콘셉트 안에서 설명합니다.
+3. 제품 확인: 패키지, 질감, 크기, 사용 전후 판단 요소를 직접 보여줍니다.
+4. 신뢰 증명: 학습자료의 증명 포인트를 본인 말투로 바꿔 한 문장만 넣습니다.
+5. CTA: 댓글 질문, 저장, 링크 확인, 구매/문의 중 캠페인 목적에 맞게 마무리합니다.
+
+## 5. 채널별 주의점
+${channelBrief}
+
+## 6. 꼭 지켜야 할 것
+- 광고/협찬 고지를 채널 정책에 맞게 표시합니다.
+- 경험하지 않은 내용을 실제 경험처럼 말하지 않습니다.
+- 치료, 보장, 즉각 개선, 과장 전후 비교 표현은 쓰지 않습니다.
+- 경쟁사 실명 비방은 하지 않습니다.
+${materialDigest.riskPoints.slice(0, 4).map((item) => `- 주의 표현: ${item}`).join('\n')}
+
+## 7. 제출물
+- 업로드 전 초안 또는 원고/컷 구성
+- 게시 링크
+- 썸네일/캡션
+- 게시 후 조회수, 좋아요, 댓글, 공유/저장 수치
+
+## 8. 공통 가이드 반영 기준
+공통 가이드의 원메시지와 금지 표현은 유지하되, 문장과 장면은 ${creator?.name || '크리에이터'}의 평소 말투와 콘텐츠 구조로 바꿔 제작합니다.
+${commonGuide ? '\n공통 가이드는 캠페인 기준 문서이고, 이 문서는 개인별 실행 지시서입니다.' : ''}
 `
 }
 
@@ -2372,16 +2491,265 @@ function withKoreanJosa(value, pair) {
   return `${text}${hasFinalConsonant(text) ? withFinal : withoutFinal}`
 }
 
+const strategyDirectorRegimeBenchmarks = {
+  nano: { label: 'Nano', follower: '<1만', fee: 300000, reach: 5000, cvr: 0.02 },
+  micro: { label: '마이크로', follower: '1~5만', fee: 600000, reach: 15000, cvr: 0.015 },
+  microPlus: { label: '마이크로+', follower: '5~20만', fee: 1500000, reach: 40000, cvr: 0.012 },
+  mid: { label: '미드', follower: '20~50만', fee: 4000000, reach: 100000, cvr: 0.01 },
+  midPlus: { label: '미드+', follower: '50~100만', fee: 10000000, reach: 250000, cvr: 0.008 },
+  macro: { label: '매크로', follower: '100만+', fee: 30000000, reach: 800000, cvr: 0.006 },
+}
+
+const strategyDirectorTierMix = {
+  nano: { micro: 0.7, nano: 0.3 },
+  microFocus: { micro: 0.7, microPlus: 0.3 },
+  microPlus: { micro: 0.55, microPlus: 0.35, mid: 0.1 },
+  balanced: { micro: 0.45, microPlus: 0.35, mid: 0.2 },
+  fullScale: { micro: 0.35, microPlus: 0.35, mid: 0.2, midPlus: 0.1 },
+  premium: { microPlus: 0.35, mid: 0.35, midPlus: 0.2, macro: 0.1 },
+}
+
+const strategyDirectorBudgetAllocation = {
+  nano: { influencer: 0.6, boost: 0.25, content: 0.1, ops: 0.05 },
+  microFocus: { influencer: 0.5, boost: 0.3, content: 0.15, ops: 0.05 },
+  microPlus: { influencer: 0.5, boost: 0.3, content: 0.15, ops: 0.05 },
+  balanced: { influencer: 0.48, boost: 0.25, content: 0.2, ops: 0.07 },
+  fullScale: { influencer: 0.55, boost: 0.2, content: 0.18, ops: 0.07 },
+  premium: { influencer: 0.6, boost: 0.15, content: 0.15, ops: 0.1 },
+}
+
+function getStrategyProblemType(campaign = {}, brief = {}) {
+  const text = [
+    campaign.name,
+    campaign.objective,
+    campaign.campaignType,
+    campaign.kpiGoal,
+    campaign.commerceMetric,
+    brief.goal,
+    brief.product,
+    brief.keywords,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+
+  if (/위기|논란|crisis|리스크|사과/.test(text)) return 'Crisis'
+  if (/부활|재런칭|리뉴얼|회복|revival|하락|침체/.test(text)) return 'Revival'
+  if (/공동구매|셀러|구매|전환|매출|roas|리뷰|scale|판매/.test(text)) return 'Scale-up'
+  return 'Launch'
+}
+
+function getStrategyBudgetTier(budget = 0) {
+  const value = Number(budget) || 0
+  if (value < 5000000) return 'nano'
+  if (value < 15000000) return 'microFocus'
+  if (value < 30000000) return 'microPlus'
+  if (value < 80000000) return 'balanced'
+  if (value < 200000000) return 'fullScale'
+  return 'premium'
+}
+
+function getStrategyTargetCount(campaign = {}, fallback = 8) {
+  const candidates = [
+    campaign.recommendationTargetCount,
+    campaign.sellerRecruitTarget,
+    campaign.targetCreators,
+    campaign.creatorTarget,
+  ]
+  const value = candidates.map(Number).find((item) => Number.isFinite(item) && item > 0)
+  return value || fallback
+}
+
+function buildLearningMaterialDigest(materials = []) {
+  const normalized = materials.filter(Boolean).map((item, index) => ({
+    title: item.title || item.sourceName || `학습자료 ${index + 1}`,
+    summary: item.summary || item.doSay || item.keywords || '',
+    keywords: item.keywords || '',
+    doSay: item.doSay || '',
+    dontSay: item.dontSay || '',
+    sourceName: item.sourceName || item.sourceType || item.title || '입력 자료',
+  }))
+  const proofPoints = uniqueList(
+    normalized
+      .flatMap((item) => [item.doSay, item.summary, item.keywords])
+      .join('\n')
+      .split(/[,\n/·]+/)
+      .map((item) => item.replace(/^[-*•\d.\s]+/, '').trim())
+      .filter((item) => /가격|후킹|원메시지|USP|성분|규격|사이즈|환불|검증|비교|CTA|타깃|페르소나|장면|후기|전환/.test(item))
+      .slice(0, 12),
+  )
+  const riskPoints = uniqueList(
+    normalized
+      .flatMap((item) => [item.dontSay, item.summary])
+      .join('\n')
+      .split(/[,\n/·]+/)
+      .map((item) => item.replace(/^[-*•\d.\s]+/, '').trim())
+      .filter((item) => /금지|주의|과장|치료|효능|경쟁사|실명|허위|보장|승인|표기|광고/.test(item))
+      .slice(0, 10),
+  )
+
+  return {
+    materials: normalized,
+    proofPoints,
+    riskPoints,
+    sourceNames: uniqueList(normalized.map((item) => item.sourceName || item.title)).slice(0, 8),
+  }
+}
+
+function buildStrategyCastingRows({ budget, targetCount, problemType, selectedPlatforms }) {
+  const tier = getStrategyBudgetTier(budget)
+  const mix = strategyDirectorTierMix[tier] || strategyDirectorTierMix.microFocus
+  return Object.entries(mix).map(([key, ratio]) => {
+    const benchmark = strategyDirectorRegimeBenchmarks[key] || strategyDirectorRegimeBenchmarks.micro
+    const count = Math.max(1, Math.round(targetCount * ratio))
+    const expectedReach = benchmark.reach * count
+    const expectedConversions = Math.round(expectedReach * benchmark.cvr)
+    const role =
+      problemType === 'Scale-up'
+        ? '구매/문의 전환 증거 확보'
+        : problemType === 'Revival'
+          ? '기존 인식 전환과 재신뢰 확보'
+          : problemType === 'Crisis'
+            ? '리스크 낮은 검증형 메시지 전달'
+            : '첫 인지도와 사용 맥락 확보'
+
+    return {
+      tier: benchmark.label,
+      follower: benchmark.follower,
+      count,
+      expectedReach,
+      expectedConversions,
+      role,
+      platform: selectedPlatforms.slice(0, 3).join(', ') || 'Instagram, TikTok, YouTube',
+      estimatedFee: benchmark.fee * count,
+    }
+  })
+}
+
+function buildStrategyHookRows({ productText, personaText, problemType, proofPoints = [] }) {
+  const firstProof = proofPoints[0] || `${productText}의 핵심 사용 장면`
+  const scaleHook =
+    problemType === 'Scale-up'
+      ? `가격/혜택/구매 조건을 첫 화면에 배치하고 "${personaText}가 지금 사야 하는 이유"를 댓글 질문으로 닫기`
+      : `처음 보는 사람이 멈출 수 있게 "${personaText}가 겪는 문제"를 첫 3초에 선언`
+
+  return [
+    { code: 'M2', name: 'Number Shock', copy: `${firstProof}처럼 숫자/조건/가격 우위를 첫 자막에 배치` },
+    { code: 'M5', name: 'Physical Artifact', copy: `${productText} 실물, 패키지, 사용 장면, 전후 컷처럼 조작하기 어려운 증거 노출` },
+    { code: 'M7', name: 'Specificity Overload', copy: '성분, 기간, 사이즈, 가격, 검증 수치처럼 구체 정보를 한 화면에 압축' },
+    { code: 'M6', name: 'Counter-Instinct Casting', copy: '해당 카테고리에 까다로운 리뷰어가 인정하는 흐름으로 신뢰 확보' },
+    { code: problemType === 'Scale-up' ? 'M3' : 'M1', name: problemType === 'Scale-up' ? 'Stakes' : 'Confession Arc', copy: scaleHook },
+  ]
+}
+
+function buildStrategyExecutionPhases({ problemType, sellerMode, campaign = {}, targetCount, productText, personaText }) {
+  const objective = campaign.objective || campaign.kpiGoal || '조회수와 전환을 동시에 검증'
+  const sellerPhase = sellerMode
+    ? [
+        ['D-7~D-5', '셀러 후보 분류', '구매 링크/공동구매 운영 가능 여부, 카테고리 적합도, 최근 쇼핑형 콘텐츠 성과를 기준으로 1차 후보를 나눕니다.', '셀러 후보 1차 리스트', `목표 ${targetCount}명의 3배수 확보`],
+        ['D-4~D-2', '조건 제안', '단가, 샘플 제공, 판매 링크, 정산 기준, 업로드 일정, 금지 표현을 한 번에 제안하고 응답별 상태를 메시지함에 남깁니다.', '제안/응답 로그', '응답률과 조건 수락률 확인'],
+        ['D-1~D+3', '판매형 콘텐츠 배포', '가격/혜택/사용 장면/구매 이유를 첫 5초 안에 배치하고 링크 또는 코드 안내를 캡션과 댓글에 분리합니다.', '업로드 링크', '링크 클릭/주문/문의 기록'],
+        ['D+4~D+10', '승자 확장', '조회수보다 전환 또는 저장이 높은 셀러를 재섭외하고, 터진 훅을 다른 셀러에게 변형 가이드로 전달합니다.', '재섭외 리스트', '전환 기여 콘텐츠 2차 확보'],
+      ]
+    : [
+        ['D-7~D-5', '브리프 정리', `${productText}의 핵심 약속, ${personaText}의 구매 망설임, 금지 표현, 증명 포인트를 한 페이지로 정리합니다.`, '캠페인 브리프', '브랜드/제품/타깃/목표가 비어 있지 않음'],
+        ['D-4~D-2', '후보 발굴', '채널, 국가, 평균 조회수, 참여율, 최근 터진 콘텐츠를 기준으로 후보를 모으고 메시지 전 후보 풀에 저장합니다.', '후보 풀', `목표 ${targetCount}명의 최소 2배수 확보`],
+        ['D-1~D+3', '제안/섭외', '후보별 친근한 제안 메시지를 검토한 뒤 이메일 또는 수동 DM 작업 리스트로 분리해 발송합니다.', '발송 로그', '응답률과 수락률 확인'],
+        ['D+4~D+14', '콘텐츠 제작/검수', '후킹포인트, 필수 컷, 광고 고지, 금지 표현을 체크하고 초안 피드백을 한 번에 정리합니다.', '콘텐츠 초안/업로드 링크', '업로드 완료율 확인'],
+        ['D+15~D+30', '성과 학습', '조회수, 댓글, 저장, 공유, 전환을 매일 갱신하고 잘 터진 구조를 다음 가이드에 재사용합니다.', '성과 리포트', objective],
+      ]
+
+  const revivalPhase =
+    problemType === 'Revival'
+      ? [['상시', '인식 전환', '기존 오해나 약한 인식을 정면으로 인정하되, 실제 사용 증거와 새 맥락으로 다시 선택할 이유를 만듭니다.', '인식 전환 메시지', '부정 반응/댓글 이슈 모니터링']]
+      : []
+
+  return [...sellerPhase, ...revivalPhase]
+}
+
+function buildStrategyChannelPlays({ selectedPlatforms, sellerMode, productText, personaText }) {
+  return selectedPlatforms.map((platform) => {
+    if (platform === 'TikTok 셀러' || sellerMode) {
+      return {
+        platform,
+        role: '대량 섭외와 판매 전환',
+        execution: '셀러 후보를 3배수로 모은 뒤 판매 링크 운영 가능 여부, 최근 쇼핑 콘텐츠 조회수, 댓글 구매 문의를 우선 확인합니다.',
+        deliverable: '공동구매 링크/코드 포함 숏폼, 라이브/스토리 리마인드',
+      }
+    }
+    if (platform === 'YouTube') {
+      return {
+        platform,
+        role: '검색 신뢰와 긴 설명',
+        execution: `${productText}의 사용 이유, 비교 기준, 실제 사용 장면을 Shorts와 롱폼으로 나누고, 고정댓글에 CTA를 둡니다.`,
+        deliverable: 'Shorts 1건 + 상세 리뷰 또는 커뮤니티 리마인드',
+      }
+    }
+    if (platform === 'Instagram') {
+      return {
+        platform,
+        role: '썸네일 후킹과 저장/공유',
+        execution: `${personaText}가 저장하고 싶은 체크리스트형 장면을 만들고, 릴스 후 스토리 Q&A로 재노출합니다.`,
+        deliverable: 'Reels 1건 + Story 2회 + 하이라이트 가능 캡션',
+      }
+    }
+    if (platform === 'TikTok') {
+      return {
+        platform,
+        role: '빠른 실험과 댓글 반응',
+        execution: '첫 3초에 문제/가격/반전 중 하나를 세우고 댓글 질문으로 다음 콘텐츠 소재를 회수합니다.',
+        deliverable: '짧은 실험형 영상 1건 + 댓글 고정 CTA',
+      }
+    }
+    return {
+      platform,
+      role: '보조 확산',
+      execution: '핵심 후크와 사용 장면을 채널 문법에 맞게 재편집합니다.',
+      deliverable: '채널별 변형 콘텐츠',
+    }
+  })
+}
+
+function buildStrategyHookCopyLines({ productText, personaText, hookRows = [], materialDigest = {}, campaign = {} }) {
+  const proof = materialDigest.proofPoints?.[0] || campaign.kpiGoal || `${productText} 사용 장면`
+  const hooks = [
+    `${personaText}가 구매 직전에 꼭 확인하는 ${productText} 체크포인트`,
+    `가격보다 먼저 봐야 하는 ${productText} 사용 장면 3가지`,
+    `처음 쓰는 사람도 바로 이해하는 ${productText} 전후 맥락`,
+    `댓글로 가장 많이 물어볼 ${productText} 질문을 먼저 답하기`,
+    `${proof}를 첫 화면에 크게 보여주고 이유를 풀기`,
+    `${productText}를 안 사도 되는 사람과 사면 좋은 사람을 나눠 말하기`,
+    `비슷한 제품을 써본 사람이 갈아탈 만한 이유를 한 문장으로 말하기`,
+    `사용 전 망설임 → 사용 장면 → 판단 근거 → CTA 순서로 닫기`,
+    `과장 없이 ${personaText}의 실제 고민을 먼저 보여주기`,
+    `저장해두고 비교할 수 있는 ${productText} 핵심 기준표 만들기`,
+  ]
+
+  return uniqueList([...hookRows.map((item) => item.copy), ...hooks]).slice(0, 10)
+}
+
 function buildInfluencerStrategy({ brand, brief, campaign, creators = [], recommendations = [], learningMaterials = [] }) {
   const selectedPlatforms = (brief.platforms?.length ? brief.platforms : ['Instagram', 'TikTok']).filter(Boolean)
   const selectedCategories = (brief.categories?.length ? brief.categories : ['리뷰']).filter((item) => item !== '전체')
   const realCreators = creators.filter((creator) => !isExampleCreator(creator))
   const matchedCreators = realCreators.filter((creator) => matchesBriefPlatform(creator, selectedPlatforms))
+  const materialDigest = buildLearningMaterialDigest(learningMaterials.length ? learningMaterials : getLearningMaterials(brief))
   const sellerMode = selectedPlatforms.includes('TikTok 셀러') || campaign?.campaignType?.includes('셀러')
   const campaignGoal = campaign?.kpiGoal || brief.goal || '조회수와 전환을 함께 보는 캠페인'
   const budget = Number(campaign?.budget || 0)
   const maxCreatorFee = Number(brief.maxPrice || 0)
   const estimatedSlots = maxCreatorFee ? Math.max(3, Math.floor((budget || maxCreatorFee * 5) / Math.max(maxCreatorFee, 1))) : 6
+  const problemType = getStrategyProblemType(campaign, brief)
+  const targetCount = getStrategyTargetCount(campaign, estimatedSlots)
+  const budgetTier = getStrategyBudgetTier(budget)
+  const allocation = strategyDirectorBudgetAllocation[budgetTier] || strategyDirectorBudgetAllocation.microFocus
+  const castingRows = buildStrategyCastingRows({ budget, targetCount, problemType, selectedPlatforms })
+  const hookRows = buildStrategyHookRows({
+    productText: brief.product || '제품',
+    personaText: brief.persona || '핵심 고객',
+    problemType,
+    proofPoints: materialDigest.proofPoints,
+  })
   const learningKeywords = learningMaterials
     .map((item) => item.doSay || item.keywords || item.summary)
     .filter(Boolean)
@@ -2392,9 +2760,9 @@ function buildInfluencerStrategy({ brand, brief, campaign, creators = [], recomm
   const personaText = brief.persona || '핵심 고객'
   const strategyType = sellerMode
     ? 'Scale-up / 공동구매 셀러 확장'
-    : campaign?.objective?.includes('전환') || brief.goal?.includes('전환')
+    : problemType === 'Scale-up' || campaign?.objective?.includes('전환') || brief.goal?.includes('전환')
       ? 'Launch-to-Conversion'
-      : 'Launch / 브랜드 인지도 확장'
+      : `${problemType} / 브랜드 인지도 확장`
 
   const castingMix = [
     sellerMode
@@ -2404,15 +2772,13 @@ function buildInfluencerStrategy({ brand, brief, campaign, creators = [], recomm
     `${selectedCategories.slice(0, 3).join(', ') || '브랜드 핏'} 카테고리 후보: 페르소나 적합성과 과거 콘텐츠 톤을 우선 검수`,
   ]
 
-  const hookLines = [
-    `M2 Number Shock: "${withKoreanJosa(productText, '을/를')} ${personaText} 기준으로 가격/효용 숫자로 먼저 보여주기"`,
-    `M5 Physical Artifact: 실제 제품, 패키지, 사용 장면, 측정표처럼 조작하기 어려운 증거를 첫 5초 안에 노출`,
-    `M7 Specificity Overload: 성분, 사이즈, 사용 기간, 전환 조건처럼 구체 숫자를 자막에 넣기`,
-    `M6 Counter-Instinct Casting: 해당 카테고리에 까다로운 리뷰어가 인정하는 구조로 신뢰 확보`,
-    sellerMode
-      ? 'M3 Stakes: 공동구매 혜택, 마감, 코드 조건을 명확히 보여주되 과장/허위 긴급성은 금지'
-      : 'M1 Confession Arc: 처음엔 의심했지만 실제 사용 후 인정하는 리뷰 흐름',
-  ]
+  const hookLines = hookRows.map((item) => `${item.code} ${item.name}: ${item.copy}`)
+  const castingTable = castingRows
+    .map(
+      (item) =>
+        `| ${item.tier} | ${item.follower} | ${item.count}명 | ${item.platform} | ${compactNumber(item.expectedReach)} | ${compactNumber(item.expectedConversions)} | ${won(item.estimatedFee)} | ${item.role} |`,
+    )
+    .join('\n')
 
   const kpiPlan = [
     `도달/조회: ${campaign?.targetViews ? compactNumber(campaign.targetViews) : '캠페인 목표 조회수'} 대비 후보별 예상 조회 기여도 기록`,
@@ -2423,17 +2789,34 @@ function buildInfluencerStrategy({ brand, brief, campaign, creators = [], recomm
 
   const budgetPlan = budget
     ? [
-        `콘텐츠 제작/출연료 55%: ${won(Math.round(budget * 0.55))}`,
-        `마이크로/셀러 확장 25%: ${won(Math.round(budget * 0.25))}`,
-        `성과 리워드/추가 콘텐츠 10%: ${won(Math.round(budget * 0.1))}`,
-        `리포트/운영/예비비 10%: ${won(Math.round(budget * 0.1))}`,
+        `크리에이터 비용 ${Math.round(allocation.influencer * 100)}%: ${won(Math.round(budget * allocation.influencer))}`,
+        `성과 부스팅/리마인드 ${Math.round(allocation.boost * 100)}%: ${won(Math.round(budget * allocation.boost))}`,
+        `콘텐츠 재활용/편집 ${Math.round(allocation.content * 100)}%: ${won(Math.round(budget * allocation.content))}`,
+        `운영/리포트/예비비 ${Math.round(allocation.ops * 100)}%: ${won(Math.round(budget * allocation.ops))}`,
       ]
     : [
         `최대 단가 ${won(maxCreatorFee)} 기준으로 메인 후보와 마이크로 후보를 분리`,
         '확정 예산 입력 후 메인/확산/성과 리워드 비중을 자동 산정',
       ]
 
+  const phasePlan = buildStrategyExecutionPhases({ problemType, sellerMode, campaign, targetCount, productText, personaText })
+  const channelPlays = buildStrategyChannelPlays({ selectedPlatforms, sellerMode, productText, personaText })
+  const hookCopyLines = buildStrategyHookCopyLines({ productText, personaText, hookRows, materialDigest, campaign })
+  const inputSummary = [
+    `제품/서비스: ${productText}`,
+    `타깃: ${personaText}`,
+    `목표: ${campaignGoal}`,
+    `우선 채널: ${selectedPlatforms.join(', ')}`,
+    `목표 후보 수: ${targetCount}명`,
+    materialDigest.sourceNames.length ? `첨부 학습자료 ${materialDigest.sourceNames.length}건 반영` : '첨부 학습자료 없음',
+  ]
+
   return `# ${brand.name || brief.brandName} 인플루언서 전략 초안
+
+## 0. 전략 입력 요약
+${inputSummary.map((item) => `- ${item}`).join('\n')}
+- 핵심 증명 포인트: ${materialDigest.proofPoints.length ? materialDigest.proofPoints.slice(0, 5).join(' / ') : '제품 상세, 후기, 가격, 성분, 사용 시나리오 자료를 추가하면 정확도가 올라갑니다.'}
+- 주의해야 할 표현: ${materialDigest.riskPoints.length ? materialDigest.riskPoints.slice(0, 4).join(' / ') : '광고 고지, 과장 표현, 경쟁사 비방, 효능 보장 표현을 기본 검수합니다.'}
 
 ## 1. 전략 유형
 - 유형: ${strategyType}
@@ -2441,43 +2824,75 @@ function buildInfluencerStrategy({ brand, brief, campaign, creators = [], recomm
 - 핵심 제품: ${productText}
 - 타깃 페르소나: ${personaText}
 - 우선 채널: ${selectedPlatforms.join(', ')}
+- 목표 후보 수: ${targetCount}명
+- 예산 티어: ${budgetTier}
 
 ## 2. Big Idea
-${withKoreanJosa(productText, '을/를')} 단순 협찬 리뷰가 아니라 "${withKoreanJosa(personaText, '이/가')} 실제 구매를 결정하는 증거 콘텐츠"로 설계합니다. 첫 콘텐츠는 신뢰 증명, 두 번째 흐름은 사용 상황, 세 번째 흐름은 구매/문의 전환으로 나눕니다.
+${withKoreanJosa(productText, '을/를')} 단순 협찬 리뷰가 아니라 "${withKoreanJosa(personaText, '이/가')} 실제 구매를 결정하는 증거 콘텐츠"로 설계합니다.
 
-## 3. 캐스팅 전략
+### 전략 축
+- 신뢰 증명: 가격, 성분, 실제 사용 장면, 후기 맥락 중 하나를 첫 화면에 배치합니다.
+- 사용 시나리오: 제품을 쓰는 상황을 보여주고, 타깃이 겪는 망설임을 자연스럽게 해소합니다.
+- 전환 연결: 댓글 질문, 저장, 링크 확인, 공동구매/쿠폰 등 캠페인 목표에 맞는 행동으로 닫습니다.
+
+## 3. 실행 시나리오
+| 기간 | 목표 | 해야 할 일 | 산출물 | 성공 기준 |
+| --- | --- | --- | --- | --- |
+${phasePlan.map((item) => `| ${item[0]} | ${item[1]} | ${item[2]} | ${item[3]} | ${item[4]} |`).join('\n')}
+
+## 4. 캐스팅 전략
 ${castingMix.map((item) => `- ${item}`).join('\n')}
 - 현재 실제 후보 풀: ${matchedCreators.length}명 / AI 추천 후보: ${recommendations.length}명
 
-## 4. 콘텐츠 후킹 포인트
+| 티어 | 팔로워 | 목표 수 | 우선 채널 | 예상 도달 | 예상 전환 | 예상 비용 | 역할 |
+| --- | --- | ---: | --- | ---: | ---: | ---: | --- |
+${castingTable}
+
+## 5. 콘텐츠 후킹 포인트
+### 후크 설계 원칙
 ${hookLines.map((item) => `- ${item}`).join('\n')}
 
-## 5. 채널별 운영
-${selectedPlatforms.map((platform) => {
-    if (platform === 'TikTok 셀러') return '- TikTok 셀러: 대량 후보 발굴 → 메시지 검토함 → 샘플/조건 확인 → 공동구매 링크/코드 운영'
-    if (platform === 'YouTube') return '- YouTube: 5분 이상 상세 리뷰 또는 Shorts 미러링으로 검색형 신뢰 콘텐츠 확보'
-    if (platform === 'Instagram') return '- Instagram: 릴스 첫 3초 후킹, 스토리 리마인드, 저장 유도 Q&A 구성'
-    if (platform === 'TikTok') return '- TikTok: 짧은 문제 제기, 사용 장면, 댓글 유도형 CTA로 반복 노출'
-    return `- ${platform}: 채널 특성에 맞춰 첫 3초 후킹과 CTA를 분리`
-  }).join('\n')}
+### 바로 테스트할 카피 후보
+${hookCopyLines.map((item, index) => `${index + 1}. ${item}`).join('\n')}
 
-## 6. KPI 설계
+## 6. 채널별 운영법
+| 채널 | 역할 | 실행 방법 | 산출물 |
+| --- | --- | --- | --- |
+${channelPlays.map((item) => `| ${item.platform} | ${item.role} | ${item.execution} | ${item.deliverable} |`).join('\n')}
+
+## 7. 메시지/섭외 운영
+- 후보를 "즉시 제안", "조건 확인", "예비 후보"로 나누고, 즉시 제안 후보부터 메시지 검토함으로 보냅니다.
+- 첫 메시지는 협업 조건보다 크리에이터의 콘텐츠를 본 이유를 먼저 말합니다.
+- 24~48시간 무응답이면 짧은 리마인드 1회만 보내고, 이후에는 예비 후보로 교체합니다.
+- 이메일이 있는 후보는 이메일 발송, DM만 가능한 후보는 작업용 엑셀로 분리합니다.
+- 수락 후보는 섭외 완료 풀에 저장하고, 이후 배송/콘텐츠 추적/리포트가 캠페인 단위로 이어지게 합니다.
+
+## 8. KPI 설계
 ${kpiPlan.map((item) => `- ${item}`).join('\n')}
 
-## 7. 예산/섭외 구조
+## 9. 예산/섭외 구조
 ${budgetPlan.map((item) => `- ${item}`).join('\n')}
 
-## 8. 브랜드 학습자료 반영
+## 10. 브랜드 학습자료 반영
 ${learningKeywords.length ? learningKeywords.map((item) => `- 강조: ${item}`).join('\n') : '- 등록된 학습자료가 없으므로 제품 USP, 금지 표현, 상세페이지 문구를 먼저 넣는 것을 권장'}
+${materialDigest.proofPoints.slice(0, 8).map((item) => `- 증명점: ${item}`).join('\n')}
 ${forbidden.length ? forbidden.map((item) => `- 금지/주의: ${item}`).join('\n') : '- 금지 표현은 캠페인 생성 전 별도 확인'}
+${materialDigest.riskPoints.slice(0, 6).map((item) => `- 자료 기반 리스크: ${item}`).join('\n')}
 
-## 9. 컴플라이언스 게이트
+## 11. 성과 최적화 루프
+- D+1: 업로드 링크, 조회수, 댓글, 저장/공유를 등록하고 누락 콘텐츠를 리마인드합니다.
+- D+3: 조회수 대비 참여율이 높은 콘텐츠의 후크와 자막 구조를 저장 레퍼런스로 남깁니다.
+- D+7: 평균 이하 콘텐츠는 썸네일/첫 자막/CTA를 다시 보고, 다음 발송 메시지와 가이드에 반영합니다.
+- D+14: 성과가 좋은 크리에이터는 재섭외 그룹으로 옮기고, 낮은 후보는 보류 사유를 기록합니다.
+- 보고서에는 캠페인 목표 대비 도달, 참여, 전환, 섭외 완료율을 함께 보여줍니다.
+
+## 12. 컴플라이언스 게이트
 - 모든 콘텐츠에 #광고, #협찬 또는 유료광고 포함 표기를 명시
 - 가짜 후기, 무표기 커뮤니티 시딩, 경쟁사 실명 비방은 제외
 - 의학적 효능, 과장 전후 비교, 허위 긴급성 표현은 검수 단계에서 차단
 - 최종 실행 전 GO / MODIFY / HOLD / STOP 컨펌을 받음
 
-## 10. 다음 액션
+## 13. 다음 액션
 1. 실제 후보 발굴에서 공개 프로필 데이터를 수집
 2. AI 매칭 실행으로 후보 리스트 생성
 3. 메시지 검토함에서 제안 문구 확인
@@ -3674,7 +4089,7 @@ function buildAdminRawDataCatalog({
       sourceLocation: '캠페인 생성/수정 폼',
       storageLocation: `${storageBase} / campaigns.strategyInputRaw`,
       dashboardArea: '캠페인 상세, 전략/가이드 생성',
-      metricIds: ['MET-AI-GEN-001', 'MET-AI-GEN-002', 'MET-GUIDE-001'],
+      metricIds: ['MET-AI-GEN-001', 'MET-AI-GEN-002', 'MET-AI-GEN-003', 'MET-GUIDE-001'],
       ownerDept: 'PM/전략팀',
       opsOwner: 'Campaign PM',
       techOwner: 'Frontend/Data',
@@ -3722,7 +4137,7 @@ function buildAdminRawDataCatalog({
       sourceLocation: '브랜드 설정, 캠페인 생성/수정',
       storageLocation: `${storageBase} / brands, brand.brief`,
       dashboardArea: '대시보드, 캠페인, 발굴, 메시지',
-      metricIds: ['MET-CMP-001', 'MET-POOL-003', 'MET-AI-GEN-001', 'MET-AI-GEN-002'],
+      metricIds: ['MET-CMP-001', 'MET-POOL-003', 'MET-AI-GEN-001', 'MET-AI-GEN-002', 'MET-AI-GEN-003'],
       ownerDept: 'CS/PM',
       opsOwner: 'Brand Manager',
       techOwner: 'Frontend/Data',
@@ -3918,6 +4333,10 @@ function buildAdminMetricCatalog({ rawData, outreach, creators, campaigns, recru
   const expectedViewsTotal = creators.reduce((sum, creator) => sum + Number(creator.averageViews || 0), 0)
   const strategyGeneratedCount = campaigns.filter((campaign) => Boolean(campaign.influencerStrategy)).length
   const guideGeneratedCount = campaigns.filter((campaign) => Boolean(campaign.generatedContentGuide)).length
+  const individualGuideCount = campaigns.reduce(
+    (sum, campaign) => sum + Object.keys(campaign.individualContentGuides || {}).length,
+    0,
+  )
   const rows = [
     ['MET-CRM-001', '발송 수', 'CRM 효율 번들', '내부', '발송 완료 상태의 메시지 수', 'count(outreach.status = 발송 완료 or 응답)', rawRefs.crm, '최근 30일', '실시간', '정상', '어드민 대시보드, 메시지', '증가 추세가 정상이나 중복 발송은 별도 경고', '동일 creator/campaign/channel 2회 이상', '높음', '운영팀', 'outreach_events / Gmail send logs', `${outreach.length}건`],
     ['MET-CRM-002', '오픈율', 'CRM 효율 번들', '내부', '이메일 오픈 수 / 발송 수', 'opened_count / sent_count * 100', rawRefs.crm, '최근 30일', '일 1회', '검증 필요', '내부 보고서', 'Gmail/메일 추적 픽셀 연동 전까지 검증 필요', '0% 또는 90% 이상', '중간', '운영/개발', 'mail_tracking_events', '이메일 추적 연동 후 활성'],
@@ -3953,7 +4372,8 @@ function buildAdminMetricCatalog({ rawData, outreach, creators, campaigns, recru
     ['MET-BENCH-003', '카테고리별 평균 반응률', '레퍼런스/벤치마크 번들', '외부', '카테고리별 레퍼런스 참여율 평균', 'groupBy(category).avg(engagementRate)', rawRefs.reference, '최근 30일', '주 1회', '검증 필요', '전략, 가이드 생성', '카테고리 태깅 정확도 확인', '태깅 없음 30% 이상', '중간', '전략/데이터', 'benchmark tag logs', '카테고리 태깅 자동화 필요'],
     ['MET-BENCH-004', '경쟁 콘텐츠 대비 성과지수', '레퍼런스/벤치마크 번들', '외부', '우리 콘텐츠 조회/반응을 벤치마크 평균과 비교', '(campaign_score / benchmark_score) * 100', ['RAW-EXT-CONT-001', 'RAW-EXT-ENG-001', 'RAW-EXT-BENCH-001'], '캠페인 기간', '일 1회', '검증 필요', '고객사 리포트', '100 이상이면 벤치마크 상회', '70 미만', '중간', 'PM/데이터', 'benchmark metric logs', '벤치마크 표본 수 표시 필요'],
     ['MET-AI-GEN-001', '캠페인 전략 생성률', 'AI 전략/가이드 번들', '내부', '전략 산출물이 생성된 캠페인 수 / 전체 캠페인 수', 'count(campaign.influencerStrategy) / count(campaigns) * 100', rawRefs.generation, '캠페인 기준', '전략 생성 시', campaigns.length ? (strategyGeneratedCount ? '정상' : '검증 필요') : '지연', '캠페인 상세, 데이터룸', '캠페인 생성 입력 raw가 있어야 전략 산출물을 신뢰 지표로 사용', '캠페인 1개 이상인데 전략 생성 0건', '중간', 'PM/전략팀', 'campaign.strategyInputRaw + ai_generation_runs', `${strategyGeneratedCount}/${campaigns.length}개 전략 생성`],
-    ['MET-AI-GEN-002', '인플루언서 가이드 생성률', 'AI 전략/가이드 번들', '내부', '전달용 인플루언서 가이드가 생성된 캠페인 수 / 전체 캠페인 수', 'count(campaign.generatedContentGuide) / count(campaigns) * 100', rawRefs.generation, '캠페인 기준', '가이드 생성 시', campaigns.length ? (guideGeneratedCount ? '정상' : '검증 필요') : '지연', '캠페인 상세, 데이터룸', '가이드는 캠페인 입력 raw, 브랜드 학습자료, 저장 레퍼런스가 결합된 산출물로 해석', '전략은 있는데 가이드가 없는 캠페인', '중간', '콘텐츠팀', 'campaign.generatedContentGuide + ai_generation_runs', `${guideGeneratedCount}/${campaigns.length}개 가이드 생성`],
+    ['MET-AI-GEN-002', '공통 인플루언서 가이드 생성률', 'AI 전략/가이드 번들', '내부', '캠페인 공통 전달 가이드가 생성된 캠페인 수 / 전체 캠페인 수', 'count(campaign.generatedContentGuide) / count(campaigns) * 100', rawRefs.generation, '캠페인 기준', '공통 가이드 생성 시', campaigns.length ? (guideGeneratedCount ? '정상' : '검증 필요') : '지연', '캠페인 상세, 데이터룸', '공통 가이드는 캠페인 입력 raw, 브랜드 학습자료, 저장 레퍼런스가 결합된 산출물로 해석', '전략은 있는데 공통 가이드가 없는 캠페인', '중간', '콘텐츠팀', 'campaign.generatedContentGuide + ai_generation_runs', `${guideGeneratedCount}/${campaigns.length}개 공통 가이드 생성`],
+    ['MET-AI-GEN-003', '개별 인플루언서 가이드 수', 'AI 전략/가이드 번들', '내부', '크리에이터별 개인화 전달 가이드 생성 건수', 'sum(count(campaign.individualContentGuides))', ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-001'], '캠페인/크리에이터 기준', '개별 가이드 생성 시', individualGuideCount ? '정상' : '검증 필요', '캠페인 상세, 데이터룸', '공통 가이드는 캠페인 기준, 개별 가이드는 크리에이터별 톤/컷/후킹 기준으로 해석', '섭외 완료 또는 배정 후보가 있는데 개별 가이드 0건', '중간', '콘텐츠팀', 'campaign.individualContentGuides + ai_generation_runs', `${individualGuideCount}건 개별 가이드 생성`],
   ]
 
   return rows.map(([id, name, bundle, scope, description, formula, rawIds, period, refreshCycle, status, displayLocation, interpretation, outlierRule, reliability, ownerDept, errorLocation, note]) => ({
@@ -4033,7 +4453,7 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       sourceLocation: 'OpenAI API, local scoring engine',
       storageLocation: `${storageBase} / future: ai_generation_runs`,
       dashboardArea: 'AI 추천, 메시지, 캠페인 전략, 가이드 생성',
-      metricIds: ['MET-AI-001', 'MET-AI-002', 'MET-AI-003', 'MET-AI-GEN-001', 'MET-AI-GEN-002', 'MET-GUIDE-001'],
+      metricIds: ['MET-AI-001', 'MET-AI-002', 'MET-AI-003', 'MET-AI-GEN-001', 'MET-AI-GEN-002', 'MET-AI-GEN-003', 'MET-GUIDE-001'],
       ownerDept: 'PM/데이터',
       opsOwner: 'PM',
       techOwner: 'AI/Data',
@@ -4329,7 +4749,7 @@ function buildDataRoomWorkflowCoverage({ rawData, metrics }) {
     ['WF-MESSAGE', '제안/응답 발송', '메시지', ['RAW-INT-CRM-001', 'RAW-INT-AI-001', 'RAW-INT-EXPORT-001'], ['MET-CRM-001', 'MET-CRM-004', 'MET-CRM-005'], '이메일 가능 후보는 발송 로그, DM 대상은 작업용 엑셀/복사 로그로 분리', 'DM 우회 자동화는 정책상 raw로 두지 않고 작업 로그만 관리'],
     ['WF-REPORT', '콘텐츠 추적/리포트', '리포트', ['RAW-INT-CMP-001', 'RAW-EXT-CONT-001', 'RAW-EXT-ENG-001', 'RAW-EXT-UNSUPPORTED-001'], ['MET-SNS-001', 'MET-SNS-006', 'MET-CONT-001', 'MET-CONT-004'], '업로드 URL 기준으로 공개 지표를 갱신하고 미지원 지표는 수집 필요로 표시', '데이터룸에 저장되지 않은 수치는 보고서에 확정값으로 표시하지 않음'],
     ['WF-REFERENCE', '콘텐츠 레퍼런스 검색/저장', '레퍼런스', ['RAW-EXT-SEARCH-001', 'RAW-EXT-REF-001', 'RAW-EXT-BENCH-001', 'RAW-INT-QUALITY-001'], ['MET-BENCH-001', 'MET-BENCH-002', 'MET-BENCH-003'], '50만 이상 또는 팔로워 대비 터진 콘텐츠를 우선 수집하고 품질 기준 미달은 제외', '검색 결과 원문이 없는 레퍼런스는 저장 링크 검증 대상으로 둠'],
-    ['WF-GUIDE', '전략/콘텐츠 가이드 생성', '캠페인 상세/레퍼런스', ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001', 'RAW-EXT-REF-001', 'RAW-INT-AI-001'], ['MET-AI-GEN-001', 'MET-AI-GEN-002', 'MET-GUIDE-001', 'MET-BENCH-002'], '캠페인 생성 입력 raw와 저장 레퍼런스를 원메시지/후킹/스크립트 구조로 변환', '전략/가이드 산출물은 캠페인 raw와 AI 실행 로그에 남김'],
+    ['WF-GUIDE', '전략/콘텐츠 가이드 생성', '캠페인 상세/레퍼런스', ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001', 'RAW-INT-INF-001', 'RAW-EXT-REF-001', 'RAW-INT-AI-001'], ['MET-AI-GEN-001', 'MET-AI-GEN-002', 'MET-AI-GEN-003', 'MET-GUIDE-001', 'MET-BENCH-002'], '캠페인 생성 입력 raw와 저장 레퍼런스를 원메시지/후킹/스크립트 구조로 변환하고, 섭외/배정 크리에이터 기준으로 개별 전달 가이드를 생성', '전략/공통 가이드/개별 가이드 산출물은 캠페인 raw와 AI 실행 로그에 남김'],
     ['WF-EXPORT', '엑셀/시트/DOCX/PPT 내보내기', '발굴/리포트/캠페인', ['RAW-INT-EXPORT-001', 'RAW-INT-INF-001', 'RAW-INT-CMP-001'], ['MET-EXPORT-001'], '광고주 전달 산출물 생성 시 데이터 버전과 다운로드 종류를 기록', '내보내기 로그가 없으면 전달본 기준 추적 불가'],
     ['WF-AUTH', '팀/권한 설정', '설정/데이터룸', ['RAW-INT-AUTH-001', 'RAW-INT-OPS-001'], ['MET-AUTH-001'], '워크스페이스/브랜드/캠페인 단위 권한으로 같은 풀 접근 범위 제어', '권한 데이터룸 없는 화면은 내부 운영자 전용으로 제한'],
   ]
@@ -4456,7 +4876,7 @@ function App() {
   const [modal, setModal] = useState(null)
   const [practiceOpen, setPracticeOpen] = useState(false)
   const [practiceStepIndex, setPracticeStepIndex] = useState(0)
-  const [youtubeSyncing, setYoutubeSyncing] = useState(false)
+  const [, setYoutubeSyncing] = useState(false)
   const [realDiscoverySearching, setRealDiscoverySearching] = useState(false)
   const [showExampleCreators, setShowExampleCreators] = useState(false)
   const [selectedRecommendationIds, setSelectedRecommendationIds] = useState([])
@@ -4527,6 +4947,7 @@ function App() {
     hookPoints: '',
     influencerStrategy: '',
     generatedContentGuide: '',
+    individualContentGuides: {},
   })
   const [campaignEditDraft, setCampaignEditDraft] = useState(null)
   const [brandDraft, setBrandDraft] = useState({
@@ -7330,9 +7751,13 @@ function App() {
         const guideMaterial = buildGuideLearningMaterial(text, file.name)
         materials = guideMaterial ? [guideMaterial] : []
       } else if (/\.docx$/i.test(file.name)) {
-        showToast('Word 가이드는 첨부 기록으로 저장돼요. 본문 자동 학습은 서버 파싱 연결 후 지원됩니다.')
+        const text = await extractDocxText(file)
+        const guideMaterial = buildGuideLearningMaterial(text, file.name)
+        materials = guideMaterial ? [guideMaterial] : []
+      } else if (/\.zip$/i.test(file.name)) {
+        materials = await buildLearningMaterialsFromZipFile(file)
       } else {
-        showToast('지원하지 않는 파일 형식입니다. .docx, .md, .txt, .csv, .tsv, .xlsx를 첨부해주세요.')
+        showToast('지원하지 않는 파일 형식입니다. .docx, .zip, .md, .txt, .csv, .tsv, .xlsx를 첨부해주세요.')
         return
       }
 
@@ -8425,6 +8850,30 @@ function App() {
       creators: getCreatorsByIds(creators, campaign?.creatorIds ?? []),
     })
 
+  const getCampaignGuideCreators = (campaign) => {
+    if (!campaign) return []
+    const recruitedIds = activeRecruitedPool
+      .filter((item) => item.campaignId === campaign.id)
+      .map((item) => item.creatorId)
+      .filter(Boolean)
+    const sourceIds = recruitedIds.length ? recruitedIds : campaign.creatorIds ?? []
+    return getCreatorsByIds(creators, Array.from(new Set(sourceIds))).slice(0, 30)
+  }
+
+  const getCampaignIndividualGuide = (campaign, creator) => {
+    if (!campaign || !creator) return ''
+    return (
+      campaign.individualContentGuides?.[creator.id]?.guide ||
+      buildCreatorSpecificContentGuide({
+        brand: activeBrand,
+        brief: buildCampaignBriefFromCampaign(campaign),
+        campaign,
+        creator,
+        commonGuide: getCampaignContentGuide(campaign),
+      })
+    )
+  }
+
   const buildCampaignBriefFromCampaign = (campaign = {}) => ({
     ...brandBrief,
     product: campaign.product || brandBrief.product,
@@ -8434,7 +8883,10 @@ function App() {
     minFollowers: campaign.minFollowers || brandBrief.minFollowers,
     maxPrice: campaign.maxCreatorFee || brandBrief.maxPrice,
     platforms: campaign.preferredPlatforms ? keywordList(campaign.preferredPlatforms) : brandBrief.platforms,
-    learningMaterials: getLearningMaterials(brandBrief),
+    learningMaterials: [
+      ...(campaign.campaignGuideMaterials ?? []),
+      ...getLearningMaterials(brandBrief),
+    ].slice(0, 80),
   })
 
   const buildCampaignStrategyInputRaw = (campaign = {}, campaignBrief = buildCampaignBriefFromCampaign(campaign), budgetValue = campaign.budget) => ({
@@ -8472,6 +8924,11 @@ function App() {
     oneMessage: campaign.oneMessage || '',
     hookPoints: campaign.hookPoints || '',
     learningMaterialCount: campaignBrief.learningMaterials?.length || 0,
+    learningMaterialSources:
+      campaignBrief.learningMaterials
+        ?.map((item) => item.sourceName || item.title || item.sourceType)
+        .filter(Boolean)
+        .slice(0, 20) || [],
     sourceRawIds: ['RAW-INT-BRD-001', 'RAW-INT-CMP-001'],
     packageVersion: 'strategy-director-v2.2-local',
     collectedAt: nowLabel(),
@@ -8569,6 +9026,72 @@ function App() {
     showToast(`${campaign.name} 인플루언서 가이드를 생성했어요.`)
   }
 
+  const generateCampaignIndividualGuidesForDetail = (campaign) => {
+    if (!campaign) return
+    const guideCreators = getCampaignGuideCreators(campaign)
+    if (!guideCreators.length) {
+      showToast('개별 가이드를 만들 배정/섭외 크리에이터가 없습니다.')
+      return
+    }
+
+    const campaignBrief = buildCampaignBriefFromCampaign(campaign)
+    const commonGuide = getCampaignContentGuide(campaign)
+    const generatedAt = nowLabel()
+    const nextGuides = guideCreators.reduce((result, creator) => {
+      result[creator.id] = {
+        creatorId: creator.id,
+        creatorName: creator.name,
+        platform: creator.platform,
+        handle: creator.handle,
+        generatedAt,
+        guide: buildCreatorSpecificContentGuide({
+          brand: activeBrand,
+          brief: campaignBrief,
+          campaign,
+          creator,
+          commonGuide,
+        }),
+      }
+      return result
+    }, {})
+    const strategyInputRaw = campaign.strategyInputRaw || buildCampaignStrategyInputRaw(campaign, campaignBrief)
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          campaigns: current.campaigns.map((item) =>
+            item.id === campaign.id
+              ? {
+                  ...item,
+                  strategyInputRaw,
+                  individualContentGuides: {
+                    ...(item.individualContentGuides || {}),
+                    ...nextGuides,
+                  },
+                  individualGuidesGeneratedAt: generatedAt,
+                  generationState: {
+                    ...(item.generationState || {}),
+                    guide: item.generatedContentGuide || campaign.generatedContentGuide ? 'generated' : 'not_started',
+                    individualGuide: 'generated',
+                    individualGuideCount: guideCreators.length,
+                    individualGuidesGeneratedAt: generatedAt,
+                    sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-INF-001', 'RAW-INT-BRD-001'],
+                    outputRawId: 'RAW-INT-AI-001',
+                    packageVersion: 'strategy-director-v2.2-local',
+                    engine: backendConfig?.apiBaseUrl ? 'api-ready-local-fallback' : 'local-strategy-director',
+                  },
+                }
+              : item,
+          ),
+        },
+        'campaign',
+        `${campaign.name} 개별 인플루언서 가이드 ${guideCreators.length}건 생성`,
+      ),
+    )
+    showToast(`${campaign.name} 개별 가이드 ${guideCreators.length}건을 생성했어요.`)
+  }
+
   const downloadCampaignContentGuide = async (campaign, format = 'docx') => {
     if (!campaign) return
     const guide = getCampaignContentGuide(campaign)
@@ -8583,6 +9106,22 @@ function App() {
     }
 
     showToast(format === 'google' ? `${campaign.name} 가이드를 복사하고 Google 문서를 열었어요.` : `${campaign.name} 콘텐츠 가이드를 ${format === 'pptx' ? 'PPT' : 'DOCX'}로 다운로드했어요.`)
+  }
+
+  const downloadCampaignIndividualGuide = async (campaign, creator, format = 'docx') => {
+    if (!campaign || !creator) return
+    const guide = getCampaignIndividualGuide(campaign, creator)
+    const filenameBase = `creatorops-${safeFilePart(activeBrand.name || 'brand')}-${safeFilePart(campaign.name || 'campaign')}-${safeFilePart(creator.name)}-personal-guide`
+
+    if (format === 'pptx') {
+      await exportGuidePptx(filenameBase, guide, `${creator.name} 전용 콘텐츠 제작 기준입니다.`)
+    } else if (format === 'google') {
+      await openGuideGoogleDraft(guide)
+    } else {
+      await exportGuideDocx(filenameBase, guide)
+    }
+
+    showToast(format === 'google' ? `${creator.name} 개별 가이드를 복사하고 Google 문서를 열었어요.` : `${creator.name} 개별 가이드를 ${format === 'pptx' ? 'PPT' : 'DOCX'}로 다운로드했어요.`)
   }
 
   const downloadCampaignStrategy = async (campaign, format = 'pptx') => {
@@ -8689,12 +9228,14 @@ function App() {
       sellerRecruitTarget: Number(campaignDraft.sellerRecruitTarget) || 0,
       recommendationTargetCount: Number(campaignDraft.recommendationTargetCount) || 0,
       brandGuideAttachments: campaignDraft.brandGuideAttachments ?? [],
+      campaignGuideMaterials: campaignDraft.campaignGuideMaterials ?? [],
       guideSeedType: campaignDraft.guideSeedType,
       guideChannel: campaignDraft.guideChannel,
       oneMessage: campaignDraft.oneMessage,
       hookPoints: campaignDraft.hookPoints,
       influencerStrategy: campaignDraft.influencerStrategy,
       generatedContentGuide: campaignDraft.generatedContentGuide,
+      individualContentGuides: campaignDraft.individualContentGuides ?? {},
       strategyInputRaw: buildCampaignStrategyInputRaw(
         {
           id: nextCampaignId,
@@ -8809,6 +9350,7 @@ function App() {
       hookPoints: '',
       influencerStrategy: '',
       generatedContentGuide: '',
+      individualContentGuides: {},
     })
     setModal(null)
     showToast(`${nextCampaign.name} 캠페인을 저장했어요. 새로고침해도 남습니다.`)
@@ -9534,6 +10076,7 @@ function App() {
       ),
     )
     setSelectedOutreachIds([])
+    setOutreachStatusFilter('발송 완료')
     showToast(blockedCount ? `${selectedIds.size}건 처리, 중복 ${blockedCount}건 차단` : `${selectedIds.size}건을 발송 완료로 처리했습니다.`)
   }
 
@@ -10191,6 +10734,16 @@ function App() {
       campaignModalTrackedTotals.views
     : 0
   const campaignModalKpi = campaignKpiSummaries.find((summary) => summary.campaignId === activeCampaignForModal?.id)
+  const campaignModalGuideCreators = activeCampaignForModal ? getCampaignGuideCreators(activeCampaignForModal) : []
+  const campaignModalIndividualGuideCount = activeCampaignForModal
+    ? Object.keys(activeCampaignForModal.individualContentGuides || {}).length
+    : 0
+
+  void runDataSourceAudit
+  void syncYouTubeChannel
+  void savePublicProfileSnapshot
+  void exportWorkspace
+  void resetWorkspace
 
   return (
     <div className="app-shell">
@@ -12696,7 +13249,6 @@ function App() {
                   {activeCampaignForModal.influencerStrategy && (
                     <div className="content-guide-preview">
                       <span>전략 미리보기</span>
-                      <small className="raw-lineage-note">원천 raw: RAW-INT-CMP-BRIEF-001 · RAW-INT-BRD-001 · RAW-INT-AI-001</small>
                       <pre>{activeCampaignForModal.influencerStrategy.slice(0, 900)}</pre>
                     </div>
                   )}
@@ -12757,6 +13309,70 @@ function App() {
                       Google 문서 열기
                     </button>
                   </div>
+                </div>
+
+                <div className="campaign-guide-detail">
+                  <span className="mini-label">개별 가이드</span>
+                  <strong>크리에이터별 전달 가이드</strong>
+                  <p>
+                    섭외 완료 풀을 우선 기준으로 만들고, 없으면 캠페인 배정 후보를 기준으로 만듭니다. 공통 메시지는 유지하되 채널, 톤, 후킹, 컷 구성을 사람별로 다르게 줍니다.
+                  </p>
+                  <div className="campaign-guide-actions">
+                    <button
+                      className="secondary-button compact-button"
+                      type="button"
+                      onClick={() => generateCampaignIndividualGuidesForDetail(activeCampaignForModal)}
+                    >
+                      <FileText size={16} />
+                      {campaignModalIndividualGuideCount ? '개별 가이드 재생성' : '개별 가이드 생성'}
+                    </button>
+                    <span className="campaign-context-chip">
+                      {campaignModalGuideCreators.length}명 대상 · 생성 {campaignModalIndividualGuideCount}건
+                    </span>
+                  </div>
+                  {campaignModalGuideCreators.length > 0 ? (
+                    <div className="individual-guide-list">
+                      {campaignModalGuideCreators.slice(0, 8).map((creator) => {
+                        const storedGuide = activeCampaignForModal.individualContentGuides?.[creator.id]
+                        return (
+                          <article key={creator.id}>
+                            <div>
+                              <strong>{creator.name}</strong>
+                              <p>
+                                {creator.platform} · {creator.handle} · 평균 조회 {compactNumber(creator.averageViews)}
+                              </p>
+                              <small>{storedGuide?.generatedAt ? `생성 ${storedGuide.generatedAt}` : '생성 전 · 다운로드 시 초안 생성'}</small>
+                            </div>
+                            <div className="campaign-guide-actions compact-guide-actions">
+                              <button
+                                className="secondary-button compact-button"
+                                type="button"
+                                onClick={() => downloadCampaignIndividualGuide(activeCampaignForModal, creator, 'docx')}
+                              >
+                                DOCX
+                              </button>
+                              <button
+                                className="secondary-button compact-button"
+                                type="button"
+                                onClick={() => downloadCampaignIndividualGuide(activeCampaignForModal, creator, 'pptx')}
+                              >
+                                PPT
+                              </button>
+                              <button
+                                className="secondary-button compact-button"
+                                type="button"
+                                onClick={() => downloadCampaignIndividualGuide(activeCampaignForModal, creator, 'google')}
+                              >
+                                Google
+                              </button>
+                            </div>
+                          </article>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <p className="muted-note">섭외 완료 또는 배정된 크리에이터가 생기면 개별 가이드를 생성할 수 있습니다.</p>
+                  )}
                 </div>
 
                 <ClientApprovalBoard
@@ -13065,11 +13681,6 @@ function App() {
                   <p>{filter.helper}</p>
                 </button>
               ))}
-              <article>
-                <span>연락 채널</span>
-                <strong>{new Set(selectedCampaignOutreach.map((item) => item.channel || 'manual_other')).size}개</strong>
-                <p>이메일, DM, 수동 채널 분리</p>
-              </article>
             </div>
             <div className="message-search-bar">
               <label aria-label="메시지 검색">
@@ -13164,7 +13775,6 @@ function App() {
                   onToggleSelect={() => toggleOutreachSelection(item.id)}
                   onCopy={() => copyOutreachMessage(item.message)}
                   onOpenDetail={() => openOutreachDetail(item.id)}
-                  onMarkSent={() => markOutreachSent(item.id)}
                   onMarkResponse={() => markOutreachResponse(item.id)}
                   onComplete={() => completeRecruitment(item.id)}
                 />
@@ -13397,7 +14007,7 @@ function App() {
                   </button>
                   <label className="guide-file-input">
                     가이드 첨부
-                    <input accept=".docx,.md,.txt,.csv,.tsv,.xlsx" type="file" onChange={attachCampaignGuideFile} />
+                    <input accept=".docx,.zip,.md,.txt,.csv,.tsv,.xlsx" type="file" onChange={attachCampaignGuideFile} />
                   </label>
                 </div>
                 {(campaignDraft.brandGuideAttachments ?? []).length > 0 && (
@@ -14059,7 +14669,7 @@ function App() {
             </div>
           )}
 
-          {false && modal.type === 'campaign' && activeCampaignForModal && (
+          {modal.type === '__disabled_campaign' && activeCampaignForModal && (
             <div className="modal-stack">
               <div className="campaign-detail">
                 <div className="campaign-badges">
@@ -14379,7 +14989,6 @@ function App() {
                 {activeCampaignForModal.influencerStrategy && (
                   <div className="content-guide-preview">
                     <span>전략 미리보기</span>
-                    <small className="raw-lineage-note">원천 raw: RAW-INT-CMP-BRIEF-001 · RAW-INT-BRD-001 · RAW-INT-AI-001</small>
                     <pre>{activeCampaignForModal.influencerStrategy.slice(0, 900)}</pre>
                   </div>
                 )}
@@ -14691,7 +15300,6 @@ function App() {
                     onToggleSelect={() => toggleOutreachSelection(item.id)}
                     onCopy={() => copyOutreachMessage(item.message)}
                     onOpenDetail={() => openOutreachDetail(item.id)}
-                    onMarkSent={() => markOutreachSent(item.id)}
                     onMarkResponse={() => markOutreachResponse(item.id)}
                     onComplete={() => completeRecruitment(item.id)}
                   />
@@ -15086,11 +15694,9 @@ function OutreachItem({
   onToggleSelect,
   onCopy,
   onOpenDetail,
-  onMarkSent,
   onMarkResponse,
   onComplete,
 }) {
-  const awaitingApproval = item.status === '승인 대기'
   const canComplete = item.status === '응답' || item.status === '발송 완료'
   const sourceTone = item.source === '자동' ? 'auto-source' : item.source === '대량 섭외' ? 'bulk-source' : 'manual-source'
   const contactPlan = buildContactPlan(creator, item.channel, item.message, campaign?.name)
@@ -15123,11 +15729,6 @@ function OutreachItem({
             <ArrowUpRight size={14} />
             연락 채널 열기
           </a>
-        )}
-        {awaitingApproval && (
-          <button className="secondary-button compact-button" type="button" onClick={onMarkSent}>
-            발송 완료
-          </button>
         )}
         {item.status !== '응답' && (
           <button className="secondary-button compact-button" type="button" onClick={onMarkResponse}>
