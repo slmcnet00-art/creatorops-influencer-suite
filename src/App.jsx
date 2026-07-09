@@ -6347,14 +6347,32 @@ function App() {
     [dataRoomMetrics],
   )
   const filteredDataRoomRawData = useMemo(() => {
-    const normalizedQuery = dataRoomRawQuery.trim().toLowerCase()
+    const rawSourceQuery = dataRoomRawQuery.trim()
+    const normalizedQuery = rawSourceQuery.toLowerCase()
+    const reportRawIds = new Set(['RAW-EXT-MON-WB-001', 'RAW-EXT-MANUAL-001'])
+    const apiRawIds = new Set([
+      'RAW-EXT-MON-INF-001',
+      'RAW-EXT-MON-VIDEO-001',
+      'RAW-EXT-SEARCH-001',
+      'RAW-EXT-CHN-001',
+      'RAW-EXT-CONT-001',
+      'RAW-EXT-REF-001',
+    ])
     return dataRoomRawData.filter((item) => {
       const matchesTab = dataRoomRawTab === '전체' || item.scope === dataRoomRawTab
       const matchesStatus = dataRoomRawStatus === '전체' || item.status === dataRoomRawStatus
       const matchesCategory = dataRoomRawCategory === '전체' || item.category === dataRoomRawCategory
       const matchesMethod = dataRoomRawMethod === '전체' || item.method.includes(dataRoomRawMethod)
       const matchesOwner = dataRoomRawOwner === '전체' || item.ownerDept === dataRoomRawOwner
+      const matchesSourceGroup =
+        rawSourceQuery === '리포트 raw'
+          ? reportRawIds.has(item.id)
+          : rawSourceQuery === 'API raw'
+            ? apiRawIds.has(item.id)
+            : true
       const matchesQuery =
+        rawSourceQuery === '리포트 raw' ||
+        rawSourceQuery === 'API raw' ||
         !normalizedQuery ||
         [
           item.id,
@@ -6371,7 +6389,7 @@ function App() {
           .join(' ')
           .toLowerCase()
           .includes(normalizedQuery)
-      return matchesTab && matchesStatus && matchesCategory && matchesMethod && matchesOwner && matchesQuery
+      return matchesTab && matchesStatus && matchesCategory && matchesMethod && matchesOwner && matchesSourceGroup && matchesQuery
     })
   }, [dataRoomRawCategory, dataRoomRawData, dataRoomRawMethod, dataRoomRawOwner, dataRoomRawQuery, dataRoomRawStatus, dataRoomRawTab])
   const filteredDataRoomMetrics = useMemo(() => {
@@ -12622,11 +12640,147 @@ function App() {
             <button className="secondary-button compact-button" type="button" onClick={resetReferenceSearch}>
               초기화
             </button>
+            <button
+              className={`secondary-button compact-button link-lookup-button ${isReferenceManualFormOpen ? 'active' : ''}`}
+              type="button"
+              onClick={() => setIsReferenceManualFormOpen((current) => !current)}
+            >
+              <Plus size={15} />
+              {isReferenceManualFormOpen ? '링크 입력 닫기' : '링크로 찾기'}
+            </button>
           </form>
           {referenceSearchStatus.message && (
             <div className={`reference-search-status ${referenceSearchStatus.mode}`}>
               {referenceSearchStatus.message}
             </div>
+          )}
+
+          {isReferenceManualFormOpen && (
+            <form className="reference-form reference-link-lookup-form" onSubmit={saveContentReference}>
+              <div className="reference-url-check-row">
+                <label>
+                  <span>레퍼런스 URL</span>
+                  <input
+                    value={referenceDraft.url}
+                    onChange={(event) => setReferenceDraft({ ...referenceDraft, url: event.target.value })}
+                    placeholder="저장할 영상/이미지 링크를 붙여넣으세요"
+                  />
+                </label>
+                <button className="secondary-button compact-button" type="button" onClick={importReferenceSnapshot}>
+                  <RefreshCw size={15} />
+                  확인하기
+                </button>
+              </div>
+              <div className="reference-import-row">
+                <span>링크 확인 시 가능한 공개 데이터로 제목, 플랫폼, 크리에이터, 조회수/좋아요/댓글을 자동으로 채웁니다.</span>
+              </div>
+              <div className="reference-form-grid">
+                <label>
+                  <span>미디어</span>
+                  <select
+                    value={referenceDraft.mediaType}
+                    onChange={(event) => setReferenceDraft({ ...referenceDraft, mediaType: event.target.value })}
+                  >
+                    <option>영상</option>
+                    <option>이미지</option>
+                  </select>
+                </label>
+                <label>
+                  <span>플랫폼</span>
+                  <select
+                    value={referenceDraft.platform}
+                    onChange={(event) => setReferenceDraft({ ...referenceDraft, platform: event.target.value })}
+                  >
+                    <option>TikTok</option>
+                    <option>Instagram</option>
+                    <option>YouTube</option>
+                    <option>Other</option>
+                  </select>
+                </label>
+                <label>
+                  <span>국가</span>
+                  <input
+                    value={referenceDraft.country}
+                    onChange={(event) => setReferenceDraft({ ...referenceDraft, country: event.target.value.toUpperCase() })}
+                    placeholder="KR, US, JP"
+                  />
+                </label>
+              </div>
+              <div className="reference-form-grid two">
+                <label>
+                  <span>조회수</span>
+                  <input
+                    inputMode="numeric"
+                    value={referenceDraft.views}
+                    onChange={(event) => setReferenceDraft({ ...referenceDraft, views: event.target.value })}
+                    placeholder="1280000"
+                  />
+                </label>
+                <label>
+                  <span>계정 팔로워</span>
+                  <input
+                    inputMode="numeric"
+                    value={referenceDraft.accountFollowers}
+                    onChange={(event) => setReferenceDraft({ ...referenceDraft, accountFollowers: event.target.value })}
+                    placeholder="185000"
+                  />
+                </label>
+              </div>
+              <label>
+                <span>제목</span>
+                <input
+                  value={referenceDraft.title}
+                  onChange={(event) => setReferenceDraft({ ...referenceDraft, title: event.target.value })}
+                  placeholder="요즘 조회수 높은 영상/이미지 레퍼런스 제목"
+                />
+              </label>
+              <label>
+                <span>이미지/썸네일 URL</span>
+                <input
+                  value={referenceDraft.thumbnailUrl}
+                  onChange={(event) => setReferenceDraft({ ...referenceDraft, thumbnailUrl: event.target.value })}
+                  placeholder="자동 수집되며, 필요하면 직접 수정"
+                />
+              </label>
+              <div className="reference-form-grid four">
+                <label>
+                  <span>좋아요</span>
+                  <input inputMode="numeric" value={referenceDraft.likes} onChange={(event) => setReferenceDraft({ ...referenceDraft, likes: event.target.value })} />
+                </label>
+                <label>
+                  <span>댓글</span>
+                  <input inputMode="numeric" value={referenceDraft.comments} onChange={(event) => setReferenceDraft({ ...referenceDraft, comments: event.target.value })} />
+                </label>
+                <label>
+                  <span>공유</span>
+                  <input inputMode="numeric" value={referenceDraft.shares} onChange={(event) => setReferenceDraft({ ...referenceDraft, shares: event.target.value })} />
+                </label>
+                <label>
+                  <span>업로드일</span>
+                  <input value={referenceDraft.publishedAt} onChange={(event) => setReferenceDraft({ ...referenceDraft, publishedAt: event.target.value })} placeholder="최근 7일" />
+                </label>
+              </div>
+              <div className="reference-form-grid three">
+                <label>
+                  <span>후킹 포인트</span>
+                  <textarea value={referenceDraft.hook} onChange={(event) => setReferenceDraft({ ...referenceDraft, hook: event.target.value })} placeholder="첫 3초, 썸네일, 가격/권위/감정 훅" />
+                </label>
+                <label>
+                  <span>AI 분석 메모</span>
+                  <textarea value={referenceDraft.analysis} onChange={(event) => setReferenceDraft({ ...referenceDraft, analysis: event.target.value })} placeholder="왜 조회수/저장/공유가 나왔는지" />
+                </label>
+                <label>
+                  <span>우리 캠페인 적용</span>
+                  <textarea value={referenceDraft.applyIdea} onChange={(event) => setReferenceDraft({ ...referenceDraft, applyIdea: event.target.value })} placeholder="가이드에 반영할 컷, 카피, CTA" />
+                </label>
+              </div>
+              <div className="reference-form-actions">
+                <button className="primary-button compact-button" type="submit">
+                  <Plus size={15} />
+                  레퍼런스 저장
+                </button>
+              </div>
+            </form>
           )}
 
           <div className="reference-filter-heading">
@@ -12788,149 +12942,6 @@ function App() {
               pageSize={referencePageSize}
               onPageChange={setReferencePage}
             />
-          )}
-
-          <div className="reference-manual-toggle">
-            <div>
-              <span className="mini-label">링크 저장</span>
-              <strong>레퍼런스 링크 저장</strong>
-              <p>저장하고 싶은 URL만 넣으면 제목, 썸네일, 조회수, 좋아요, 댓글을 먼저 자동 수집한 뒤 저장합니다.</p>
-            </div>
-            <button
-              className="secondary-button compact-button"
-              type="button"
-              onClick={() => setIsReferenceManualFormOpen((current) => !current)}
-            >
-              {isReferenceManualFormOpen ? '링크 저장 닫기' : '링크 저장 열기'}
-            </button>
-          </div>
-
-{isReferenceManualFormOpen && (
-          <form className="reference-form" onSubmit={saveContentReference}>
-            <div className="reference-url-check-row">
-              <label>
-                <span>레퍼런스 URL</span>
-                <input
-                  value={referenceDraft.url}
-                  onChange={(event) => setReferenceDraft({ ...referenceDraft, url: event.target.value })}
-                  placeholder="저장할 영상/이미지 링크를 붙여넣으세요"
-                />
-              </label>
-              <button className="secondary-button compact-button" type="button" onClick={importReferenceSnapshot}>
-                <RefreshCw size={15} />
-                확인하기
-              </button>
-            </div>
-            <div className="reference-import-row">
-              <span>URL 확인 후 공개 데이터로 제목, 썸네일, 조회수, 좋아요, 댓글을 채웁니다. 채워진 값은 아래에서 수정할 수 있어요.</span>
-            </div>
-            <div className="reference-form-grid">
-              <label>
-                <span>미디어</span>
-                <select
-                  value={referenceDraft.mediaType}
-                  onChange={(event) => setReferenceDraft({ ...referenceDraft, mediaType: event.target.value })}
-                >
-                  <option>영상</option>
-                  <option>이미지</option>
-                </select>
-              </label>
-              <label>
-                <span>플랫폼</span>
-                <select
-                  value={referenceDraft.platform}
-                  onChange={(event) => setReferenceDraft({ ...referenceDraft, platform: event.target.value })}
-                >
-                  <option>TikTok</option>
-                  <option>Instagram</option>
-                  <option>YouTube</option>
-                  <option>Other</option>
-                </select>
-              </label>
-              <label>
-                <span>국가</span>
-                <input
-                  value={referenceDraft.country}
-                  onChange={(event) => setReferenceDraft({ ...referenceDraft, country: event.target.value.toUpperCase() })}
-                  placeholder="KR, US, JP"
-                />
-              </label>
-            </div>
-            <div className="reference-form-grid two">
-              <label>
-                <span>조회수</span>
-                <input
-                  inputMode="numeric"
-                  value={referenceDraft.views}
-                  onChange={(event) => setReferenceDraft({ ...referenceDraft, views: event.target.value })}
-                  placeholder="1280000"
-                />
-              </label>
-              <label>
-                <span>계정 팔로워</span>
-                <input
-                  inputMode="numeric"
-                  value={referenceDraft.accountFollowers}
-                  onChange={(event) => setReferenceDraft({ ...referenceDraft, accountFollowers: event.target.value })}
-                  placeholder="185000"
-                />
-              </label>
-            </div>
-            <label>
-              <span>제목</span>
-              <input
-                value={referenceDraft.title}
-                onChange={(event) => setReferenceDraft({ ...referenceDraft, title: event.target.value })}
-                placeholder="요즘 조회수 높은 영상/이미지 레퍼런스 제목"
-              />
-            </label>
-            <label>
-              <span>이미지/썸네일 URL</span>
-              <input
-                value={referenceDraft.thumbnailUrl}
-                onChange={(event) => setReferenceDraft({ ...referenceDraft, thumbnailUrl: event.target.value })}
-                placeholder="자동 수집되며, 필요하면 직접 수정"
-              />
-            </label>
-            <div className="reference-form-grid four">
-              <label>
-                <span>좋아요</span>
-                <input inputMode="numeric" value={referenceDraft.likes} onChange={(event) => setReferenceDraft({ ...referenceDraft, likes: event.target.value })} />
-              </label>
-              <label>
-                <span>댓글</span>
-                <input inputMode="numeric" value={referenceDraft.comments} onChange={(event) => setReferenceDraft({ ...referenceDraft, comments: event.target.value })} />
-              </label>
-              <label>
-                <span>공유</span>
-                <input inputMode="numeric" value={referenceDraft.shares} onChange={(event) => setReferenceDraft({ ...referenceDraft, shares: event.target.value })} />
-              </label>
-              <label>
-                <span>업로드일</span>
-                <input value={referenceDraft.publishedAt} onChange={(event) => setReferenceDraft({ ...referenceDraft, publishedAt: event.target.value })} placeholder="최근 7일" />
-              </label>
-            </div>
-            <div className="reference-form-grid three">
-              <label>
-                <span>후킹 포인트</span>
-                <textarea value={referenceDraft.hook} onChange={(event) => setReferenceDraft({ ...referenceDraft, hook: event.target.value })} placeholder="첫 3초, 썸네일, 가격/권위/감정 훅" />
-              </label>
-              <label>
-                <span>AI 분석 메모</span>
-                <textarea value={referenceDraft.analysis} onChange={(event) => setReferenceDraft({ ...referenceDraft, analysis: event.target.value })} placeholder="왜 조회수/저장/공유가 나왔는지" />
-              </label>
-              <label>
-                <span>우리 캠페인 적용</span>
-                <textarea value={referenceDraft.applyIdea} onChange={(event) => setReferenceDraft({ ...referenceDraft, applyIdea: event.target.value })} placeholder="가이드에 반영할 컷, 카피, CTA" />
-              </label>
-            </div>
-            <div className="reference-form-actions">
-              <button className="primary-button compact-button" type="submit">
-                <Plus size={15} />
-                레퍼런스 저장
-              </button>
-            </div>
-          </form>
           )}
 
           {referenceMode === 'content' && (
@@ -13524,31 +13535,23 @@ function App() {
             </div>
 
             <div className="report-data-note">
-              <span>{reportUsesExternalRaw ? '\uc678\ubd80 \ub9ac\ud3ec\ud2b8 \uae30\uc900' : '\uc218\ub3d9 \ucd94\uc801 \uae30\uc900'}</span>
-              <small>
-                {'\ucf58\ud150\uce20 '}{reportVideoRows.length}{'\uac74 / \uad00\ub828 \ud06c\ub9ac\uc5d0\uc774\ud130 '}{reportBrandInfluencerRows.length}{'\ud589 / \uc870\ud68c\uc218 '}{compactNumber(reportMetricTotals.views)}{' / \ud3c9\uade0 \ucc38\uc5ec\uc728 '}{percent(reportAverageEngagement)}
-              </small>
-            </div>
-
-            <div className="report-lineage-panel">
-              <article>
-                <span>수치 원천</span>
-                <strong>{reportSourceStatus.sourceLabel}</strong>
-                <small>{reportSourceStatus.rowCount}개 raw 행 · 신뢰도 {reportSourceStatus.confidence}%</small>
-              </article>
-              <article>
-                <span>검증 상태</span>
-                <strong className={reportSourceStatus.status === '정상' ? 'lineage-ok' : 'lineage-warning'}>{reportSourceStatus.status}</strong>
-                <small>{reportSourceStatus.missingItems.length ? reportSourceStatus.missingItems.join(' · ') : '누락 핵심값 없음'}</small>
-              </article>
-              <article className="report-lineage-next">
-                <span>다음 액션</span>
-                <strong>{reportSourceStatus.nextAction}</strong>
-                <small>{reportSourceStatus.rawIds.length ? reportSourceStatus.rawIds.join(', ') : 'RAW-EXT-CONT-001 대기'}</small>
-              </article>
-              <button className="secondary-button compact-button" type="button" onClick={() => openDataRoomRaw(reportSourceStatus.primaryRawId)}>
-                데이터룸에서 보기
-              </button>
+              <div className="report-data-note-text">
+                <span>{reportUsesExternalRaw ? '\uc678\ubd80 \ub9ac\ud3ec\ud2b8 \uae30\uc900' : '\uc218\ub3d9 \ucd94\uc801 \uae30\uc900'}</span>
+                <small>
+                  {'\ucf58\ud150\uce20 '}{reportVideoRows.length}{'\uac74 / \uad00\ub828 \ud06c\ub9ac\uc5d0\uc774\ud130 '}{reportBrandInfluencerRows.length}{'\ud589 / \uc870\ud68c\uc218 '}{compactNumber(reportMetricTotals.views)}{' / \ud3c9\uade0 \ucc38\uc5ec\uc728 '}{percent(reportAverageEngagement)}
+                </small>
+              </div>
+              <div className="report-data-note-actions">
+                <small>
+                  원천 {reportSourceStatus.sourceLabel} · {reportSourceStatus.rowCount}개 raw ·{' '}
+                  <strong className={reportSourceStatus.status === '정상' ? 'lineage-ok' : 'lineage-warning'}>
+                    {reportSourceStatus.status}
+                  </strong>
+                </small>
+                <button className="secondary-button compact-button" type="button" onClick={() => openDataRoomRaw(reportSourceStatus.primaryRawId)}>
+                  데이터룸에서 보기
+                </button>
+              </div>
             </div>
 
             {reportBrandInfluencerRows.length > 0 && (

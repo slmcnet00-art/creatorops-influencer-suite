@@ -231,6 +231,11 @@ export default function AdminDataRoom({
   const externalReportRawCount = rawRegistry.filter((item) => externalReportRawIds.has(item.id)).length
   const externalApiRawCount = rawRegistry.filter((item) => apiRawIds.has(item.id)).length
   const apiLogCount = apiEvents?.length || 0
+  const currentRawSource = (() => {
+    if (rawQuery === '리포트 raw') return 'report'
+    if (rawQuery === 'API raw') return 'api'
+    return 'all'
+  })()
   const showAllRaw = () => {
     setRawTab('전체')
     setRawStatus('전체')
@@ -245,7 +250,7 @@ export default function AdminDataRoom({
     setRawCategory('전체')
     setRawMethod('전체')
     setRawOwner('전체')
-    setRawQuery('RAW-EXT-MON')
+    setRawQuery('리포트 raw')
   }
   const showExternalApiRaw = () => {
     setRawTab('외부')
@@ -274,11 +279,10 @@ export default function AdminDataRoom({
         <div>
           <span className="mini-label">리포트 원천 적재</span>
           <h2>리포트 raw 적재</h2>
-          <div className="data-room-source-counters" aria-label="raw source counters">
-            <button type="button" onClick={showExternalReportRaw}>리포트 raw {externalReportRawCount}개</button>
-          </div>
+          <p>엑셀 보완 raw는 여기서 업로드하고, 적재된 원천은 아래 Raw 데이터 관리에서 확인합니다.</p>
         </div>
         <div className="data-room-import-actions">
+          <span className="section-count-badge">리포트 raw {externalReportRawCount}개</span>
           <button className="secondary-button compact-button" type="button" onClick={onDownloadExternalReportTemplate}>
             보완 raw 양식
           </button>
@@ -296,13 +300,11 @@ export default function AdminDataRoom({
             <h2>API raw 적재 상태</h2>
           </div>
           <div className="api-status-compact-actions">
+            <span className="section-count-badge">API raw {externalApiRawCount}개</span>
             <span className={`data-status ${apiStatus?.ok ? 'ok' : 'warning'}`}>
               {apiStatus?.ok ? '연결됨' : '설정 확인 필요'}
             </span>
             <span className="api-log-count">로그 {apiLogCount}건</span>
-            <button className="secondary-button compact-button" type="button" onClick={showExternalApiRaw}>
-              API raw {externalApiRawCount}개
-            </button>
             <button className="secondary-button compact-button" type="button" onClick={onRefreshApiStatus}>
               상태 확인
             </button>
@@ -396,6 +398,7 @@ export default function AdminDataRoom({
                 <h2>Raw 데이터 관리</h2>
               </div>
               <div className="panel-heading-actions">
+                <span className="section-count-badge">전체 raw {rawRegistry.length}개</span>
                 {scopes.map((scope) => (
                   <button
                     className={`segmented-button ${rawTab === scope ? 'active' : ''}`}
@@ -426,9 +429,27 @@ export default function AdminDataRoom({
 
             <div className="raw-source-shortcuts">
               <span>원천 구분</span>
-              <button type="button" onClick={showExternalReportRaw}>리포트 raw</button>
-              <button type="button" onClick={showExternalApiRaw}>API raw</button>
-              <button type="button" onClick={showAllRaw}>전체 raw</button>
+              <button
+                type="button"
+                className={currentRawSource === 'report' ? 'active' : ''}
+                onClick={showExternalReportRaw}
+              >
+                리포트 raw
+              </button>
+              <button
+                type="button"
+                className={currentRawSource === 'api' ? 'active' : ''}
+                onClick={showExternalApiRaw}
+              >
+                API raw
+              </button>
+              <button
+                type="button"
+                className={currentRawSource === 'all' ? 'active' : ''}
+                onClick={showAllRaw}
+              >
+                전체 raw
+              </button>
             </div>
 
             <div className="data-room-table-wrap">
