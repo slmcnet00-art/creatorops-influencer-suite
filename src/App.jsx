@@ -4463,6 +4463,30 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       active: true,
     },
     {
+      id: 'RAW-INT-LLM-BUNDLE-001',
+      name: 'LLM 번외 데이터 번들',
+      scope: '내부',
+      category: 'LLM 번외 데이터',
+      description: 'Claude/OpenAI가 생성한 캠페인 전략, 인플루언서 가이드, 추천 근거, 제안 메시지, 레퍼런스 분석/변형 스크립트, 리포트 코멘트',
+      purpose: '공식 raw 수집값은 아니지만 서비스 가치 생성에 쓰이는 LLM 산출물을 원천 raw ID, 프롬프트 버전, 모델, 토큰/비용과 함께 저장',
+      method: 'LLM API / DB 연동',
+      cycle: '전략/추천/가이드/메시지/분석 생성 시',
+      lastCollectedAt: nowText,
+      nextCollectAt: 'LLM 생성 시',
+      status: '검증 필요',
+      sourceLocation: 'Claude API, OpenAI API, campaign/reference/report generation runner',
+      storageLocation: `${storageBase} / future: llm_generation_artifacts`,
+      dashboardArea: '캠페인 상세, 발굴 AI 추천, 메시지, 레퍼런스, 리포트, 데이터룸',
+      metricIds: ['MET-LLM-001', 'MET-LLM-002', 'MET-LLM-003', 'MET-AI-GEN-001', 'MET-GUIDE-001', 'MET-AI-003'],
+      ownerDept: 'PM/AI/Data',
+      opsOwner: 'PM',
+      techOwner: 'AI/Data',
+      qualityIssue: '사용 raw ID, 프롬프트 버전, 모델명, 입력/출력 토큰, 비용, 산출물 타입을 함께 저장해야 프론트 표시 근거가 생김',
+      logLocation: 'future: llm_generation_artifacts / ai_generation_runs',
+      note: '데이터룸에 없는 AI 산출물은 프론트에 표시하지 않는 원칙의 예외 저장소',
+      active: true,
+    },
+    {
       id: 'RAW-INT-EXPORT-001',
       name: '내보내기/다운로드 로그',
       scope: '내부',
@@ -4696,6 +4720,12 @@ function buildDataRoomExtendedMetricCatalog({ metrics, rawData, creators, conten
   ]
 
   rows.push(
+    ['MET-LLM-001', 'LLM 산출물 저장률', 'LLM 번외 데이터 번들', '내부', '전략, 가이드, 추천 근거, 메시지, 레퍼런스 분석 산출물이 데이터룸 번외 raw에 저장된 비율', 'count(llm_generation_artifacts where output_text is not null) / count(llm_generation_requests) * 100', ['RAW-INT-AI-001', 'RAW-INT-LLM-BUNDLE-001'], '최근 30일', 'LLM 생성 시', '검증 필요', '데이터룸, 캠페인 상세, 발굴, 메시지, 레퍼런스', '프론트에 보이는 AI 문구는 모두 저장된 산출물만 노출', '프론트 노출 산출물 중 저장 누락 1건 이상', '중간', 'PM/AI/Data', 'llm_generation_artifacts', '운영 초기에는 localStorage와 ai_generation_runs를 병행'],
+    ['MET-LLM-002', 'LLM 원천 추적률', 'LLM 번외 데이터 번들', '내부', 'LLM 산출물이 어떤 브랜드/캠페인/후보/레퍼런스 raw를 읽고 생성됐는지 추적 가능한 비율', 'count(outputs with source_raw_ids + prompt_version + model_version) / count(outputs) * 100', ['RAW-INT-LLM-BUNDLE-001', 'RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-EXT-REF-001', 'RAW-INT-INF-001'], '최근 30일', 'LLM 생성 시', '검증 필요', '데이터룸, 리포트, 캠페인 상세', '근거 raw ID가 없는 AI 문구는 검증 필요로 표시', 'source_raw_ids 또는 prompt_version 누락', '중간', 'PM/데이터팀', 'llm_generation_artifacts.source_raw_ids', '데이터룸 -> 대시보드 시각화 원칙 검증용'],
+    ['MET-LLM-003', 'LLM 예상 비용', 'LLM 번외 데이터 번들', '내부', '모델별 입력/출력 토큰 사용량으로 산출한 전략/가이드/메시지/분석 예상 비용', 'sum(input_tokens / 1000000 * input_price + output_tokens / 1000000 * output_price) by model', ['RAW-INT-LLM-BUNDLE-001'], '캠페인/월 기준', 'LLM 생성 시', '검증 필요', '데이터룸, 설정, 내부 비용 리포트', '대량 발굴/메시지 생성 전 캠페인별 예상 비용을 확인', '월 예산 초과 또는 모델 단가 미등록', '중간', 'PM/재무/AI', 'llm_generation_artifacts.token_usage', 'OpenAI/Claude 단가는 설정값으로 관리'],
+  )
+
+  rows.push(
     ['MET-BRAND-001', '저장 경쟁사/브랜드 수', '브랜드/경쟁 추적 번들', '외부', '브랜드 검색 및 추적에 저장된 경쟁사/브랜드 raw 수', 'count(contentReferences where referenceKind=brand)', ['RAW-EXT-BRAND-001'], '캠페인 기준', '검색/저장 시', contentReferences.some((item) => (item.referenceKind || item.trackingType) === 'brand') ? '정상' : '검증 필요', '레퍼런스, 브랜드 인사이트, 데이터룸', '경쟁사 저장 수가 많을수록 벤치마크 계산 신뢰도 상승', '0개면 브랜드 인사이트 경쟁 지표 비활성', '중간', 'PM/데이터팀', 'brand_tracking_sources / contentReferences', `${contentReferences.filter((item) => (item.referenceKind || item.trackingType) === 'brand').length}개 저장`],
     ['MET-BRAND-002', '경쟁 콘텐츠 평균 조회수', '브랜드/경쟁 추적 번들', '외부', '저장 경쟁사/브랜드 콘텐츠의 평균 조회수와 반응 수준', 'avg(views) over brand tracking references', ['RAW-EXT-BRAND-001', 'RAW-EXT-ENG-001'], '캠페인 기준', '검색/저장 시', '검증 필요', '브랜드 인사이트, 레퍼런스', '우리 콘텐츠 목표 조회수와 후킹 기준을 잡는 벤치마크', '조회수 0 또는 썸네일 없음 비율 30% 이상', '중간', '데이터팀', 'Render API logs / brand_tracking_sources', '외부 API 한계로 플랫폼별 검증 상태와 함께 표시'],
     ['MET-POOL-006', '후보 그룹/세그먼트 수', '인플루언서 풀 관리 번들', '내부', '운영자가 저장한 후보 그룹과 그룹별 멤버 수', 'count(creatorGroups), sum(group.creatorIds)', ['RAW-INT-GROUP-001', 'RAW-INT-INF-001'], '전체', '그룹 변경 시', creatorGroups.length ? '정상' : '검증 필요', '후보 그룹, 메시지 전 후보 풀', '후보 그룹은 반복 섭외와 캠페인 재사용을 위한 운영 단위', '그룹 멤버 0명 또는 삭제된 creatorId 참조', '높음', '운영팀', 'workspace activities / creator_group_events', `${creatorGroups.length}개 그룹`],
@@ -4781,6 +4811,42 @@ function buildDataRoomWorkflowCoverage({ rawData, metrics }) {
 function buildDataRoomPendingBundles({ backendConfig }) {
   const storageBase = backendConfig?.hasSupabase ? '팀 공유 DB public schema' : 'localStorage creatorops.workspace.v2'
   return [
+    {
+      id: 'PENDING-LLM-STRATEGY-001',
+      name: '캠페인 전략/가이드 LLM 번외 번들',
+      status: '검증 필요',
+      reason: '브랜드/제품/캠페인 브리프 raw를 읽어 전략과 공통/개별 가이드를 생성하므로 원천 raw와 산출물을 함께 저장해야 함',
+      source: 'Claude API 또는 OpenAI API + RAW-INT-CMP-BRIEF-001, RAW-INT-BRD-001, RAW-EXT-REF-001',
+      storage: `${storageBase} / future: llm_generation_artifacts(type=strategy|guide)`,
+      nextAction: '프롬프트 버전, 모델명, 입력 raw ID, 공통/개별 가이드 여부, 토큰/비용을 저장',
+    },
+    {
+      id: 'PENDING-LLM-MATCH-001',
+      name: '후보 추천/근거/메시지 LLM 번외 번들',
+      status: '검증 필요',
+      reason: '추천 이유와 제안 메시지는 수집 raw가 아니라 후보 성과/브랜드 조건을 해석한 LLM 산출물',
+      source: 'Claude API 또는 OpenAI API + RAW-INT-INF-001, RAW-EXT-CHN-001, RAW-INT-QUALITY-001',
+      storage: `${storageBase} / future: llm_generation_artifacts(type=recommendation|outreach_message)`,
+      nextAction: '후보 ID, 캠페인 ID, 사용 raw ID, 추천 사유, 리스크, 메시지 톤, 토큰/비용을 저장',
+    },
+    {
+      id: 'PENDING-LLM-REFERENCE-001',
+      name: '레퍼런스 분석/스크립트 변형 LLM 번외 번들',
+      status: '검증 필요',
+      reason: '레퍼런스의 조회수/반응 raw를 바탕으로 후킹 구조와 변형 스크립트를 만드는 영역',
+      source: 'Claude API 또는 OpenAI API + RAW-EXT-REF-001, RAW-EXT-CONT-001, RAW-EXT-MON-VIDEO-001',
+      storage: `${storageBase} / future: llm_generation_artifacts(type=reference_analysis|script_variant)`,
+      nextAction: '원본 링크, 성과 raw ID, 차용 가능 포인트, 금지 복제 요소, 변형 스크립트와 비용을 저장',
+    },
+    {
+      id: 'PENDING-LLM-REPORT-001',
+      name: '리포트 코멘트/데이터 진단 LLM 번외 번들',
+      status: '검증 필요',
+      reason: '성과 요약, 이상치 해석, 다음 액션 제안은 raw 지표를 해석한 생성 결과이므로 별도 보관 필요',
+      source: 'Claude API 또는 OpenAI API + RAW-INT-CMP-001, RAW-EXT-MON-VIDEO-001, RAW-INT-QUALITY-001',
+      storage: `${storageBase} / future: llm_generation_artifacts(type=report_comment|quality_diagnosis)`,
+      nextAction: '사용 지표 ID, raw ID, 요약문, 이상치 근거, 권장 액션, 토큰/비용을 저장',
+    },
     {
       id: 'PENDING-INSIGHTS-001',
       name: 'Instagram/TikTok 인증 인사이트',
@@ -5045,7 +5111,7 @@ function App() {
     mode: 'idle',
     message: '',
   })
-  const [referenceSearchResultUrls, setReferenceSearchResultUrls] = useState(null)
+  const [referenceSearchResults, setReferenceSearchResults] = useState([])
   const [isReferenceManualFormOpen, setIsReferenceManualFormOpen] = useState(false)
   const [referenceGuideUsage, setReferenceGuideUsage] = useState(null)
   const [creatorGroupQuery, setCreatorGroupQuery] = useState('')
@@ -5421,7 +5487,12 @@ function App() {
     brandInsightRows.find((row) => row.name === selectedBrandInsightName) ||
     displayedBrandInsightRows[0] ||
     brandInsightRows[0]
-  const activeReferenceBase = referenceMode === 'brand' ? brandTrackingReferences : contentTrackingReferences
+  const hasReferenceSearchResults = referenceSearchResults.length > 0
+  const activeReferenceBase = hasReferenceSearchResults
+    ? referenceSearchResults
+    : referenceMode === 'brand'
+      ? brandTrackingReferences
+      : contentTrackingReferences
   const referenceCountryOptions = useMemo(
     () => [
       ...referenceCountryPresets,
@@ -5432,11 +5503,8 @@ function App() {
   )
   const visibleReferences = useMemo(() => {
     const searchTerm = referenceFilters.appliedQuery.trim().toLowerCase()
-    const hasScopedSearchResults = Array.isArray(referenceSearchResultUrls)
-    const resultUrlSet = new Set((referenceSearchResultUrls ?? []).map((url) => String(url || '').toLowerCase()))
     const filtered = activeReferenceBase.filter(
       (item) =>
-        (!hasScopedSearchResults || resultUrlSet.has(String(item.url || '').toLowerCase())) &&
         (referenceFilters.country === '전체' || item.country === referenceFilters.country) &&
         (referenceFilters.mediaType === '전체' || item.mediaType === referenceFilters.mediaType) &&
         (referenceFilters.platform === '전체' || item.platform === referenceFilters.platform) &&
@@ -5453,7 +5521,7 @@ function App() {
       if (referenceFilters.sort === 'recent') return Number(b.id || 0) - Number(a.id || 0)
       return Number(b.views || 0) - Number(a.views || 0)
     })
-  }, [activeReferenceBase, referenceFilters, referenceSearchResultUrls])
+  }, [activeReferenceBase, referenceFilters])
   const referencePageSize = 12
   const referenceTotalPages = Math.max(1, Math.ceil(visibleReferences.length / referencePageSize))
   const safeReferencePage = Math.min(Math.max(referencePage, 1), referenceTotalPages)
@@ -10536,7 +10604,7 @@ function App() {
     event.preventDefault()
     const query = referenceFilters.query.trim()
     setReferencePage(1)
-    setReferenceSearchResultUrls([])
+    setReferenceSearchResults([])
     setReferenceFilters((current) => ({
       ...current,
       appliedQuery: '',
@@ -10588,6 +10656,8 @@ function App() {
           mediaType: item.mediaType || '영상',
           platform: item.platform || 'YouTube',
           savedAt: nowLabel(),
+          searchOnly: true,
+          source: item.source || 'Reference search API raw',
         })),
       )
       if (!incoming.length) {
@@ -10600,34 +10670,24 @@ function App() {
         })
         return
       }
-      const resultUrls = incoming.map((item) => item.url).filter(Boolean)
-      const existingUrls = new Set((contentReferences ?? []).map((item) => String(item.url || '').toLowerCase()))
-      const newCount = incoming.filter((item) => !existingUrls.has(String(item.url || '').toLowerCase())).length
-
-      updateWorkspace((current) => {
-        const existingUrls = new Set((current.contentReferences ?? []).map((item) => String(item.url || '').toLowerCase()))
-        const freshReferences = incoming.filter((item) => !existingUrls.has(String(item.url || '').toLowerCase()))
-        return appendActivity(
-          {
-            ...current,
-            contentReferences: [...freshReferences, ...(current.contentReferences ?? [])],
-          },
-          'reference',
-          `${selectedCampaign.name} 레퍼런스 검색 · ${query} · ${freshReferences.length}개 추가`,
-        )
-      })
 
       setReferencePage(1)
-      setReferenceSearchResultUrls(resultUrls)
+      setReferenceSearchResults(
+        incoming.map((item) => ({
+          ...item,
+          analysis: '',
+          applyIdea: '',
+        })),
+      )
       setReferenceFilters((current) => ({
         ...current,
         appliedQuery: '',
       }))
       setReferenceSearchStatus({
         mode: 'success',
-        message: `${incoming.length}개 검색, 중복 제외 후 ${newCount}개 새 레퍼런스를 추가했습니다.`,
+        message: `${incoming.length}개 API raw를 가져왔습니다. 저장한 레퍼런스만 분석하고 가이드에 차용합니다.`,
       })
-      showToast(`${incoming.length}개 레퍼런스를 검색했어요. 새로 추가된 항목은 ${newCount}개입니다.`)
+      showToast(`${incoming.length}개 레퍼런스를 가져왔어요. 필요한 항목만 저장하세요.`)
     } catch (error) {
       const message = error instanceof Error ? error.message : '레퍼런스 검색에 실패했어요.'
       setReferenceSearchStatus({ mode: 'error', message })
@@ -10637,7 +10697,7 @@ function App() {
 
   const resetReferenceSearch = () => {
     setReferencePage(1)
-    setReferenceSearchResultUrls(null)
+    setReferenceSearchResults([])
     setReferenceFilters({
       query: '',
       appliedQuery: '',
@@ -10649,6 +10709,71 @@ function App() {
     })
     setReferenceSearchStatus({ mode: 'idle', message: '' })
     showToast('레퍼런스 필터를 초기화했어요.')
+  }
+
+  const saveReferenceSearchResult = (reference) => {
+    if (!reference?.url) {
+      showToast('저장할 레퍼런스 URL이 없습니다.')
+      return
+    }
+
+    if (!selectedCampaign) {
+      showToast('레퍼런스를 저장할 캠페인을 먼저 선택하세요.')
+      return
+    }
+
+    const normalizedUrl = String(reference.url || '').toLowerCase()
+    const existingReference = contentReferences.find((item) => String(item.url || '').toLowerCase() === normalizedUrl)
+    const isBrandRaw = referenceMode === 'brand' || reference.referenceKind === 'brand'
+
+    if (existingReference) {
+      updateWorkspace((current) =>
+        appendActivity(
+          {
+            ...current,
+            savedProductionReferenceIds: isBrandRaw
+              ? (current.savedProductionReferenceIds ?? [])
+              : Array.from(new Set([...(current.savedProductionReferenceIds ?? []), existingReference.id])),
+          },
+          'reference',
+          isBrandRaw ? `기존 브랜드 raw 확인 · ${existingReference.title}` : `기존 레퍼런스 제작 리스트 연결 · ${existingReference.title}`,
+        ),
+      )
+      showToast(isBrandRaw ? '이미 저장된 브랜드 raw입니다.' : '이미 저장된 raw를 제작 저장 리스트에 연결했어요.')
+      return
+    }
+
+    const nextId = contentReferences.some((item) => item.id === reference.id) ? `reference-${createId()}` : reference.id
+    const nextReference = {
+      ...reference,
+      id: nextId,
+      campaignId: selectedCampaign.id,
+      referenceKind: isBrandRaw ? 'brand' : 'content',
+      trackingType: isBrandRaw ? 'competitor' : 'content',
+      searchOnly: false,
+      analysis: '',
+      applyIdea: '',
+      hook: reference.hook || reference.title || '',
+      source: reference.source || 'Reference search API raw',
+      savedAt: nowLabel(),
+    }
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          contentReferences: [nextReference, ...(current.contentReferences ?? [])],
+          savedProductionReferenceIds: isBrandRaw
+            ? (current.savedProductionReferenceIds ?? [])
+            : Array.from(new Set([...(current.savedProductionReferenceIds ?? []), nextId])),
+        },
+        'reference',
+        isBrandRaw
+          ? `${selectedCampaign.name} 브랜드 추적 raw 저장 · ${nextReference.title}`
+          : `${selectedCampaign.name} 제작 레퍼런스 저장 · ${nextReference.title}`,
+      ),
+    )
+    showToast(isBrandRaw ? '브랜드 추적 raw로 저장했어요.' : '저장했어요. 아래 제작 저장 리스트에서 분석할 수 있습니다.')
   }
 
   const toggleProductionReference = (referenceId) => {
@@ -10981,7 +11106,7 @@ function App() {
 
             <section className="metric-grid" aria-label="핵심 지표">
               {dashboardMetricCards.length ? (
-                dashboardMetricCards.map((card) => <MetricCard key={card.key} {...card} />)
+                dashboardMetricCards.map(({ key, ...card }) => <MetricCard key={key} {...card} />)
               ) : (
                 <div className="data-room-gated-empty">
                   데이터룸에 연결된 raw/계산지표가 없어 대시보드 수치를 숨겼습니다. 데이터룸에서 수집 상태를 먼저 확인하세요.
@@ -12309,7 +12434,7 @@ function App() {
               onClick={() => {
                 setReferenceMode('brand')
                 setReferencePage(1)
-                setReferenceSearchResultUrls(null)
+                setReferenceSearchResults([])
               }}
             >
               <Globe2 size={17} />
@@ -12322,7 +12447,7 @@ function App() {
               onClick={() => {
                 setReferenceMode('content')
                 setReferencePage(1)
-                setReferenceSearchResultUrls(null)
+                setReferenceSearchResults([])
               }}
             >
               <Video size={17} />
@@ -12590,7 +12715,14 @@ function App() {
           )}
 
           <div className="reference-summary">
-            <Stat label="레퍼런스" value={`${visibleReferences.length}/${selectedCampaignReferences.length}개`} />
+            <Stat
+              label={hasReferenceSearchResults ? 'API raw' : '저장 raw'}
+              value={
+                hasReferenceSearchResults
+                  ? `${visibleReferences.length}개 미리보기`
+                  : `${visibleReferences.length}/${selectedCampaignReferences.length}개`
+              }
+            />
             <Stat label="제작 저장" value={`${savedProductionReferences.length}개`} />
             <Stat label="누적 조회" value={compactNumber(referenceTotals.views)} />
             <Stat label="누적 공유" value={compactNumber(referenceTotals.shares)} />
@@ -12857,14 +12989,28 @@ function App() {
             {paginatedReferences.map((item, index) => (
               <article className="reference-card" key={item.id}>
                 {(() => {
-                  const isSavedForProduction = savedProductionReferenceIds.includes(item.id)
+                  const isTemporarySearchResult = Boolean(item.searchOnly)
+                  const isSavedByUrl = savedProductionReferences.some(
+                    (reference) => String(reference.url || '').toLowerCase() === String(item.url || '').toLowerCase(),
+                  )
+                  const isSavedForProduction = savedProductionReferenceIds.includes(item.id) || isSavedByUrl
                   const isBrandReference = referenceMode === 'brand'
                   return (
                     <button
                       className={`reference-save-button ${isSavedForProduction || isBrandReference ? 'saved' : ''}`}
                       type="button"
-                      title={isSavedForProduction ? '제작 레퍼런스 저장 해제' : '제작 레퍼런스로 저장'}
+                      title={
+                        isTemporarySearchResult
+                          ? '저장 후 분석 가능'
+                          : isSavedForProduction
+                            ? '제작 레퍼런스 저장 해제'
+                            : '제작 레퍼런스로 저장'
+                      }
                       onClick={() => {
+                        if (isTemporarySearchResult) {
+                          saveReferenceSearchResult(item)
+                          return
+                        }
                         if (isBrandReference) {
                           showToast('브랜드/경쟁사 추적 raw에 이미 저장된 항목입니다.')
                           return
@@ -12905,20 +13051,27 @@ function App() {
                     <span>댓글 {compactOptionalNumber(item.comments, '-')}</span>
                     <span>공유 {compactOptionalNumber(item.shares, '-')}</span>
                   </div>
-                  <div className="reference-insight-grid">
-                    <div>
-                      <span>후킹</span>
-                      <p>{item.hook || '후킹 포인트 미입력'}</p>
+                  {item.searchOnly ? (
+                    <div className="reference-raw-note">
+                      <span>API raw 미리보기</span>
+                      <p>검색은 공개 수치만 가져옵니다. 저장한 레퍼런스만 분석하고 가이드 차용에 사용합니다.</p>
                     </div>
-                    <div>
-                      <span>분석</span>
-                      <p>{item.analysis || '분석 메모 미입력'}</p>
+                  ) : (
+                    <div className="reference-insight-grid">
+                      <div>
+                        <span>후킹</span>
+                        <p>{item.hook || '후킹 포인트 미입력'}</p>
+                      </div>
+                      <div>
+                        <span>분석</span>
+                        <p>{item.analysis || '저장 리스트에서 분석을 실행하면 채워집니다.'}</p>
+                      </div>
+                      <div>
+                        <span>적용</span>
+                        <p>{item.applyIdea || '분석 후 가이드 차용 여부를 선택하세요.'}</p>
+                      </div>
                     </div>
-                    <div>
-                      <span>적용</span>
-                      <p>{item.applyIdea || '캠페인 적용 아이디어 미입력'}</p>
-                    </div>
-                  </div>
+                  )}
                 </div>
                 <a className="reference-open-link" href={item.url} target="_blank" rel="noreferrer">
                   <ArrowUpRight size={17} />
