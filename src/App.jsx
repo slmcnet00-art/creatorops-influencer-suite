@@ -552,7 +552,7 @@ const defaultCampaigns = [
     id: 101,
     brandId: 201,
     name: '스프링 세럼 런칭',
-    owner: 'Brand A',
+    owner: '스킨케어 D2C 브랜드',
     status: '라이브',
     budget: 42000000,
     spend: 28700000,
@@ -580,7 +580,7 @@ const defaultCampaigns = [
     id: 102,
     brandId: 202,
     name: 'AI 노트북 프리오더',
-    owner: 'Brand B',
+    owner: 'AI 노트북 브랜드',
     status: '섭외',
     budget: 62000000,
     spend: 11400000,
@@ -608,7 +608,7 @@ const defaultCampaigns = [
     id: 103,
     brandId: 203,
     name: '헬시 스낵 챌린지',
-    owner: 'Brand C',
+    owner: '헬시 스낵 브랜드',
     status: '리포트',
     budget: 28000000,
     spend: 24600000,
@@ -665,14 +665,14 @@ const defaultBrands = [
   {
     id: 201,
     name: '스킨케어 D2C 브랜드',
-    owner: 'Brand A',
+    owner: '스킨케어 D2C 브랜드',
     color: '#0071e3',
     brief: defaultBrandBrief,
   },
   {
     id: 202,
     name: 'AI 노트북 브랜드',
-    owner: 'Brand B',
+    owner: 'AI 노트북 브랜드',
     color: '#7d4cf0',
     brief: {
       ...defaultBrandBrief,
@@ -691,7 +691,7 @@ const defaultBrands = [
   {
     id: 203,
     name: '헬시 스낵 브랜드',
-    owner: 'Brand C',
+    owner: '헬시 스낵 브랜드',
     color: '#2fbf71',
     brief: {
       ...defaultBrandBrief,
@@ -756,7 +756,7 @@ const defaultCreatorGroups = [
     description: '국내 뷰티 캠페인에 바로 제안 가능한 후보 그룹',
     platform: 'Instagram · YouTube',
     type: '즐겨찾기',
-    owner: 'Campaign Operator',
+    owner: '운영 담당자',
     creatorIds: [1, 2, 3],
     createdAt: '기본 그룹',
   },
@@ -1085,73 +1085,31 @@ const campaignTypeOptions = ['제안형', '공개모집', '앰배서더', '커�
 
 const teamRoleCatalog = {
   Owner: {
-    label: 'Owner',
+    label: '운영 총괄',
     description: '팀/계정/권한/전체 브랜드를 관리합니다.',
     permissions: ['전체 데이터', '권한 부여', '삭제/초기화', '다운로드'],
   },
   Admin: {
-    label: 'Admin',
+    label: '관리자',
     description: '브랜드와 캠페인 운영을 관리합니다.',
     permissions: ['브랜드 관리', '캠페인 관리', '데이터 다운로드'],
   },
   Manager: {
-    label: 'Manager',
+    label: '브랜드 매니저',
     description: '배정된 브랜드의 발굴, 메시지, 리포트를 운영합니다.',
     permissions: ['발굴', '메시지', '리포트'],
   },
   Client: {
-    label: 'Client',
+    label: '클라이언트',
     description: '배정된 브랜드의 승인용 풀과 리포트를 봅니다.',
     permissions: ['컨펌 보기', '리포트 보기'],
   },
   Analyst: {
-    label: 'Analyst',
+    label: '분석 담당',
     description: '데이터 품질과 성과 리포트만 확인합니다.',
     permissions: ['데이터 검토', '리포트 보기'],
   },
 }
-
-const competitorBenchmarks = [
-  {
-    name: '대형 크리에이터 데이터 솔루션',
-    strength: '대규모 크리에이터 데이터, 랭킹, 브랜드 인텔리전스, API Data Service',
-    gapToClose: '검색 후보마다 출처/갱신일/검증상태를 남기고 브랜드 협업 흔적을 추적해야 함',
-  },
-  {
-    name: 'Modash',
-    strength: '발굴-관리-트래킹-정산이 연결된 워크플로우, 공개 프로필 기반 검색, Shopify/Gmail 연동',
-    gapToClose: '팀 인박스, 자동 콘텐츠 수집, 커머스 전환 추적 연결이 필요함',
-  },
-  {
-    name: 'HypeAuditor',
-    strength: '오디언스 품질, 진성 팔로워, fraud detection, 캠페인 리포팅',
-    gapToClose: '팔로워 증가 이상치, 참여율 품질, 오디언스 지역/연령 신뢰도 점수를 분리해야 함',
-  },
-  {
-    name: 'Upfluence/GRIN',
-    strength: '커머스/제휴/기프팅/크리에이터 관계관리와 운영 자동화',
-    gapToClose: '배송/샘플/계약/사용권/성과 리포트를 캠페인 단위로 연결해야 함',
-  },
-]
-
-const dataAccuracyRoadmap = [
-  {
-    title: 'Source Ledger',
-    detail: '팔로워, 평균조회수, 참여율마다 수집 URL, 수집일, 수집방식, 신뢰도를 별도 기록',
-  },
-  {
-    title: 'Cross Check',
-    detail: 'YouTube Data API, 공개 프로필 입력, Google Search/CX 결과를 같은 후보에 병합해 차이를 표시',
-  },
-  {
-    title: 'Fraud Signals',
-    detail: '비정상 팔로워 증가, 낮은 댓글 품질, 조회수 대비 참여율 편차를 리스크 점수로 분리',
-  },
-  {
-    title: 'Freshness SLA',
-    detail: '핵심 후보는 24~72시간 내 갱신, 예시/미검증 후보는 검증 대기 배지로 차단',
-  },
-]
 
 function normalizeBrand(brand, index = 0) {
   const fallback = defaultBrands[index] ?? defaultBrands[0]
@@ -1437,6 +1395,23 @@ function normalizeOutreachItem(item, creators = [], campaigns = []) {
     deliveryMode: item.deliveryMode ?? contactPlan.deliveryMode,
     complianceNote: item.complianceNote ?? contactPlan.notice,
   }
+}
+
+function formatActivityType(type = '') {
+  const normalized = String(type || '').toLowerCase()
+  const labels = {
+    tracking: '추적',
+    report: '리포트',
+    campaign: '캠페인',
+    ai: 'AI',
+    shortlist: '후보',
+    outreach: '메시지',
+    quote: '견적',
+    brief: '브리프',
+    reference: '레퍼런스',
+    data: '데이터',
+  }
+  return labels[normalized] ?? '기록'
 }
 
 function normalizeWorkspace(saved) {
@@ -2186,10 +2161,13 @@ function normalizeContentReference(item) {
   if (!item) return null
   const platform = item.platform || inferPlatformFromUrl(item.url)
   const referenceKind = item.referenceKind || item.trackingType || 'content'
+  const isContentUrl = isContentReferenceUrl(item.url)
+  const normalizedReferenceKind = referenceKind === 'brand' && isContentUrl ? 'content' : referenceKind
   const normalized = {
     ...item,
-    referenceKind,
-    trackingType: item.trackingType || referenceKind,
+    referenceKind: normalizedReferenceKind,
+    trackingType: referenceKind === 'brand' && isContentUrl ? 'content' : item.trackingType || normalizedReferenceKind,
+    brandName: referenceKind === 'brand' && isContentUrl ? '' : item.brandName,
     platform,
     mediaType: item.mediaType || inferMediaTypeFromUrl(item.url, platform) || '영상',
     title: cleanReferenceDisplayText(item.title),
@@ -2222,7 +2200,7 @@ function normalizeCreatorGroups(groups = [], creators = []) {
     description: group.description || '운영자가 저장한 인플루언서 그룹입니다.',
     platform: group.platform || 'All',
     type: group.type || '즐겨찾기',
-    owner: group.owner || 'Campaign Operator',
+    owner: group.owner || '운영 담당자',
     createdAt: group.createdAt || new Date().toLocaleDateString('ko-KR'),
     creatorIds: (group.creatorIds || []).filter((id) => creatorIds.has(id)),
   }))
@@ -2243,7 +2221,7 @@ function getReferenceBrandName(item) {
     const host = new URL(item.url).hostname.replace(/^www\./, '')
     return host.split('.')[0] || host
   } catch {
-    return item.platform || 'Unknown Brand'
+    return item.platform || '브랜드 미확인'
   }
 }
 
@@ -2261,6 +2239,7 @@ function isContentReferenceUrl(urlValue = '') {
 function isBrandLevelReference(item) {
   if ((item.referenceKind || item.trackingType) !== 'brand') return false
   if (isContentReferenceUrl(item.url)) return false
+  if (!getReferenceBrandName(item) || getReferenceBrandName(item) === '브랜드 미확인') return false
   if (item.trackingType === 'competitor' || item.source === 'Brand insight monitoring') return true
   return true
 }
@@ -2552,7 +2531,7 @@ async function exportGuideDocx(filenameBase, guide) {
   exportBlob(`${filenameBase}.docx`, blob)
 }
 
-async function exportGuidePptx(filenameBase, guide) {
+async function exportGuidePptx(filenameBase, guide, subtitle = '원메시지, 후킹포인트, 채널별 제작 기준을 한 장표 흐름으로 정리했습니다.') {
   const { default: pptxgen } = await import('pptxgenjs')
   const lines = splitGuideLines(guide)
   const title = stripMarkdown(lines.find((line) => line.startsWith('# ')) || '인플루언서 콘텐츠 가이드')
@@ -2593,7 +2572,7 @@ async function exportGuidePptx(filenameBase, guide) {
     color: '111827',
     fit: 'shrink',
   })
-  cover.addText('원메시지, 후킹포인트, 채널별 제작 기준을 한 장표 흐름으로 정리했습니다.', {
+  cover.addText(subtitle, {
     x: 0.68,
     y: 2.05,
     w: 10.2,
@@ -3604,7 +3583,7 @@ function buildAdminRawDataCatalog({
 }) {
   const nowText = new Date().toLocaleString('ko-KR')
   const nextDaily = '매일 09:00'
-  const storageBase = backendConfig?.hasSupabase ? 'Supabase public schema' : 'localStorage creatorops.workspace.v2'
+  const storageBase = backendConfig?.hasSupabase ? '팀 공유 DB public schema' : 'localStorage creatorops.workspace.v2'
   const externalSnapshotStatus = trackedPosts.length ? '정상' : '지연'
 
   return [
@@ -3625,7 +3604,7 @@ function buildAdminRawDataCatalog({
       dashboardArea: '대시보드, 메시지, 캠페인 파이프라인',
       metricIds: ['MET-CRM-001', 'MET-CRM-002', 'MET-CRM-003', 'MET-CRM-004', 'MET-CRM-005'],
       ownerDept: '운영팀',
-      opsOwner: 'Campaign Operator',
+      opsOwner: '운영 담당자',
       techOwner: 'Backend/Data',
       qualityIssue: outreach.length ? '중복 발송, 수신 거부, 채널 누락 점검 필요' : '발송 이력이 없어 지표 계산 불가',
       logLocation: 'browser local log / future: outreach_events',
@@ -3673,11 +3652,35 @@ function buildAdminRawDataCatalog({
       dashboardArea: '캠페인, 리포트, 고객사 보고서',
       metricIds: ['MET-CMP-001', 'MET-CMP-002', 'MET-CMP-003', 'MET-CMP-004', 'MET-CONT-005'],
       ownerDept: 'PM/운영팀',
-      opsOwner: 'Campaign PM',
+      opsOwner: '캠페인 PM',
       techOwner: 'Frontend/Data',
       qualityIssue: trackedPosts.length ? '업로드 링크별 플랫폼 매칭 확인 필요' : '추적 콘텐츠가 없어 성과 지표 공백',
       logLocation: 'future: campaign_audit_logs',
       note: `${campaigns.length}개 캠페인 / 추적 콘텐츠 ${trackedPosts.length}건`,
+      active: true,
+    },
+    {
+      id: 'RAW-INT-CMP-BRIEF-001',
+      name: '캠페인 전략 생성 입력 raw',
+      scope: '내부',
+      category: '캠페인 전략',
+      description: '캠페인 생성 시 입력한 브랜드/제품, 타깃, 키워드, KPI, 예산, 학습자료 연결값',
+      purpose: '캠페인 전략 제안서와 인플루언서 전달용 가이드 생성의 원천 입력값',
+      method: 'DB 연동',
+      cycle: '캠페인 생성/수정 시',
+      lastCollectedAt: campaigns.some((campaign) => campaign.strategyInputRaw) ? nowText : '-',
+      nextCollectAt: '캠페인 생성/수정 시',
+      status: campaigns.some((campaign) => campaign.strategyInputRaw) ? '정상' : campaigns.length ? '검증 필요' : '미수집',
+      sourceLocation: '캠페인 생성/수정 폼',
+      storageLocation: `${storageBase} / campaigns.strategyInputRaw`,
+      dashboardArea: '캠페인 상세, 전략/가이드 생성',
+      metricIds: ['MET-AI-GEN-001', 'MET-AI-GEN-002', 'MET-GUIDE-001'],
+      ownerDept: 'PM/전략팀',
+      opsOwner: 'Campaign PM',
+      techOwner: 'Frontend/Data',
+      qualityIssue: '제품/타깃/KPI가 비어 있으면 전략과 가이드 품질 저하',
+      logLocation: 'campaign strategyInputRaw / future: campaign_brief_versions',
+      note: `${campaigns.filter((campaign) => campaign.strategyInputRaw).length}개 캠페인 입력 raw 저장`,
       active: true,
     },
     {
@@ -3719,7 +3722,7 @@ function buildAdminRawDataCatalog({
       sourceLocation: '브랜드 설정, 캠페인 생성/수정',
       storageLocation: `${storageBase} / brands, brand.brief`,
       dashboardArea: '대시보드, 캠페인, 발굴, 메시지',
-      metricIds: ['MET-CMP-001', 'MET-POOL-003'],
+      metricIds: ['MET-CMP-001', 'MET-POOL-003', 'MET-AI-GEN-001', 'MET-AI-GEN-002'],
       ownerDept: 'CS/PM',
       opsOwner: 'Brand Manager',
       techOwner: 'Frontend/Data',
@@ -3910,8 +3913,11 @@ function buildAdminMetricCatalog({ rawData, outreach, creators, campaigns, recru
     sns: ['RAW-EXT-CONT-001', 'RAW-EXT-ENG-001'],
     expectedViews: ['RAW-INT-INF-001', 'RAW-INT-CMP-001', 'RAW-EXT-CHN-001', 'RAW-EXT-SNS-001'],
     reference: ['RAW-EXT-REF-001', 'RAW-EXT-BENCH-001'],
+    generation: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001', 'RAW-INT-AI-001'],
   }
   const expectedViewsTotal = creators.reduce((sum, creator) => sum + Number(creator.averageViews || 0), 0)
+  const strategyGeneratedCount = campaigns.filter((campaign) => Boolean(campaign.influencerStrategy)).length
+  const guideGeneratedCount = campaigns.filter((campaign) => Boolean(campaign.generatedContentGuide)).length
   const rows = [
     ['MET-CRM-001', '발송 수', 'CRM 효율 번들', '내부', '발송 완료 상태의 메시지 수', 'count(outreach.status = 발송 완료 or 응답)', rawRefs.crm, '최근 30일', '실시간', '정상', '어드민 대시보드, 메시지', '증가 추세가 정상이나 중복 발송은 별도 경고', '동일 creator/campaign/channel 2회 이상', '높음', '운영팀', 'outreach_events / Gmail send logs', `${outreach.length}건`],
     ['MET-CRM-002', '오픈율', 'CRM 효율 번들', '내부', '이메일 오픈 수 / 발송 수', 'opened_count / sent_count * 100', rawRefs.crm, '최근 30일', '일 1회', '검증 필요', '내부 보고서', 'Gmail/메일 추적 픽셀 연동 전까지 검증 필요', '0% 또는 90% 이상', '중간', '운영/개발', 'mail_tracking_events', '이메일 추적 연동 후 활성'],
@@ -3946,6 +3952,8 @@ function buildAdminMetricCatalog({ rawData, outreach, creators, campaigns, recru
     ['MET-BENCH-002', '벤치마크 평균 조회수', '레퍼런스/벤치마크 번들', '외부', '벤치마크 콘텐츠 조회수 평균', 'avg(reference.views)', rawRefs.reference, '최근 30일', '검색/저장 시', contentReferences.length ? '정상' : '지연', '전략, 리포트', '50만 이상 터진 콘텐츠 중심', '평균 5만 미만', '중간', '전략/데이터', 'references/search logs', '검색 품질에 따라 변동'],
     ['MET-BENCH-003', '카테고리별 평균 반응률', '레퍼런스/벤치마크 번들', '외부', '카테고리별 레퍼런스 참여율 평균', 'groupBy(category).avg(engagementRate)', rawRefs.reference, '최근 30일', '주 1회', '검증 필요', '전략, 가이드 생성', '카테고리 태깅 정확도 확인', '태깅 없음 30% 이상', '중간', '전략/데이터', 'benchmark tag logs', '카테고리 태깅 자동화 필요'],
     ['MET-BENCH-004', '경쟁 콘텐츠 대비 성과지수', '레퍼런스/벤치마크 번들', '외부', '우리 콘텐츠 조회/반응을 벤치마크 평균과 비교', '(campaign_score / benchmark_score) * 100', ['RAW-EXT-CONT-001', 'RAW-EXT-ENG-001', 'RAW-EXT-BENCH-001'], '캠페인 기간', '일 1회', '검증 필요', '고객사 리포트', '100 이상이면 벤치마크 상회', '70 미만', '중간', 'PM/데이터', 'benchmark metric logs', '벤치마크 표본 수 표시 필요'],
+    ['MET-AI-GEN-001', '캠페인 전략 생성률', 'AI 전략/가이드 번들', '내부', '전략 산출물이 생성된 캠페인 수 / 전체 캠페인 수', 'count(campaign.influencerStrategy) / count(campaigns) * 100', rawRefs.generation, '캠페인 기준', '전략 생성 시', campaigns.length ? (strategyGeneratedCount ? '정상' : '검증 필요') : '지연', '캠페인 상세, 데이터룸', '캠페인 생성 입력 raw가 있어야 전략 산출물을 신뢰 지표로 사용', '캠페인 1개 이상인데 전략 생성 0건', '중간', 'PM/전략팀', 'campaign.strategyInputRaw + ai_generation_runs', `${strategyGeneratedCount}/${campaigns.length}개 전략 생성`],
+    ['MET-AI-GEN-002', '인플루언서 가이드 생성률', 'AI 전략/가이드 번들', '내부', '전달용 인플루언서 가이드가 생성된 캠페인 수 / 전체 캠페인 수', 'count(campaign.generatedContentGuide) / count(campaigns) * 100', rawRefs.generation, '캠페인 기준', '가이드 생성 시', campaigns.length ? (guideGeneratedCount ? '정상' : '검증 필요') : '지연', '캠페인 상세, 데이터룸', '가이드는 캠페인 입력 raw, 브랜드 학습자료, 저장 레퍼런스가 결합된 산출물로 해석', '전략은 있는데 가이드가 없는 캠페인', '중간', '콘텐츠팀', 'campaign.generatedContentGuide + ai_generation_runs', `${guideGeneratedCount}/${campaigns.length}개 가이드 생성`],
   ]
 
   return rows.map(([id, name, bundle, scope, description, formula, rawIds, period, refreshCycle, status, displayLocation, interpretation, outlierRule, reliability, ownerDept, errorLocation, note]) => ({
@@ -3973,7 +3981,7 @@ function buildAdminMetricCatalog({ rawData, outreach, creators, campaigns, recru
 
 function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, outreach, contentReferences, creatorGroups = [], externalReportRows = [] }) {
   const nowText = new Date().toLocaleString('ko-KR')
-  const storageBase = backendConfig?.hasSupabase ? 'Supabase public schema' : 'localStorage creatorops.workspace.v2'
+  const storageBase = backendConfig?.hasSupabase ? '팀 공유 DB public schema' : 'localStorage creatorops.workspace.v2'
   const apiStatus = backendConfig?.apiBaseUrl ? '정상' : '지연'
   const externalVideoRawCount = externalReportRows.filter(isExternalVideoRawRow).length
   const externalBrandRawCount = externalReportRows.filter(isExternalBrandInfluencerRawRow).length
@@ -4025,7 +4033,7 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       sourceLocation: 'OpenAI API, local scoring engine',
       storageLocation: `${storageBase} / future: ai_generation_runs`,
       dashboardArea: 'AI 추천, 메시지, 캠페인 전략, 가이드 생성',
-      metricIds: ['MET-AI-001', 'MET-AI-002', 'MET-AI-003', 'MET-GUIDE-001'],
+      metricIds: ['MET-AI-001', 'MET-AI-002', 'MET-AI-003', 'MET-AI-GEN-001', 'MET-AI-GEN-002', 'MET-GUIDE-001'],
       ownerDept: 'PM/데이터',
       opsOwner: 'PM',
       techOwner: 'AI/Data',
@@ -4051,7 +4059,7 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       dashboardArea: '발굴, AI 추천, 리포트, 캠페인 가이드',
       metricIds: ['MET-EXPORT-001'],
       ownerDept: '운영/CS',
-      opsOwner: 'Campaign Operator',
+      opsOwner: '운영 담당자',
       techOwner: 'Frontend/Data',
       qualityIssue: '현재는 파일 생성 중심이라 다운로드 결과와 버전 로그 테이블 필요',
       logLocation: 'browser local log / future: export_events',
@@ -4065,20 +4073,20 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       category: '권한/계정',
       description: '팀, 계정, 역할, 브랜드/캠페인 접근 권한, 초대 상태',
       purpose: '같은 팀이 같은 풀을 보고 Google Ads처럼 관리 권한을 부여',
-      method: 'Auth / DB 연동',
+      method: '팀 로그인 / DB 연동',
       cycle: '권한 변경 시',
       lastCollectedAt: nowText,
       nextCollectAt: '권한 변경 시',
       status: backendConfig?.hasSupabase ? '정상' : '지연',
-      sourceLocation: 'Supabase Auth, Settings > 팀 권한',
+      sourceLocation: '팀 로그인/권한 시스템, 설정 > 팀 권한',
       storageLocation: `${storageBase} / workspaces, workspace_members`,
       dashboardArea: '설정, 데이터룸, 전체 메뉴 접근 제어',
       metricIds: ['MET-AUTH-001'],
       ownerDept: '운영/개발',
       opsOwner: 'Admin',
-      techOwner: 'Backend/Auth',
+      techOwner: 'Backend/Login',
       qualityIssue: '초대/역할 변경 감사 로그와 캠페인 단위 권한 분리 필요',
-      logLocation: 'Supabase auth logs / future: permission_audit_logs',
+      logLocation: 'team_login_logs / future: permission_audit_logs',
       note: '프론트 접근 가능 섹션과 데이터 접근 권한의 기준 데이터',
       active: true,
     },
@@ -4195,7 +4203,7 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       dashboardArea: '리포트, 브랜드 인사이트, 데이터룸',
       metricIds: ['MET-EXT-WB-001', 'MET-EXT-WB-002', 'MET-EXT-WB-003', 'MET-CONT-004'],
       ownerDept: '데이터/PM',
-      opsOwner: 'Campaign PM',
+      opsOwner: '캠페인 PM',
       techOwner: 'Data Engineer',
       qualityIssue: '델타 기준 기간, 라벨 그룹, 플랫폼 ID 매핑이 없으면 기여도 해석이 흔들릴 수 있음',
       logLocation: 'future: external_report_import_logs / contribution_metric_snapshots',
@@ -4219,7 +4227,7 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       dashboardArea: '후보 그룹, 발굴, 메시지',
       metricIds: ['MET-POOL-006', 'MET-POOL-001'],
       ownerDept: '운영팀',
-      opsOwner: 'Campaign Operator',
+      opsOwner: '운영 담당자',
       techOwner: 'Frontend/Data',
       qualityIssue: '그룹 멤버가 삭제된 후보 ID를 참조하지 않도록 정규화 필요',
       logLocation: 'workspace activities / future: creator_group_events',
@@ -4260,11 +4268,11 @@ function buildDataRoomExtendedMetricCatalog({ metrics, rawData, creators, conten
     ['MET-AI-001', '브랜드-크리에이터 적합도', 'AI 매칭/가치생성 번들', '내부', '브랜드 브리프와 후보 프로필/성과를 조합한 매칭 점수', 'weighted(brand_keywords, category_fit, avg_views, engagement, risk)', ['RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-EXT-CHN-001', 'RAW-INT-QUALITY-001'], '캠페인 기준', '후보 갱신 시', '정상', '발굴, AI 추천', '80점 이상 우선 제안, 60점 미만 보류', '데이터 품질 50점 미만', '중간', 'PM/데이터', 'ai_generation_runs + data_quality_reviews', `${creators.length}명 후보 기준`],
     ['MET-AI-002', '데이터 품질 점수', 'AI 매칭/가치생성 번들', '내부', '공식 API 여부, 최신성, 국가/플랫폼 일치, 팔로워/조회수 확인 여부', 'official_source*35 + freshness*20 + metric_completeness*25 + country_match*20', ['RAW-INT-QUALITY-001', 'RAW-EXT-SEARCH-001', 'RAW-EXT-UNSUPPORTED-001'], '검색/저장 시', '실시간', '검증 필요', '발굴, 레퍼런스, 데이터룸', '80점 이상 운영 가능, 60점 이하는 보류 권장', '팔로워 미수집+국가 불일치', '중간', '데이터팀', 'data_quality_reviews', '키워드별 수동 검수 대체 지표'],
     ['MET-AI-003', '후보 우선순위 점수', 'AI 매칭/가치생성 번들', '내부', '조회수 성장성, 팔로워 대비 터진 콘텐츠, 브랜드 적합도, 연락 가능성 결합', 'fit_score*0.35 + virality_score*0.3 + engagement_score*0.2 + contactability*0.15', ['RAW-INT-INF-001', 'RAW-EXT-SEARCH-001', 'RAW-EXT-CHN-001', 'RAW-INT-AI-001'], '캠페인 기준', '후보 매칭 시', '정상', 'AI 추천, 메시지 전 후보 풀', '상위 점수부터 메시지 후보로 전환', '연락처 없음+데이터 품질 낮음', '중간', 'PM/데이터', 'creator scoring logs', '팔로워보다 조회수/터진 콘텐츠 우선 전략 반영'],
-    ['MET-GUIDE-001', '레퍼런스 변형 가이드 생성률', '콘텐츠 가이드 번들', '내부', '저장 레퍼런스가 캠페인 가이드/스크립트로 전환된 비율', 'guide_reference_count / saved_reference_count * 100', ['RAW-EXT-REF-001', 'RAW-INT-AI-001'], '캠페인 기준', '가이드 생성 시', '검증 필요', '캠페인 상세, 레퍼런스', '저장만 하고 가이드 반영이 안 되면 운영 누락', '저장 레퍼런스 5개 이상인데 0%', '중간', '콘텐츠팀', 'ai_generation_runs / content_guides', `${contentReferences.length}개 레퍼런스`],
+    ['MET-GUIDE-001', '레퍼런스 변형 가이드 생성률', '콘텐츠 가이드 번들', '내부', '저장 레퍼런스가 캠페인 가이드/스크립트로 전환된 비율', 'guide_reference_count / saved_reference_count * 100', ['RAW-INT-CMP-BRIEF-001', 'RAW-EXT-REF-001', 'RAW-INT-AI-001'], '캠페인 기준', '가이드 생성 시', '검증 필요', '캠페인 상세, 레퍼런스', '저장만 하고 가이드 반영이 안 되면 운영 누락', '저장 레퍼런스 5개 이상인데 0%', '중간', '콘텐츠팀', 'campaign.strategyInputRaw / ai_generation_runs / content_guides', `${contentReferences.length}개 레퍼런스`],
     ['MET-OPS-001', '외부 수집 성공률', '데이터 운영 번들', '외부', '외부 검색/API 요청 중 성공한 요청 비율', 'successful_collection_jobs / total_collection_jobs * 100', ['RAW-EXT-SEARCH-001'], '최근 24시간', '실시간', '검증 필요', '데이터룸, 설정 API 테스트', '95% 이상 정상, 80% 미만 장애 검토', '연속 3회 실패', '중간', '데이터/개발', 'Render API logs', '수집 로그 테이블 연결 필요'],
     ['MET-OPS-002', '미지원 데이터 비율', '데이터 운영 번들', '외부', '프론트 표시 항목 중 부분지원/미지원 raw에 의존하는 비율', 'unsupported_metric_count / visible_metric_count * 100', ['RAW-EXT-UNSUPPORTED-001', 'RAW-INT-QUALITY-001'], '전체', '일 1회', '검증 필요', '데이터룸, 리포트', '비율이 높을수록 공식 API/OAuth 우선순위 상승', '30% 이상', '중간', 'PM/데이터', 'unsupported_metric_requests', '프론트에는 검증 필요/수집 필요로 표시'],
     ['MET-EXPORT-001', '전달 산출물 생성 수', '내보내기 번들', '내부', '엑셀/시트/문서/리포트로 광고주에게 전달 가능한 산출물 생성 수', 'count(export_events)', ['RAW-INT-EXPORT-001'], '최근 30일', '실시간', '검증 필요', '대시보드, 리포트, 발굴', '클라이언트 전달 이력과 연결', '다운로드 실패 1건 이상', '중간', 'CS/운영', 'export_events', '실제 DB 로그 연결 전까지 브라우저 이벤트 중심'],
-    ['MET-AUTH-001', '권한 커버리지', '팀/권한 번들', '내부', '팀 멤버가 접근 가능한 브랜드/캠페인/데이터룸 범위', 'assigned_permission_count / required_permission_count * 100', ['RAW-INT-AUTH-001', 'RAW-INT-OPS-001'], '전체', '권한 변경 시', '정상', '설정, 데이터룸', '팀 단위 풀 공유와 관리권한 기준', 'Owner 없는 워크스페이스', '높음', '운영/개발', 'permission_audit_logs', 'Supabase Auth와 workspace_members 기준'],
+    ['MET-AUTH-001', '권한 커버리지', '팀/권한 번들', '내부', '팀 멤버가 접근 가능한 브랜드/캠페인/데이터룸 범위', 'assigned_permission_count / required_permission_count * 100', ['RAW-INT-AUTH-001', 'RAW-INT-OPS-001'], '전체', '권한 변경 시', '정상', '설정, 데이터룸', '팀 단위 풀 공유와 관리권한 기준', '운영 총괄이 없는 워크스페이스', '높음', '운영/개발', 'permission_audit_logs', '팀 로그인과 workspace_members 기준'],
   ]
 
   rows.push(
@@ -4321,7 +4329,7 @@ function buildDataRoomWorkflowCoverage({ rawData, metrics }) {
     ['WF-MESSAGE', '제안/응답 발송', '메시지', ['RAW-INT-CRM-001', 'RAW-INT-AI-001', 'RAW-INT-EXPORT-001'], ['MET-CRM-001', 'MET-CRM-004', 'MET-CRM-005'], '이메일 가능 후보는 발송 로그, DM 대상은 작업용 엑셀/복사 로그로 분리', 'DM 우회 자동화는 정책상 raw로 두지 않고 작업 로그만 관리'],
     ['WF-REPORT', '콘텐츠 추적/리포트', '리포트', ['RAW-INT-CMP-001', 'RAW-EXT-CONT-001', 'RAW-EXT-ENG-001', 'RAW-EXT-UNSUPPORTED-001'], ['MET-SNS-001', 'MET-SNS-006', 'MET-CONT-001', 'MET-CONT-004'], '업로드 URL 기준으로 공개 지표를 갱신하고 미지원 지표는 수집 필요로 표시', '데이터룸에 저장되지 않은 수치는 보고서에 확정값으로 표시하지 않음'],
     ['WF-REFERENCE', '콘텐츠 레퍼런스 검색/저장', '레퍼런스', ['RAW-EXT-SEARCH-001', 'RAW-EXT-REF-001', 'RAW-EXT-BENCH-001', 'RAW-INT-QUALITY-001'], ['MET-BENCH-001', 'MET-BENCH-002', 'MET-BENCH-003'], '50만 이상 또는 팔로워 대비 터진 콘텐츠를 우선 수집하고 품질 기준 미달은 제외', '검색 결과 원문이 없는 레퍼런스는 저장 링크 검증 대상으로 둠'],
-    ['WF-GUIDE', '전략/콘텐츠 가이드 생성', '캠페인 상세/레퍼런스', ['RAW-INT-BRD-001', 'RAW-INT-CMP-001', 'RAW-EXT-REF-001', 'RAW-INT-AI-001'], ['MET-GUIDE-001', 'MET-BENCH-002'], '브리프와 저장 레퍼런스를 원메시지/후킹/스크립트 구조로 변환', '가이드 생성 산출물은 AI 실행 로그와 export 로그에 남김'],
+    ['WF-GUIDE', '전략/콘텐츠 가이드 생성', '캠페인 상세/레퍼런스', ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001', 'RAW-EXT-REF-001', 'RAW-INT-AI-001'], ['MET-AI-GEN-001', 'MET-AI-GEN-002', 'MET-GUIDE-001', 'MET-BENCH-002'], '캠페인 생성 입력 raw와 저장 레퍼런스를 원메시지/후킹/스크립트 구조로 변환', '전략/가이드 산출물은 캠페인 raw와 AI 실행 로그에 남김'],
     ['WF-EXPORT', '엑셀/시트/DOCX/PPT 내보내기', '발굴/리포트/캠페인', ['RAW-INT-EXPORT-001', 'RAW-INT-INF-001', 'RAW-INT-CMP-001'], ['MET-EXPORT-001'], '광고주 전달 산출물 생성 시 데이터 버전과 다운로드 종류를 기록', '내보내기 로그가 없으면 전달본 기준 추적 불가'],
     ['WF-AUTH', '팀/권한 설정', '설정/데이터룸', ['RAW-INT-AUTH-001', 'RAW-INT-OPS-001'], ['MET-AUTH-001'], '워크스페이스/브랜드/캠페인 단위 권한으로 같은 풀 접근 범위 제어', '권한 데이터룸 없는 화면은 내부 운영자 전용으로 제한'],
   ]
@@ -4351,7 +4359,7 @@ function buildDataRoomWorkflowCoverage({ rawData, metrics }) {
 }
 
 function buildDataRoomPendingBundles({ backendConfig }) {
-  const storageBase = backendConfig?.hasSupabase ? 'Supabase public schema' : 'localStorage creatorops.workspace.v2'
+  const storageBase = backendConfig?.hasSupabase ? '팀 공유 DB public schema' : 'localStorage creatorops.workspace.v2'
   return [
     {
       id: 'PENDING-INSIGHTS-001',
@@ -4418,10 +4426,10 @@ function App() {
   const backendConfig = useMemo(() => getBackendConfig(), [])
   const [cloudSyncStatus, setCloudSyncStatus] = useState({
     mode: backendConfig.hasSupabase ? 'connecting' : 'local',
-    label: backendConfig.hasSupabase ? 'Supabase 연결 확인 중' : '로컬 MVP 저장',
+    label: backendConfig.hasSupabase ? '팀 공유 DB 연결 확인 중' : '로컬 MVP 저장',
     detail: backendConfig.hasSupabase
       ? `워크스페이스 ${backendConfig.workspaceId} 데이터를 불러오는 중입니다.`
-      : 'VITE_SUPABASE_URL과 VITE_SUPABASE_ANON_KEY를 설정하면 팀 공유 DB로 전환됩니다.',
+      : '팀 공유 DB 환경변수를 설정하면 팀 단위 운영 저장소로 전환됩니다.',
     updatedAt: '',
   })
   const [apiTestStatus, setApiTestStatus] = useState({
@@ -4667,6 +4675,10 @@ function App() {
 
   const currentAccount = accounts.find((account) => account.id === activeAccountId) ?? accounts[0] ?? defaultWorkspace.accounts[0]
   const currentRole = teamRoleCatalog[currentAccount?.role] ?? teamRoleCatalog.Manager
+  const currentAccountCaption =
+    currentRole.label === currentAccount?.name
+      ? `${team.name} · ${currentAccount.name}`
+      : `${team.name} · ${currentAccount?.name ?? '계정'} · ${currentRole.label}`
   const canManagePermissions = currentAccount?.role === 'Owner' || currentAccount?.role === 'Admin'
   const accessibleSectionIds = useMemo(() => {
     if (currentAccount?.role === 'Client') return ['dashboard', 'campaigns', 'groups', 'report', 'references', 'settings']
@@ -4971,11 +4983,14 @@ function App() {
       .filter((row) => !existingNames.has(row.name.toLowerCase()))
       .map((row) => ({ ...row, source: 'top', items: [] }))
 
-    return [...monitoredRows, ...topRows].sort((a, b) => Number(a.rank || 999) - Number(b.rank || 999))
+    return [...monitoredRows, ...topRows]
+      .sort((a, b) => Number(a.rank || 999) - Number(b.rank || 999))
+      .map((row, index) => ({ ...row, rank: index + 1 }))
   }, [activeBrand.country, brandTrackingGroups])
   const displayedBrandInsightRows = useMemo(() => {
     const query = referenceFilters.query.trim().toLowerCase()
     return brandInsightRows.filter((row) => {
+      if (isContentReferenceUrl(row.url)) return false
       const matchesView = brandDirectoryView === 'monitoring' ? row.source === 'monitoring' : true
       const searchable = [row.name, row.category, row.country, row.platform, row.url].filter(Boolean).join(' ').toLowerCase()
       return matchesView && (!query || searchable.includes(query))
@@ -6012,7 +6027,7 @@ function App() {
         if (result.status === 'synced') {
           setDataRoomImportStatus(`데이터룸 registry 동기화 완료 · raw ${result.rawCount}개 / 지표 ${result.metricCount}개`)
         } else if (result.status === 'auth_required') {
-          setDataRoomImportStatus('Supabase 로그인 후 데이터룸 registry를 동기화할 수 있어요.')
+          setDataRoomImportStatus('팀 공유 DB 로그인 후 데이터룸 저장소를 동기화할 수 있어요.')
         }
       } catch (error) {
         if (!cancelled) {
@@ -6040,7 +6055,7 @@ function App() {
         setDataRoomApiEvents(result.events)
       } else if (result.status === 'auth_required') {
         setDataRoomApiEvents([])
-        setDataRoomImportStatus('Supabase 로그인 후 최근 API 수집 로그를 볼 수 있어요.')
+        setDataRoomImportStatus('팀 공유 DB 로그인 후 최근 API 수집 로그를 볼 수 있어요.')
       }
     } catch (error) {
       setDataRoomApiEvents([])
@@ -6069,7 +6084,7 @@ function App() {
           setDataRoomApiEvents(result.events)
         } else if (result.status === 'auth_required') {
           setDataRoomApiEvents([])
-          setDataRoomImportStatus('Supabase 로그인 후 최근 API 수집 로그를 볼 수 있어요.')
+          setDataRoomImportStatus('팀 공유 DB 로그인 후 최근 API 수집 로그를 볼 수 있어요.')
         }
       } catch (error) {
         if (!cancelled) {
@@ -6122,11 +6137,11 @@ function App() {
         setDataRoomImportStatus(`${profile.sourceName} 적재 완료 · ${result.sheetCount}개 시트 / ${result.rowCount}행`)
         showToast(`데이터룸에 ${result.rowCount}개 raw row를 적재했어요.`)
       } else if (result.status === 'auth_required') {
-        setDataRoomImportStatus('Supabase 로그인 후 외부 리포트를 적재할 수 있어요.')
+        setDataRoomImportStatus('팀 공유 DB 로그인 후 외부 리포트를 적재할 수 있어요.')
         showToast(result.message)
       } else {
-        setDataRoomImportStatus('Supabase 연결 후 외부 리포트를 적재할 수 있어요.')
-        showToast(result.message || 'Supabase 환경변수가 필요합니다.')
+        setDataRoomImportStatus('팀 공유 DB 연결 후 외부 리포트를 적재할 수 있어요.')
+        showToast(result.message || '팀 공유 DB 환경변수가 필요합니다.')
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : '외부 리포트 적재 실패'
@@ -6200,52 +6215,52 @@ function App() {
 
   const pageMeta = {
     dashboard: {
-      eyebrow: 'Overview',
+      eyebrow: '전체 현황',
       title: '대시보드',
       description: `${activeBrand.name} 전체 운영 현황`,
     },
     discovery: {
-      eyebrow: 'Creator Discovery',
+      eyebrow: '크리에이터 발굴',
       title: '크리에이터 발굴',
       description: `${brandBrief.product}에 맞는 후보 추천과 검색`,
     },
     references: {
-      eyebrow: 'Content Reference',
+      eyebrow: '콘텐츠 레퍼런스',
       title: '콘텐츠 레퍼런스',
       description: `${selectedCampaign?.name ?? activeBrand.name} 제작에 차용할 영상/이미지 레퍼런스`,
     },
     groups: {
-      eyebrow: 'Reusable Candidate Groups',
+      eyebrow: '재사용 후보 그룹',
       title: '재사용 후보 그룹',
       description: '반복 섭외 가능한 크리에이터 묶음을 저장하고 캠페인/메시지로 다시 연결',
     },
     dataRoom: {
-      eyebrow: 'Admin Data Room',
+      eyebrow: '어드민 데이터룸',
       title: '어드민 데이터룸',
       description: 'raw 데이터, 수집 위치, 계산지표, 품질 이슈를 추적하는 내부 관리 화면',
     },
     campaigns: {
-      eyebrow: 'Campaign Operations',
+      eyebrow: '캠페인 운영',
       title: '캠페인',
       description: `${brandCampaigns.length}개 캠페인 · 섭외 완료 풀 · 배송/수동 정산`,
     },
     report: {
-      eyebrow: 'Performance Report',
+      eyebrow: '성과 리포트',
       title: '리포트',
       description: '콘텐츠 성과 추적과 보고서 다운로드',
     },
     messages: {
-      eyebrow: 'Outreach',
+      eyebrow: '메시지 운영',
       title: '메시지',
       description: '제안 메시지 검토, 발송, 응답 관리',
     },
     settings: {
-      eyebrow: 'Workspace Settings',
+      eyebrow: '워크스페이스 설정',
       title: '설정',
       description: '팀 계정, 권한, 데이터 정확도 기준 관리',
     },
   }[visibleSection] ?? {
-    eyebrow: 'Creator intelligence OS',
+    eyebrow: '크리에이터 운영 OS',
     title: '인플루언서 마케팅 운영 콘솔',
     description: `${activeBrand.name} · ${brandBrief.product}`,
   }
@@ -6263,22 +6278,22 @@ function App() {
         if (result.status === 'auth_required') {
           setCloudSyncStatus({
             mode: 'auth',
-            label: 'Supabase Auth login required',
-            detail: result.message || 'Sign in before using the shared workspace.',
+            label: '팀 공유 DB 로그인 필요',
+            detail: result.message || '공유 워크스페이스를 사용하려면 먼저 로그인하세요.',
             updatedAt: '',
           })
         } else if (result.workspace) {
           setWorkspace(normalizeWorkspace(result.workspace))
           setCloudSyncStatus({
             mode: 'cloud',
-            label: 'Supabase 공유 DB 연결됨',
+            label: '팀 공유 DB 연결됨',
             detail: `워크스페이스 ${backendConfig.workspaceId} 데이터를 불러왔습니다.`,
             updatedAt: result.updatedAt || '',
           })
         } else {
           setCloudSyncStatus({
             mode: 'cloud',
-            label: 'Supabase 공유 DB 준비됨',
+            label: '팀 공유 DB 준비됨',
             detail: '아직 저장된 워크스페이스가 없어 현재 로컬 데이터를 첫 스냅샷으로 저장합니다.',
             updatedAt: '',
           })
@@ -6287,7 +6302,7 @@ function App() {
         setCloudSyncStatus({
           mode: 'error',
           label: '클라우드 동기화 오류',
-          detail: error instanceof Error ? error.message : 'Supabase 연결을 확인해주세요.',
+          detail: error instanceof Error ? error.message : '팀 공유 DB 연결을 확인해주세요.',
           updatedAt: '',
         })
       } finally {
@@ -6311,8 +6326,8 @@ function App() {
         if (result.status === 'auth_required') {
           setCloudSyncStatus({
             mode: 'auth',
-            label: 'Supabase Auth login required',
-            detail: result.message || 'Sign in before saving the shared workspace.',
+            label: '팀 공유 DB 로그인 필요',
+            detail: result.message || '공유 워크스페이스에 저장하려면 먼저 로그인하세요.',
             updatedAt: '',
           })
           return
@@ -6320,7 +6335,7 @@ function App() {
         setCloudSyncStatus((current) => ({
           ...current,
           mode: 'cloud',
-          label: 'Supabase 공유 DB 자동 저장됨',
+          label: '팀 공유 DB 자동 저장됨',
           detail: `워크스페이스 ${backendConfig.workspaceId}에 최신 운영 데이터를 저장했습니다.`,
           updatedAt: new Date().toISOString(),
         }))
@@ -6328,7 +6343,7 @@ function App() {
         setCloudSyncStatus({
           mode: 'error',
           label: '클라우드 저장 오류',
-          detail: error instanceof Error ? error.message : 'Supabase 저장 권한과 테이블 정책을 확인해주세요.',
+          detail: error instanceof Error ? error.message : '팀 공유 DB 저장 권한과 테이블 정책을 확인해주세요.',
           updatedAt: '',
         })
       }
@@ -6348,12 +6363,12 @@ function App() {
     window.history.replaceState({}, document.title, cleanUrl)
 
     if (error) {
-      window.setTimeout(() => showToast('Gmail connection failed: ' + error), 0)
+      window.setTimeout(() => showToast('Gmail 연결에 실패했습니다: ' + error), 0)
       return undefined
     }
 
     if (!apiBaseUrl || !code) {
-      window.setTimeout(() => showToast('Gmail connection needs the API server and authorization code.'), 0)
+      window.setTimeout(() => showToast('Gmail 연결에는 API 서버와 인증 코드가 필요합니다.'), 0)
       return undefined
     }
 
@@ -6366,7 +6381,7 @@ function App() {
           body: JSON.stringify({ code }),
         })
         const payload = await response.json().catch(() => ({}))
-        if (!response.ok) throw new Error(payload?.message || 'Failed to exchange Gmail authorization code.')
+        if (!response.ok) throw new Error(payload?.message || 'Gmail 인증 코드를 교환하지 못했습니다.')
         const nextAuth = {
           accessToken: payload.data?.accessToken,
           refreshToken: payload.data?.refreshToken || '',
@@ -6374,13 +6389,13 @@ function App() {
           connectedAt: new Date().toISOString(),
           scope: payload.data?.scope || '',
         }
-        if (!nextAuth.accessToken) throw new Error('Gmail access token is empty.')
+        if (!nextAuth.accessToken) throw new Error('Gmail access token이 비어 있습니다.')
         if (cancelled) return
         window.localStorage.setItem(GMAIL_AUTH_STORE_KEY, JSON.stringify(nextAuth))
         setGmailAuth(nextAuth)
-        showToast('Gmail account connected. You can now send selected email outreach.')
+        showToast('Gmail 계정이 연결되었습니다. 이제 선택한 이메일 제안을 발송할 수 있어요.')
       } catch (exchangeError) {
-        if (!cancelled) showToast(exchangeError instanceof Error ? exchangeError.message : 'Gmail connection failed.')
+        if (!cancelled) showToast(exchangeError instanceof Error ? exchangeError.message : 'Gmail 연결에 실패했습니다.')
       }
     }
 
@@ -6398,7 +6413,7 @@ function App() {
 
   const syncWorkspaceNow = async () => {
     if (!backendConfig.hasSupabase) {
-      showToast('Supabase 환경변수를 설정하면 팀 공유 DB에 저장할 수 있어요.')
+      showToast('팀 공유 DB 환경변수를 설정하면 운영 데이터를 저장할 수 있어요.')
       return
     }
 
@@ -6407,22 +6422,22 @@ function App() {
       if (result.status === 'auth_required') {
         setCloudSyncStatus({
           mode: 'auth',
-          label: 'Supabase Auth login required',
-          detail: result.message || 'Sign in before saving the shared workspace.',
+          label: '팀 공유 DB 로그인 필요',
+          detail: result.message || '공유 워크스페이스에 저장하려면 먼저 로그인하세요.',
           updatedAt: '',
         })
-        showToast('Sign in to save the shared workspace.')
+        showToast('팀 공유 DB에 저장하려면 먼저 로그인하세요.')
         return
       }
       setCloudSyncStatus({
         mode: 'cloud',
-        label: 'Supabase 공유 DB 수동 저장됨',
+        label: '팀 공유 DB 수동 저장됨',
         detail: `워크스페이스 ${backendConfig.workspaceId}에 현재 데이터를 저장했습니다.`,
         updatedAt: new Date().toISOString(),
       })
       showToast('팀 공유 DB에 현재 워크스페이스를 저장했어요.')
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Supabase 저장 중 오류가 발생했어요.'
+      const message = error instanceof Error ? error.message : '팀 공유 DB 저장 중 오류가 발생했어요.'
       setCloudSyncStatus({
         mode: 'error',
         label: '클라우드 저장 오류',
@@ -6605,7 +6620,7 @@ function App() {
 
   const updateAccountRole = (accountId, role) => {
     if (!canManagePermissions) {
-      showToast('Owner 또는 Admin만 계정 권한을 변경할 수 있습니다.')
+      showToast('운영 총괄 또는 관리자만 계정 권한을 변경할 수 있습니다.')
       return
     }
 
@@ -6630,7 +6645,7 @@ function App() {
 
   const toggleAccountBrandAccess = (accountId, brandId) => {
     if (!canManagePermissions) {
-      showToast('Owner 또는 Admin만 브랜드 접근권한을 변경할 수 있습니다.')
+      showToast('운영 총괄 또는 관리자만 브랜드 접근권한을 변경할 수 있습니다.')
       return
     }
 
@@ -8178,22 +8193,22 @@ function App() {
 
   const getDmWorkRows = () => [
     [
-      'Task No',
-      'Status',
-      'Campaign',
-      'Creator',
-      'Handle',
-      'Platform',
-      'Category',
-      'Profile URL',
-      'DM Message',
-      'Operator Instruction',
-      'Duplicate Status',
-      'Followers',
-      'Average Views',
-      'Engagement',
-      'Fit Score',
-      'Work Note',
+      '작업 번호',
+      '상태',
+      '캠페인',
+      '크리에이터',
+      '핸들',
+      '플랫폼',
+      '카테고리',
+      '프로필 URL',
+      'DM 메시지',
+      '작업 안내',
+      '중복 상태',
+      '팔로워',
+      '평균 조회',
+      '참여율',
+      '매칭 점수',
+      '작업 메모',
     ],
     ...selectedDmOutreachItems.map((item, index) => {
       const creator = creators.find((candidate) => candidate.id === item.creatorId)
@@ -8204,17 +8219,17 @@ function App() {
       return [
         index + 1,
         item.status,
-        campaign?.name ?? 'No campaign',
-        creator?.name ?? 'Unknown creator',
+        campaign?.name ?? '캠페인 미지정',
+        creator?.name ?? '크리에이터 미확인',
         creator?.handle ?? '',
         creator?.platform ?? channelId,
         creator?.category ?? '',
-        profileUrl || 'Profile link required',
+        profileUrl || '프로필 링크 확인 필요',
         item.message,
-        'Copy message > open profile > send manually > mark sent in CreatorOps',
-        duplicate ? 'BLOCKED: already sent for this campaign' : 'OK',
-        creator ? (hasPendingMetrics(creator) ? 'Needs collection' : creator.followers) : '',
-        creator ? (hasPendingMetrics(creator) ? 'Needs collection' : creator.averageViews) : '',
+        '메시지 복사 > 프로필 열기 > 수동 발송 > CreatorOps에서 발송 완료 처리',
+        duplicate ? '차단: 같은 캠페인에 이미 발송됨' : '발송 가능',
+        creator ? (hasPendingMetrics(creator) ? '수집 필요' : creator.followers) : '',
+        creator ? (hasPendingMetrics(creator) ? '수집 필요' : creator.averageViews) : '',
         creator?.engagement ?? '',
         creator?.fit ?? '',
         item.reason ?? '',
@@ -8224,11 +8239,11 @@ function App() {
 
   const exportSelectedDmWorkExcel = () => {
     if (!selectedDmOutreachItems.length) {
-      showToast('Select Instagram/TikTok DM candidates first.')
+      showToast('Instagram/TikTok DM 후보를 먼저 선택해주세요.')
       return
     }
-    exportExcelFile('creatorops-dm-work-queue.xls', 'DM Work Queue', getDmWorkRows())
-    showToast('DM work Excel exported for ' + selectedDmOutreachItems.length + ' candidates.')
+    exportExcelFile('creatorops-dm-work-queue.xls', 'DM 작업 리스트', getDmWorkRows())
+    showToast(`DM 작업 엑셀을 ${selectedDmOutreachItems.length}명 기준으로 만들었습니다.`)
   }
 
   const sendDiscoveryToSheets = () => {
@@ -8370,6 +8385,20 @@ function App() {
       approvalFlow: campaignEditDraft.approvalFlow,
       commerceMetric: campaignEditDraft.commerceMetric,
     }
+    nextCampaign.strategyInputRaw = buildCampaignStrategyInputRaw(
+      nextCampaign,
+      buildCampaignBriefFromCampaign(nextCampaign),
+      nextBudget,
+    )
+    nextCampaign.generationState = {
+      ...(activeCampaignForModal.generationState || {}),
+      strategy: nextCampaign.influencerStrategy ? 'generated' : 'not_started',
+      guide: nextCampaign.generatedContentGuide ? 'generated' : 'not_started',
+      sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001'],
+      outputRawId: 'RAW-INT-AI-001',
+      packageVersion: 'strategy-director-v2.2-local',
+      inputUpdatedAt: nowLabel(),
+    }
 
     updateWorkspace((current) =>
       appendActivity(
@@ -8408,6 +8437,46 @@ function App() {
     learningMaterials: getLearningMaterials(brandBrief),
   })
 
+  const buildCampaignStrategyInputRaw = (campaign = {}, campaignBrief = buildCampaignBriefFromCampaign(campaign), budgetValue = campaign.budget) => ({
+    rawId: 'RAW-INT-CMP-BRIEF-001',
+    brandId: campaign.brandId || activeBrand.id,
+    brandName: activeBrand.name,
+    brandOwner: activeBrand.owner || activeBrand.name,
+    campaignId: campaign.id,
+    campaignName: campaign.name || '신규 인플루언서 캠페인',
+    product: campaign.product || campaignBrief.product || '',
+    objective: campaign.objective || campaignBrief.goal || '',
+    campaignType: campaign.campaignType || '제안형',
+    targetPersona: campaign.targetPersona || campaignBrief.persona || '',
+    keywords: campaign.searchKeywords || campaignBrief.keywords || '',
+    exclusions: campaign.exclusionKeywords || campaignBrief.exclusions || '',
+    platforms: Array.isArray(campaignBrief.platforms) ? campaignBrief.platforms : keywordList(campaign.preferredPlatforms || ''),
+    kpiGoal: campaign.kpiGoal || '',
+    targets: {
+      views: normalizeNumericTarget(campaign.targetViews),
+      conversions: normalizeNumericTarget(campaign.targetConversions),
+      orders: normalizeNumericTarget(campaign.targetOrders),
+      revenue: normalizeNumericTarget(campaign.targetRevenue),
+      sellers: Number(campaign.sellerRecruitTarget) || 0,
+      recommendations: Number(campaign.recommendationTargetCount) || 0,
+    },
+    budget: normalizeNumericTarget(budgetValue),
+    maxCreatorFee: normalizeNumericTarget(campaign.maxCreatorFee || campaignBrief.maxPrice),
+    minFollowers: normalizeNumericTarget(campaign.minFollowers || campaignBrief.minFollowers),
+    mission: campaign.mission || '',
+    reward: campaign.reward || '',
+    approvalFlow: campaign.approvalFlow || '',
+    commerceMetric: campaign.commerceMetric || '',
+    guideSeedType: campaign.guideSeedType || '무가시딩',
+    guideChannel: campaign.guideChannel || 'Instagram Reels',
+    oneMessage: campaign.oneMessage || '',
+    hookPoints: campaign.hookPoints || '',
+    learningMaterialCount: campaignBrief.learningMaterials?.length || 0,
+    sourceRawIds: ['RAW-INT-BRD-001', 'RAW-INT-CMP-001'],
+    packageVersion: 'strategy-director-v2.2-local',
+    collectedAt: nowLabel(),
+  })
+
   const generateCampaignStrategyForDetail = (campaign) => {
     if (!campaign) return
     const campaignBrief = buildCampaignBriefFromCampaign(campaign)
@@ -8419,13 +8488,35 @@ function App() {
       recommendations: activeRecommendations,
       learningMaterials: campaignBrief.learningMaterials,
     })
+    const generatedAt = nowLabel()
+    const strategyInputRaw = campaign.strategyInputRaw || buildCampaignStrategyInputRaw(campaign, campaignBrief)
 
     updateWorkspace((current) =>
       appendActivity(
         {
           ...current,
           campaigns: current.campaigns.map((item) =>
-            item.id === campaign.id ? { ...item, influencerStrategy: strategy } : item,
+            item.id === campaign.id
+              ? {
+                ...item,
+                strategyInputRaw,
+                influencerStrategy: strategy,
+                strategyGeneratedAt: generatedAt,
+                  generationState: {
+                    ...(item.generationState || campaign.generationState || {}),
+                    strategy: 'generated',
+                    guide: item.generatedContentGuide || campaign.generatedContentGuide
+                      ? 'generated'
+                      : item.generationState?.guide || campaign.generationState?.guide || 'not_started',
+                    generatedAt,
+                    strategyGeneratedAt: generatedAt,
+                    sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001'],
+                    outputRawId: 'RAW-INT-AI-001',
+                    packageVersion: 'strategy-director-v2.2-local',
+                    engine: backendConfig?.apiBaseUrl ? 'api-ready-local-fallback' : 'local-strategy-director',
+                  },
+                }
+              : item,
           ),
         },
         'campaign',
@@ -8437,19 +8528,38 @@ function App() {
 
   const generateCampaignGuideForDetail = (campaign) => {
     if (!campaign) return
+    const campaignBrief = buildCampaignBriefFromCampaign(campaign)
     const guide = buildInfluencerContentGuide({
       brand: activeBrand,
-      brief: buildCampaignBriefFromCampaign(campaign),
+      brief: campaignBrief,
       campaign,
       creators: getCreatorsByIds(creators, campaign.creatorIds ?? []),
     })
+    const generatedAt = nowLabel()
+    const strategyInputRaw = campaign.strategyInputRaw || buildCampaignStrategyInputRaw(campaign, campaignBrief)
 
     updateWorkspace((current) =>
       appendActivity(
         {
           ...current,
           campaigns: current.campaigns.map((item) =>
-            item.id === campaign.id ? { ...item, generatedContentGuide: guide } : item,
+            item.id === campaign.id
+              ? {
+                  ...item,
+                  strategyInputRaw,
+                  generatedContentGuide: guide,
+                  guideGeneratedAt: generatedAt,
+                  generationState: {
+                    ...(item.generationState || {}),
+                    guide: 'generated',
+                    generatedAt,
+                    sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001', 'RAW-EXT-REF-001'],
+                    outputRawId: 'RAW-INT-AI-001',
+                    packageVersion: 'strategy-director-v2.2-local',
+                    engine: backendConfig?.apiBaseUrl ? 'api-ready-local-fallback' : 'local-strategy-director',
+                  },
+                }
+              : item,
           ),
         },
         'campaign',
@@ -8473,6 +8583,33 @@ function App() {
     }
 
     showToast(format === 'google' ? `${campaign.name} 가이드를 복사하고 Google 문서를 열었어요.` : `${campaign.name} 콘텐츠 가이드를 ${format === 'pptx' ? 'PPT' : 'DOCX'}로 다운로드했어요.`)
+  }
+
+  const downloadCampaignStrategy = async (campaign, format = 'pptx') => {
+    if (!campaign?.influencerStrategy) return
+    const filenameBase = `creatorops-${safeFilePart(activeBrand.name || 'brand')}-${safeFilePart(campaign.name || 'campaign')}-influencer-strategy`
+
+    if (format === 'pptx') {
+      await exportGuidePptx(
+        filenameBase,
+        campaign.influencerStrategy,
+        '브랜드 조건, 후보 풀, KPI를 바탕으로 캐스팅 전략과 메시지 방향을 정리했습니다.',
+      )
+      showToast(`${campaign.name} 인플루언서 전략을 PPT로 다운로드했어요.`)
+      return
+    }
+
+    const rows = [['섹션', '내용']]
+    let section = '인플루언서 전략'
+    splitGuideLines(campaign.influencerStrategy).forEach((line) => {
+      if (line.startsWith('#')) {
+        section = stripMarkdown(line)
+        return
+      }
+      rows.push([section, stripMarkdown(line)])
+    })
+    exportExcelFile(`${filenameBase}.xls`, 'Influencer Strategy', rows)
+    showToast(`${campaign.name} 인플루언서 전략을 엑셀로 다운로드했어요.`)
   }
 
   const advanceCampaign = (campaignId) => {
@@ -8512,8 +8649,9 @@ function App() {
     const estimatedCost = assignedCreators.reduce((sum, creator) => sum + creator.price, 0)
     const budget = Number(campaignDraft.budget) || Math.max(estimatedCost, 15000000)
     const campaignBrief = buildCampaignBriefFromDraft(campaignDraft)
+    const nextCampaignId = createId()
     const nextCampaign = {
-      id: createId(),
+      id: nextCampaignId,
       brandId: activeBrand.id,
       name: campaignDraft.name || '신규 인플루언서 캠페인',
       owner: activeBrand.owner || activeBrand.name,
@@ -8557,6 +8695,48 @@ function App() {
       hookPoints: campaignDraft.hookPoints,
       influencerStrategy: campaignDraft.influencerStrategy,
       generatedContentGuide: campaignDraft.generatedContentGuide,
+      strategyInputRaw: buildCampaignStrategyInputRaw(
+        {
+          id: nextCampaignId,
+          brandId: activeBrand.id,
+          name: campaignDraft.name || '신규 인플루언서 캠페인',
+          owner: activeBrand.owner || activeBrand.name,
+          budget,
+          product: campaignBrief.product,
+          objective: campaignDraft.objective,
+          campaignType: campaignDraft.campaignType || '제안형',
+          targetPersona: campaignBrief.persona,
+          searchKeywords: campaignBrief.keywords,
+          exclusionKeywords: campaignBrief.exclusions,
+          minFollowers: normalizeNumericTarget(campaignBrief.minFollowers),
+          maxCreatorFee: normalizeNumericTarget(campaignBrief.maxPrice),
+          preferredPlatforms: campaignBrief.platforms.join(', '),
+          mission: campaignDraft.mission,
+          reward: campaignDraft.reward,
+          approvalFlow: campaignDraft.approvalFlow,
+          commerceMetric: campaignDraft.commerceMetric,
+          kpiGoal: campaignDraft.kpiGoal,
+          targetViews: normalizeNumericTarget(campaignDraft.targetViews),
+          targetConversions: normalizeNumericTarget(campaignDraft.targetConversions),
+          targetOrders: normalizeNumericTarget(campaignDraft.targetOrders),
+          targetRevenue: normalizeNumericTarget(campaignDraft.targetRevenue),
+          sellerRecruitTarget: Number(campaignDraft.sellerRecruitTarget) || 0,
+          recommendationTargetCount: Number(campaignDraft.recommendationTargetCount) || 0,
+          guideSeedType: campaignDraft.guideSeedType,
+          guideChannel: campaignDraft.guideChannel,
+          oneMessage: campaignDraft.oneMessage,
+          hookPoints: campaignDraft.hookPoints,
+        },
+        campaignBrief,
+        budget,
+      ),
+      generationState: {
+        strategy: campaignDraft.influencerStrategy ? 'generated' : 'not_started',
+        guide: campaignDraft.generatedContentGuide ? 'generated' : 'not_started',
+        sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001'],
+        outputRawId: 'RAW-INT-AI-001',
+        packageVersion: 'strategy-director-v2.2-local',
+      },
       progress: 12,
       creatorIds: [...shortlist],
       stages: [Math.max(18, shortlist.length * 8), 8, 3, 1],
@@ -8924,7 +9104,7 @@ function App() {
             city: '',
             lastPost: nowLabel(),
             status: '업로드 콘텐츠',
-            topics: [activeBrand.category || 'Campaign', platform],
+            topics: [activeBrand.category || '캠페인', platform],
             source: effectiveDraft.snapshotSource || 'Content tracking URL',
             sourceUrl: uploadedUrl,
             metricsPending: !followers && !views,
@@ -9152,7 +9332,7 @@ function App() {
 
   const connectGmail = async () => {
     if (!backendConfig.apiBaseUrl) {
-      showToast('Gmail needs the CreatorOps API server.')
+      showToast('Gmail 발송은 CreatorOps API 서버 연결이 필요합니다.')
       return
     }
 
@@ -9160,34 +9340,34 @@ function App() {
       const apiBaseUrl = backendConfig.apiBaseUrl.replace(/\/$/, '')
       const response = await fetch(apiBaseUrl + '/oauth/google/auth-url?state=creatorops-gmail')
       const payload = await response.json().catch(() => ({}))
-      if (!response.ok || !payload?.data?.url) throw new Error(payload?.message || 'Failed to create Gmail authorization URL.')
+      if (!response.ok || !payload?.data?.url) throw new Error(payload?.message || 'Gmail 인증 URL을 만들지 못했습니다.')
       window.location.href = payload.data.url
     } catch (error) {
-      showToast(error instanceof Error ? error.message : 'Could not start Gmail connection.')
+      showToast(error instanceof Error ? error.message : 'Gmail 연결을 시작하지 못했습니다.')
     }
   }
 
   const disconnectGmail = () => {
     window.localStorage.removeItem(GMAIL_AUTH_STORE_KEY)
     setGmailAuth(null)
-    showToast('Gmail disconnected.')
+    showToast('Gmail 연결을 해제했습니다.')
   }
 
   const sendSelectedOutreachEmails = async () => {
     if (!selectedOutreachItems.length) {
-      showToast('Select messages to send first.')
+      showToast('먼저 발송할 메시지를 선택해주세요.')
       return
     }
     if (!selectedEmailOutreachItems.length) {
-      showToast('No selected item has a verified email. Use copy/profile open for DM candidates.')
+      showToast('선택한 후보 중 확인된 이메일이 없습니다. DM 후보는 복사 또는 채널 열기로 처리해주세요.')
       return
     }
     if (!backendConfig.apiBaseUrl) {
-      showToast('Gmail needs the CreatorOps API server.')
+      showToast('Gmail 발송은 CreatorOps API 서버 연결이 필요합니다.')
       return
     }
     if (!gmailConnected) {
-      showToast('Connect Gmail first.')
+      showToast('먼저 Gmail을 연결해주세요.')
       return
     }
 
@@ -9202,13 +9382,13 @@ function App() {
       const campaign = brandCampaigns.find((candidate) => candidate.id === item.campaignId)
 
       if (hasDuplicateSentOutreach(item, outreach)) {
-        failures.push({ item, message: 'Duplicate send blocked for this campaign and creator.' })
+        failures.push({ item, message: '같은 캠페인과 크리에이터에 대한 중복 발송을 막았습니다.' })
         continue
       }
 
       if (sentIds.length > 0) {
         const delayMs = randomSendDelayMs()
-        showToast(`Waiting ${Math.round(delayMs / 1000)}s before the next Gmail send.`)
+        showToast(`다음 Gmail 발송까지 ${Math.round(delayMs / 1000)}초 대기합니다.`)
         await wait(delayMs)
       }
 
@@ -9219,7 +9399,7 @@ function App() {
           body: JSON.stringify({
             accessToken: gmailAuth.accessToken,
             to: creator?.contactEmail,
-            subject: `${campaign?.name || 'Brand campaign'} collaboration proposal`,
+            subject: `${campaign?.name || '브랜드 캠페인'} 협업 제안드립니다`,
             message: item.message,
           }),
         })
@@ -9302,7 +9482,7 @@ function App() {
     setSelectedOutreachIds((current) => current.filter((id) => id !== itemId))
     if (activeDmBulkIndex >= activeDmBulkItems.length - 1) {
       setModal(null)
-      showToast('DM work queue completed.')
+      showToast('DM 작업 리스트를 모두 처리했습니다.')
       return
     }
     moveDmBulk(1)
@@ -9326,14 +9506,14 @@ function App() {
 
   const markSelectedOutreachSent = () => {
     if (!selectedOutreachItems.length) {
-      showToast('Select messages to mark as sent first.')
+      showToast('발송 완료로 처리할 메시지를 먼저 선택해주세요.')
       return
     }
 
     const allowedItems = selectedOutreachItems.filter((item) => !hasDuplicateSentOutreach(item, outreach))
     const blockedCount = selectedOutreachItems.length - allowedItems.length
     if (!allowedItems.length) {
-      showToast('All selected messages were blocked as duplicate sends.')
+      showToast('선택한 메시지는 모두 중복 발송으로 차단되었습니다.')
       return
     }
 
@@ -9350,11 +9530,11 @@ function App() {
           ),
         },
         'outreach',
-        `Marked ${selectedIds.size} outreach messages as sent`,
+        `제안 메시지 ${selectedIds.size}건 발송 완료 처리`,
       ),
     )
     setSelectedOutreachIds([])
-    showToast(blockedCount ? `Marked ${selectedIds.size}; blocked ${blockedCount} duplicate sends.` : `Marked ${selectedIds.size} messages as sent.`)
+    showToast(blockedCount ? `${selectedIds.size}건 처리, 중복 ${blockedCount}건 차단` : `${selectedIds.size}건을 발송 완료로 처리했습니다.`)
   }
 
   const markOutreachResponse = (itemId) => {
@@ -9488,7 +9668,7 @@ function App() {
       description: 'AI 추천/메시지 전 후보 풀 기준으로 생성한 발송 세그먼트',
       platform: 'Mixed',
       type: '즐겨찾기',
-      owner: currentAccount?.name || 'Campaign Operator',
+      owner: currentAccount?.name || '운영 담당자',
       creatorIds,
       createdAt: nowLabel(),
     }
@@ -9697,12 +9877,14 @@ function App() {
     const autoPlatform = snapshot?.platform || inferPlatformFromUrl(referenceDraft.url) || referenceDraft.platform
     const autoMediaType = snapshot?.mediaType || inferMediaTypeFromUrl(referenceDraft.url, autoPlatform) || referenceDraft.mediaType
 
+    const isContentUrl = isContentReferenceUrl(referenceDraft.url.trim())
+    const nextReferenceKind = referenceMode === 'brand' && !isContentUrl ? 'brand' : 'content'
     const nextReference = {
       id: createId(),
       campaignId: selectedCampaign.id,
-      referenceKind: referenceMode === 'brand' ? 'brand' : 'content',
-      trackingType: referenceMode === 'brand' ? 'competitor' : 'content',
-      brandName: referenceMode === 'brand' ? referenceDraft.title.trim() || autoTitle || getReferenceBrandName({ url: referenceDraft.url, platform: autoPlatform }) : '',
+      referenceKind: nextReferenceKind,
+      trackingType: nextReferenceKind === 'brand' ? 'competitor' : 'content',
+      brandName: nextReferenceKind === 'brand' ? referenceDraft.title.trim() || autoTitle || getReferenceBrandName({ url: referenceDraft.url, platform: autoPlatform }) : '',
       mediaType: autoMediaType,
       platform: autoPlatform,
       country: referenceDraft.country || 'KR',
@@ -10019,13 +10201,13 @@ function App() {
           </div>
           <div>
             <strong>CreatorOps</strong>
-            <span>Local CRM</span>
+            <span>운영 CRM</span>
           </div>
         </div>
 
         <div className="brand-switcher">
           <div className="brand-switcher-head">
-            <span className="mini-label">Brand Workspace</span>
+            <span className="mini-label">브랜드 워크스페이스</span>
             <button className="icon-button mini-icon-button" type="button" title="브랜드 추가" onClick={() => setModal({ type: 'brand' })}>
               <Plus size={15} />
             </button>
@@ -10040,7 +10222,7 @@ function App() {
               ))}
             </select>
           </label>
-          <p>{team.name} · {currentAccount.name} · {currentRole.label}</p>
+          <p>{currentAccountCaption}</p>
         </div>
 
         <nav className="nav-list" aria-label="주요 메뉴">
@@ -10125,9 +10307,9 @@ function App() {
             </button>
           </div>
           <div className="legal-links" aria-label="Legal links">
-            <a href="/privacy" target="_blank" rel="noreferrer">Privacy Policy</a>
+            <a href="/privacy" target="_blank" rel="noreferrer">개인정보</a>
             <span>·</span>
-            <a href="/terms" target="_blank" rel="noreferrer">Terms</a>
+            <a href="/terms" target="_blank" rel="noreferrer">약관</a>
           </div>
         </div>
       </aside>
@@ -10143,16 +10325,13 @@ function App() {
             <button className="icon-button" type="button" title="검색 초기화" onClick={resetSearch}>
               <RefreshCw size={18} />
             </button>
-            <button className="icon-button" type="button" title="데이터 관리" onClick={() => setModal({ type: 'data' })}>
-              <Database size={18} />
-            </button>
           </div>
         </header>
 
         {['discovery', 'messages', 'report'].includes(visibleSection) && (
           <section className="campaign-context-bar" aria-label="현재 작업 캠페인">
             <div className="campaign-context-main">
-              <span className="mini-label">Campaign Context</span>
+              <span className="mini-label">현재 캠페인</span>
               <label>
                 <Target size={16} />
                 <select
@@ -10184,10 +10363,6 @@ function App() {
               <Stat label="섭외완료" value={`${selectedCampaignRecruitedPool.length}명`} />
             </div>
             <div className="campaign-context-actions">
-              <button className="secondary-button compact-button" type="button" onClick={() => setModal({ type: 'create' })}>
-                <Plus size={15} />
-                캠페인 생성
-              </button>
               {selectedCampaign && (
                 <button className="primary-button compact-button" type="button" onClick={() => openCampaign(selectedCampaign)}>
                   열기
@@ -10202,7 +10377,7 @@ function App() {
             <section className="dashboard-action-board" aria-label="오늘의 운영 액션">
               <div className="dashboard-action-head">
                 <div>
-                  <span className="mini-label">Next Actions</span>
+                  <span className="mini-label">오늘 할 일</span>
                   <h2>오늘 먼저 처리할 일</h2>
                 </div>
                 <p>캠페인 기준으로 발굴, 후보 저장, 메시지 발송, 성과 추적을 이어서 진행합니다.</p>
@@ -10303,7 +10478,7 @@ function App() {
             <section className="panel settings-sync-panel">
               <div className="panel-heading">
                 <div>
-                  <span className="mini-label">Production Connection</span>
+                  <span className="mini-label">운영 연결</span>
                   <h2>운영 연결 상태</h2>
                 </div>
                 <div className="panel-heading-actions">
@@ -10335,10 +10510,10 @@ function App() {
               {backendConfig.hasSupabase && (
                 <div className="auth-connect-card">
                   <div>
-                    <span className="mini-label">Supabase Auth</span>
+                    <span className="mini-label">팀 로그인</span>
                     <strong>{authSession?.user?.email || '팀 공유 DB 로그인 필요'}</strong>
                     <p>
-                      같은 팀이 같은 후보 풀과 캠페인 데이터를 보려면 Supabase Auth 세션이 필요합니다.
+                      같은 팀이 같은 후보 풀과 캠페인 데이터를 보려면 팀 로그인 세션이 필요합니다.
                     </p>
                   </div>
                   {authSession ? (
@@ -10362,13 +10537,13 @@ function App() {
               )}
               <div className="integration-checklist">
                 <article className={backendConfig.hasSupabase ? 'ready' : ''}>
-                  <strong>팀 공유 DB/Auth</strong>
+                  <strong>팀 공유 DB/로그인</strong>
                   <span>
                     {backendConfig.hasSupabase
                       ? authSession
-                        ? 'Supabase Auth 로그인됨'
-                        : 'Supabase env 연결됨 · 로그인 필요'
-                      : 'Supabase env 필요'}
+                        ? '팀 로그인 완료'
+                        : '팀 로그인 환경변수 연결됨 · 로그인 필요'
+                      : '팀 로그인 환경변수 필요'}
                   </span>
                 </article>
                 <article className={backendConfig.apiBaseUrl ? 'ready' : ''}>
@@ -10419,7 +10594,7 @@ function App() {
             <section className="panel settings-main-panel">
               <div className="panel-heading">
                 <div>
-                  <span className="mini-label">Team Permission</span>
+                  <span className="mini-label">팀 권한</span>
                   <h2>팀 계정 및 권한</h2>
                 </div>
                 <span className="result-count">{accounts.length}개 계정</span>
@@ -10434,20 +10609,20 @@ function App() {
                   <select value={currentAccount.id} onChange={(event) => switchAccount(event.target.value)}>
                     {accounts.map((account) => (
                       <option value={account.id} key={account.id}>
-                        {account.name} · {account.role}
+                        {account.name} · {teamRoleCatalog[account.role]?.label ?? account.role}
                       </option>
                     ))}
                   </select>
                 </label>
               </div>
-              <div className="settings-role-summary">
-                <div className="settings-role-summary-head">
+              <details className="settings-role-summary">
+                <summary className="settings-role-summary-head">
                   <div>
-                    <span className="mini-label">Role Matrix</span>
-                    <strong>관리 권한</strong>
+                    <span className="mini-label">역할 기준</span>
+                    <strong>관리 권한 보기</strong>
                   </div>
-                  <p>역할별로 볼 수 있는 데이터와 수정 권한을 한 번에 확인합니다.</p>
-                </div>
+                  <p>필요할 때만 펼쳐 역할별 데이터/수정 권한을 확인합니다.</p>
+                </summary>
                 <div className="role-permission-grid settings-role-grid">
                   {Object.values(teamRoleCatalog).map((role) => (
                     <article key={role.label}>
@@ -10457,7 +10632,7 @@ function App() {
                     </article>
                   ))}
                 </div>
-              </div>
+              </details>
               <div className="team-account-list settings-account-list">
                 {accounts.map((account) => {
                   const role = teamRoleCatalog[account.role] ?? teamRoleCatalog.Manager
@@ -10475,7 +10650,7 @@ function App() {
                       >
                         {Object.keys(teamRoleCatalog).map((roleKey) => (
                           <option value={roleKey} key={roleKey}>
-                            {roleKey}
+                            {teamRoleCatalog[roleKey]?.label ?? roleKey}
                           </option>
                         ))}
                       </select>
@@ -10561,20 +10736,20 @@ function App() {
           <section className="panel ai-brief-panel">
             <div className="panel-heading">
               <div>
-                <span className="mini-label">Step 1 · Conditions</span>
+                <span className="mini-label">1단계 · 조건 확인</span>
                 <h2>발굴 조건 준비</h2>
               </div>
               <div className="panel-heading-actions">
                 <button className="primary-button compact-button" type="button" onClick={runRealDiscoverySearch} disabled={realDiscoverySearching}>
                   <Search size={16} />
-                  {realDiscoverySearching ? '검색 중' : '실제 웹 발굴'}
+                  {realDiscoverySearching ? '실제 후보 검색 중' : '1단계 실제 웹 발굴'}
                 </button>
               </div>
             </div>
             <div className="brief-auto-setup">
               <div className="brief-auto-head">
                 <div>
-                  <span className="mini-label">AI Brief Setup</span>
+                  <span className="mini-label">브리프 세팅</span>
                   <strong>브리프 붙여넣기 + 초안 세팅</strong>
                   <p>제품/타깃/키워드 같은 브랜드 공통값을 빠르게 채웁니다. 예산, KPI, 원메시지, 후킹포인트는 캠페인 생성에서 캠페인별로 관리합니다.</p>
                 </div>
@@ -10598,7 +10773,7 @@ function App() {
             </div>
             <div className="campaign-brief-summary">
               <div>
-                <span className="mini-label">Campaign Brief</span>
+                <span className="mini-label">선택 캠페인 조건</span>
                 <strong>{selectedCampaign?.name ?? '캠페인을 먼저 선택하세요'}</strong>
                 <p>제품, 타깃, 키워드, 학습자료, 인플루언서 전략은 캠페인 생성에서 관리하고 발굴 화면에서는 선택 캠페인 기준으로 후보를 찾습니다.</p>
               </div>
@@ -10609,10 +10784,6 @@ function App() {
                 <Stat label="후보 조건" value={`${compactNumber(selectedCampaign?.minFollowers || brandBrief.minFollowers)}+ · ${won(selectedCampaign?.maxCreatorFee || brandBrief.maxPrice)}`} />
               </div>
               <div className="campaign-brief-actions">
-                <button className="secondary-button compact-button" type="button" onClick={() => setModal({ type: 'create' })}>
-                  <Plus size={15} />
-                  캠페인 생성
-                </button>
                 {selectedCampaign && (
                   <button className="primary-button compact-button" type="button" onClick={() => openCampaign(selectedCampaign)}>
                     캠페인 상세
@@ -10655,7 +10826,7 @@ function App() {
           <section className="panel ai-result-panel">
             <div className="panel-heading">
               <div>
-                <span className="mini-label">Step 3 · AI Matching</span>
+                <span className="mini-label">3단계 · AI 매칭</span>
                 <h2>AI 추천 후보와 근거</h2>
               </div>
               <div className="panel-heading-actions">
@@ -10751,7 +10922,7 @@ function App() {
           <section className="panel discovery-panel" id="discovery">
             <div className="panel-heading">
               <div>
-                <span className="mini-label">Step 2 · Live Discovery</span>
+                <span className="mini-label">2단계 · 실제 후보 발굴</span>
                 <h2>크리에이터 발굴</h2>
               </div>
               <div className="panel-heading-actions">
@@ -10852,7 +11023,7 @@ function App() {
 
             <div className="real-discovery-panel">
               <div className="real-discovery-copy">
-                <span className="mini-label">Live Discovery</span>
+                <span className="mini-label">실제 후보 발굴</span>
                 <strong>예시 후보 숨김 · 실제 공개 검색 결과만 저장</strong>
                 <p>YouTube는 공식 Data API로 채널과 구독자/평균 조회를 가져오고, Instagram/TikTok은 Brave Search로 공개 프로필 URL을 찾은 뒤 수치를 검증 대기로 남깁니다.</p>
               </div>
@@ -10865,7 +11036,7 @@ function App() {
               ) : (
                 <div className="real-discovery-fields">
                   <label>
-                    YouTube API Key
+                    YouTube API 키
                     <input
                       type="password"
                       value={realDiscoveryDraft.youtubeApiKey}
@@ -10874,7 +11045,7 @@ function App() {
                     />
                   </label>
                   <label>
-                    Search API Key
+                    검색 API 키
                     <input
                       type="password"
                       value={realDiscoveryDraft.googleApiKey}
@@ -10918,7 +11089,7 @@ function App() {
             <div className="performance-filter-panel">
               <div className="performance-filter-heading">
                 <div>
-                  <span className="mini-label">Performance Criteria</span>
+                  <span className="mini-label">발굴 조건</span>
                   <strong>팔로워·평균 조회수 조건</strong>
                 </div>
                 <div className="performance-filter-actions">
@@ -11110,7 +11281,7 @@ function App() {
 
               <div className="fit-score">
                 <div>
-                  <span className="mini-label">Match score</span>
+                  <span className="mini-label">매칭 점수</span>
                   <strong>{selectedCreator.fit}</strong>
                 </div>
                 <div className="score-ring" style={{ '--score': `${selectedCreator.fit}%` }}>
@@ -11146,7 +11317,7 @@ function App() {
 
               <div className="source-ledger">
                 <div className="source-ledger-heading">
-                  <span className="mini-label">Source Ledger</span>
+                  <span className="mini-label">데이터 출처</span>
                   <strong>데이터 출처/신뢰도</strong>
                 </div>
                 <div className="data-quality-flags">
@@ -11191,7 +11362,7 @@ function App() {
         <section className="panel candidate-pool-panel">
           <div className="panel-heading">
             <div>
-              <span className="mini-label">Pre-Outreach Pool</span>
+              <span className="mini-label">메시지 전 후보</span>
               <h2>메시지 전 후보 풀</h2>
             </div>
             <div className="panel-heading-actions">
@@ -11220,7 +11391,7 @@ function App() {
                 disabled={!selectedCandidatePoolCreators.length}
               >
                 <X size={15} />
-                Remove selected
+                선택 삭제
               </button>
               <button
                 className="primary-button compact-button"
@@ -11262,7 +11433,7 @@ function App() {
                 }}
               >
                 <X size={15} />
-                Clear
+                초기화
               </button>
             )}
             <span>{candidatePoolCreators.length} / {candidatePoolAllCreators.length}</span>
@@ -11330,7 +11501,7 @@ function App() {
         <section className="panel creator-groups-panel">
           <div className="panel-heading">
             <div>
-              <span className="mini-label">Reusable Candidate Groups</span>
+              <span className="mini-label">재사용 후보 그룹</span>
               <h2>재사용 후보 그룹</h2>
             </div>
             <button className="primary-button compact-button" type="button" onClick={createCreatorGroup}>
@@ -11477,7 +11648,7 @@ function App() {
               <>
                 <div className="creator-group-detail-head">
                   <div>
-                    <span className="mini-label">Group Members</span>
+                    <span className="mini-label">그룹 멤버</span>
                     <h3>{selectedCreatorGroup.name}</h3>
                     <p>{selectedCreatorGroup.description}</p>
                   </div>
@@ -11562,7 +11733,7 @@ function App() {
         <section className={`panel reference-board-panel ${referenceMode === 'brand' ? 'brand-mode' : 'content-mode'}`}>
           <div className="panel-heading">
             <div>
-              <span className="mini-label">Content Reference</span>
+              <span className="mini-label">콘텐츠 레퍼런스</span>
               <h2>인기 콘텐츠 레퍼런스</h2>
             </div>
             <div className="panel-heading-actions">
@@ -11622,7 +11793,7 @@ function App() {
                     setBrandInsightView('list')
                   }}
                 >
-                  나의 모니터링 <span>{brandTrackingGroups.length} / 10</span>
+                  나의 모니터링 <span>{brandTrackingGroups.length}</span>
                 </button>
               </div>
 
@@ -11816,7 +11987,7 @@ function App() {
             <div className="brand-tracking-dashboard">
               <div className="brand-tracking-head">
                 <div>
-                  <span className="mini-label">Saved Brand Tracker</span>
+                  <span className="mini-label">저장 브랜드 추적</span>
                   <strong>저장 브랜드별 누적 콘텐츠 현황</strong>
                   <p>브랜드 검색 및 추적에서 저장한 브랜드/경쟁사를 기준으로 콘텐츠 수, 누적 조회수, 반응을 모아봅니다.</p>
                 </div>
@@ -11919,7 +12090,7 @@ function App() {
 
           <div className="reference-filter-heading">
             <div>
-              <span className="mini-label">Result Filter</span>
+              <span className="mini-label">검색 필터</span>
               <strong>검색 결과 필터</strong>
               <p>위 검색으로 추가된 레퍼런스와 저장된 레퍼런스를 국가, 미디어, 플랫폼, 순위 기준으로 좁혀봅니다.</p>
             </div>
@@ -12080,7 +12251,7 @@ function App() {
 
           <div className="reference-manual-toggle">
             <div>
-              <span className="mini-label">Save Link</span>
+              <span className="mini-label">링크 저장</span>
               <strong>레퍼런스 링크 저장</strong>
               <p>저장하고 싶은 URL만 넣으면 제목, 썸네일, 조회수, 좋아요, 댓글을 먼저 자동 수집한 뒤 저장합니다.</p>
             </div>
@@ -12225,7 +12396,7 @@ function App() {
           <div className="production-reference-shelf">
             <div className="production-reference-head">
               <div>
-                <span className="mini-label">Saved for Production</span>
+                <span className="mini-label">제작 저장</span>
                 <strong>제작 레퍼런스 저장 리스트</strong>
                 <p>50만+ 조회 또는 팔로워 대비 터진 콘텐츠를 변형 스크립트로 바꿔 캠페인 가이드에 반영합니다.</p>
               </div>
@@ -12260,7 +12431,7 @@ function App() {
             {referenceGuideUsage && (
               <div className="production-reference-usage">
                 <div>
-                  <span className="mini-label">Reference Analysis</span>
+                  <span className="mini-label">레퍼런스 분석</span>
                   <strong>{referenceGuideUsage.referenceTitle}</strong>
                   <p>
                     아래 분석 내용을 읽어보고 괜찮으면 {referenceGuideUsage.campaignName} 가이드의 브랜드 학습자료에 차용하세요.
@@ -12299,7 +12470,7 @@ function App() {
           <section className="panel campaign-panel" id="campaigns">
             <div className="panel-heading">
               <div>
-                <span className="mini-label">Campaigns</span>
+                <span className="mini-label">캠페인</span>
                 <h2>캠페인 파이프라인</h2>
               </div>
               <div className="panel-heading-actions">
@@ -12325,7 +12496,7 @@ function App() {
                     목록으로
                   </button>
                   <div>
-                    <span className="mini-label">Campaign Detail</span>
+                    <span className="mini-label">캠페인 상세</span>
                     <strong>{activeCampaignForModal.name}</strong>
                     <p>{activeCampaignForModal.objective} · {activeCampaignForModal.owner} · 마감 {activeCampaignForModal.deadline ?? '미정'}</p>
                   </div>
@@ -12359,7 +12530,7 @@ function App() {
                 {campaignEditDraft && (
                   <div className="campaign-edit-panel">
                     <div>
-                      <span className="mini-label">Edit Campaign</span>
+                      <span className="mini-label">캠페인 수정</span>
                       <strong>캠페인 입력값 수정</strong>
                       <p>저장하면 상세, 발굴 조건, 리포트 KPI 기준에 바로 반영됩니다.</p>
                     </div>
@@ -12438,7 +12609,7 @@ function App() {
                 <div className="campaign-schedule-timeline">
                   <div className="campaign-schedule-head">
                     <div>
-                      <span className="mini-label">Campaign Schedule</span>
+                      <span className="mini-label">캠페인 일정</span>
                       <strong>모집부터 보고까지 일정</strong>
                     </div>
                     <span className="campaign-context-chip">마감 {activeCampaignForModal.deadline ?? '미정'}</span>
@@ -12489,9 +12660,9 @@ function App() {
                 </div>
 
                 <div className="campaign-guide-detail">
-                  <span className="mini-label">Influencer Strategy</span>
-                  <strong>인플루언서 전략</strong>
-                  <p>캠페인 조건, 후보 풀, KPI를 바탕으로 캐스팅 믹스와 메시지 방향을 생성합니다.</p>
+                  <span className="mini-label">인플루언서 전략</span>
+                  <strong>캠페인 전략</strong>
+                  <p>캠페인 생성 때 입력한 브랜드/제품 raw를 기준으로 섭외 방향, 후보 우선순위, 메시지 전략을 생성합니다.</p>
                   <div className="campaign-guide-actions">
                     <button
                       className="primary-button compact-button"
@@ -12499,26 +12670,33 @@ function App() {
                       onClick={() => generateCampaignStrategyForDetail(activeCampaignForModal)}
                     >
                       <Target size={16} />
-                      전략 생성
+                      {activeCampaignForModal.influencerStrategy ? '전략 재생성' : '전략 생성'}
                     </button>
                     {activeCampaignForModal.influencerStrategy && (
-                      <button
-                        className="secondary-button compact-button"
-                        type="button"
-                        onClick={() => exportFile(
-                          `creatorops-${safeFilePart(activeBrand.name || 'brand')}-${safeFilePart(activeCampaignForModal.name || 'campaign')}-influencer-strategy.md`,
-                          'text/markdown;charset=utf-8',
-                          activeCampaignForModal.influencerStrategy,
-                        )}
-                      >
-                        <Download size={16} />
-                        전략 다운로드
-                      </button>
+                      <>
+                        <button
+                          className="secondary-button compact-button"
+                          type="button"
+                          onClick={() => downloadCampaignStrategy(activeCampaignForModal, 'pptx')}
+                        >
+                          <Download size={16} />
+                          전략 PPT
+                        </button>
+                        <button
+                          className="secondary-button compact-button"
+                          type="button"
+                          onClick={() => downloadCampaignStrategy(activeCampaignForModal, 'xlsx')}
+                        >
+                          <Download size={16} />
+                          전략 엑셀
+                        </button>
+                      </>
                     )}
                   </div>
                   {activeCampaignForModal.influencerStrategy && (
                     <div className="content-guide-preview">
                       <span>전략 미리보기</span>
+                      <small className="raw-lineage-note">원천 raw: RAW-INT-CMP-BRIEF-001 · RAW-INT-BRD-001 · RAW-INT-AI-001</small>
                       <pre>{activeCampaignForModal.influencerStrategy.slice(0, 900)}</pre>
                     </div>
                   )}
@@ -12526,7 +12704,7 @@ function App() {
 
                 {(activeCampaignForModal.brandGuideAttachments ?? []).length > 0 && (
                   <div className="campaign-guide-detail">
-                    <span className="mini-label">Brand Guide Attachments</span>
+                    <span className="mini-label">첨부 가이드</span>
                     <strong>첨부된 인플루언서 브랜드 가이드</strong>
                     <div className="guide-attachment-list">
                       {activeCampaignForModal.brandGuideAttachments.map((item) => (
@@ -12540,7 +12718,7 @@ function App() {
                 )}
 
                 <div className="campaign-guide-detail">
-                  <span className="mini-label">Generated Content Guide</span>
+                  <span className="mini-label">콘텐츠 가이드</span>
                   <strong>인플루언서 전달용 콘텐츠 가이드</strong>
                   <p>
                     {activeCampaignForModal.guideSeedType ?? '무가시딩'} · {activeCampaignForModal.guideChannel ?? 'Instagram Reels'} · 원메시지/후킹포인트 기반
@@ -12552,7 +12730,7 @@ function App() {
                       onClick={() => generateCampaignGuideForDetail(activeCampaignForModal)}
                     >
                       <FileText size={16} />
-                      가이드 생성
+                      {activeCampaignForModal.generatedContentGuide ? '가이드 재생성' : '가이드 생성'}
                     </button>
                     <button
                       className="primary-button compact-button"
@@ -12595,7 +12773,7 @@ function App() {
                 <section className="campaign-ops-detail">
                   <div className="campaign-ops-detail-head">
                     <div>
-                      <span className="mini-label">Logistics</span>
+                      <span className="mini-label">배송/정산</span>
                       <strong>이 캠페인의 배송/수동 정산</strong>
                     </div>
                     <div className="campaign-ops-actions">
@@ -12661,7 +12839,7 @@ function App() {
           <section className="panel report-panel" id="report">
             <div className="panel-heading">
               <div>
-                <span className="mini-label">Report</span>
+                <span className="mini-label">리포트</span>
                 <h2>성과 모니터링</h2>
               </div>
               <div className="panel-heading-actions">
@@ -12726,15 +12904,15 @@ function App() {
                 return (
                   <article key={summary.campaignId}>
                     <div>
-                      <strong>{campaign?.name ?? 'Campaign'}</strong>
-                      <span>{summary.metrics.length ? 'Progress ' + summary.progress + '%' : 'KPI setup needed'}</span>
+                      <strong>{campaign?.name ?? '캠페인'}</strong>
+                      <span>{summary.metrics.length ? `진행률 ${summary.progress}%` : 'KPI 설정 필요'}</span>
                     </div>
                     <div className="pm-progress-bar">
                       <span style={{ width: String(summary.progress) + '%' }} />
                     </div>
                     <p>
-                      {summary.metrics.slice(0, 3).map((metric) => metric.label + ' ' + metric.displayActual + '/' + metric.displayTarget).join(' ? ') ||
-                        'Set target views, conversions, orders, or revenue in campaign setup.'}
+                      {summary.metrics.slice(0, 3).map((metric) => metric.label + ' ' + metric.displayActual + '/' + metric.displayTarget).join(' · ') ||
+                        '캠페인 설정에서 목표 조회수, 전환, 주문, 매출을 입력하세요.'}
                     </p>
                   </article>
                 )
@@ -12778,14 +12956,14 @@ function App() {
                 {reportBrandInfluencerRows.slice(0, 6).map((row) => (
                   <article key={row.id || row.profileUrl || row.creatorName}>
                     <div>
-                      <strong>{row.creatorName || 'Unnamed creator'}</strong>
+                      <strong>{row.creatorName || '크리에이터명 없음'}</strong>
                       <span>{row.region || '-'} / {row.language || '-'}</span>
                     </div>
-                    <span>Followers {compactNumber(row.followers)}</span>
-                    <span>Avg views {compactNumber(row.averageViews)}</span>
-                    <span>Total views {compactNumber(row.totalViews)}</span>
-                    <span>ER {percent(row.engagementRate)}</span>
-                    {row.profileUrl ? <a href={row.profileUrl} target="_blank" rel="noreferrer">Open</a> : <span>-</span>}
+                    <span>팔로워 {compactNumber(row.followers)}</span>
+                    <span>평균 조회 {compactNumber(row.averageViews)}</span>
+                    <span>총 조회 {compactNumber(row.totalViews)}</span>
+                    <span>참여율 {percent(row.engagementRate)}</span>
+                    {row.profileUrl ? <a href={row.profileUrl} target="_blank" rel="noreferrer">프로필 열기</a> : <span>-</span>}
                   </article>
                 ))}
               </div>
@@ -12797,47 +12975,47 @@ function App() {
                   <div className="tracked-post-main">
                     <div className="tracked-post-head">
                       <span className="status-chip success-chip">{reportUsesExternalRaw ? '\uc678\ubd80 \ub9ac\ud3ec\ud2b8' : '\ucd94\uc801'}</span>
-                      <span className="type-chip">{row.platform || 'platform'}</span>
+                      <span className="type-chip">{row.platform || '플랫폼 미확인'}</span>
                       <span className="type-chip">{reportUsesExternalRaw ? '\uc678\ubd80 \ub370\uc774\ud130' : '\uc218\ub3d9 \ub4f1\ub85d'}</span>
                     </div>
                     <strong>{row.title}</strong>
-                    <p>{row.creatorName || 'Creator missing'} / {row.handle || 'Handle missing'} / {row.publishedAt || 'Date missing'}</p>
+                    <p>{row.creatorName || '크리에이터 미확인'} / {row.handle || '핸들 미확인'} / {row.publishedAt || '게시일 미확인'}</p>
                     <div className="tracked-account-meta">
-                      <span>Followers {row.followers ? compactNumber(row.followers) : '-'}</span>
-                      <span>Country {row.country || '-'}</span>
-                      <span>Language {row.language || '-'}</span>
+                      <span>팔로워 {row.followers ? compactNumber(row.followers) : '-'}</span>
+                      <span>국가 {row.country || '-'}</span>
+                      <span>언어 {row.language || '-'}</span>
                       <span>{row.sheetName || row.sourceName}</span>
                     </div>
                     <div className="tracked-links">
-                      <span className="tracking-source-chip">{row.fileName || row.sourceName || 'workspace'}</span>
+                      <span className="tracking-source-chip">{row.fileName || row.sourceName || '워크스페이스'}</span>
                       {row.profileUrl && (
                         <a href={row.profileUrl} target="_blank" rel="noreferrer">
-                          Open profile
+                          프로필 열기
                         </a>
                       )}
                       {row.url && (
                         <a href={row.url} target="_blank" rel="noreferrer">
-                          Open content
+                          콘텐츠 열기
                         </a>
                       )}
                     </div>
                   </div>
                   <div className="post-metrics">
-                    <span>{compactNumber(row.views)} views</span>
-                    <span>{compactNumber(row.likes)} likes</span>
-                    <span>{compactNumber(row.comments)} comments</span>
-                    <span>{compactNumber(row.shares)} shares</span>
-                    <span>{compactNumber(row.saves)} saves</span>
-                    <span>{compactNumber(row.conversions)} conv.</span>
-                    <strong>{percent(row.engagementRate)} ER</strong>
+                    <span>조회 {compactNumber(row.views)}</span>
+                    <span>좋아요 {compactNumber(row.likes)}</span>
+                    <span>댓글 {compactNumber(row.comments)}</span>
+                    <span>공유 {compactNumber(row.shares)}</span>
+                    <span>저장 {compactNumber(row.saves)}</span>
+                    <span>전환 {compactNumber(row.conversions)}</span>
+                    <strong>참여율 {percent(row.engagementRate)}</strong>
                   </div>
                 </article>
               ))}
               {!reportVideoRows.length && (
                 <div className="empty-state compact-empty">
                   <BarChart3 size={22} />
-                  <strong>No content raw is connected to this report yet.</strong>
-                  <p>Upload a Video Monitor Data report in Data Room or register content tracking links first.</p>
+                  <strong>아직 연결된 콘텐츠 raw가 없습니다.</strong>
+                  <p>데이터룸에 Video Monitor Data 리포트를 업로드하거나 콘텐츠 추적 링크를 먼저 등록하세요.</p>
                 </div>
               )}
             </div>
@@ -12857,7 +13035,7 @@ function App() {
           <section className="panel message-panel" id="messages">
             <div className="panel-heading">
               <div>
-                <span className="mini-label">Outreach</span>
+                <span className="mini-label">메시지 운영</span>
                 <h2>제안/응답 발송</h2>
               </div>
               <button className="icon-button" type="button" title="메시지 검토함" onClick={() => setModal({ type: 'messages' })}>
@@ -12894,7 +13072,7 @@ function App() {
               </article>
             </div>
             <div className="message-search-bar">
-              <label aria-label="Search outreach messages">
+              <label aria-label="메시지 검색">
                 <Search size={16} />
                 <input
                   type="search"
@@ -12910,7 +13088,7 @@ function App() {
                   onClick={() => setOutreachSearchQuery('')}
                 >
                   <X size={15} />
-                  Clear
+                  초기화
                 </button>
               )}
               <span>{filteredCampaignOutreach.length} / {selectedCampaignOutreach.length}</span>
@@ -12925,13 +13103,13 @@ function App() {
                 />
                 전체 선택
               </label>
-              <span>{selectedOutreachItems.length} selected / {selectedEmailOutreachItems.length} email / {selectedDmOutreachItems.length} DM / {selectedDuplicateOutreachCount} duplicate-blocked / Gmail {gmailConnected ? 'connected' : 'not connected'}</span>
+              <span>선택 {selectedOutreachItems.length}건 · 이메일 {selectedEmailOutreachItems.length}건 · DM {selectedDmOutreachItems.length}건 · 중복 차단 {selectedDuplicateOutreachCount}건 · Gmail {gmailConnected ? '연결됨' : '미연결'}</span>
               <button
                 className="secondary-button compact-button"
                 type="button"
                 onClick={gmailConnected ? disconnectGmail : connectGmail}
               >
-                {gmailConnected ? 'Disconnect Gmail' : 'Connect Gmail'}
+                {gmailConnected ? 'Gmail 해제' : 'Gmail 연결'}
               </button>
               <button
                 className="primary-button compact-button"
@@ -12940,7 +13118,7 @@ function App() {
                 onClick={sendSelectedOutreachEmails}
               >
                 <Send size={15} />
-                {gmailSending ? 'Sending' : 'Send selected emails'}
+                {gmailSending ? '발송 중' : '선택 이메일 발송'}
               </button>
               <button
                 className="secondary-button compact-button"
@@ -12948,7 +13126,7 @@ function App() {
                 disabled={!selectedDmOutreachItems.length}
                 onClick={startDmBulkMode}
               >
-                DM work mode
+                DM 작업 모드
               </button>
               <button
                 className="secondary-button compact-button"
@@ -12957,7 +13135,7 @@ function App() {
                 onClick={exportSelectedDmWorkExcel}
               >
                 <Download size={15} />
-                Download DM Excel
+                DM 작업 엑셀
               </button>
               <button
                 className="secondary-button compact-button"
@@ -12965,7 +13143,7 @@ function App() {
                 disabled={!selectedOutreachItems.length}
                 onClick={markSelectedOutreachSent}
               >
-                Mark as sent only
+                발송 완료 처리
               </button>
             </div>
             <div className="record-list">
@@ -12999,7 +13177,7 @@ function App() {
           <section className="panel wide-log-panel">
             <div className="panel-heading">
               <div>
-                <span className="mini-label">Activity</span>
+                <span className="mini-label">작업 로그</span>
                 <h2>작업 로그</h2>
               </div>
               <History size={19} />
@@ -13007,7 +13185,7 @@ function App() {
             <div className="activity-list">
               {activities.slice(0, 24).map((activity) => (
                 <article className="activity-item" key={activity.id}>
-                  <span>{activity.type}</span>
+                  <span>{formatActivityType(activity.type)}</span>
                   <strong>{activity.text}</strong>
                   <small>{activity.createdAt}</small>
                 </article>
@@ -13037,13 +13215,11 @@ function App() {
         <Modal
           title={modalTitle(modal.type)}
           variant={
-            modal.type === 'campaign'
-              ? 'campaign-modal-card'
-              : modal.type === 'create'
-                ? 'campaign-create-modal'
-                : modal.type === 'outreachDetail'
-                  ? 'outreach-detail-card'
-                  : ''
+            modal.type === 'create'
+              ? 'campaign-create-modal'
+              : modal.type === 'outreachDetail'
+                ? 'outreach-detail-card'
+                : ''
           }
           onClose={() => setModal(null)}
         >
@@ -13065,49 +13241,9 @@ function App() {
                   placeholder="예: Brand D"
                 />
               </label>
-              <label>
-                제품/서비스
-                <input
-                  value={brandDraft.product}
-                  onChange={(event) => setBrandDraft({ ...brandDraft, product: event.target.value })}
-                  placeholder="예: 고단백 식사 대용 쉐이크"
-                />
-              </label>
-              <label>
-                타깃 페르소나
-                <input
-                  value={brandDraft.persona}
-                  onChange={(event) => setBrandDraft({ ...brandDraft, persona: event.target.value })}
-                  placeholder="예: 운동과 식단을 함께 관리하는 20-30대"
-                />
-              </label>
-              <label>
-                포함 키워드
-                <input
-                  value={brandDraft.keywords}
-                  onChange={(event) => setBrandDraft({ ...brandDraft, keywords: event.target.value })}
-                  placeholder="헬스, 다이어트, 루틴, 리뷰"
-                />
-              </label>
-              <div className="modal-two-col">
-                <label>
-                  최소 팔로워
-                  <input
-                    inputMode="numeric"
-                    value={brandDraft.minFollowers}
-                    onChange={(event) => setBrandDraft({ ...brandDraft, minFollowers: event.target.value })}
-                    placeholder="100000"
-                  />
-                </label>
-                <label>
-                  최대 단가
-                  <input
-                    inputMode="numeric"
-                    value={brandDraft.maxPrice}
-                    onChange={(event) => setBrandDraft({ ...brandDraft, maxPrice: event.target.value })}
-                    placeholder="5000000"
-                  />
-                </label>
+              <div className="compact-form-note">
+                <strong>제품, 타깃, 키워드, 예산 조건은 캠페인 생성에서 입력합니다.</strong>
+                <p>브랜드 워크스페이스는 계정/클라이언트 단위만 만들고, 실행 조건은 캠페인별로 관리합니다.</p>
               </div>
               <button className="primary-button" type="submit">
                 <Plus size={17} />
@@ -13120,7 +13256,7 @@ function App() {
             <form className="modal-form campaign-create-form" onSubmit={createCampaign}>
               <div className="campaign-form-section campaign-form-intro">
                 <div>
-                  <span className="mini-label">Step 1</span>
+                  <span className="mini-label">1단계</span>
                   <strong>기본 정보</strong>
                   <p>캠페인 이름과 목적을 먼저 정리합니다.</p>
                 </div>
@@ -13168,7 +13304,7 @@ function App() {
               </div>
               <div className="campaign-guide-panel campaign-condition-panel">
                 <div>
-                  <span className="mini-label">Step 2 · Campaign Targeting</span>
+                  <span className="mini-label">2단계 · 캠페인 조건</span>
                   <strong>캠페인별 발굴 조건</strong>
                   <p>이번 캠페인에서만 달라지는 타깃, 검색 키워드, 후보 규모와 단가 조건입니다. 비워두면 브랜드 공통 프로필의 기본값을 사용합니다.</p>
                 </div>
@@ -13276,7 +13412,7 @@ function App() {
                 )}
               </div>
               <div className="campaign-form-section-head campaign-budget-head">
-                <span className="mini-label">Step 3</span>
+                <span className="mini-label">3단계</span>
                 <strong>예산과 마감</strong>
                 <p>섭외 가능 범위와 최종 마감 기준을 먼저 정합니다.</p>
               </div>
@@ -13299,7 +13435,7 @@ function App() {
               </label>
               <div className="campaign-schedule-fields">
                 <div className="campaign-form-section-head">
-                  <span className="mini-label">Step 4 · Campaign Schedule</span>
+                  <span className="mini-label">4단계 · 캠페인 일정</span>
                   <strong>일정</strong>
                   <p>모집부터 업로드, 보고 완료까지의 기준일입니다.</p>
                 </div>
@@ -13337,7 +13473,7 @@ function App() {
                 </label>
               </div>
               <div className="campaign-form-section-head campaign-kpi-head">
-                <span className="mini-label">Step 5</span>
+                <span className="mini-label">5단계</span>
                 <strong>KPI 목표</strong>
                 <p>리포트 기준이 되는 조회수, 전환, 주문, 매출 목표입니다.</p>
               </div>
@@ -13401,7 +13537,7 @@ function App() {
                 </label>
               </div>
               <div className="campaign-form-section-head campaign-ops-head">
-                <span className="mini-label">Step 6</span>
+                <span className="mini-label">6단계</span>
                 <strong>운영 조건</strong>
                 <p>섭외 후 전달할 미션, 리워드, 검수 흐름입니다.</p>
               </div>
@@ -13923,7 +14059,7 @@ function App() {
             </div>
           )}
 
-          {modal.type === 'campaign' && activeCampaignForModal && (
+          {false && modal.type === 'campaign' && activeCampaignForModal && (
             <div className="modal-stack">
               <div className="campaign-detail">
                 <div className="campaign-badges">
@@ -13958,7 +14094,7 @@ function App() {
               {campaignEditDraft && (
                 <div className="campaign-edit-panel">
                   <div>
-                    <span className="mini-label">Edit Campaign</span>
+                    <span className="mini-label">캠페인 수정</span>
                     <strong>캠페인 입력값 수정</strong>
                     <p>저장하면 상세, 발굴 조건, 리포트 KPI 기준에 바로 반영됩니다.</p>
                   </div>
@@ -14122,7 +14258,7 @@ function App() {
               <div className="campaign-schedule-timeline">
                 <div className="campaign-schedule-head">
                   <div>
-                    <span className="mini-label">Campaign Schedule</span>
+                    <span className="mini-label">캠페인 일정</span>
                     <strong>모집부터 보고까지 일정</strong>
                   </div>
                   <span className="campaign-context-chip">마감 {activeCampaignForModal.deadline ?? '미정'}</span>
@@ -14143,7 +14279,7 @@ function App() {
               {selectedCampaignKpi?.metrics?.length > 0 && (
                 <div className="campaign-kpi-detail">
                   <div>
-                    <span className="mini-label">KPI Achievement</span>
+                    <span className="mini-label">KPI 달성률</span>
                     <strong>목표 대비 {selectedCampaignKpi.progress}%</strong>
                   </div>
                   <div className="campaign-kpi-grid">
@@ -14207,9 +14343,9 @@ function App() {
                 </article>
               </div>
               <div className="campaign-guide-detail">
-                <span className="mini-label">Influencer Strategy</span>
-                <strong>인플루언서 전략</strong>
-                <p>캠페인 조건, 후보 풀, KPI를 바탕으로 캐스팅 믹스와 메시지 방향을 생성합니다.</p>
+                <span className="mini-label">인플루언서 전략</span>
+                <strong>캠페인 전략</strong>
+                <p>캠페인 생성 때 입력한 브랜드/제품 raw를 기준으로 섭외 방향, 후보 우선순위, 메시지 전략을 생성합니다.</p>
                 <div className="campaign-guide-actions">
                   <button
                     className="primary-button compact-button"
@@ -14217,33 +14353,40 @@ function App() {
                     onClick={() => generateCampaignStrategyForDetail(activeCampaignForModal)}
                   >
                     <Target size={16} />
-                    전략 생성
+                    {activeCampaignForModal.influencerStrategy ? '전략 재생성' : '전략 생성'}
                   </button>
                   {activeCampaignForModal.influencerStrategy && (
-                    <button
-                      className="secondary-button compact-button"
-                      type="button"
-                      onClick={() => exportFile(
-                        `creatorops-${safeFilePart(activeBrand.name || 'brand')}-${safeFilePart(activeCampaignForModal.name || 'campaign')}-influencer-strategy.md`,
-                        'text/markdown;charset=utf-8',
-                        activeCampaignForModal.influencerStrategy,
-                      )}
-                    >
-                      <Download size={16} />
-                      전략 다운로드
-                    </button>
+                    <>
+                      <button
+                        className="secondary-button compact-button"
+                        type="button"
+                        onClick={() => downloadCampaignStrategy(activeCampaignForModal, 'pptx')}
+                      >
+                        <Download size={16} />
+                        전략 PPT
+                      </button>
+                      <button
+                        className="secondary-button compact-button"
+                        type="button"
+                        onClick={() => downloadCampaignStrategy(activeCampaignForModal, 'xlsx')}
+                      >
+                        <Download size={16} />
+                        전략 엑셀
+                      </button>
+                    </>
                   )}
                 </div>
                 {activeCampaignForModal.influencerStrategy && (
                   <div className="content-guide-preview">
                     <span>전략 미리보기</span>
+                    <small className="raw-lineage-note">원천 raw: RAW-INT-CMP-BRIEF-001 · RAW-INT-BRD-001 · RAW-INT-AI-001</small>
                     <pre>{activeCampaignForModal.influencerStrategy.slice(0, 900)}</pre>
                   </div>
                 )}
               </div>
               {(activeCampaignForModal.brandGuideAttachments ?? []).length > 0 && (
                 <div className="campaign-guide-detail">
-                  <span className="mini-label">Brand Guide Attachments</span>
+                  <span className="mini-label">첨부 가이드</span>
                   <strong>첨부된 인플루언서 브랜드 가이드</strong>
                   <div className="guide-attachment-list">
                     {activeCampaignForModal.brandGuideAttachments.map((item) => (
@@ -14256,7 +14399,7 @@ function App() {
                 </div>
               )}
               <div className="campaign-guide-detail">
-                <span className="mini-label">Generated Content Guide</span>
+                <span className="mini-label">콘텐츠 가이드</span>
                 <strong>인플루언서 전달용 콘텐츠 가이드</strong>
                 <p>
                   {activeCampaignForModal.guideSeedType ?? '무가시딩'} · {activeCampaignForModal.guideChannel ?? 'Instagram Reels'} · 원메시지/후킹포인트 기반
@@ -14268,7 +14411,7 @@ function App() {
                     onClick={() => generateCampaignGuideForDetail(activeCampaignForModal)}
                   >
                     <FileText size={16} />
-                    가이드 생성
+                    {activeCampaignForModal.generatedContentGuide ? '가이드 재생성' : '가이드 생성'}
                   </button>
                   <button
                     className="primary-button compact-button"
@@ -14313,7 +14456,7 @@ function App() {
                 <section className="campaign-ops-detail">
                   <div className="campaign-ops-detail-head">
                     <div>
-                      <span className="mini-label">Recruited Pool</span>
+                      <span className="mini-label">섭외 완료 풀</span>
                       <strong>이 캠페인의 섭외 완료 풀</strong>
                     </div>
                     <span className="campaign-context-chip">{campaignModalPool.length}명</span>
@@ -14341,7 +14484,7 @@ function App() {
                 <section className="campaign-ops-detail">
                   <div className="campaign-ops-detail-head">
                     <div>
-                      <span className="mini-label">Logistics</span>
+                      <span className="mini-label">배송/정산</span>
                       <strong>이 캠페인의 배송/수동 정산</strong>
                     </div>
                     <div className="campaign-ops-actions">
@@ -14479,46 +14622,46 @@ function App() {
             <div className="modal-stack outreach-detail-modal">
               <div className="outreach-detail-hero">
                 <div>
-                  <span className="status-chip">DM work mode</span>
+                  <span className="status-chip">DM 작업 모드</span>
                   <span className={`channel-chip ${activeDmBulkPlan?.tone ?? 'manual-channel'}`}>{activeDmBulkPlan?.shortLabel ?? 'DM'}</span>
                 </div>
-                <strong>{activeDmBulkCreator?.name ?? 'Unknown creator'}</strong>
-                <p>{activeDmBulkCampaign?.name ?? 'No campaign'} / {activeDmBulkIndex + 1} of {activeDmBulkItems.length}</p>
+                <strong>{activeDmBulkCreator?.name ?? '크리에이터 미확인'}</strong>
+                <p>{activeDmBulkCampaign?.name ?? '캠페인 미지정'} / {activeDmBulkIndex + 1} / {activeDmBulkItems.length}</p>
               </div>
               <div className="outreach-detail-grid">
                 <article>
-                  <span>Step 1</span>
-                  <strong>Copy message</strong>
-                  <p>Copy the prepared proposal, then paste it into the platform DM window manually.</p>
+                  <span>1단계</span>
+                  <strong>메시지 복사</strong>
+                  <p>준비된 제안 메시지를 복사한 뒤 플랫폼 DM 창에 붙여넣습니다.</p>
                 </article>
                 <article>
-                  <span>Step 2</span>
-                  <strong>Open profile</strong>
-                  <p>Use the profile link to send the DM from your logged-in Instagram or TikTok account.</p>
+                  <span>2단계</span>
+                  <strong>프로필 열기</strong>
+                  <p>로그인된 Instagram 또는 TikTok 계정에서 프로필을 열고 DM을 보냅니다.</p>
                 </article>
               </div>
               <div className="outreach-message-preview">
-                <span>Message</span>
+                <span>제안 메시지</span>
                 <pre>{activeDmBulkItem.message}</pre>
               </div>
               <div className="outreach-detail-actions">
                 <button className="secondary-button compact-button" type="button" onClick={() => moveDmBulk(-1)} disabled={activeDmBulkIndex === 0}>
-                  Previous
+                  이전
                 </button>
                 <button className="secondary-button compact-button" type="button" onClick={() => copyOutreachMessage(activeDmBulkItem.message)}>
-                  Copy message
+                  메시지 복사
                 </button>
                 {activeDmBulkPlan?.url && (
                   <a className="secondary-button compact-button" href={activeDmBulkPlan.url} target="_blank" rel="noreferrer">
                     <ArrowUpRight size={14} />
-                    Open profile
+                    프로필 열기
                   </a>
                 )}
                 <button className="primary-button compact-button" type="button" onClick={() => markDmBulkSentAndNext(activeDmBulkItem.id)}>
-                  Mark sent and next
+                  발송 완료 후 다음
                 </button>
                 <button className="secondary-button compact-button" type="button" onClick={() => moveDmBulk(1)} disabled={activeDmBulkIndex >= activeDmBulkItems.length - 1}>
-                  Skip / next
+                  건너뛰기
                 </button>
               </div>
             </div>
@@ -14561,266 +14704,6 @@ function App() {
             </div>
           )}
 
-          {modal.type === 'data' && (
-            <div className="modal-stack">
-              <div className="quote-box">
-                <Database size={22} />
-                <div>
-                  <strong>브라우저 로컬 DB 사용 중</strong>
-                  <span>현재 데이터는 이 브라우저에만 저장됩니다. 팀 공유용 운영 DB 연결이 필요합니다.</span>
-                </div>
-              </div>
-              <div className="quote-box">
-                <UsersRound size={22} />
-                <div>
-                  <strong>팀 워크스페이스 전환 예정</strong>
-                  <span>운영 버전은 팀원이 로그인해 같은 브랜드/캠페인 데이터를 함께 보고 권한별로 수정합니다.</span>
-                </div>
-              </div>
-              <div className="modal-grid">
-                <Stat label="브랜드" value={`${brands.length}개`} />
-                <Stat label="현재 캠페인" value={`${brandCampaigns.length}개`} />
-                <Stat label="현재 제안" value={`${activeOutreach.length}건`} />
-                <Stat label="현재 섭외 완료" value={`${activeRecruitedPool.length}명`} />
-                <Stat label="공유 상태" value="로컬 전용" />
-                <Stat label="데이터 신뢰도" value={`${dataCoverage.confidence}%`} />
-                <Stat label="공식 API 대상" value={`${dataCoverage.officialReady}명`} />
-              </div>
-              <div className="team-permission-panel">
-                <div className="team-permission-head">
-                  <div>
-                    <span className="mini-label">Team Permission</span>
-                    <strong>{team.name}</strong>
-                    <p>같은 팀 계정은 같은 크리에이터 풀과 캠페인 데이터를 공유하고, 역할/브랜드 단위로 접근권한을 나눕니다.</p>
-                  </div>
-                  <label>
-                    현재 계정
-                    <select value={currentAccount.id} onChange={(event) => switchAccount(event.target.value)}>
-                      {accounts.map((account) => (
-                        <option value={account.id} key={account.id}>
-                          {account.name} · {account.role}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <div className="team-account-list">
-                  {accounts.map((account) => {
-                    const role = teamRoleCatalog[account.role] ?? teamRoleCatalog.Manager
-                    return (
-                      <article className={account.id === currentAccount.id ? 'active-account-card' : ''} key={account.id}>
-                        <div>
-                          <strong>{account.name}</strong>
-                          <span>{account.email}</span>
-                          <small>{account.status} · 최근 활동 {account.lastActive}</small>
-                        </div>
-                        <select
-                          value={account.role}
-                          onChange={(event) => updateAccountRole(account.id, event.target.value)}
-                          disabled={!canManagePermissions}
-                        >
-                          {Object.keys(teamRoleCatalog).map((roleKey) => (
-                            <option value={roleKey} key={roleKey}>
-                              {roleKey}
-                            </option>
-                          ))}
-                        </select>
-                        <p>{role.description}</p>
-                        <div className="account-brand-access">
-                          {brands.map((brand) => (
-                            <button
-                              className={account.brandIds?.includes(brand.id) ? 'selected' : ''}
-                              type="button"
-                              key={brand.id}
-                              onClick={() => toggleAccountBrandAccess(account.id, brand.id)}
-                              disabled={!canManagePermissions || account.role === 'Owner'}
-                            >
-                              {brand.name}
-                            </button>
-                          ))}
-                        </div>
-                      </article>
-                    )
-                  })}
-                </div>
-                <div className="role-permission-grid">
-                  {Object.values(teamRoleCatalog).map((role) => (
-                    <article key={role.label}>
-                      <strong>{role.label}</strong>
-                      <p>{role.description}</p>
-                      <span>{role.permissions.join(' · ')}</span>
-                    </article>
-                  ))}
-                </div>
-              </div>
-              <div className="benchmark-panel">
-                <div>
-                  <span className="mini-label">Competitive Benchmark</span>
-                  <strong>경쟁사 기준 보완 항목</strong>
-                </div>
-                <div className="benchmark-grid">
-                  {competitorBenchmarks.map((item) => (
-                    <article key={item.name}>
-                      <strong>{item.name}</strong>
-                      <p>{item.strength}</p>
-                      <small>{item.gapToClose}</small>
-                    </article>
-                  ))}
-                </div>
-              </div>
-              <div className="accuracy-roadmap-panel">
-                <div>
-                  <span className="mini-label">Data Accuracy</span>
-                  <strong>데이터 정확도 개선 원칙</strong>
-                </div>
-                <div className="accuracy-roadmap-grid">
-                  {dataAccuracyRoadmap.map((item) => (
-                    <article key={item.title}>
-                      <strong>{item.title}</strong>
-                      <p>{item.detail}</p>
-                    </article>
-                  ))}
-                </div>
-              </div>
-              <form className="public-profile-form" onSubmit={savePublicProfileSnapshot}>
-                <div>
-                  <strong>공개 프로필 팔로워 수집</strong>
-                  <p>Instagram, TikTok, YouTube 등 공개 화면에 보이는 팔로워 수치를 출처 URL과 함께 저장합니다.</p>
-                </div>
-                <label>
-                  <span>프로필 URL</span>
-                  <input
-                    value={publicProfileDraft.profileUrl}
-                    onChange={(event) => setPublicProfileDraft({ ...publicProfileDraft, profileUrl: event.target.value })}
-                    placeholder="https://www.instagram.com/creator"
-                  />
-                </label>
-                <div className="modal-two-col">
-                  <label>
-                    <span>플랫폼</span>
-                    <select
-                      value={publicProfileDraft.platform}
-                      onChange={(event) => setPublicProfileDraft({ ...publicProfileDraft, platform: event.target.value })}
-                    >
-                      {platformOptions.filter((option) => option !== '전체').map((option) => (
-                        <option key={option}>{option}</option>
-                      ))}
-                    </select>
-                  </label>
-                  <label>
-                    <span>카테고리</span>
-                    <select
-                      value={publicProfileDraft.category}
-                      onChange={(event) => setPublicProfileDraft({ ...publicProfileDraft, category: event.target.value })}
-                    >
-                      {categoryOptions.filter((option) => option !== '전체').map((option) => (
-                        <option key={option}>{option}</option>
-                      ))}
-                    </select>
-                  </label>
-                </div>
-                <div className="modal-two-col">
-                  <label>
-                    <span>크리에이터명</span>
-                    <input
-                      value={publicProfileDraft.name}
-                      onChange={(event) => setPublicProfileDraft({ ...publicProfileDraft, name: event.target.value })}
-                      placeholder="예: 민서로그"
-                    />
-                  </label>
-                  <label>
-                    <span>핸들</span>
-                    <input
-                      value={publicProfileDraft.handle}
-                      onChange={(event) => setPublicProfileDraft({ ...publicProfileDraft, handle: event.target.value })}
-                      placeholder="@creator"
-                    />
-                  </label>
-                </div>
-                <div className="modal-two-col">
-                  <label>
-                    <span>팔로워 수</span>
-                    <input
-                      value={publicProfileDraft.followers}
-                      onChange={(event) => setPublicProfileDraft({ ...publicProfileDraft, followers: event.target.value })}
-                      placeholder="12.4만 또는 124000"
-                    />
-                  </label>
-                  <label>
-                    <span>평균 조회</span>
-                    <input
-                      value={publicProfileDraft.averageViews}
-                      onChange={(event) => setPublicProfileDraft({ ...publicProfileDraft, averageViews: event.target.value })}
-                      placeholder="선택 입력"
-                    />
-                  </label>
-                </div>
-                <label>
-                  <span>확인 메모</span>
-                  <input
-                    value={publicProfileDraft.note}
-                    onChange={(event) => setPublicProfileDraft({ ...publicProfileDraft, note: event.target.value })}
-                    placeholder="예: 공개 프로필 상단 팔로워 수 확인"
-                  />
-                </label>
-                <button className="primary-button" type="submit">
-                  <Database size={17} />
-                  공개 수치 저장
-                </button>
-              </form>
-              <form className="youtube-sync-form" onSubmit={syncYouTubeChannel}>
-                <div>
-                  <strong>YouTube 공식 지표 가져오기</strong>
-                  <p>API 키와 채널 ID 또는 @핸들을 넣으면 구독자, 전체 조회수, 영상 수 기반 평균 조회를 후보 DB에 저장합니다.</p>
-                </div>
-                <label>
-                  <span>API Key</span>
-                  <input
-                    type="password"
-                    value={youtubeDraft.apiKey}
-                    onChange={(event) => setYoutubeDraft({ ...youtubeDraft, apiKey: event.target.value })}
-                    placeholder="Google Cloud YouTube Data API 키"
-                  />
-                </label>
-                <label>
-                  <span>채널 ID 또는 @핸들</span>
-                  <input
-                    value={youtubeDraft.lookup}
-                    onChange={(event) => setYoutubeDraft({ ...youtubeDraft, lookup: event.target.value })}
-                    placeholder="@creator 또는 UC..."
-                  />
-                </label>
-                <button className="primary-button" type="submit" disabled={youtubeSyncing}>
-                  <RefreshCw size={17} />
-                  {youtubeSyncing ? '조회 중' : '공식 지표 조회'}
-                </button>
-              </form>
-              <div className="modal-source-list">
-                {dataConnectorBlueprints.map((connector) => (
-                  <article key={connector.name}>
-                    <div>
-                      <strong>{connector.name}</strong>
-                      <span>{connector.status}</span>
-                    </div>
-                    <p>{connector.scope}</p>
-                    <small>신뢰도 {connector.confidence}% · {connector.cost}</small>
-                  </article>
-                ))}
-              </div>
-              <button className="secondary-button" type="button" onClick={runDataSourceAudit}>
-                <ShieldCheck size={17} />
-                데이터 소스 점검
-              </button>
-              <button className="primary-button" type="button" onClick={exportWorkspace}>
-                <Download size={17} />
-                워크스페이스 백업
-              </button>
-              <button className="secondary-button" type="button" onClick={resetWorkspace}>
-                <RotateCcw size={17} />
-                데모 데이터로 초기화
-              </button>
-            </div>
-          )}
         </Modal>
       )}
     </div>
@@ -14840,7 +14723,6 @@ function modalTitle(type) {
     campaignSummary: '캠페인 요약',
     messages: '메시지 검토함',
     outreachDetail: '제안 메시지 상세',
-    data: '데이터 관리',
   }[type]
 }
 
@@ -14863,7 +14745,7 @@ function PracticeTour({ steps, currentIndex, currentStep, onClose, onDismiss, on
       <section className="practice-tour-card">
         <header className="practice-tour-header">
           <div>
-            <span className="mini-label">Practice Mode</span>
+            <span className="mini-label">실습 모드</span>
             <h2>처음 사용자를 위한 실습 네비게이션</h2>
             <p>실제 메뉴를 하나씩 열어보면서 캠페인 운영 흐름을 빠르게 익힙니다.</p>
           </div>
@@ -14890,7 +14772,7 @@ function PracticeTour({ steps, currentIndex, currentStep, onClose, onDismiss, on
 
           <article className="practice-step-detail">
             <span className="mini-label">
-              Step {currentIndex + 1} / {totalSteps}
+              {currentIndex + 1}단계 / {totalSteps}
             </span>
             <h3>{currentStep.title}</h3>
             <p>{currentStep.detail}</p>
@@ -14950,7 +14832,7 @@ function MetricCard({ icon, label, value, delta, detail, lineage = [] }) {
         <em>{delta}</em>
         <small>{detail}</small>
       </div>
-      {lineage.length ? <small className="data-room-source-tag">Data room · {lineage.slice(0, 2).join(' · ')}</small> : null}
+      {lineage.length ? <small className="data-room-source-tag">데이터룸 · {lineage.slice(0, 2).join(' · ')}</small> : null}
     </article>
   )
 }
@@ -15397,7 +15279,7 @@ function ClientApprovalBoard({
     <section className="panel client-view-panel client-view-panel-embedded">
       <div className="panel-heading">
         <div>
-          <span className="mini-label">Campaign Progress</span>
+          <span className="mini-label">진행 현황</span>
           <h2>캠페인 진행현황</h2>
         </div>
         {onReport && (

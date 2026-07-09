@@ -37,6 +37,32 @@ function StatusPill({ status }) {
   return <span className={`data-status ${statusClass(status)}`}>{status}</span>
 }
 
+const ownerDisplayLabels = {
+  'Backend/Data': '백엔드/데이터',
+  'Frontend/Data': '프론트/데이터',
+  'Backend/Login': '백엔드/로그인',
+  Backend: '백엔드',
+  Engineering: '개발팀',
+  'API/Data': 'API/데이터',
+  'AI/Data': 'AI/데이터',
+  'Data Engineer': '데이터 엔지니어',
+  'Data Operator': '데이터 운영',
+  'Data QA': '데이터 검수',
+  'Report Operator': '리포트 운영',
+  'Creative Planner': '콘텐츠 기획',
+  Strategist: '전략 기획',
+  'Brand Analyst': '브랜드 분석',
+  'Brand Manager': '브랜드 매니저',
+  'Creator Manager': '크리에이터 운영',
+  'Ops Finance': '운영/재무',
+  Admin: '운영 관리자',
+  PM: 'PM',
+}
+
+function ownerLabel(value) {
+  return ownerDisplayLabels[value] ?? value
+}
+
 function MiniStat({ label, value }) {
   return (
     <article className="data-room-summary-card">
@@ -82,13 +108,13 @@ const apiRawTypes = [
   {
     id: 'RAW-EXT-MON-INF-001',
     name: '브랜드 모니터 인플루언서 API raw',
-    source: '외부 모니터링 API',
+    source: '모니터링 API',
     use: '브랜드/경쟁사 기준 관련 크리에이터, 언급량, 예상 노출을 행 단위로 적재',
   },
   {
     id: 'RAW-EXT-MON-VIDEO-001',
     name: 'Video Monitor Data API raw',
-    source: '외부 모니터링 API',
+    source: '모니터링 API',
     use: '영상별 조회수, 좋아요, 댓글, 참여율, 일자별 변화 raw를 적재',
   },
   {
@@ -246,7 +272,7 @@ export default function AdminDataRoom({
 
       <section className="panel data-room-import-panel">
         <div>
-          <span className="mini-label">Raw Report Ingestion</span>
+          <span className="mini-label">리포트 원천 적재</span>
           <h2>리포트 raw 적재</h2>
           <div className="data-room-source-counters" aria-label="raw source counters">
             <button type="button" onClick={showExternalReportRaw}>리포트 raw {externalReportRawCount}개</button>
@@ -266,7 +292,7 @@ export default function AdminDataRoom({
       <section className="panel data-room-api-status-panel">
         <div className="api-status-compact-row">
           <div>
-            <span className="mini-label">API Raw Logging Status</span>
+            <span className="mini-label">API 원천 적재</span>
             <h2>API raw 적재 상태</h2>
           </div>
           <div className="api-status-compact-actions">
@@ -289,11 +315,12 @@ export default function AdminDataRoom({
           <div className={`sync-status-card ${apiStatus?.ok ? 'success' : 'warning'}`}>
             <Database size={22} />
             <div>
-              <strong>{apiStatus?.ok ? 'Data room API logging ready' : 'Data room API logging needs setup'}</strong>
+              <strong>{apiStatus?.ok ? '데이터룸 API 적재 준비 완료' : '데이터룸 API 적재 설정 필요'}</strong>
               <small>
-                workspace {apiStatus.payload.dataRoomLogging.workspaceId} · SUPABASE_URL{' '}
-                {apiStatus.payload.dataRoomLogging.hasSupabaseUrl ? 'OK' : 'missing'} · SERVICE_ROLE{' '}
-                {apiStatus.payload.dataRoomLogging.hasServiceRoleKey ? 'OK' : 'missing'}
+                워크스페이스 {apiStatus.payload.dataRoomLogging.workspaceId} · API 이벤트 저장{' '}
+                {apiStatus.payload.dataRoomLogging.hasSupabaseUrl && apiStatus.payload.dataRoomLogging.hasServiceRoleKey
+                  ? '가능'
+                  : '설정 필요'}
               </small>
             </div>
           </div>
@@ -309,7 +336,7 @@ export default function AdminDataRoom({
         )}
         {apiDiagnosticsOpen && apiStatus?.payload?.dataRoomLogging?.missingEnv?.length > 0 && (
           <div className="api-status-action-box">
-            <strong>Missing backend environment</strong>
+            <strong>누락된 서버 환경변수</strong>
             <div className="api-status-check-grid">
               {apiStatus.payload.dataRoomLogging.missingEnv.map((key) => (
                 <span className="api-status-check error" key={key}>{key}</span>
@@ -319,7 +346,7 @@ export default function AdminDataRoom({
         )}
         {apiDiagnosticsOpen && apiStatus?.payload?.dataRoomLogging?.nextActions?.length > 0 && (
           <div className="api-status-action-box">
-            <strong>Next actions</strong>
+            <strong>다음 조치</strong>
             <ol>
               {apiStatus.payload.dataRoomLogging.nextActions.map((action) => (
                 <li key={action}>{action}</li>
@@ -332,7 +359,7 @@ export default function AdminDataRoom({
       <section className={`panel data-room-api-log-panel ${apiEvents?.length ? '' : 'compact'}`}>
         <div className="panel-heading">
           <div>
-            <span className="mini-label">API Raw Event Log</span>
+            <span className="mini-label">API 수집 이벤트</span>
             <h2>최근 API 수집 로그</h2>
           </div>
           <button className="secondary-button compact-button" type="button" onClick={onRefreshApiEvents}>
@@ -342,7 +369,7 @@ export default function AdminDataRoom({
         <div className="api-event-list">
           {apiEvents?.length ? (
             apiEvents.map((event) => (
-              <button type="button" className="api-event-row" key={event.id} onClick={() => setSelectedItem({ type: 'raw', id: event.raw_source_id })}>
+              <button type="button" className="api-event-row" key={event.id} onClick={() => selectRaw(event.raw_source_id, { scroll: true })}>
                 <span className={`data-status ${event.status === 'success' ? 'ok' : event.status === 'partial' ? 'warning' : 'error'}`}>{event.status}</span>
                 <strong>{event.provider}</strong>
                 <span>{event.endpoint}</span>
@@ -365,7 +392,7 @@ export default function AdminDataRoom({
           <section className="panel data-room-panel" ref={rawRegistryRef}>
             <div className="panel-heading">
               <div>
-                <span className="mini-label">Raw Data Registry</span>
+                <span className="mini-label">Raw 데이터 저장소</span>
                 <h2>Raw 데이터 관리</h2>
               </div>
               <div className="panel-heading-actions">
@@ -402,7 +429,6 @@ export default function AdminDataRoom({
               <button type="button" onClick={showExternalReportRaw}>리포트 raw</button>
               <button type="button" onClick={showExternalApiRaw}>API raw</button>
               <button type="button" onClick={showAllRaw}>전체 raw</button>
-              <small>긴 설명은 상단이 아니라 행 클릭 후 상세에서 확인합니다.</small>
             </div>
 
             <div className="data-room-table-wrap">
@@ -446,7 +472,7 @@ export default function AdminDataRoom({
                       <td>{item.metricIds.length ? item.metricIds.join(', ') : '-'}</td>
                       <td>
                         <strong>{item.ownerDept}</strong>
-                        <span>{item.opsOwner} / {item.techOwner}</span>
+                        <span>{ownerLabel(item.opsOwner)} / {ownerLabel(item.techOwner)}</span>
                       </td>
                     </tr>
                   ))}
@@ -466,7 +492,7 @@ export default function AdminDataRoom({
           <section className="panel data-room-panel" ref={metricRegistryRef}>
             <div className="panel-heading">
               <div>
-                <span className="mini-label">Calculated Metrics Registry</span>
+                <span className="mini-label">계산지표 저장소</span>
                 <h2>계산지표 관리</h2>
               </div>
               <div className="panel-heading-actions">
@@ -536,7 +562,7 @@ export default function AdminDataRoom({
           <section className="panel data-room-panel">
             <div className="panel-heading">
               <div>
-                <span className="mini-label">Admin Workflow Coverage</span>
+                <span className="mini-label">기능-데이터 연결</span>
                 <h2>기능-데이터 커버리지</h2>
                 <p>프론트 화면은 이 표에 연결된 raw 데이터와 계산지표를 기준으로만 운영합니다.</p>
               </div>
@@ -566,7 +592,7 @@ export default function AdminDataRoom({
           <section className="panel data-room-panel">
             <div className="panel-heading">
               <div>
-                <span className="mini-label">Exception Data Bundles</span>
+                <span className="mini-label">번외 데이터</span>
                 <h2>번외 데이터 번들</h2>
                 <p>공식 API나 현재 저장소로 완전히 구현되지 않은 기능은 여기에서 보류/대체 수집 기준을 추적합니다.</p>
               </div>
@@ -595,7 +621,7 @@ export default function AdminDataRoom({
         <aside className="panel data-room-detail-panel data-room-detail-drawer" role="complementary" aria-label="데이터룸 상세">
           <div className="panel-heading">
             <div>
-              <span className="mini-label">Detail Inspector</span>
+              <span className="mini-label">상세 보기</span>
               <h2>{selectedItem.type === 'metric' ? '지표 상세' : 'Raw 데이터 상세'}</h2>
             </div>
             <div className="panel-heading-actions">
@@ -621,7 +647,7 @@ export default function AdminDataRoom({
                 <div><dt>대시보드 사용</dt><dd>{activeDetail.dashboardArea}</dd></div>
                 <div><dt>품질 이슈</dt><dd>{activeDetail.qualityIssue}</dd></div>
                 <div><dt>오류 로그</dt><dd>{activeDetail.logLocation}</dd></div>
-                <div><dt>담당</dt><dd>{activeDetail.ownerDept} · {activeDetail.opsOwner} · {activeDetail.techOwner}</dd></div>
+                <div><dt>담당</dt><dd>{activeDetail.ownerDept} · {ownerLabel(activeDetail.opsOwner)} · {ownerLabel(activeDetail.techOwner)}</dd></div>
                 <div><dt>활성 상태</dt><dd>{activeDetail.active ? '활성' : '비활성/검증 필요'}</dd></div>
               </dl>
               <LinkedChipList label="연결 계산지표" items={activeDetail.metricIds} emptyText="연결 지표 없음" onClick={(id) => selectMetric(id, { scroll: true })} />
