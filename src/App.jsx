@@ -18198,6 +18198,13 @@ function ClientApprovalBoard({
   onReport,
 }) {
   if (!campaign) return null
+  const progressStats = [
+    { label: '섭외 완료', value: `${poolItems.length}명`, note: '컨펌 후보' },
+    { label: '업로드 콘텐츠', value: `${trackedPosts.length}건`, note: '등록 링크' },
+    { label: '누적 조회', value: compactNumber(trackedTotals.views), note: '콘텐츠 합산' },
+    { label: '평균 참여율', value: percent(averageEngagement), note: '조회/반응 raw 기준' },
+    { label: 'KPI 달성률', value: `${kpi?.progress ?? 0}%`, note: '목표 대비' },
+  ]
 
   return (
     <section className="panel client-view-panel client-view-panel-embedded">
@@ -18214,33 +18221,50 @@ function ClientApprovalBoard({
         )}
       </div>
       <div className="client-view-grid">
-        <Stat label="선택 캠페인" value={campaign.name ?? '캠페인 미선택'} />
-        <Stat label="섭외 완료" value={`${poolItems.length}명`} />
-        <Stat label="업로드 콘텐츠" value={`${trackedPosts.length}건`} />
-        <Stat label="누적 조회" value={compactNumber(trackedTotals.views)} />
-        <Stat label="평균 참여율" value={percent(averageEngagement)} />
-        <Stat label="KPI 달성률" value={`${kpi?.progress ?? 0}%`} />
+        <article className="client-campaign-summary">
+          <span>선택 캠페인</span>
+          <strong>{campaign.name ?? '캠페인 미선택'}</strong>
+          <small>
+            {campaign.status ?? '상태 미입력'} · 마감 {campaign.deadline ?? '미정'} · 목표 {getCampaignRecommendationTarget(campaign)}명
+          </small>
+        </article>
+        {progressStats.map((stat) => (
+          <article className="client-progress-stat" key={stat.label}>
+            <span>{stat.label}</span>
+            <strong>{stat.value}</strong>
+            <small>{stat.note}</small>
+          </article>
+        ))}
       </div>
       <div className="client-approval-list">
+        {poolItems.length > 0 && (
+          <div className="client-approval-list-heading">
+            <strong>섭외 완료 후보</strong>
+            <span>광고주가 컨펌할 핵심 지표와 리스크만 모아 봅니다.</span>
+          </div>
+        )}
         {poolItems.map((poolItem) => {
           const creator = creators.find((item) => item.id === poolItem.creatorId)
           const quality = getCreatorDataQuality(creator)
           return (
-            <article key={poolItem.id}>
-              <div>
+            <article className="client-approval-card" key={poolItem.id}>
+              <div className="client-creator-cell">
                 <strong>{creator?.name ?? '크리에이터'}</strong>
-                <span>{creator?.handle ?? '-'} · {creator?.platform ?? '-'} · {poolItem.status}</span>
+                <span>{creator?.handle ?? '-'} · {creator?.platform ?? '-'}</span>
+                <em>{poolItem.status}</em>
               </div>
-              <div>
-                <span>팔로워 {creator ? compactNumber(creator.followers) : '-'}</span>
-                <span>평균 조회 {creator ? compactNumber(creator.averageViews) : '-'}</span>
-                <span>참여율 {creator ? percent(creator.engagement) : '-'}</span>
-                <span>데이터 {quality.score}</span>
+              <div className="client-metric-list">
+                <span><b>팔로워</b>{creator ? compactNumber(creator.followers) : '-'}</span>
+                <span><b>평균 조회</b>{creator ? compactNumber(creator.averageViews) : '-'}</span>
+                <span><b>참여율</b>{creator ? percent(creator.engagement) : '-'}</span>
+                <span><b>데이터</b>{quality.score}</span>
               </div>
               <div className="client-approval-proof">
-                <span>예상 비용 {creator ? won(creator.price) : '-'}</span>
-                <span>브랜드 핏 {creator?.fit ?? '-'}점</span>
-                <span>가짜 팔로워 위험 {creator?.fakeRisk ?? '-'}%</span>
+                <div>
+                  <span>예상 비용 {creator ? won(creator.price) : '-'}</span>
+                  <span>브랜드 핏 {creator?.fit ?? '-'}점</span>
+                  <span>가짜 팔로워 위험 {creator?.fakeRisk ?? '-'}%</span>
+                </div>
                 <p>{poolItem.note || creator?.sourceNote || '브랜드 적합도, 콘텐츠 톤, 최근 성과 기준으로 컨펌 검토가 필요합니다.'}</p>
               </div>
             </article>
