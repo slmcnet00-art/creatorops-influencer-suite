@@ -18034,12 +18034,6 @@ function OutreachItem({
         <button className="secondary-button compact-button" type="button" onClick={onCopy}>
           복사
         </button>
-        {contactPlan.url && (
-          <a className="secondary-button compact-button" href={contactPlan.url} target="_blank" rel="noreferrer">
-            <ArrowUpRight size={14} />
-            연락 채널 열기
-          </a>
-        )}
         {item.status !== '응답' && (
           <button className="secondary-button compact-button" type="button" onClick={onMarkResponse}>
             응답 처리
