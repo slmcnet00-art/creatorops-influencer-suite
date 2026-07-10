@@ -18002,6 +18002,19 @@ function OutreachItem({
   const sourceTone = item.source === '자동' ? 'auto-source' : item.source === '대량 섭외' ? 'bulk-source' : 'manual-source'
   const contactPlan = buildContactPlan(creator, item.channel, item.message, campaign?.name)
   const contactEmail = getCreatorContactEmail(creator)
+  const isEmailChannel = contactPlan.id === 'email'
+  const canEmailSend = isEmailChannel && Boolean(contactEmail)
+  const sourceLabel = item.source === '자동' ? 'AI 추천' : item.source ?? '수동'
+  const contactStatusLabel = canEmailSend
+    ? 'Gmail/Outlook 발송 대상'
+    : isEmailChannel
+      ? '이메일 수집 후 발송 가능'
+      : `${contactPlan.shortLabel} 작업 대상`
+  const deliveryReadiness = canEmailSend
+    ? '이메일 자동 발송 가능'
+    : isEmailChannel
+      ? '이메일 수집 필요 · 자동 발송 불가'
+      : `${contactPlan.shortLabel} 수동 작업`
   const reasonParts = String(item.reason || '')
     .split('/')
     .map((part) => part.trim())
@@ -18019,7 +18032,7 @@ function OutreachItem({
       )}
       <div>
         <span className={`status-chip ${item.status === '응답' || item.status === '발송 완료' ? 'success-chip' : ''}`}>{item.status}</span>
-        <span className={`source-chip ${sourceTone}`}>{item.source ?? '수동'}</span>
+        <span className={`source-chip ${sourceTone}`}>{sourceLabel}</span>
         <span className={`channel-chip ${contactPlan.tone}`}>{contactPlan.shortLabel}</span>
         <strong>{creator?.name ?? '알 수 없는 후보'}</strong>
         <p>{campaign?.name ?? '캠페인 없음'} · {item.createdAt}</p>
@@ -18027,12 +18040,12 @@ function OutreachItem({
           {contactEmail ? (
             <a href={`mailto:${contactEmail}`}>이메일 {contactEmail}</a>
           ) : (
-            <span className="contact-missing">이메일 없음</span>
+            <span className="contact-missing">{isEmailChannel ? '이메일 수집 필요' : '이메일 없음'}</span>
           )}
-          <span>{contactEmail ? 'Gmail/Outlook 발송 대상' : `${contactPlan.shortLabel} 작업 대상`}</span>
+          <span>{contactStatusLabel}</span>
         </div>
         <div className="message-brief-line">
-          <span>{contactPlan.deliveryMode}</span>
+          <span>{deliveryReadiness}</span>
           <span>{metricLine}</span>
         </div>
         {reasonParts.length > 0 && (
