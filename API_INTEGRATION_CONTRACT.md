@@ -46,6 +46,86 @@ Response:
 { "ok": true, "service": "creatorops-api", "version": "local" }
 ```
 
+### POST `/ai/recommendations/enrich`
+
+AI 추천은 프론트에서 먼저 데이터룸 raw/metric 기반으로 점수화한 뒤, 이 엔드포인트로 추천 사유와 제안 메시지만 보강합니다. 점수, 팔로워, 조회수, 참여율 같은 수치는 OpenAI가 새로 만들지 않고 요청 payload의 후보 데이터만 사용합니다.
+
+Required secret:
+
+```env
+OPENAI_API_KEY=
+OPENAI_MODEL=gpt-4.1-mini
+```
+
+Request:
+
+```json
+{
+  "brand": {
+    "name": "Brand",
+    "product": "cleansing balm",
+    "targetPersona": "20-30 women interested in skincare"
+  },
+  "campaign": {
+    "name": "Campaign",
+    "objective": "Launch-to-Conversion",
+    "keywords": ["cleanser", "review"]
+  },
+  "candidates": [
+    {
+      "recommendationId": "rec-1",
+      "creatorId": "creator-1",
+      "name": "Creator",
+      "platform": "YouTube",
+      "followers": 120000,
+      "averageViews": 45000,
+      "engagement": 0.052,
+      "score": 88,
+      "rawIds": ["RAW-INT-INF-001", "RAW-EXT-CHN-001"],
+      "metricIds": ["MET-AI-001", "MET-AI-003"]
+    }
+  ]
+}
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "items": [
+      {
+        "recommendationId": "rec-1",
+        "creatorId": "creator-1",
+        "aiSummary": "캠페인과 맞는 이유 한 문장",
+        "aiReasons": ["근거 1", "근거 2", "근거 3"],
+        "outreachAngle": "제안 각도",
+        "riskNote": "검증 필요 사항",
+        "message": "친근한 제안 메시지"
+      }
+    ],
+    "model": "gpt-4.1-mini",
+    "promptVersion": "recommendation-enrichment-v1",
+    "sourceRawIds": ["RAW-INT-CMP-BRIEF-001", "RAW-INT-BRD-001", "RAW-INT-INF-001", "RAW-INT-AI-POLICY-001"],
+    "metricIds": ["MET-AI-001", "MET-AI-003", "MET-AI-004", "MET-AI-006", "MET-LLM-001", "MET-LLM-002"]
+  }
+}
+```
+
+Fallback behavior:
+
+- `501 OPENAI_API_KEY` missing: 프론트는 데이터룸 점수화 추천으로 계속 진행하고 AI 추천 영역에 키 필요 상태를 표시합니다.
+- `404`: Render API 서버에 최신 라우트가 배포되지 않은 상태입니다.
+- `429`: OpenAI 또는 API 서버 쿼터 제한입니다. 이 경우 대량 추천은 후보 수를 줄이거나 재시도해야 합니다.
+
+운영 확인:
+
+```bash
+npm run production:check
+```
+
+이 명령에서 `ai-recommendation-enrichment-contract`가 `404`면 배포 라우트 누락, `501`이면 라우트는 살아 있고 `OPENAI_API_KEY`만 필요한 상태입니다.
+
 ### POST `/youtube/channel`
 
 Request:

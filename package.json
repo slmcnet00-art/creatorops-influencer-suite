@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "data-room:status": "node scripts/check-data-room-status.mjs",
+    "verify:data-lineage": "node scripts/verify-data-lineage.mjs",
     "production:check": "node scripts/check-production.mjs",
     "render:create-api": "node scripts/render-create-api.mjs",
     "render:sync-env": "node scripts/render-sync-env.mjs"

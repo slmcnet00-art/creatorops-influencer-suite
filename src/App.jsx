@@ -170,6 +170,30 @@ const practiceTourSteps = [
   },
 ]
 
+function formatApiRouteFailure(path, response, payload = {}, fallbackText = '') {
+  const status = Number(response?.status || 0)
+  const statusHints = {
+    400: '요청값을 확인해야 합니다.',
+    401: 'API 키 또는 인증 정보가 없습니다.',
+    402: '결제/크레딧 설정이 필요합니다.',
+    403: 'API 권한 또는 허용 도메인을 확인해야 합니다.',
+    404: '배포 API에 이 기능의 라우트가 아직 없습니다. 백엔드 배포 반영이 필요합니다.',
+    408: '응답 시간이 초과되었습니다.',
+    429: '쿼터 초과 또는 속도 제한입니다.',
+    500: '서버 처리 오류입니다.',
+    502: '외부 API 응답 변환 오류입니다.',
+    503: '외부 API가 일시적으로 불안정합니다.',
+  }
+  const upstreamMessage =
+    payload?.message ||
+    payload?.error?.message ||
+    (typeof payload?.error === 'string' ? payload.error : '') ||
+    fallbackText ||
+    response?.statusText ||
+    ''
+  const detail = upstreamMessage ? ` (${String(upstreamMessage).replace(/\s+/g, ' ').slice(0, 180)})` : ''
+  return `${path} · ${status || 'network'}: ${statusHints[status] || 'API 요청에 실패했습니다.'}${detail}`
+}
 
 function detectExternalReportProfile(fileName = '') {
   return (
@@ -312,6 +336,165 @@ const influencerBrandGuideTemplate = `# 인플루언서 브랜드 가이드
 `
 
 const minimumVisibleFollowers = 1000
+
+const recommendationPolicy = {
+  version: 'REC-PERF-2026-07-10',
+  owner: 'PM/Data',
+  lastUpdated: '2026-07-10',
+  principle: '팔로워 규모보다 조회 효율, 실제 성과 학습, 캠페인 핏을 우선하는 성과형 추천 정책',
+  minimumFollowers: minimumVisibleFollowers,
+  minimumAverageViews: 50000,
+  veryLowAverageViews: 10000,
+  minimumVirality: 0.2,
+  strongActualAverageViews: 50000,
+  strongActualTopViews: 150000,
+  minimumDataQualityScore: 58,
+  priorityScore: 80,
+  pendingScoreCap: 78,
+  underMinimumFollowerScoreCap: 55,
+  veryLowAverageViewsScoreCap: 60,
+  lowEfficiencyScoreCap: 72,
+  lowDataQualityScoreCap: 68,
+  scoreFloor: 28,
+  scoreCeiling: 99,
+  decisions: {
+    priority: '우선 제안',
+    keep: '후보 유지',
+    verify: '검증 후 제안',
+    hold: '보류 검토',
+  },
+  rawIds: {
+    base: [
+      'RAW-INT-BRD-001',
+      'RAW-INT-CMP-BRIEF-001',
+      'RAW-INT-INF-001',
+      'RAW-INT-AI-001',
+      'RAW-INT-AI-POLICY-001',
+      'RAW-EXT-SEARCH-001',
+      'RAW-EXT-CHN-001',
+      'RAW-INT-QUALITY-001',
+    ],
+    fallbackPerformance: ['RAW-EXT-CONT-001', 'RAW-EXT-ENG-001'],
+    actualPerformance: ['RAW-EXT-MON-VIDEO-001'],
+    candidatePool: ['RAW-INT-POOL-EVIDENCE-001'],
+  },
+  metricIds: ['MET-AI-001', 'MET-AI-002', 'MET-AI-003', 'MET-AI-004', 'MET-AI-005', 'MET-AI-006'],
+  weightSummary: [
+    { label: '조회 성과', value: '32%', metricId: 'MET-AI-003' },
+    { label: '뷰 효율', value: '16%', metricId: 'MET-AI-004' },
+    { label: '실제 성과 학습', value: '최대 +18점', metricId: 'MET-AI-005' },
+    { label: '전략 반영', value: '최대 +8점', metricId: 'MET-AI-006' },
+    { label: '리스크/제외어', value: '감점/보류', metricId: 'MET-AI-002' },
+  ],
+  criteriaGroups: [
+    {
+      title: '성과 우선',
+      description: '평균조회 · 폭발계수 · 실제 업로드 성과',
+      metricId: 'MET-AI-003',
+      note: 'MET-AI-003 · 005',
+    },
+    {
+      title: '효율 검증',
+      description: '참여율 · 예상 CPV · 예산 대비 조회 효율',
+      metricId: 'MET-AI-004',
+      note: 'MET-AI-004',
+    },
+    {
+      title: '캠페인 핏',
+      description: '브랜드/카테고리/국가/전략 키워드 적합도',
+      metricId: 'MET-AI-001',
+      note: 'MET-AI-001 · 006',
+    },
+    {
+      title: '데이터 신뢰도',
+      description: '수집 원천, 최신성, 이상치, 리스크 점검',
+      metricId: 'MET-AI-002',
+      note: 'MET-AI-002',
+    },
+  ],
+  methodSteps: [
+    {
+      label: '1. 브리프 적합',
+      description: '브랜드/제품/국가/카테고리/전략 키워드가 후보 프로필과 맞는지 먼저 확인',
+      rawIds: ['RAW-INT-BRD-001', 'RAW-INT-CMP-BRIEF-001', 'RAW-INT-INF-001'],
+      metricIds: ['MET-AI-001', 'MET-AI-006'],
+    },
+    {
+      label: '2. 성과 효율',
+      description: '평균 조회수, 팔로워 대비 조회 폭발계수, 참여율, 예상 CPV를 점수화',
+      rawIds: ['RAW-EXT-CHN-001', 'RAW-EXT-CONT-001', 'RAW-EXT-ENG-001'],
+      metricIds: ['MET-AI-003', 'MET-AI-004'],
+    },
+    {
+      label: '3. 실제 학습',
+      description: '리포트/업로드 추적/Video Monitor raw에서 확인된 성과가 있을 때만 다음 추천에 보정',
+      rawIds: ['RAW-EXT-MON-VIDEO-001'],
+      metricIds: ['MET-AI-005'],
+    },
+    {
+      label: '4. 리스크 게이트',
+      description: '데이터 품질, 국가 불일치, 제외 키워드, 낮은 조회 효율 후보는 보류 또는 검증으로 분류',
+      rawIds: ['RAW-INT-QUALITY-001', 'RAW-INT-AI-POLICY-001'],
+      metricIds: ['MET-AI-002'],
+    },
+  ],
+}
+
+function getRecommendationPolicyExportSummary() {
+  return {
+    rawId: 'RAW-INT-AI-POLICY-001',
+    version: recommendationPolicy.version,
+    owner: recommendationPolicy.owner,
+    lastUpdated: recommendationPolicy.lastUpdated,
+    principle: recommendationPolicy.principle,
+    criteria: [
+      `최소 팔로워 ${compactNumber(recommendationPolicy.minimumFollowers)}명`,
+      `평균 조회 ${compactNumber(recommendationPolicy.minimumAverageViews)}+ 또는 팔로워 대비 조회 ${recommendationPolicy.minimumVirality}x+`,
+      `데이터 품질 ${recommendationPolicy.minimumDataQualityScore}점+`,
+      `${recommendationPolicy.priorityScore}점 이상 ${recommendationPolicy.decisions.priority}`,
+    ].join(' / '),
+    holdRule: [
+      `팔로워 ${compactNumber(recommendationPolicy.minimumFollowers)} 미만`,
+      `평균 조회 ${compactNumber(recommendationPolicy.minimumAverageViews)} 미만 + 폭발계수 ${recommendationPolicy.minimumVirality}x 미만`,
+      `평균 조회 ${compactNumber(recommendationPolicy.veryLowAverageViews)} 미만`,
+      `데이터 품질 ${recommendationPolicy.minimumDataQualityScore}점 미만`,
+    ].join(' / '),
+    weights: recommendationPolicy.weightSummary
+      .map((item) => `${item.label} ${item.value}`)
+      .join(' / '),
+    methodSteps: recommendationPolicy.methodSteps,
+  }
+}
+
+function getPerformanceLearningExportSummary(creator) {
+  const learning = creator?.performanceLearning
+  if (!learning?.posts) {
+    return {
+      summary: '실제 업로드 성과 이력 없음',
+      status: '성과 raw 대기',
+      rawIds: [],
+      metricId: 'MET-AI-005',
+    }
+  }
+
+  const rawIds = learning.sourceRawIds?.length
+    ? learning.sourceRawIds
+    : recommendationPolicy.rawIds.fallbackPerformance
+  const topPostTitle = learning.topPost?.title ? ` · 최고 콘텐츠 ${learning.topPost.title}` : ''
+
+  return {
+    summary: [
+      `${learning.posts}건`,
+      `평균조회 ${compactNumber(learning.averageViews)}`,
+      `최고조회 ${compactNumber(learning.topViews)}`,
+      `참여율 ${percent(learning.engagementRate)}`,
+      `전환 ${compactNumber(learning.conversions || 0)}`,
+    ].join(' / ') + topPostTitle,
+    status: '성과 학습 반영',
+    rawIds,
+    metricId: 'MET-AI-005',
+  }
+}
 
 const defaultDiscoveryFilters = {
   country: 'KR',
@@ -967,6 +1150,7 @@ const defaultWorkspace = {
   campaigns: defaultCampaigns,
   brandBrief: defaultBrandBrief,
   shortlist: [1, 3, 6],
+  candidatePoolEvidence: [],
   recommendations: defaultRecommendations,
   outreach: [
     {
@@ -1035,6 +1219,62 @@ const defaultWorkspace = {
       createdAt: '오늘 09:12',
     },
   ],
+}
+
+const defaultDemoBrandNames = new Set(defaultBrands.map((brand) => brand.name))
+const defaultDemoCampaignIds = new Set(defaultCampaigns.map((campaign) => campaign.id))
+const defaultDemoCreatorIds = new Set(defaultCreators.map((creator) => creator.id))
+const defaultDemoCreatorGroupIds = new Set(defaultCreatorGroups.map((group) => group.id))
+const defaultDemoOutreachIds = new Set(defaultWorkspace.outreach.map((item) => item.id))
+const defaultDemoRecruitedPoolIds = new Set(defaultWorkspace.recruitedPool.map((item) => item.id))
+const defaultDemoQuoteIds = new Set(defaultWorkspace.quotes.map((item) => item.id))
+const defaultDemoFulfillmentIds = new Set(defaultFulfillmentRecords.map((item) => item.id))
+const defaultDemoTrackedPostIds = new Set(defaultTrackedPosts.map((item) => item.id))
+const defaultDemoRecommendationIds = new Set(defaultRecommendations.map((item) => item.id))
+
+function hasDemoMetadataMarker(value) {
+  const normalized = String(value ?? '').toLowerCase()
+  return (
+    normalized.includes('데모') ||
+    normalized.includes('기본 그룹') ||
+    normalized.includes('demo-') ||
+    normalized.includes('/demo') ||
+    normalized.includes('sample.')
+  )
+}
+
+function isDemoWorkspaceRecord(record = {}, type = '') {
+  if (!record) return false
+  if (record.isDemo) return true
+
+  const metadataMarkerValues = [
+    record.id,
+    record.memo,
+    record.url,
+    record.profileUrl,
+    record.sourceType,
+    record.sourceName,
+    record.createdAt,
+    record.savedAt,
+  ]
+  if (metadataMarkerValues.some(hasDemoMetadataMarker)) return true
+
+  if (type === 'brand') return defaultDemoBrandNames.has(record.name)
+  if (type === 'campaign') return record.createdAt === '데모 데이터' || defaultDemoCampaignIds.has(record.id)
+  if (type === 'creator') return defaultDemoCreatorIds.has(record.id)
+  if (type === 'creatorGroup') return defaultDemoCreatorGroupIds.has(record.id)
+  if (type === 'outreach') return defaultDemoOutreachIds.has(record.id)
+  if (type === 'recruitedPool') return defaultDemoRecruitedPoolIds.has(record.id)
+  if (type === 'quote') return defaultDemoQuoteIds.has(record.id)
+  if (type === 'fulfillment') return defaultDemoFulfillmentIds.has(record.id)
+  if (type === 'trackedPost') return defaultDemoTrackedPostIds.has(record.id)
+  if (type === 'recommendation') return defaultDemoRecommendationIds.has(record.id)
+
+  return false
+}
+
+function toOperationalRecords(records = [], type = '') {
+  return records.filter((record) => !isDemoWorkspaceRecord(record, type))
 }
 
 const platformOptions = ['전체', 'YouTube', 'Instagram', 'TikTok']
@@ -1467,6 +1707,13 @@ function normalizeWorkspace(saved) {
       ...normalizedBrands[0].brief,
     },
     shortlist: saved?.shortlist?.filter((id) => !verificationCreatorIds.includes(id)) ?? defaultWorkspace.shortlist,
+    candidatePoolEvidence: (saved?.candidatePoolEvidence ?? defaultWorkspace.candidatePoolEvidence ?? [])
+      .filter((item) => item?.creatorId && !verificationCreatorIds.includes(item.creatorId))
+      .map((item) => ({
+        ...item,
+        rawIds: item.rawIds ?? item.dataContract?.rawIds ?? [],
+        metricIds: item.metricIds ?? item.dataContract?.metricIds ?? [],
+      })),
     recommendations: saved?.recommendations?.length ? saved.recommendations : defaultWorkspace.recommendations,
     outreach: normalizedOutreach,
     recruitedPool: saved?.recruitedPool ?? defaultWorkspace.recruitedPool,
@@ -1544,6 +1791,155 @@ function contentEngagementRate(post) {
     Number(post.shares || 0) +
     Number(post.saves || 0)
   return (interactions / views) * 100
+}
+
+function normalizeCreatorMatchKey(value) {
+  const text = String(value || '').trim().toLowerCase()
+  if (!text) return ''
+  if (text.startsWith('http')) {
+    try {
+      const url = new URL(text)
+      return `${url.hostname.replace(/^www\./, '')}${url.pathname}`.replace(/\/$/, '')
+    } catch {
+      return text.replace(/\/$/, '')
+    }
+  }
+  return normalizeHandleSegment(text).replace(/^@/, '')
+}
+
+function getCreatorMatchKeys(creator = {}) {
+  return uniqueList([
+    creator.id ? `id:${creator.id}` : '',
+    normalizeCreatorMatchKey(creator.handle),
+    normalizeCreatorMatchKey(creator.name),
+    normalizeCreatorMatchKey(creator.profileUrl || creator.sourceUrl),
+  ]).filter(Boolean)
+}
+
+function getPerformanceRowMatchKeys(row = {}) {
+  return uniqueList([
+    row.creatorId ? `id:${row.creatorId}` : '',
+    normalizeCreatorMatchKey(row.handle),
+    normalizeCreatorMatchKey(row.creatorName),
+    normalizeCreatorMatchKey(row.name),
+    normalizeCreatorMatchKey(row.profileUrl),
+    normalizeCreatorMatchKey(row.channelUrl),
+    normalizeCreatorMatchKey(row.url),
+  ]).filter(Boolean)
+}
+
+function buildCreatorPerformanceLearningMap(creators = [], trackedPosts = [], reportRows = []) {
+  const creatorIdByKey = new Map()
+  creators.forEach((creator) => {
+    getCreatorMatchKeys(creator).forEach((key) => creatorIdByKey.set(key, creator.id))
+  })
+
+  const rows = [
+    ...trackedPosts.map((post) => ({
+      ...post,
+      rawSourceId: post.rawSourceId || 'RAW-EXT-CONT-001',
+    })),
+    ...reportRows,
+  ]
+
+  const aggregateByCreatorId = new Map()
+  rows.forEach((row) => {
+    const directCreatorId = row.creatorId && creators.some((creator) => creator.id === row.creatorId)
+      ? row.creatorId
+      : null
+    const matchedCreatorId =
+      directCreatorId ||
+      getPerformanceRowMatchKeys(row)
+        .map((key) => creatorIdByKey.get(key))
+        .find(Boolean)
+    if (!matchedCreatorId) return
+
+    const views = Number(row.views || row.totalViews || 0)
+    const likes = Number(row.likes || 0)
+    const comments = Number(row.comments || 0)
+    const shares = Number(row.shares || 0)
+    const saves = Number(row.saves || row.collects || 0)
+    const conversions = Number(row.conversions || row.orders || 0)
+    const interactions = likes + comments + shares + saves
+    const engagementRate = Number(row.engagementRate || 0) || (views ? (interactions / views) * 100 : 0)
+    const previous = aggregateByCreatorId.get(matchedCreatorId) || {
+      posts: 0,
+      views: 0,
+      likes: 0,
+      comments: 0,
+      shares: 0,
+      saves: 0,
+      conversions: 0,
+      topViews: 0,
+      topPost: null,
+      engagementRateSum: 0,
+      sourceRawIds: new Set(),
+    }
+
+    previous.posts += 1
+    previous.views += views
+    previous.likes += likes
+    previous.comments += comments
+    previous.shares += shares
+    previous.saves += saves
+    previous.conversions += conversions
+    if (views >= previous.topViews) {
+      previous.topViews = views
+      previous.topPost = {
+        title: row.title || row.contentTitle || row.videoTitle || row.url || '성과 콘텐츠',
+        url: row.url || row.contentUrl || row.videoUrl || row.profileUrl || '',
+        platform: row.platform || '',
+        rawSourceId: row.rawSourceId || '',
+        views,
+        engagementRate,
+      }
+    }
+    previous.engagementRateSum += engagementRate
+    if (row.rawSourceId) previous.sourceRawIds.add(row.rawSourceId)
+    aggregateByCreatorId.set(matchedCreatorId, previous)
+  })
+
+  return new Map(
+    Array.from(aggregateByCreatorId.entries()).map(([creatorId, summary]) => [
+      creatorId,
+      {
+        posts: summary.posts,
+        views: summary.views,
+        averageViews: summary.posts ? Math.round(summary.views / summary.posts) : 0,
+        topViews: summary.topViews,
+        topPost: summary.topPost,
+        likes: summary.likes,
+        comments: summary.comments,
+        shares: summary.shares,
+        saves: summary.saves,
+        conversions: summary.conversions,
+        engagementRate: summary.posts ? summary.engagementRateSum / summary.posts : 0,
+        conversionRate: summary.views ? (summary.conversions / summary.views) * 100 : 0,
+        sourceRawIds: Array.from(summary.sourceRawIds),
+      },
+    ]),
+  )
+}
+
+function attachPerformanceLearning(creator, learningMap) {
+  if (!creator) return creator
+  const performanceLearning = learningMap?.get?.(creator.id)
+  return performanceLearning ? { ...creator, performanceLearning } : creator
+}
+
+function getCreatorLearningScore(creator) {
+  const learning = creator?.performanceLearning
+  if (!learning?.posts) return 0
+  const baselineViews = Number(creator.averageViews || 0)
+  const actualAverageViews = Number(learning.averageViews || 0)
+  const actualEngagement = Number(learning.engagementRate || 0)
+  const actualConversions = Number(learning.conversions || 0)
+  const uplift = baselineViews ? actualAverageViews / Math.max(baselineViews, 1) : actualAverageViews ? 1 : 0
+  const viewFit = Math.min(8, Math.log10(actualAverageViews + 1) * 1.15)
+  const upliftFit = Math.min(5, uplift * 2)
+  const engagementFit = Math.min(4, actualEngagement * 0.45)
+  const conversionFit = Math.min(3, actualConversions ? Math.log10(actualConversions + 1) * 1.8 : 0)
+  return clampNumber(Math.round(viewFit + upliftFit + engagementFit + conversionFit), 0, 18)
 }
 
 function normalizeNumericTarget(value) {
@@ -1919,6 +2315,12 @@ function buildInfluencerContentGuide({ brand, brief, campaign, creators = [] }) 
 
   return `# ${brand.name} ${campaignName} 인플루언서 콘텐츠 가이드
 
+## 0. 문서 사용 방식
+- 이 문서는 모든 크리에이터에게 공통으로 전달하는 기준입니다.
+- 원메시지, 필수 포함 요소, 금지 표현, 검수 기준은 공통으로 유지합니다.
+- 개별 크리에이터의 말투, 컷 순서, 첫 문장, CTA는 별도 개인 가이드에서 조정합니다.
+- 성과가 좋은 제작 레퍼런스를 차용할 때도 문장과 화면을 그대로 복제하지 않고 구조만 변형합니다.
+
 ## 1. 캠페인 개요
 - 브랜드: ${brand.name}
 - 제품/서비스: ${brief.product || '-'}
@@ -1980,14 +2382,27 @@ ${brief.exclusions ? `- 브랜드 추가 제외 표현: ${brief.exclusions}` : '
 - 댓글, 저장, 링크 확인, 구매/문의 중 하나의 CTA가 있나요?
 - 금지 표현과 과장 전후 비교가 빠져 있나요?
 
-## 10. 검수/제출
+## 10. 크리에이티브 자율권
+- 반드시 지킬 것: 원메시지, 협찬/광고 고지, 제품 사실 정보, 금지 표현
+- 바꿔도 되는 것: 첫 문장, 컷 순서, 말투, 자막 톤, BGM, 일상 상황 설정
+- 권장하는 것: 실제 사용 장면, 본인 경험 기반 판단, 댓글이 나올 질문형 마무리
+- 사전 확인이 필요한 것: 가격/혜택/성분/효능 표현, 비교 표현, 안전/건강 관련 문구
+
+## 11. 게시 후 기록할 항목
+- 게시 링크
+- 조회수, 좋아요, 댓글, 공유, 저장
+- 댓글 질문 유형과 구매/문의 반응
+- 링크 클릭, 쿠폰 사용, 공동구매 주문 등 전환 지표가 있는 경우 별도 기록
+- 성과가 좋은 후크/썸네일/첫 문장은 다음 가이드에 반영
+
+## 12. 검수/제출
 - 초안 제출: ${campaign.approvalFlow || '브리프 전달 → 초안 검수 → 수정 반영 → 게시 확인'}
 - 제출물: 영상 원본 또는 게시 링크, 썸네일/캡션, 성과 확인용 링크
 - 성과 기록: 조회수, 댓글, 저장/공유, 클릭, 구매/문의 전환
 
-## 11. 배정 후보
+## 13. 배정 후보
 ${creatorSummary}
-${learningContext ? `\n## 12. 브랜드 학습자료 반영 메모\n${learningContext}` : ''}
+${learningContext ? `\n## 14. 브랜드 학습자료 반영 메모\n${learningContext}` : ''}
 `
 }
 
@@ -2009,6 +2424,25 @@ function buildCreatorSpecificContentGuide({ brand, brief, campaign, creator, com
   const creatorAngle = creator
     ? `${creator.name} 계정은 ${creator.category || '콘텐츠'} 카테고리에서 팔로워 ${compactNumber(creator.followers)}, 평균 조회 ${compactNumber(creator.averageViews)}, 참여율 ${percent(creator.engagement)} 수준으로 확인됩니다.`
     : '크리에이터별 계정 정보가 연결되면 톤과 컷 구성을 개인화합니다.'
+  const performanceLearning = creator?.performanceLearning
+  const creatorFollowers = Number(creator?.followers || 0)
+  const creatorAverageViews = Number(creator?.averageViews || 0)
+  const creatorVirality = creatorFollowers && creatorAverageViews ? `${(creatorAverageViews / creatorFollowers).toFixed(1)}x` : '검증 전'
+  const performanceGuide = [
+    performanceLearning?.posts
+      ? `최근 추적된 콘텐츠 ${performanceLearning.posts}건 기준으로 평균 조회 ${compactNumber(performanceLearning.averageViews)}, 참여율 ${percent(performanceLearning.engagementRate)} 흐름을 반영합니다.`
+      : creatorAverageViews
+        ? `현재 공개 지표 기준 평균 조회 ${compactNumber(creatorAverageViews)}, 팔로워 대비 조회 ${creatorVirality}를 우선 참고합니다.`
+        : '아직 콘텐츠 성과 데이터가 부족하므로 첫 게시 후 조회/댓글/저장 수치를 빠르게 업데이트합니다.',
+    creator?.platform === 'YouTube'
+      ? '검색형 제목과 첫 10초 신뢰 증명을 우선합니다.'
+      : creator?.platform === 'TikTok'
+        ? '첫 1초 반전, 빠른 사용 장면, 댓글 유도 질문을 우선합니다.'
+        : '첫 화면 자막, 저장하고 싶은 정보, 감정 반응 컷을 우선합니다.',
+    performanceLearning?.topViews
+      ? `성과 상위 콘텐츠는 ${compactNumber(performanceLearning.topViews)} 조회까지 확인되어, 기존 강점과 비슷한 후킹 구조를 변형 적용합니다.`
+      : '성과 상위 레퍼런스가 생기면 다음 가이드에서 후킹 구조만 차용합니다.',
+  ]
   const hookLines = buildStrategyHookCopyLines({
     productText: brief.product || campaign?.product || '제품',
     personaText: brief.persona || campaign?.targetPersona || '타깃 고객',
@@ -2045,33 +2479,36 @@ ${creatorAngle}
 - 톤: ${creatorTone}
 - 핵심 메시지: ${oneMessage}
 
-## 3. 개인화 후킹 후보
+## 3. 개인별 성과 기준
+${performanceGuide.map((item) => `- ${item}`).join('\n')}
+
+## 4. 개인화 후킹 후보
 ${hookLines.map((line, index) => `${index + 1}. ${line}`).join('\n')}
 
-## 4. 컷 구성 제안
+## 5. 컷 구성 제안
 1. 첫 화면: 시청자가 멈출 문제, 가격, 상황, 감정 중 하나를 크게 보여줍니다.
 2. 사용 맥락: 왜 이 제품이 필요한지 본인 일상이나 계정 콘셉트 안에서 설명합니다.
 3. 제품 확인: 패키지, 질감, 크기, 사용 전후 판단 요소를 직접 보여줍니다.
 4. 신뢰 증명: 학습자료의 증명 포인트를 본인 말투로 바꿔 한 문장만 넣습니다.
 5. CTA: 댓글 질문, 저장, 링크 확인, 구매/문의 중 캠페인 목적에 맞게 마무리합니다.
 
-## 5. 채널별 주의점
+## 6. 채널별 주의점
 ${channelBrief}
 
-## 6. 꼭 지켜야 할 것
+## 7. 꼭 지켜야 할 것
 - 광고/협찬 고지를 채널 정책에 맞게 표시합니다.
 - 경험하지 않은 내용을 실제 경험처럼 말하지 않습니다.
 - 치료, 보장, 즉각 개선, 과장 전후 비교 표현은 쓰지 않습니다.
 - 경쟁사 실명 비방은 하지 않습니다.
 ${materialDigest.riskPoints.slice(0, 4).map((item) => `- 주의 표현: ${item}`).join('\n')}
 
-## 7. 제출물
+## 8. 제출물
 - 업로드 전 초안 또는 원고/컷 구성
 - 게시 링크
 - 썸네일/캡션
 - 게시 후 조회수, 좋아요, 댓글, 공유/저장 수치
 
-## 8. 공통 가이드 반영 기준
+## 9. 공통 가이드 반영 기준
 공통 가이드의 원메시지와 금지 표현은 유지하되, 문장과 장면은 ${creator?.name || '크리에이터'}의 평소 말투와 콘텐츠 구조로 바꿔 제작합니다.
 ${commonGuide ? '\n공통 가이드는 캠페인 기준 문서이고, 이 문서는 개인별 실행 지시서입니다.' : ''}
 `
@@ -2094,52 +2531,272 @@ function buildRecommendation(creator, brief, campaign) {
     .join(' ')
     .toLowerCase()
 
+  const strategyKeywords = keywordList(brief.strategyKeywords)
   const keywordHits = wantedKeywords.filter((keyword) => creatorText.includes(keyword))
+  const strategyHits = strategyKeywords.filter((keyword) => creatorText.includes(keyword))
   const exclusionHits = exclusions.filter((keyword) => creatorText.includes(keyword))
   const pendingMetrics = hasPendingMetrics(creator)
-  const platformFit = matchesBriefPlatform(creator, brief.platforms) ? 18 : -8
-  const categoryFit = brief.categories.includes(creator.category) ? 18 : -4
-  const scaleFit = pendingMetrics ? 4 : creator.followers >= Number(brief.minFollowers) ? 12 : -10
-  const budgetFit = pendingMetrics || creator.price <= Number(brief.maxPrice) ? 8 : -12
-  const engagementFit = pendingMetrics ? 4 : Math.min(14, Math.round(creator.engagement * 1.6))
-  const safetyFit = Math.round((creator.brandSafety - creator.fakeRisk) / 8)
-  const keywordFit = Math.min(18, keywordHits.length * 6)
-  const score = Math.max(
-    32,
-    Math.min(
-      99,
-      Math.round(40 + platformFit + categoryFit + scaleFit + budgetFit + engagementFit + safetyFit + keywordFit - exclusionHits.length * 12),
-    ),
+  const followers = Number(creator.followers || 0)
+  const averageViews = Number(creator.averageViews || 0)
+  const virality = getCreatorViralityRatio(creator)
+  const performanceScore = getCreatorPerformanceScore(creator)
+  const efficiencyScore = getCreatorEfficiencyScore(creator)
+  const learningScore = getCreatorLearningScore(creator)
+  const dataQuality = getCreatorDataQuality(creator)
+  const performanceLearning = creator.performanceLearning
+  const underMinimumFollowers = !pendingMetrics && followers > 0 && followers < recommendationPolicy.minimumFollowers
+  const platformFit = matchesBriefPlatform(creator, brief.platforms) ? 10 : -8
+  const categoryFit = brief.categories.includes(creator.category) ? 8 : -5
+  const scaleFit = pendingMetrics ? -2 : followers >= Number(brief.minFollowers) ? 4 : -12
+  const budgetFit = pendingMetrics || Number(creator.price || 0) <= Number(brief.maxPrice) ? 5 : -10
+  const engagementFit = pendingMetrics ? 0 : Math.min(8, Math.round(Number(creator.engagement || 0) * 1.1))
+  const safetyFit = clampNumber(Math.round((Number(creator.brandSafety || 0) - Number(creator.fakeRisk || 0)) / 14), 0, 8)
+  const keywordFit = Math.min(10, keywordHits.length * 4)
+  const strategyFit = Math.min(8, strategyHits.length * 3)
+  const performanceFit = pendingMetrics ? -6 : Math.round(performanceScore * 0.32)
+  const efficiencyFit = pendingMetrics ? 0 : Math.round(efficiencyScore * 0.16)
+  const learningFit = learningScore
+  const hasStrongActualPerformance =
+    Number(performanceLearning?.averageViews || 0) >= recommendationPolicy.strongActualAverageViews ||
+    Number(performanceLearning?.topViews || 0) >= recommendationPolicy.strongActualTopViews
+  let rawScore = Math.round(
+    22 +
+      platformFit +
+      categoryFit +
+      scaleFit +
+      budgetFit +
+      engagementFit +
+      safetyFit +
+      keywordFit +
+      strategyFit +
+      performanceFit +
+      learningFit +
+      efficiencyFit -
+      exclusionHits.length * 12,
   )
+
+  if (pendingMetrics) rawScore = Math.min(rawScore, recommendationPolicy.pendingScoreCap)
+  if (underMinimumFollowers && !hasStrongActualPerformance) rawScore = Math.min(rawScore, recommendationPolicy.underMinimumFollowerScoreCap)
+  if (!pendingMetrics && averageViews < recommendationPolicy.veryLowAverageViews && !hasStrongActualPerformance) {
+    rawScore = Math.min(rawScore, recommendationPolicy.veryLowAverageViewsScoreCap)
+  }
+  if (
+    !pendingMetrics &&
+    averageViews < recommendationPolicy.minimumAverageViews &&
+    virality < recommendationPolicy.minimumVirality &&
+    !hasStrongActualPerformance
+  ) {
+    rawScore = Math.min(rawScore, recommendationPolicy.lowEfficiencyScoreCap)
+  }
+  if (!pendingMetrics && dataQuality.score < recommendationPolicy.minimumDataQualityScore && !hasStrongActualPerformance) {
+    rawScore = Math.min(rawScore, recommendationPolicy.lowDataQualityScoreCap)
+  }
+
+  const score = clampNumber(rawScore, recommendationPolicy.scoreFloor, recommendationPolicy.scoreCeiling)
+  const costPerView = averageViews > 0 && Number(creator.price || 0) > 0 ? Math.round(Number(creator.price || 0) / averageViews) : null
   const persona = `${creator.category} 관심층 · ${creator.audience} · ${creator.platform} 중심`
   const reasons = [
-    `${brief.product}과 연결되는 키워드 ${keywordHits.length ? keywordHits.join(', ') : creator.topics.slice(0, 2).join(', ')} 보유`,
     pendingMetrics
-      ? '실제 프로필 URL을 확보했으며 팔로워/평균 조회는 후속 수집 필요'
-      : `${compactNumber(creator.followers)} 팔로워와 평균 조회 ${compactNumber(creator.averageViews)}로 캠페인 도달 예측 가능`,
+      ? '실제 프로필 URL은 확보했지만 평균 조회/팔로워 수치 검증 후 추천 우선순위를 확정'
+      : `평균 조회 ${compactNumber(averageViews)} · 팔로워 대비 조회 ${virality.toFixed(1)}x · 성과 점수 ${performanceScore}점`,
+    pendingMetrics
+      ? ''
+      : `예상 뷰 효율 ${costPerView ? `약 ${won(costPerView)}/view` : '단가 확인 필요'} · 참여율 ${percent(creator.engagement)}`,
+    performanceLearning?.posts
+      ? `실제 성과 학습 ${performanceLearning.posts}건 · 평균 ${compactNumber(performanceLearning.averageViews)} 조회 · 참여율 ${percent(performanceLearning.engagementRate)}`
+      : '',
+    `${brief.product}과 연결되는 키워드 ${keywordHits.length ? keywordHits.join(', ') : creator.topics.slice(0, 2).join(', ')} 보유`,
+    strategyKeywords.length
+      ? `캠페인 전략/가이드 기준 ${strategyHits.length ? strategyHits.slice(0, 4).join(', ') : strategyKeywords.slice(0, 4).join(', ')} ${strategyHits.length ? '적중' : '적용'}`
+      : '',
     creator.sourceNote || '',
     pendingMetrics ? '데이터 출처 원장에 검색 출처와 검증 대기 상태 기록' : `브랜드 안정성 ${creator.brandSafety}, 가짜 팔로워 위험 ${creator.fakeRisk}%`,
+    underMinimumFollowers ? `팔로워 ${compactNumber(followers)}로 최소 노출 기준 ${compactNumber(recommendationPolicy.minimumFollowers)} 미만` : '',
     pendingMetrics ? '단가는 실제 지표 확인 후 산정 필요' : `${campaign?.name ?? brief.goal} 목표에 맞춘 예상 단가 ${won(creator.price)}`,
   ].filter(Boolean)
   const risk = exclusionHits.length
     ? `제외 키워드 감지: ${exclusionHits.join(', ')}`
+    : underMinimumFollowers && !hasStrongActualPerformance
+      ? '팔로워 최소 기준 미달'
+    : !pendingMetrics &&
+        averageViews < recommendationPolicy.minimumAverageViews &&
+        virality < recommendationPolicy.minimumVirality &&
+        !hasStrongActualPerformance
+      ? '조회수/팔로워 대비 효율 낮음'
+    : hasStrongActualPerformance
+      ? '실제 성과 기반 우선 검토'
     : creator.fakeRisk > 9
       ? '팔로워 품질 검토 필요'
       : creator.needsVerification
         ? '공개 수치 검증 후 제안'
         : '즉시 제안 가능'
+  const scoreBreakdown = [
+    { label: '조회 성과', value: pendingMetrics ? '수집 필요' : `${performanceScore}점`, metricId: 'MET-AI-003' },
+    { label: '뷰 효율', value: pendingMetrics ? '수집 필요' : `${efficiencyScore}점`, metricId: 'MET-AI-004' },
+    {
+      label: '실제 학습',
+      value: performanceLearning?.posts ? `${performanceLearning.posts}건` : learningScore ? `${learningScore}점` : '이력 없음',
+      metricId: 'MET-AI-005',
+    },
+    { label: '브랜드 핏', value: `${creator.fit ?? score}점`, metricId: 'MET-AI-001' },
+    {
+      label: '전략 반영',
+      value: strategyKeywords.length ? (strategyHits.length ? `${strategyHits.length}개` : '기준 적용') : '전략 없음',
+      metricId: 'MET-AI-006',
+    },
+    { label: '데이터', value: `${dataQuality.score}점`, metricId: 'MET-AI-002' },
+  ]
+  const performanceRawIds = performanceLearning?.sourceRawIds?.length
+    ? performanceLearning.sourceRawIds
+    : pendingMetrics
+      ? []
+      : recommendationPolicy.rawIds.fallbackPerformance
+  const dataContract = {
+    rawIds: uniqueList([
+      ...recommendationPolicy.rawIds.base,
+      ...(strategyKeywords.length ? ['RAW-INT-LLM-BUNDLE-001'] : []),
+      ...performanceRawIds,
+    ]),
+    metricIds: recommendationPolicy.metricIds,
+    scoreWeights: getRecommendationPolicyExportSummary().weights,
+    strategyTrace: {
+      rawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-AI-001', 'RAW-INT-LLM-BUNDLE-001'],
+      metricId: 'MET-AI-006',
+      source:
+        campaign?.influencerStrategy || campaign?.generatedContentGuide
+          ? 'campaign_strategy_and_guide'
+          : 'campaign_brief',
+      keywords: strategyKeywords,
+      hits: strategyHits,
+      hitCount: strategyHits.length,
+      keywordCount: strategyKeywords.length,
+      formula: 'min(strategy_keyword_hit_count * 3, 8)',
+      scoreImpact: strategyFit,
+    },
+  }
 
   return {
     id: createId(),
     creatorId: creator.id,
     campaignId: campaign?.id,
     score,
+    decision:
+      risk.includes('미달') || risk.includes('효율 낮음') || exclusionHits.length
+        ? recommendationPolicy.decisions.hold
+        : pendingMetrics || creator.needsVerification || dataQuality.score < recommendationPolicy.minimumDataQualityScore
+          ? recommendationPolicy.decisions.verify
+          : score >= recommendationPolicy.priorityScore
+            ? recommendationPolicy.decisions.priority
+            : recommendationPolicy.decisions.keep,
     persona,
     reasons,
     risk,
+    scoreBreakdown,
+    dataContract,
     message: buildFriendlyProposalMessage(creator, brief, campaign),
     createdAt: nowLabel(),
   }
+}
+
+function getRecommendationDecision(recommendation, creator) {
+  if (recommendation?.decision) return recommendation.decision
+  if (!creator) return recommendationPolicy.decisions.verify
+
+  const pendingMetrics = hasPendingMetrics(creator)
+  const dataQuality = getCreatorDataQuality(creator)
+  const followers = Number(creator.followers || 0)
+  const averageViews = Number(creator.averageViews || 0)
+  const virality = getCreatorViralityRatio(creator)
+  const performanceLearning = creator.performanceLearning
+  const hasStrongActualPerformance =
+    Number(performanceLearning?.averageViews || 0) >= recommendationPolicy.strongActualAverageViews ||
+    Number(performanceLearning?.topViews || 0) >= recommendationPolicy.strongActualTopViews
+  const riskText = recommendation?.risk ?? ''
+
+  if (riskText.includes('미달') || riskText.includes('효율 낮음')) return recommendationPolicy.decisions.hold
+  if (!pendingMetrics && followers > 0 && followers < recommendationPolicy.minimumFollowers && !hasStrongActualPerformance) {
+    return recommendationPolicy.decisions.hold
+  }
+  if (
+    !pendingMetrics &&
+    averageViews < recommendationPolicy.minimumAverageViews &&
+    virality < recommendationPolicy.minimumVirality &&
+    !hasStrongActualPerformance
+  ) {
+    return recommendationPolicy.decisions.hold
+  }
+  if (pendingMetrics || creator.needsVerification || dataQuality.score < recommendationPolicy.minimumDataQualityScore) {
+    return recommendationPolicy.decisions.verify
+  }
+  if (Number(recommendation?.score || creator.fit || 0) >= recommendationPolicy.priorityScore) {
+    return recommendationPolicy.decisions.priority
+  }
+  return recommendationPolicy.decisions.keep
+}
+
+function getRecommendationDecisionTone(decision) {
+  if (decision.includes('우선')) return 'high'
+  if (decision.includes('검증') || decision.includes('유지')) return 'medium'
+  return 'low'
+}
+
+function getRecommendationDecisionRank(decision) {
+  if (decision.includes('우선')) return 4
+  if (decision.includes('유지')) return 3
+  if (decision.includes('검증')) return 2
+  return 1
+}
+
+function getRecommendationDecisionDetail(creator, decision = '', rawCount = 0, metricCount = 0) {
+  if (!creator) return `raw ${rawCount}개 · 지표 ${metricCount}개 연결`
+
+  const decisionText = String(decision || '')
+  const pendingMetrics = hasPendingMetrics(creator)
+  const dataQuality = getCreatorDataQuality(creator)
+  const followers = Number(creator.followers || 0)
+  const averageViews = Number(creator.averageViews || 0)
+  const virality = getCreatorViralityRatio(creator)
+  const performanceLearning = creator.performanceLearning
+  const hasStrongActualPerformance =
+    Number(performanceLearning?.averageViews || 0) >= recommendationPolicy.strongActualAverageViews ||
+    Number(performanceLearning?.topViews || 0) >= recommendationPolicy.strongActualTopViews
+
+  if (decisionText.includes('우선')) {
+    if (performanceLearning?.posts) {
+      return `실제 성과 ${performanceLearning.posts}건 · 최고 ${compactNumber(performanceLearning.topViews)} 조회`
+    }
+    return `성과 기준 통과 · 평균 조회 ${compactNumber(averageViews)} · 데이터 ${dataQuality.score}점`
+  }
+
+  if (decisionText.includes('검증')) {
+    if (pendingMetrics) return `팔로워/조회수 수집 후 발송 · raw ${rawCount}개`
+    if (creator.needsVerification) return '프로필 원천 재확인 후 제안'
+    if (dataQuality.score < recommendationPolicy.minimumDataQualityScore) {
+      return `데이터 품질 ${dataQuality.score}점 · 원천 보강 필요`
+    }
+    return `운영 검토 후 제안 가능 · 지표 ${metricCount}개`
+  }
+
+  if (!pendingMetrics && followers > 0 && followers < recommendationPolicy.minimumFollowers && !hasStrongActualPerformance) {
+    return `팔로워 ${compactNumber(followers)} · 최소 ${compactNumber(recommendationPolicy.minimumFollowers)} 미만`
+  }
+
+  if (decisionText.includes('보류')) {
+    if (!pendingMetrics && averageViews < recommendationPolicy.minimumAverageViews && virality < recommendationPolicy.minimumVirality) {
+      return `평균 조회 ${compactNumber(averageViews)} · 폭발계수 ${virality.toFixed(1)}x로 보류`
+    }
+    return `제외/리스크 조건 확인 · 데이터 ${dataQuality.score}점`
+  }
+
+  if (performanceLearning?.posts) {
+    return `후보 유지 · 실제 성과 ${performanceLearning.posts}건 반영`
+  }
+
+  if (!pendingMetrics) {
+    return `후보 유지 · 평균 조회 ${compactNumber(averageViews)} · 팔로워 대비 ${virality.toFixed(1)}x`
+  }
+
+  return `수치 검증 대기 · raw ${rawCount}개 · 지표 ${metricCount}개 연결`
 }
 
 function getCreatorDataQuality(creator) {
@@ -2728,6 +3385,52 @@ function buildStrategyHookCopyLines({ productText, personaText, hookRows = [], m
   return uniqueList([...hookRows.map((item) => item.copy), ...hooks]).slice(0, 10)
 }
 
+function buildStrategyExperimentRows({ productText, personaText, hookRows = [], materialDigest = {}, selectedPlatforms = [], sellerMode = false }) {
+  const proofPoints = materialDigest.proofPoints?.length
+    ? materialDigest.proofPoints
+    : [`${productText} 실사용 장면`, `${personaText}의 구매 망설임`, `${productText} 선택 이유`]
+  const primaryHooks = hookRows.length ? hookRows : buildStrategyHookRows({ productText, personaText })
+  const platformA = selectedPlatforms[0] || 'Instagram'
+  const platformB = selectedPlatforms[1] || 'TikTok'
+  const platformC = selectedPlatforms[2] || 'YouTube'
+  const rows = [
+    {
+      hypothesis: '첫 3초 숫자/가격/조건을 크게 보여주면 저장과 댓글 질문이 늘어난다',
+      hook: primaryHooks[0]?.code || 'M2',
+      proof: proofPoints[0],
+      format: `${platformA} 숏폼 15-30초`,
+      cta: sellerMode ? '링크/코드 확인' : '댓글 질문 유도',
+      metric: '조회수, 저장, 댓글 질문 수',
+    },
+    {
+      hypothesis: '실물/패키지/사용 장면이 많을수록 광고 같지 않게 받아들여진다',
+      hook: primaryHooks[1]?.code || 'M5',
+      proof: proofPoints[1] || proofPoints[0],
+      format: `${platformB} 사용 전후 컷 4-6개`,
+      cta: '저장 후 비교',
+      metric: '저장률, 공유, 평균 시청 지속',
+    },
+    {
+      hypothesis: '까다로운 리뷰어가 회의적으로 시작하면 전환 전 신뢰가 올라간다',
+      hook: primaryHooks.find((item) => item.code === 'M6')?.code || 'M6',
+      proof: proofPoints[2] || proofPoints[0],
+      format: `${platformC} 리뷰/비교형`,
+      cta: sellerMode ? '구매 전 확인 포인트' : '브랜드 검색/상세 확인',
+      metric: '검색 유입, 링크 클릭, 댓글 품질',
+    },
+    {
+      hypothesis: '성과가 난 후킹 구조를 다음 후보에게 변형 전달하면 캠페인 학습 속도가 빨라진다',
+      hook: 'Learning Loop',
+      proof: '리포트 콘텐츠 추적 raw',
+      format: '성과 상위 콘텐츠를 레퍼런스 저장 후 가이드 재생성',
+      cta: '다음 제작 가이드 반영',
+      metric: '2차 콘텐츠 평균 조회/참여 상승률',
+    },
+  ]
+
+  return rows
+}
+
 function buildInfluencerStrategy({ brand, brief, campaign, creators = [], recommendations = [], learningMaterials = [] }) {
   const selectedPlatforms = (brief.platforms?.length ? brief.platforms : ['Instagram', 'TikTok']).filter(Boolean)
   const selectedCategories = (brief.categories?.length ? brief.categories : ['리뷰']).filter((item) => item !== '전체')
@@ -2802,6 +3505,21 @@ function buildInfluencerStrategy({ brand, brief, campaign, creators = [], recomm
   const phasePlan = buildStrategyExecutionPhases({ problemType, sellerMode, campaign, targetCount, productText, personaText })
   const channelPlays = buildStrategyChannelPlays({ selectedPlatforms, sellerMode, productText, personaText })
   const hookCopyLines = buildStrategyHookCopyLines({ productText, personaText, hookRows, materialDigest, campaign })
+  const experimentRows = buildStrategyExperimentRows({
+    productText,
+    personaText,
+    hookRows,
+    materialDigest,
+    selectedPlatforms,
+    sellerMode,
+  })
+  const discoveryRules = [
+    `국가/채널: ${campaign?.targetCountry || brief.country || '캠페인 국가'} · ${selectedPlatforms.join(', ')}`,
+    `카테고리: ${selectedCategories.join(', ') || '브랜드 카테고리 우선'}`,
+    `최소 조건: 팔로워 ${compactNumber(brief.minFollowers || recommendationPolicy.minimumFollowers)} 이상, 평균 조회 ${compactNumber(campaign?.minAverageViews || brief.minAverageViews || recommendationPolicy.minimumAverageViews)} 이상 후보 우선`,
+    `우선순위: 팔로워 규모보다 팔로워 대비 조회 폭발계수, 참여율, 저장/공유, 실제 추적 성과를 먼저 반영`,
+    `제외 조건: ${forbidden.length ? forbidden.join(', ') : '브랜드 금지 표현, 경쟁 제품 과다 협찬, 데이터 신뢰도 낮은 계정'}`,
+  ]
   const inputSummary = [
     `제품/서비스: ${productText}`,
     `타깃: ${personaText}`,
@@ -2835,12 +3553,20 @@ ${withKoreanJosa(productText, '을/를')} 단순 협찬 리뷰가 아니라 "${w
 - 사용 시나리오: 제품을 쓰는 상황을 보여주고, 타깃이 겪는 망설임을 자연스럽게 해소합니다.
 - 전환 연결: 댓글 질문, 저장, 링크 확인, 공동구매/쿠폰 등 캠페인 목표에 맞는 행동으로 닫습니다.
 
-## 3. 실행 시나리오
+## 3. 발굴 조건으로 변환
+${discoveryRules.map((item) => `- ${item}`).join('\n')}
+
+## 4. 콘텐츠 실험 매트릭스
+| 가설 | 후크 | 증명/소재 | 포맷 | CTA | 성공 기준 |
+| --- | --- | --- | --- | --- | --- |
+${experimentRows.map((item) => `| ${item.hypothesis} | ${item.hook} | ${item.proof} | ${item.format} | ${item.cta} | ${item.metric} |`).join('\n')}
+
+## 5. 실행 시나리오
 | 기간 | 목표 | 해야 할 일 | 산출물 | 성공 기준 |
 | --- | --- | --- | --- | --- |
 ${phasePlan.map((item) => `| ${item[0]} | ${item[1]} | ${item[2]} | ${item[3]} | ${item[4]} |`).join('\n')}
 
-## 4. 캐스팅 전략
+## 6. 캐스팅 전략
 ${castingMix.map((item) => `- ${item}`).join('\n')}
 - 현재 실제 후보 풀: ${matchedCreators.length}명 / AI 추천 후보: ${recommendations.length}명
 
@@ -2848,51 +3574,51 @@ ${castingMix.map((item) => `- ${item}`).join('\n')}
 | --- | --- | ---: | --- | ---: | ---: | ---: | --- |
 ${castingTable}
 
-## 5. 콘텐츠 후킹 포인트
+## 7. 콘텐츠 후킹 포인트
 ### 후크 설계 원칙
 ${hookLines.map((item) => `- ${item}`).join('\n')}
 
 ### 바로 테스트할 카피 후보
 ${hookCopyLines.map((item, index) => `${index + 1}. ${item}`).join('\n')}
 
-## 6. 채널별 운영법
+## 8. 채널별 운영법
 | 채널 | 역할 | 실행 방법 | 산출물 |
 | --- | --- | --- | --- |
 ${channelPlays.map((item) => `| ${item.platform} | ${item.role} | ${item.execution} | ${item.deliverable} |`).join('\n')}
 
-## 7. 메시지/섭외 운영
+## 9. 메시지/섭외 운영
 - 후보를 "즉시 제안", "조건 확인", "예비 후보"로 나누고, 즉시 제안 후보부터 메시지 검토함으로 보냅니다.
 - 첫 메시지는 협업 조건보다 크리에이터의 콘텐츠를 본 이유를 먼저 말합니다.
 - 24~48시간 무응답이면 짧은 리마인드 1회만 보내고, 이후에는 예비 후보로 교체합니다.
 - 이메일이 있는 후보는 이메일 발송, DM만 가능한 후보는 작업용 엑셀로 분리합니다.
 - 수락 후보는 섭외 완료 풀에 저장하고, 이후 배송/콘텐츠 추적/리포트가 캠페인 단위로 이어지게 합니다.
 
-## 8. KPI 설계
+## 10. KPI 설계
 ${kpiPlan.map((item) => `- ${item}`).join('\n')}
 
-## 9. 예산/섭외 구조
+## 11. 예산/섭외 구조
 ${budgetPlan.map((item) => `- ${item}`).join('\n')}
 
-## 10. 브랜드 학습자료 반영
+## 12. 브랜드 학습자료 반영
 ${learningKeywords.length ? learningKeywords.map((item) => `- 강조: ${item}`).join('\n') : '- 등록된 학습자료가 없으므로 제품 USP, 금지 표현, 상세페이지 문구를 먼저 넣는 것을 권장'}
 ${materialDigest.proofPoints.slice(0, 8).map((item) => `- 증명점: ${item}`).join('\n')}
 ${forbidden.length ? forbidden.map((item) => `- 금지/주의: ${item}`).join('\n') : '- 금지 표현은 캠페인 생성 전 별도 확인'}
 ${materialDigest.riskPoints.slice(0, 6).map((item) => `- 자료 기반 리스크: ${item}`).join('\n')}
 
-## 11. 성과 최적화 루프
+## 13. 성과 최적화 루프
 - D+1: 업로드 링크, 조회수, 댓글, 저장/공유를 등록하고 누락 콘텐츠를 리마인드합니다.
 - D+3: 조회수 대비 참여율이 높은 콘텐츠의 후크와 자막 구조를 저장 레퍼런스로 남깁니다.
 - D+7: 평균 이하 콘텐츠는 썸네일/첫 자막/CTA를 다시 보고, 다음 발송 메시지와 가이드에 반영합니다.
 - D+14: 성과가 좋은 크리에이터는 재섭외 그룹으로 옮기고, 낮은 후보는 보류 사유를 기록합니다.
 - 보고서에는 캠페인 목표 대비 도달, 참여, 전환, 섭외 완료율을 함께 보여줍니다.
 
-## 12. 컴플라이언스 게이트
+## 14. 컴플라이언스 게이트
 - 모든 콘텐츠에 #광고, #협찬 또는 유료광고 포함 표기를 명시
 - 가짜 후기, 무표기 커뮤니티 시딩, 경쟁사 실명 비방은 제외
 - 의학적 효능, 과장 전후 비교, 허위 긴급성 표현은 검수 단계에서 차단
 - 최종 실행 전 GO / MODIFY / HOLD / STOP 컨펌을 받음
 
-## 13. 다음 액션
+## 15. 다음 액션
 1. 실제 후보 발굴에서 공개 프로필 데이터를 수집
 2. AI 매칭 실행으로 후보 리스트 생성
 3. 메시지 검토함에서 제안 문구 확인
@@ -3379,8 +4105,38 @@ function getCreatorPerformanceScore(creator) {
   return clampNumber(Math.round(viewScore + viralScore + engagementScore + fitScore - pendingPenalty), 0, 100)
 }
 
+function getCreatorEfficiencyScore(creator) {
+  if (!creator || hasPendingMetrics(creator)) return 0
+
+  const averageViews = Number(creator.averageViews || 0)
+  const price = Number(creator.price || 0)
+  const virality = getCreatorViralityRatio(creator)
+  const engagement = Number(creator.engagement || 0)
+  if (!averageViews) return 0
+
+  if (!price) {
+    return clampNumber(Math.round(48 + Math.min(22, virality * 12) + Math.min(18, engagement * 1.5)), 0, 100)
+  }
+
+  const costPerView = price / Math.max(averageViews, 1)
+  const cpvScore =
+    costPerView <= 5 ? 96 :
+      costPerView <= 10 ? 86 :
+        costPerView <= 20 ? 74 :
+          costPerView <= 35 ? 60 :
+            costPerView <= 60 ? 44 :
+              28
+  const viralBonus = Math.min(10, virality * 4)
+  const engagementBonus = Math.min(8, engagement * 0.8)
+  return clampNumber(Math.round(cpvScore + viralBonus + engagementBonus), 0, 100)
+}
+
 function compareCreatorsByDiscoveryPriority(a, b) {
-  const performanceGap = getCreatorPerformanceScore(b) - getCreatorPerformanceScore(a)
+  const priorityScore = (creator) =>
+    getCreatorPerformanceScore(creator) +
+    getCreatorLearningScore(creator) * 1.4 +
+    getCreatorEfficiencyScore(creator) * 0.2
+  const performanceGap = priorityScore(b) - priorityScore(a)
   if (performanceGap) return performanceGap
   const viewGap = Number(b.averageViews || 0) - Number(a.averageViews || 0)
   if (viewGap) return viewGap
@@ -3727,6 +4483,108 @@ function displayMetric(value, pendingText = '수집 필요') {
   return value ? compactNumber(value) : pendingText
 }
 
+function extractStrategyDiscoveryTerms(value, limit = 18) {
+  const stopWords = new Set([
+    'the',
+    'and',
+    'for',
+    'with',
+    'this',
+    'that',
+    'campaign',
+    'brand',
+    'content',
+    'guide',
+    'strategy',
+    '영상',
+    '콘텐츠',
+    '캠페인',
+    '브랜드',
+    '전략',
+    '가이드',
+    '후보',
+    '제안',
+    '기준',
+    '사용',
+    '타깃',
+    '제품',
+    '진행',
+    '설명',
+    '메시지',
+    '생성',
+  ])
+  return uniqueList(
+    String(value || '')
+      .replace(/[()[\]{}"'`~!?:;|/\\<>+=*_]/g, ' ')
+      .split(/[\s,\n\r·•]+/)
+      .map((item) => item.trim().replace(/^#+|[.,。，、]+$/g, '').toLowerCase())
+      .filter((item) => item.length >= 2 && !stopWords.has(item) && !/^\d+$/.test(item)),
+  ).slice(0, limit)
+}
+
+function buildCampaignStrategyLearningMaterial(campaign = {}) {
+  const strategyText = [
+    campaign.influencerStrategy,
+    campaign.generatedContentGuide,
+    campaign.oneMessage,
+    campaign.hookPoints,
+    campaign.mission,
+    campaign.reward,
+    campaign.approvalFlow,
+    campaign.commerceMetric,
+  ]
+    .filter(Boolean)
+    .join('\n')
+
+  const keywords = extractStrategyDiscoveryTerms(strategyText, 24)
+  if (!strategyText && !keywords.length) return null
+
+  return {
+    id: `campaign-strategy-${campaign.id || 'draft'}`,
+    title: '캠페인 전략/가이드 생성물',
+    sourceType: 'ai_strategy_output',
+    sourceName: campaign.name || '선택 캠페인',
+    summary: '캠페인 상세에서 생성한 전략과 공통 인플루언서 가이드를 발굴/추천 기준에 반영합니다.',
+    keywords: keywords.join(', '),
+    doSay: [campaign.oneMessage, campaign.hookPoints].filter(Boolean).join(' / '),
+    dontSay: campaign.exclusionKeywords || '',
+  }
+}
+
+function buildCampaignDiscoveryBrief(baseBrief = defaultBrandBrief, campaign = {}) {
+  const strategyMaterial = buildCampaignStrategyLearningMaterial(campaign)
+  const strategyKeywords = strategyMaterial?.keywords || ''
+  const campaignMaterials = Array.isArray(campaign.campaignGuideMaterials) ? campaign.campaignGuideMaterials : []
+
+  return {
+    ...baseBrief,
+    product: campaign.product || baseBrief.product,
+    persona: campaign.targetPersona || baseBrief.persona,
+    keywords: uniqueList([
+      ...keywordList(baseBrief.keywords),
+      ...keywordList(campaign.searchKeywords),
+      ...keywordList(strategyKeywords),
+    ]).join(', '),
+    exclusions: uniqueList([
+      ...keywordList(baseBrief.exclusions),
+      ...keywordList(campaign.exclusionKeywords),
+    ]).join(', '),
+    minFollowers: campaign.minFollowers || baseBrief.minFollowers,
+    maxPrice: campaign.maxCreatorFee || baseBrief.maxPrice,
+    minAverageViews: campaign.minAverageViews || baseBrief.minAverageViews,
+    country: campaign.targetCountry || campaign.country || baseBrief.country || 'KR',
+    platforms: campaign.preferredPlatforms ? keywordList(campaign.preferredPlatforms) : baseBrief.platforms,
+    oneMessage: campaign.oneMessage || '',
+    hookPoints: campaign.hookPoints || '',
+    strategyKeywords,
+    learningMaterials: [
+      ...campaignMaterials,
+      ...(strategyMaterial ? [strategyMaterial] : []),
+      ...getLearningMaterials(baseBrief),
+    ].slice(0, 80),
+  }
+}
+
 function detectDiscoveryResultCountry(result) {
   const officialCountry = String(result?.country || '').trim().toUpperCase()
   const platform = result?.platform || ''
@@ -3758,6 +4616,19 @@ function detectDiscoveryResultCountry(result) {
 function buildDiscoverySearchText({ query, category, brandBrief, selectedCampaign }) {
   const manualQuery = String(query || '').replace(/\s+/g, ' ').trim()
   const selectedCategory = category && category !== '\uC804\uCCB4' ? category : ''
+  const strategyTerms = extractStrategyDiscoveryTerms(
+    [
+      selectedCampaign?.oneMessage,
+      selectedCampaign?.hookPoints,
+      selectedCampaign?.mission,
+      selectedCampaign?.influencerStrategy,
+      selectedCampaign?.generatedContentGuide,
+      brandBrief.strategyKeywords,
+    ]
+      .filter(Boolean)
+      .join(' '),
+    10,
+  ).join(' ')
 
   if (manualQuery) {
     return uniqueList([manualQuery, selectedCategory]).join(' ').trim()
@@ -3771,6 +4642,7 @@ function buildDiscoverySearchText({ query, category, brandBrief, selectedCampaig
     brandBrief.product,
     brandBrief.keywords,
     brandBrief.persona,
+    strategyTerms,
   ]
     .filter(Boolean)
     .join(' ')
@@ -4041,7 +4913,7 @@ function buildAdminRawDataCatalog({
       sourceLocation: '발굴, 메시지 전 후보 풀, 캠페인 섭외 완료 풀',
       storageLocation: `${storageBase} / creators, recruitedPool`,
       dashboardArea: '대시보드, 발굴, 캠페인, 메시지',
-      metricIds: ['MET-POOL-001', 'MET-POOL-002', 'MET-POOL-003', 'MET-POOL-004', 'MET-POOL-005', 'MET-CONT-005'],
+      metricIds: ['MET-POOL-001', 'MET-POOL-002', 'MET-POOL-003', 'MET-POOL-004', 'MET-POOL-005', 'MET-CONT-005', 'MET-AI-005'],
       ownerDept: '운영팀',
       opsOwner: 'Creator Manager',
       techOwner: 'Frontend/Data',
@@ -4233,7 +5105,7 @@ function buildAdminRawDataCatalog({
       sourceLocation: 'YouTube videos.list, public content snapshot, 수동 입력',
       storageLocation: `${storageBase} / trackedPosts.views`,
       dashboardArea: '리포트, 고객사 리포트, 캠페인 KPI',
-      metricIds: ['MET-SNS-001', 'MET-CONT-001', 'MET-CONT-004'],
+      metricIds: ['MET-SNS-001', 'MET-CONT-001', 'MET-CONT-004', 'MET-AI-005'],
       ownerDept: '데이터팀',
       opsOwner: 'Report Operator',
       techOwner: 'Backend/Data',
@@ -4257,7 +5129,7 @@ function buildAdminRawDataCatalog({
       sourceLocation: 'SNS API/public snapshot/수동 입력',
       storageLocation: `${storageBase} / trackedPosts.likes, comments, shares, saves`,
       dashboardArea: '리포트, 콘텐츠 성과 상세',
-      metricIds: ['MET-SNS-002', 'MET-SNS-003', 'MET-SNS-004', 'MET-SNS-005', 'MET-SNS-006'],
+      metricIds: ['MET-SNS-002', 'MET-SNS-003', 'MET-SNS-004', 'MET-SNS-005', 'MET-SNS-006', 'MET-AI-005'],
       ownerDept: '데이터팀',
       opsOwner: 'Report Operator',
       techOwner: 'Backend/Data',
@@ -4399,12 +5271,31 @@ function buildAdminMetricCatalog({ rawData, outreach, creators, campaigns, recru
   }))
 }
 
-function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, outreach, contentReferences, creatorGroups = [], externalReportRows = [] }) {
+function buildDataRoomExtendedRawCatalog({
+  rawData,
+  backendConfig,
+  creators,
+  outreach,
+  contentReferences,
+  creatorGroups = [],
+  externalReportRows = [],
+  campaigns = [],
+  recommendations = [],
+  candidatePoolEvidence = [],
+}) {
   const nowText = new Date().toLocaleString('ko-KR')
   const storageBase = backendConfig?.hasSupabase ? '팀 공유 DB public schema' : 'localStorage creatorops.workspace.v2'
   const apiStatus = backendConfig?.apiBaseUrl ? '정상' : '지연'
   const externalVideoRawCount = externalReportRows.filter(isExternalVideoRawRow).length
   const externalBrandRawCount = externalReportRows.filter(isExternalBrandInfluencerRawRow).length
+  const strategyArtifactCount = campaigns.filter(
+    (campaign) => campaign.influencerStrategy || campaign.generatedContentGuide || Object.keys(campaign.individualContentGuides || {}).length,
+  ).length
+  const llmRecommendationCount = recommendations.filter((recommendation) => recommendation.llmTrace || recommendation.aiEnriched).length
+  const llmOutreachCount = outreach.filter((item) => item.llmTrace).length
+  const aiArtifactCount = llmRecommendationCount + llmOutreachCount + strategyArtifactCount
+  const candidatePoolEvidenceCount = candidatePoolEvidence.length
+  const aiRawStatus = aiArtifactCount ? '정상' : backendConfig?.apiBaseUrl ? '검증 필요' : '지연'
   const latestExternalImportAt = externalReportRows
     .map((row) => row.importedAt)
     .filter(Boolean)
@@ -4429,7 +5320,7 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       sourceLocation: 'server /discovery/*, /references/search',
       storageLocation: `${storageBase} / future: external_search_events`,
       dashboardArea: '발굴, 레퍼런스, 데이터룸 수집 로그',
-      metricIds: ['MET-OPS-001', 'MET-AI-003', 'MET-BENCH-001'],
+      metricIds: ['MET-OPS-001', 'MET-AI-003', 'MET-AI-004', 'MET-BENCH-001'],
       ownerDept: '데이터팀',
       opsOwner: 'Data Operator',
       techOwner: 'Backend/Data',
@@ -4447,19 +5338,69 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       purpose: 'AI가 어떤 raw 데이터 조합으로 추천/메시지/가이드를 만들었는지 설명 가능하게 저장',
       method: 'API / DB 연동',
       cycle: 'AI 실행 시',
-      lastCollectedAt: nowText,
+      lastCollectedAt: aiArtifactCount ? nowText : '-',
       nextCollectAt: 'AI 실행 시',
-      status: backendConfig?.apiBaseUrl ? '검증 필요' : '지연',
-      sourceLocation: 'OpenAI API, local scoring engine',
+      status: aiRawStatus,
+      sourceLocation: 'OpenAI API, local scoring engine, strategy director package',
       storageLocation: `${storageBase} / future: ai_generation_runs`,
       dashboardArea: 'AI 추천, 메시지, 캠페인 전략, 가이드 생성',
-      metricIds: ['MET-AI-001', 'MET-AI-002', 'MET-AI-003', 'MET-AI-GEN-001', 'MET-AI-GEN-002', 'MET-AI-GEN-003', 'MET-GUIDE-001'],
+      metricIds: ['MET-AI-001', 'MET-AI-002', 'MET-AI-003', 'MET-AI-004', 'MET-AI-005', 'MET-AI-006', 'MET-AI-GEN-001', 'MET-AI-GEN-002', 'MET-AI-GEN-003', 'MET-GUIDE-001'],
       ownerDept: 'PM/데이터',
       opsOwner: 'PM',
       techOwner: 'AI/Data',
       qualityIssue: '프롬프트 버전과 사용 raw 데이터 ID를 함께 저장해야 재현 가능',
       logLocation: 'server logs / future: ai_generation_runs',
-      note: `${outreach.length}건 메시지와 ${creators.length}명 후보를 AI 입력으로 사용 가능`,
+      note: `${recommendations.length}건 추천 · ${outreach.length}건 메시지 · ${strategyArtifactCount}건 전략/가이드 산출물 · ${creators.length}명 후보 입력`,
+      active: true,
+    },
+    {
+      id: 'RAW-INT-AI-POLICY-001',
+      name: 'AI 추천 정책/가중치',
+      scope: '내부',
+      category: 'AI 정책',
+      description: 'AI 추천 점수화에 사용하는 최소 기준, 보류 기준, 우선 제안 기준, raw/metric 연결 정책',
+      purpose: '추천 카드, 엑셀, 메시지 전 후보 풀, 데이터룸 지표 설명이 같은 판단 기준을 사용하도록 관리',
+      method: 'DB 연동 / 정책 버전 관리',
+      cycle: '추천 정책 변경 시',
+      lastCollectedAt: nowText,
+      nextCollectAt: '정책 변경 시',
+      status: '정상',
+      sourceLocation: 'src/App.jsx recommendationPolicy / future: recommendation_policy_versions',
+      storageLocation: `${storageBase} / future: recommendation_policy_versions`,
+      dashboardArea: 'AI 추천, 발굴, 메시지 전 후보 풀, 데이터룸',
+      metricIds: recommendationPolicy.metricIds,
+      ownerDept: 'PM/데이터',
+      opsOwner: 'PM',
+      techOwner: 'Frontend/Data',
+      qualityIssue: '정책값 변경 시 기존 추천 근거와 버전 차이를 기록해야 함',
+      logLocation: 'git history / future: recommendation_policy_versions',
+      note: `팔로워 최소 ${compactNumber(recommendationPolicy.minimumFollowers)} · 평균 조회 ${compactNumber(recommendationPolicy.minimumAverageViews)} · 폭발계수 ${recommendationPolicy.minimumVirality}x · 우선 제안 ${recommendationPolicy.priorityScore}점`,
+      active: true,
+    },
+    {
+      id: 'RAW-INT-POOL-EVIDENCE-001',
+      name: '메시지 전 후보 추천 근거 이력',
+      scope: '내부',
+      category: '크리에이터 풀',
+      description: '발굴/AI 추천 후보를 메시지 전 후보 풀로 저장할 때의 추천 점수, 판단축, 추천 정책, 실제 성과 학습, 원천 raw, 계산지표, 저장 출처',
+      purpose: '후보가 왜 메시지 전 풀에 들어왔는지 캠페인 기준으로 재현하고, 메시지 발송/엑셀 전달 시 추천 당시 근거를 유지',
+      method: 'DB 연동',
+      cycle: '후보 저장/삭제/메시지 전환 시',
+      lastCollectedAt: candidatePoolEvidenceCount ? nowText : '-',
+      nextCollectAt: '후보 풀 변경 시',
+      status: candidatePoolEvidenceCount ? '정상' : '미수집',
+      sourceLocation: '발굴 > AI 추천/검색 결과 > 메시지 전 후보 풀 저장',
+      storageLocation: `${storageBase} / candidatePoolEvidence`,
+      dashboardArea: '발굴, 메시지 전 후보 풀, 메시지, 엑셀 다운로드, 데이터룸',
+      metricIds: ['MET-AI-001', 'MET-AI-002', 'MET-AI-003', 'MET-AI-004', 'MET-AI-005', 'MET-AI-006'],
+      ownerDept: '운영/데이터팀',
+      opsOwner: 'Creator Manager',
+      techOwner: 'Frontend/Data',
+      qualityIssue: candidatePoolEvidenceCount
+        ? '후보 삭제/캠페인 변경 시 근거 이력 동기화 필요'
+        : '후보 풀 저장 근거가 없어 메시지 후보의 추천 사유 재현 불가',
+      logLocation: 'browser local log / future: candidate_pool_evidence_events',
+      note: `${candidatePoolEvidenceCount}건 후보 추천 근거 저장 · 정책 raw/실제 성과 학습 스냅샷 포함`,
       active: true,
     },
     {
@@ -4475,9 +5416,9 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       nextCollectAt: 'LLM 생성 시',
       status: '검증 필요',
       sourceLocation: 'Claude API, OpenAI API, campaign/reference/report generation runner',
-      storageLocation: `${storageBase} / future: llm_generation_artifacts`,
+      storageLocation: `${storageBase} / recommendations.llmTrace, outreach.llmTrace, campaigns + future: llm_generation_artifacts`,
       dashboardArea: '캠페인 상세, 발굴 AI 추천, 메시지, 레퍼런스, 리포트, 데이터룸',
-      metricIds: ['MET-LLM-001', 'MET-LLM-002', 'MET-LLM-003', 'MET-AI-GEN-001', 'MET-GUIDE-001', 'MET-AI-003'],
+      metricIds: ['MET-LLM-001', 'MET-LLM-002', 'MET-LLM-003', 'MET-AI-GEN-001', 'MET-GUIDE-001', 'MET-AI-003', 'MET-AI-004', 'MET-AI-006'],
       ownerDept: 'PM/AI/Data',
       opsOwner: 'PM',
       techOwner: 'AI/Data',
@@ -4621,7 +5562,7 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       sourceLocation: 'external video monitor API / projects, videos, daily-change endpoints',
       storageLocation: `${storageBase} / future: external_api_raw(type=video_monitor_data)`,
       dashboardArea: '리포트, 브랜드 검색 및 추적, 데이터룸',
-      metricIds: ['MET-EXT-VIDEO-001', 'MET-EXT-VIDEO-002', 'MET-EXT-VIDEO-003', 'MET-SNS-001', 'MET-SNS-006'],
+      metricIds: ['MET-EXT-VIDEO-001', 'MET-EXT-VIDEO-002', 'MET-EXT-VIDEO-003', 'MET-SNS-001', 'MET-SNS-006', 'MET-AI-005'],
       ownerDept: '데이터/리포트팀',
       opsOwner: 'Report Operator',
       techOwner: 'Data Engineer',
@@ -4652,6 +5593,30 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
       qualityIssue: '델타 기준 기간, 라벨 그룹, 플랫폼 ID 매핑이 없으면 기여도 해석이 흔들릴 수 있음',
       logLocation: 'future: external_report_import_logs / contribution_metric_snapshots',
       note: '확인 컬럼: Views Delta, Engagement Delta, Delta Ranking, Trend, Influencer Contribution, Label Contribution/Distribution',
+      active: true,
+    },
+    {
+      id: 'RAW-EXT-CUSTOM',
+      name: '수동 외부 보고서 기타 raw',
+      scope: '외부',
+      category: '외부 보고서 보완',
+      description: '정해진 양식과 매칭되지 않는 외부 엑셀/CSV 행을 임시 보완 원천으로 보관',
+      purpose: '업로드 파일의 행을 버리지 않고 데이터룸에서 원천 확인 후 정규 raw 타입으로 재분류',
+      method: '수동 업로드',
+      cycle: '리포트 업로드 시',
+      lastCollectedAt: latestExternalImportAt || '-',
+      nextCollectAt: '외부 리포트 업로드 시',
+      status: externalReportRows.some((row) => !row.rawSourceId) ? '검증 필요' : '미수집',
+      sourceLocation: '데이터룸 > 리포트 raw 적재 > 미분류 업로드 파일',
+      storageLocation: `${storageBase} / externalReportRows(rawSourceId empty fallback)`,
+      dashboardArea: '데이터룸, 리포트 검수',
+      metricIds: ['MET-OPS-002'],
+      ownerDept: '데이터/운영팀',
+      opsOwner: 'Data QA',
+      techOwner: 'Data Engineer',
+      qualityIssue: '정규 rawSourceId가 없으므로 리포트/대시보드 확정 수치로 바로 쓰지 않고 검수 후 재분류해야 함',
+      logLocation: 'external_report_import_logs / row normalization warnings',
+      note: '양식 단일화 전 과도기용 fallback raw. 프론트 확정 지표에는 직접 연결하지 않음',
       active: true,
     },
     {
@@ -4705,13 +5670,52 @@ function buildDataRoomExtendedRawCatalog({ rawData, backendConfig, creators, out
   ])
 }
 
-function buildDataRoomExtendedMetricCatalog({ metrics, rawData, creators, contentReferences, creatorGroups = [] }) {
+function buildDataRoomExtendedMetricCatalog({
+  metrics,
+  rawData,
+  creators,
+  contentReferences,
+  creatorGroups = [],
+  campaigns = [],
+  recommendations = [],
+  candidatePoolEvidence = [],
+}) {
   const rawName = (id) => rawData.find((item) => item.id === id)?.name ?? id
   const nowText = new Date().toLocaleString('ko-KR')
+  const strategyGeneratedCount = campaigns.filter((campaign) => Boolean(campaign.influencerStrategy || campaign.generatedContentGuide)).length
+  const strategyMatchedRecommendationCount = recommendations.filter((recommendation) =>
+    recommendation.scoreBreakdown?.some(
+      (item) =>
+        item.metricId === 'MET-AI-006' &&
+        !['전략 없음', '기준 적용', '0개'].includes(String(item.value || '').trim()),
+    ),
+  ).length
+  const strategyMetricStatus = strategyGeneratedCount
+    ? strategyMatchedRecommendationCount
+      ? '정상'
+      : '검증 필요'
+    : '지연'
+  const recommendationEvidenceCount = recommendations.length + candidatePoolEvidence.length
+  const aiRecommendationStatus = recommendationEvidenceCount ? '정상' : '검증 필요'
+  const efficiencyRecommendationCount = recommendations.filter((recommendation) =>
+    recommendation.scoreBreakdown?.some(
+      (item) => item.metricId === 'MET-AI-004' && !['수집 필요', '산정 전', '-'].includes(String(item.value || '').trim()),
+    ),
+  ).length
+  const learningRecommendationCount = recommendations.filter((recommendation) =>
+    recommendation.scoreBreakdown?.some(
+      (item) => item.metricId === 'MET-AI-005' && !['이력 없음', '0건', '0점', '-'].includes(String(item.value || '').trim()),
+    ),
+  ).length
+  const efficiencyMetricStatus = efficiencyRecommendationCount ? '정상' : '검증 필요'
+  const learningMetricStatus = learningRecommendationCount ? '정상' : '검증 필요'
   const rows = [
-    ['MET-AI-001', '브랜드-크리에이터 적합도', 'AI 매칭/가치생성 번들', '내부', '브랜드 브리프와 후보 프로필/성과를 조합한 매칭 점수', 'weighted(brand_keywords, category_fit, avg_views, engagement, risk)', ['RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-EXT-CHN-001', 'RAW-INT-QUALITY-001'], '캠페인 기준', '후보 갱신 시', '정상', '발굴, AI 추천', '80점 이상 우선 제안, 60점 미만 보류', '데이터 품질 50점 미만', '중간', 'PM/데이터', 'ai_generation_runs + data_quality_reviews', `${creators.length}명 후보 기준`],
+    ['MET-AI-001', '브랜드-크리에이터 적합도', 'AI 매칭/가치생성 번들', '내부', '브랜드 브리프와 후보 프로필/성과를 조합하되 조회수, 광고 효율, 실제 업로드 성과 학습은 데이터가 있을 때만 반영하는 매칭 점수', 'base + platform_fit + category_fit + keyword_fit + performance_fit + efficiency_fit + conditional(actual_performance_learning) + safety_fit - risk_penalty', ['RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-POLICY-001', 'RAW-EXT-CHN-001', 'RAW-INT-QUALITY-001', 'RAW-EXT-CONT-001', 'RAW-EXT-ENG-001'], '캠페인 기준', '후보 갱신 시', aiRecommendationStatus, '발굴, AI 추천', '80점 이상 우선 제안, 60점 미만 보류. 실제 성과 학습과 후보 풀 저장 근거는 쌓인 경우에만 가산/보정', '데이터 품질 50점 미만 또는 평균 조회수 1만 미만', '중간', 'PM/데이터', 'ai_generation_runs + data_quality_reviews + conditional: creator_performance_learning_map/candidatePoolEvidence', `${creators.length}명 후보 · 추천 ${recommendations.length}건 · 후보 풀 근거 ${candidatePoolEvidence.length}건 기준`, { conditionalRawIds: ['RAW-EXT-MON-VIDEO-001', 'RAW-INT-POOL-EVIDENCE-001'], conditionalLabel: '성과 학습/후보 저장 후 반영 raw' }],
     ['MET-AI-002', '데이터 품질 점수', 'AI 매칭/가치생성 번들', '내부', '공식 API 여부, 최신성, 국가/플랫폼 일치, 팔로워/조회수 확인 여부', 'official_source*35 + freshness*20 + metric_completeness*25 + country_match*20', ['RAW-INT-QUALITY-001', 'RAW-EXT-SEARCH-001', 'RAW-EXT-UNSUPPORTED-001'], '검색/저장 시', '실시간', '검증 필요', '발굴, 레퍼런스, 데이터룸', '80점 이상 운영 가능, 60점 이하는 보류 권장', '팔로워 미수집+국가 불일치', '중간', '데이터팀', 'data_quality_reviews', '키워드별 수동 검수 대체 지표'],
-    ['MET-AI-003', '후보 우선순위 점수', 'AI 매칭/가치생성 번들', '내부', '조회수 성장성, 팔로워 대비 터진 콘텐츠, 브랜드 적합도, 연락 가능성 결합', 'fit_score*0.35 + virality_score*0.3 + engagement_score*0.2 + contactability*0.15', ['RAW-INT-INF-001', 'RAW-EXT-SEARCH-001', 'RAW-EXT-CHN-001', 'RAW-INT-AI-001'], '캠페인 기준', '후보 매칭 시', '정상', 'AI 추천, 메시지 전 후보 풀', '상위 점수부터 메시지 후보로 전환', '연락처 없음+데이터 품질 낮음', '중간', 'PM/데이터', 'creator scoring logs', '팔로워보다 조회수/터진 콘텐츠 우선 전략 반영'],
+    ['MET-AI-003', '후보 우선순위 점수', 'AI 매칭/가치생성 번들', '내부', '평균 조회수, 팔로워 대비 조회 폭발계수, 참여율, 예상 CPV, 브랜드 적합도, 연락 가능성을 결합하고 실제 업로드 성과는 있는 후보만 보정', `campaign_country_match + performance_score*0.32 + efficiency_score*0.16 + conditional(actual_performance_learning_score) + brand_fit + keyword_fit + safety_fit - exclusion_penalty, then decision_gate(${recommendationPolicy.decisions.priority} > ${recommendationPolicy.decisions.keep} > ${recommendationPolicy.decisions.verify} > ${recommendationPolicy.decisions.hold})`, ['RAW-INT-INF-001', 'RAW-EXT-SEARCH-001', 'RAW-EXT-CHN-001', 'RAW-INT-AI-001', 'RAW-INT-AI-POLICY-001', 'RAW-EXT-CONT-001', 'RAW-EXT-ENG-001'], '캠페인 기준', '후보 매칭/저장 시', aiRecommendationStatus, 'AI 추천, 메시지 전 후보 풀', `${recommendationPolicy.decisions.hold} 후보는 AI 추천 실행 결과에서 제외하고, ${recommendationPolicy.decisions.priority}/${recommendationPolicy.decisions.keep}/${recommendationPolicy.decisions.verify} 순으로 메시지 전 후보 풀에 전환`, `팔로워 ${compactNumber(recommendationPolicy.minimumFollowers)} 미만, 평균 조회수 ${compactNumber(recommendationPolicy.minimumAverageViews)} 미만+팔로워 대비 조회 ${recommendationPolicy.minimumVirality}x 미만, 국가 불일치. 단 실제 추적 성과가 강한 후보는 성과 학습 점수로 보정`, '중간', 'PM/데이터', 'creator scoring logs + conditional: report_metric_snapshots/candidate_pool_evidence_events', `추천 ${recommendations.length}건 · 후보 풀 근거 ${candidatePoolEvidence.length}건 · 광고 효율 후보를 먼저 추천하도록 팔로워 규모보다 평균 조회/폭발계수/CPV/실제 성과를 우선 반영`, { conditionalRawIds: ['RAW-EXT-MON-VIDEO-001', 'RAW-INT-POOL-EVIDENCE-001'], conditionalLabel: '성과 학습/후보 저장 후 반영 raw' }],
+    ['MET-AI-004', '예상 뷰 효율 점수', 'AI 매칭/가치생성 번들', '내부', '후보의 예상 단가를 평균 조회수로 나눠 캠페인 예산 대비 조회 효율을 판단', 'price / max(average_views, 1), lower_cost_per_view => higher_efficiency_score', ['RAW-INT-INF-001', 'RAW-EXT-CHN-001', 'RAW-INT-QUALITY-001'], '캠페인 기준', '후보 매칭 시', efficiencyMetricStatus, 'AI 추천, 캠페인 상세, 리포트', 'CPV가 낮고 조회 폭발계수가 높을수록 우선 제안', '평균 조회수 미수집 또는 단가 미수집', '중간', 'PM/데이터', 'creator scoring logs / pricing table', `${efficiencyRecommendationCount}건 추천에서 뷰 효율 계산 가능`],
+    ['MET-AI-005', '실제 성과 학습 점수', 'AI 매칭/가치생성 번들', '내부', '리포트 콘텐츠 추적과 Video Monitor Data raw에서 크리에이터별 실제 업로드 성과를 합산해 다음 추천 점수에 반영', 'actual_view_fit + uplift_fit + engagement_fit + conversion_fit, max 18 bonus into performance_score and recommendation_score', ['RAW-INT-INF-001', 'RAW-EXT-CONT-001', 'RAW-EXT-ENG-001', 'RAW-EXT-MON-VIDEO-001'], '캠페인/크리에이터 기준', '리포트 갱신 또는 후보 매칭 시', learningMetricStatus, 'AI 추천, 발굴, 리포트, 데이터룸', '실제 성과 이력이 있는 후보는 다음 캠페인 추천에서 우선 검토', '성과 raw가 없거나 creatorId/handle 매칭 실패', '중간', 'PM/데이터', 'creator_performance_learning_map / report_metric_snapshots', `${learningRecommendationCount}건 추천에 실제 성과 학습 표시 · 프론트 추천 카드와 엑셀에는 실제 성과 학습 건수/평균 조회/최고 조회/참여율을 표시`],
+    ['MET-AI-006', '캠페인 전략 반영 점수', 'AI 매칭/가치생성 번들', '내부', '캠페인 전략과 공통/개별 가이드에서 추출한 키워드가 후보 프로필, 카테고리, 주제, 성과 맥락과 얼마나 맞는지 계산', 'min(strategy_keyword_hit_count * 3, 8) added to recommendation_score + strategy_hit_count displayed in score trace', ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-AI-001', 'RAW-INT-AI-POLICY-001', 'RAW-INT-INF-001', 'RAW-INT-LLM-BUNDLE-001'], '캠페인/후보 기준', '전략 생성 또는 후보 매칭 시', strategyMetricStatus, 'AI 추천, 발굴, 캠페인 상세, 데이터룸', '전략 키워드가 후보 텍스트와 맞을수록 우선순위가 올라가며, 전략이 없으면 일반 브랜드/성과 기준만 사용', '전략 생성 완료인데 전략 반영 0개가 지속되거나 후보 설명에 전략 근거가 없는 경우', '중간', 'PM/전략/데이터', 'campaign.influencerStrategy + generatedContentGuide + recommendation.scoreBreakdown', `전략/가이드 ${strategyGeneratedCount}개 · 전략 적중 추천 ${strategyMatchedRecommendationCount}건`],
     ['MET-GUIDE-001', '레퍼런스 변형 가이드 생성률', '콘텐츠 가이드 번들', '내부', '저장 레퍼런스가 캠페인 가이드/스크립트로 전환된 비율', 'guide_reference_count / saved_reference_count * 100', ['RAW-INT-CMP-BRIEF-001', 'RAW-EXT-REF-001', 'RAW-INT-AI-001'], '캠페인 기준', '가이드 생성 시', '검증 필요', '캠페인 상세, 레퍼런스', '저장만 하고 가이드 반영이 안 되면 운영 누락', '저장 레퍼런스 5개 이상인데 0%', '중간', '콘텐츠팀', 'campaign.strategyInputRaw / ai_generation_runs / content_guides', `${contentReferences.length}개 레퍼런스`],
     ['MET-OPS-001', '외부 수집 성공률', '데이터 운영 번들', '외부', '외부 검색/API 요청 중 성공한 요청 비율', 'successful_collection_jobs / total_collection_jobs * 100', ['RAW-EXT-SEARCH-001'], '최근 24시간', '실시간', '검증 필요', '데이터룸, 설정 API 테스트', '95% 이상 정상, 80% 미만 장애 검토', '연속 3회 실패', '중간', '데이터/개발', 'Render API logs', '수집 로그 테이블 연결 필요'],
     ['MET-OPS-002', '미지원 데이터 비율', '데이터 운영 번들', '외부', '프론트 표시 항목 중 부분지원/미지원 raw에 의존하는 비율', 'unsupported_metric_count / visible_metric_count * 100', ['RAW-EXT-UNSUPPORTED-001', 'RAW-INT-QUALITY-001'], '전체', '일 1회', '검증 필요', '데이터룸, 리포트', '비율이 높을수록 공식 API/OAuth 우선순위 상승', '30% 이상', '중간', 'PM/데이터', 'unsupported_metric_requests', '프론트에는 검증 필요/수집 필요로 표시'],
@@ -4720,8 +5724,8 @@ function buildDataRoomExtendedMetricCatalog({ metrics, rawData, creators, conten
   ]
 
   rows.push(
-    ['MET-LLM-001', 'LLM 산출물 저장률', 'LLM 번외 데이터 번들', '내부', '전략, 가이드, 추천 근거, 메시지, 레퍼런스 분석 산출물이 데이터룸 번외 raw에 저장된 비율', 'count(llm_generation_artifacts where output_text is not null) / count(llm_generation_requests) * 100', ['RAW-INT-AI-001', 'RAW-INT-LLM-BUNDLE-001'], '최근 30일', 'LLM 생성 시', '검증 필요', '데이터룸, 캠페인 상세, 발굴, 메시지, 레퍼런스', '프론트에 보이는 AI 문구는 모두 저장된 산출물만 노출', '프론트 노출 산출물 중 저장 누락 1건 이상', '중간', 'PM/AI/Data', 'llm_generation_artifacts', '운영 초기에는 localStorage와 ai_generation_runs를 병행'],
-    ['MET-LLM-002', 'LLM 원천 추적률', 'LLM 번외 데이터 번들', '내부', 'LLM 산출물이 어떤 브랜드/캠페인/후보/레퍼런스 raw를 읽고 생성됐는지 추적 가능한 비율', 'count(outputs with source_raw_ids + prompt_version + model_version) / count(outputs) * 100', ['RAW-INT-LLM-BUNDLE-001', 'RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-EXT-REF-001', 'RAW-INT-INF-001'], '최근 30일', 'LLM 생성 시', '검증 필요', '데이터룸, 리포트, 캠페인 상세', '근거 raw ID가 없는 AI 문구는 검증 필요로 표시', 'source_raw_ids 또는 prompt_version 누락', '중간', 'PM/데이터팀', 'llm_generation_artifacts.source_raw_ids', '데이터룸 -> 대시보드 시각화 원칙 검증용'],
+    ['MET-LLM-001', 'LLM 산출물 저장률', 'LLM 번외 데이터 번들', '내부', '전략, 가이드, 추천 근거, 메시지, 레퍼런스 분석 산출물이 데이터룸 번외 raw에 저장된 비율', 'count(recommendations.llmTrace + outreach.llmTrace + campaign strategy/guide artifacts) / count(LLM-visible outputs) * 100', ['RAW-INT-AI-001', 'RAW-INT-LLM-BUNDLE-001'], '최근 30일', 'LLM 생성 시', '검증 필요', '데이터룸, 캠페인 상세, 발굴, 메시지, 레퍼런스', '프론트에 보이는 AI 문구는 모두 저장된 산출물만 노출', '프론트 노출 산출물 중 저장 누락 1건 이상', '중간', 'PM/AI/Data', 'recommendations.llmTrace / outreach.llmTrace / future: llm_generation_artifacts', '운영 초기에는 localStorage와 ai_generation_runs를 병행'],
+    ['MET-LLM-002', 'LLM 원천 추적률', 'LLM 번외 데이터 번들', '내부', 'LLM 산출물이 어떤 브랜드/캠페인/후보/레퍼런스 raw를 읽고 생성됐는지 추적 가능한 비율', 'count(outputs with sourceRawIds + promptVersion + model) / count(outputs) * 100', ['RAW-INT-LLM-BUNDLE-001', 'RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-EXT-REF-001', 'RAW-INT-INF-001'], '최근 30일', 'LLM 생성 시', '검증 필요', '데이터룸, 리포트, 캠페인 상세', '근거 raw ID가 없는 AI 문구는 검증 필요로 표시', 'sourceRawIds 또는 promptVersion 누락', '중간', 'PM/데이터팀', 'recommendations.llmTrace.sourceRawIds / future: llm_generation_artifacts.source_raw_ids', '데이터룸 -> 대시보드 시각화 원칙 검증용'],
     ['MET-LLM-003', 'LLM 예상 비용', 'LLM 번외 데이터 번들', '내부', '모델별 입력/출력 토큰 사용량으로 산출한 전략/가이드/메시지/분석 예상 비용', 'sum(input_tokens / 1000000 * input_price + output_tokens / 1000000 * output_price) by model', ['RAW-INT-LLM-BUNDLE-001'], '캠페인/월 기준', 'LLM 생성 시', '검증 필요', '데이터룸, 설정, 내부 비용 리포트', '대량 발굴/메시지 생성 전 캠페인별 예상 비용을 확인', '월 예산 초과 또는 모델 단가 미등록', '중간', 'PM/재무/AI', 'llm_generation_artifacts.token_usage', 'OpenAI/Claude 단가는 설정값으로 관리'],
   )
 
@@ -4742,7 +5746,7 @@ function buildDataRoomExtendedMetricCatalog({ metrics, rawData, creators, conten
   const existingIds = new Set(metrics.map((item) => item.id))
   const extraMetrics = rows
     .filter(([id]) => !existingIds.has(id))
-    .map(([id, name, bundle, scope, description, formula, rawIds, period, refreshCycle, status, displayLocation, interpretation, outlierRule, reliability, ownerDept, errorLocation, note]) => ({
+    .map(([id, name, bundle, scope, description, formula, rawIds, period, refreshCycle, status, displayLocation, interpretation, outlierRule, reliability, ownerDept, errorLocation, note, options = {}]) => ({
       id,
       name,
       bundle,
@@ -4751,6 +5755,9 @@ function buildDataRoomExtendedMetricCatalog({ metrics, rawData, creators, conten
       formula,
       rawIds,
       rawNames: rawIds.map(rawName),
+      conditionalRawIds: options.conditionalRawIds ?? [],
+      conditionalRawNames: (options.conditionalRawIds ?? []).map(rawName),
+      conditionalLabel: options.conditionalLabel,
       period,
       refreshCycle,
       lastCalculatedAt: nowText,
@@ -4774,8 +5781,8 @@ function buildDataRoomWorkflowCoverage({ rawData, metrics }) {
     ['WF-DASHBOARD', '대시보드 운영 현황', '대시보드', ['RAW-INT-CRM-001', 'RAW-INT-INF-001', 'RAW-INT-CMP-001', 'RAW-EXT-CHN-001', 'RAW-EXT-SNS-001', 'RAW-EXT-CONT-001'], ['MET-CRM-004', 'MET-CMP-001', 'MET-CONT-005', 'MET-SNS-001'], '캠페인/메시지/콘텐츠 성과를 현재 워크스페이스 기준으로 집계', '프론트 카드 수치는 데이터룸 계산지표 기준으로 표시'],
     ['WF-CAMPAIGN', '캠페인 파이프라인', '캠페인', ['RAW-INT-CMP-001', 'RAW-INT-BRD-001', 'RAW-INT-FIN-001'], ['MET-CMP-001', 'MET-CMP-002', 'MET-CMP-004'], '캠페인 브리프, 일정, 섭외 완료, 배송/정산 레코드를 캠페인 ID로 묶음', '캠페인 없는 배송/정산/후보 풀은 노출하지 않음'],
     ['WF-DISCOVERY', '크리에이터 발굴 검색', '발굴', ['RAW-EXT-SEARCH-001', 'RAW-EXT-CHN-001', 'RAW-INT-QUALITY-001'], ['MET-AI-002', 'MET-AI-003'], '검색 원본 결과를 수집하고 국가/플랫폼/최소 팔로워/평균 조회수 기준으로 품질 판정', '데이터룸에 검색 원천이 없으면 실제 발굴 결과로 쓰지 않음'],
-    ['WF-AI-RECOMMEND', 'AI 추천 후보와 근거', '발굴', ['RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-001', 'RAW-INT-QUALITY-001'], ['MET-AI-001', 'MET-AI-002', 'MET-AI-003'], '브랜드 브리프와 후보 성과/품질 점수를 조합해 추천 이유와 리스크 생성', '추천 근거에는 사용 raw ID와 품질 점수가 남아야 함'],
-    ['WF-CANDIDATE-POOL', '메시지 전 후보 풀', '발굴/메시지', ['RAW-INT-INF-001', 'RAW-INT-QUALITY-001'], ['MET-POOL-001', 'MET-AI-003'], '저장된 후보만 메시지 전 풀로 이동하고 삭제 시 메시지 대기 리스트와 함께 정리', '풀에 없는 후보는 메시지 일괄 생성 대상이 아님'],
+    ['WF-AI-RECOMMEND', 'AI 추천 후보와 근거', '발굴', ['RAW-INT-BRD-001', 'RAW-INT-CMP-BRIEF-001', 'RAW-INT-INF-001', 'RAW-INT-AI-001', 'RAW-INT-AI-POLICY-001', 'RAW-INT-QUALITY-001', 'RAW-EXT-CONT-001', 'RAW-EXT-ENG-001'], ['MET-AI-001', 'MET-AI-002', 'MET-AI-003', 'MET-AI-004', 'MET-AI-005', 'MET-AI-006'], '브랜드 브리프와 캠페인 전략/가이드, 후보 성과/품질 점수를 조합해 추천 이유와 리스크 생성. 실제 업로드 성과 학습과 후보 풀 근거는 데이터가 쌓인 뒤 조건부로 반영', '추천 근거에는 사용 raw ID, 품질 점수, 성과 학습 여부, 전략 반영 여부가 남아야 함', { conditionalRawIds: ['RAW-EXT-MON-VIDEO-001', 'RAW-INT-POOL-EVIDENCE-001'], conditionalLabel: '성과 학습/후보 풀 저장 후 반영' }],
+    ['WF-CANDIDATE-POOL', '메시지 전 후보 풀', '발굴/메시지', ['RAW-INT-INF-001', 'RAW-INT-QUALITY-001', 'RAW-INT-POOL-EVIDENCE-001'], ['MET-POOL-001', 'MET-AI-003'], '저장된 후보만 메시지 전 풀로 이동하고 삭제 시 메시지 대기 리스트와 함께 정리', '풀에 없는 후보는 메시지 일괄 생성 대상이 아니며, 후보 풀 근거 raw가 없으면 추천 사유를 확정값으로 표시하지 않음'],
     ['WF-MESSAGE', '제안/응답 발송', '메시지', ['RAW-INT-CRM-001', 'RAW-INT-AI-001', 'RAW-INT-EXPORT-001'], ['MET-CRM-001', 'MET-CRM-004', 'MET-CRM-005'], '이메일 가능 후보는 발송 로그, DM 대상은 작업용 엑셀/복사 로그로 분리', 'DM 우회 자동화는 정책상 raw로 두지 않고 작업 로그만 관리'],
     ['WF-REPORT', '콘텐츠 추적/리포트', '리포트', ['RAW-INT-CMP-001', 'RAW-EXT-CONT-001', 'RAW-EXT-ENG-001', 'RAW-EXT-UNSUPPORTED-001'], ['MET-SNS-001', 'MET-SNS-006', 'MET-CONT-001', 'MET-CONT-004'], '업로드 URL 기준으로 공개 지표를 갱신하고 미지원 지표는 수집 필요로 표시', '데이터룸에 저장되지 않은 수치는 보고서에 확정값으로 표시하지 않음'],
     ['WF-REFERENCE', '콘텐츠 레퍼런스 검색/저장', '레퍼런스', ['RAW-EXT-SEARCH-001', 'RAW-EXT-REF-001', 'RAW-EXT-BENCH-001', 'RAW-INT-QUALITY-001'], ['MET-BENCH-001', 'MET-BENCH-002', 'MET-BENCH-003'], '50만 이상 또는 팔로워 대비 터진 콘텐츠를 우선 수집하고 품질 기준 미달은 제외', '검색 결과 원문이 없는 레퍼런스는 저장 링크 검증 대상으로 둠'],
@@ -4789,15 +5796,26 @@ function buildDataRoomWorkflowCoverage({ rawData, metrics }) {
     ['WF-GROUPS', '후보 그룹/세그먼트 관리', '후보 그룹/메시지', ['RAW-INT-GROUP-001', 'RAW-INT-INF-001'], ['MET-POOL-006', 'MET-POOL-001'], '후보 그룹 raw의 creatorIds를 후보 풀과 캠페인 배정으로 연결', '후보 그룹에 없는 후보는 메시지 대량 발송 대상으로 자동 포함하지 않음'],
   )
 
-  return coverage.map(([id, featureName, frontendArea, itemRawIds, itemMetricIds, algorithm, rule]) => {
+  return coverage.map(([id, featureName, frontendArea, itemRawIds, itemMetricIds, algorithm, rule, options = {}]) => {
+    const conditionalRawIds = options.conditionalRawIds ?? []
+    const optionalRawIds = options.optionalRawIds ?? []
+    const displayRawIds = uniqueList([...itemRawIds, ...conditionalRawIds, ...optionalRawIds])
     const missingRaw = itemRawIds.filter((rawId) => !rawIds.has(rawId))
     const missingMetrics = itemMetricIds.filter((metricId) => !metricIds.has(metricId))
     const hasUnsupported = itemRawIds.includes('RAW-EXT-UNSUPPORTED-001')
+    const availableConditionalRaw = conditionalRawIds.filter((rawId) => rawIds.has(rawId))
+    const missingConditionalRaw = conditionalRawIds.filter((rawId) => !rawIds.has(rawId))
     return {
       id,
       featureName,
       frontendArea,
-      rawIds: itemRawIds,
+      rawIds: displayRawIds,
+      requiredRawIds: itemRawIds,
+      conditionalRawIds,
+      optionalRawIds,
+      availableConditionalRaw,
+      missingConditionalRaw,
+      conditionalLabel: options.conditionalLabel ?? '조건 충족 시 반영',
       metricIds: itemMetricIds,
       algorithm,
       rule,
@@ -4886,7 +5904,7 @@ function buildDataRoomPendingBundles({ backendConfig }) {
   ]
 }
 
-const DATA_ROOM_BLOCKING_STATUSES = new Set(['오류', '중단', '미수집'])
+const DATA_ROOM_BLOCKING_STATUSES = new Set(['오류', '중단'])
 
 function createDataRoomDisplayGate(rawData = [], metrics = []) {
   const rawMap = new Map(rawData.map((item) => [item.id, item]))
@@ -5144,6 +6162,7 @@ function App() {
     creators,
     campaigns,
     shortlist,
+    candidatePoolEvidence,
     recommendations,
     outreach,
     recruitedPool,
@@ -5220,6 +6239,57 @@ function App() {
         : activeRecommendations,
     [activeRecommendations, selectedCampaign],
   )
+  const aiRecommendationApiState = useMemo(() => {
+    const routeResult = apiTestStatus.results.find((item) => item.key === 'openai-recommendations')
+    const enrichedCount = selectedCampaignRecommendations.filter(
+      (recommendation) => recommendation.aiEnriched || recommendation.llmTrace?.provider === 'OpenAI',
+    ).length
+
+    if (enrichedCount) {
+      return {
+        level: 'ready',
+        label: `OpenAI 보강 적용 ${enrichedCount}건`,
+        detail: '현재 추천에는 LLM 추천 근거, 제안 각도, 메시지 보강 결과가 저장되어 있습니다.',
+      }
+    }
+
+    if (!backendConfig.apiBaseUrl) {
+      return {
+        level: 'local',
+        label: '로컬 점수화 추천',
+        detail: 'API 서버 URL이 없어 데이터룸 raw와 로컬 점수 정책만으로 추천합니다.',
+      }
+    }
+
+    if (!routeResult) {
+      return {
+        level: 'check',
+        label: 'OpenAI 보강 미검증',
+        detail: 'API 테스트를 실행하면 추천 보강 라우트와 키 상태를 확인합니다.',
+      }
+    }
+
+    if (routeResult.status === 'success') {
+      return {
+        level: 'ready',
+        label: 'OpenAI 보강 가능',
+        detail: routeResult.result || '추천 근거와 메시지 보강 API가 응답했습니다.',
+      }
+    }
+
+    const resultText = String(routeResult.result || '')
+    const label = resultText.includes('404')
+      ? '추천 보강 라우트 미배포'
+      : resultText.includes('501') || resultText.includes('OPENAI_API_KEY')
+        ? 'OpenAI 키 설정 필요'
+        : 'OpenAI 보강 확인 필요'
+
+    return {
+      level: 'warning',
+      label,
+      detail: resultText || '추천 보강 API를 확인해야 합니다. 실패해도 1차 데이터룸 점수화 추천은 계속 작동합니다.',
+    }
+  }, [apiTestStatus.results, backendConfig.apiBaseUrl, selectedCampaignRecommendations])
   const selectedRecommendations = useMemo(
     () => selectedCampaignRecommendations.filter((recommendation) => selectedRecommendationIds.includes(recommendation.id)),
     [selectedCampaignRecommendations, selectedRecommendationIds],
@@ -5638,12 +6708,42 @@ function App() {
     () => candidatePoolAllCreators.filter((creator) => selectedCandidatePoolIds.includes(creator.id)),
     [candidatePoolAllCreators, selectedCandidatePoolIds],
   )
+  const candidatePoolEvidenceByCreatorId = useMemo(() => {
+    const evidenceMap = new Map()
+    ;(candidatePoolEvidence ?? []).forEach((item) => {
+      if (!item?.creatorId) return
+      const current = evidenceMap.get(item.creatorId)
+      const sameCampaign = selectedCampaign?.id && item.campaignId === selectedCampaign.id
+      const currentSameCampaign = selectedCampaign?.id && current?.campaignId === selectedCampaign.id
+      if (!current || (sameCampaign && !currentSameCampaign)) {
+        evidenceMap.set(item.creatorId, item)
+      }
+    })
+    return evidenceMap
+  }, [candidatePoolEvidence, selectedCampaign])
   const selectedVisibleCandidatePoolCreators = useMemo(
     () => visibleCandidatePoolCreators.filter((creator) => selectedCandidatePoolIds.includes(creator.id)),
     [selectedCandidatePoolIds, visibleCandidatePoolCreators],
   )
   const allCandidatePoolSelected =
     visibleCandidatePoolCreators.length > 0 && selectedVisibleCandidatePoolCreators.length === visibleCandidatePoolCreators.length
+  const selectedRecommendationCandidateCount = useMemo(
+    () => selectedRecommendations.filter((recommendation) => shortlist.includes(recommendation.creatorId)).length,
+    [selectedRecommendations, shortlist],
+  )
+  const selectedRecommendationOutreachCount = useMemo(
+    () =>
+      selectedRecommendations.filter((recommendation) =>
+        activeOutreach.some(
+          (item) => item.creatorId === recommendation.creatorId && item.campaignId === recommendation.campaignId,
+        ),
+      ).length,
+    [activeOutreach, selectedRecommendations],
+  )
+  const selectedRecommendationFreshCount = Math.max(
+    selectedRecommendations.length - Math.max(selectedRecommendationCandidateCount, selectedRecommendationOutreachCount),
+    0,
+  )
 
   useEffect(() => {
     if (!toast) return undefined
@@ -5779,7 +6879,7 @@ function App() {
           (creator) =>
             !isExampleCreator(creator) &&
             creator.platform === 'TikTok' &&
-            creator.averageViews >= 50000 &&
+            creator.averageViews >= recommendationPolicy.minimumAverageViews &&
             creator.engagement >= 4 &&
             creator.price <= Number(brandBrief.maxPrice || 999999999),
         )
@@ -5853,6 +6953,12 @@ function App() {
     () => (externalVideoReportRows.length ? externalVideoReportRows : fallbackTrackedReportRows),
     [externalVideoReportRows, fallbackTrackedReportRows],
   )
+  const creatorPerformanceLearningMap = useMemo(
+    () => buildCreatorPerformanceLearningMap(creators, activeTrackedPosts, externalVideoReportRows),
+    [activeTrackedPosts, creators, externalVideoReportRows],
+  )
+  const getCreatorWithPerformanceLearning = (creator) =>
+    attachPerformanceLearning(creator, creatorPerformanceLearningMap)
   const reportBrandInfluencerRows = useMemo(
     () =>
       externalBrandInfluencerRows.length
@@ -6063,10 +7169,15 @@ function App() {
       {
         label: 'AI 추천',
         value: `${activeRecommendations.length}명`,
-        detail: '근거/페르소나 생성',
+        detail: creatorPerformanceLearningMap.size
+          ? `근거/페르소나 · 성과학습 ${creatorPerformanceLearningMap.size}명`
+          : '근거/페르소나 생성',
         icon: <Target size={17} />,
         tone: 'green',
-        contract: { rawIds: ['RAW-INT-AI-001', 'RAW-INT-INF-001', 'RAW-INT-QUALITY-001'], metricIds: ['MET-AI-003'] },
+        contract: {
+          rawIds: ['RAW-INT-AI-001', 'RAW-INT-INF-001', 'RAW-INT-QUALITY-001', 'RAW-EXT-CONT-001', 'RAW-EXT-ENG-001', 'RAW-EXT-MON-VIDEO-001'],
+          metricIds: ['MET-AI-001', 'MET-AI-002', 'MET-AI-003', 'MET-AI-004', 'MET-AI-005', 'MET-AI-006'],
+        },
       },
       {
         label: '틱톡 셀러',
@@ -6090,7 +7201,7 @@ function App() {
         detail: `${compactNumber(trackedTotals.views)} 조회`,
         icon: <BarChart3 size={17} />,
         tone: 'slate',
-        contract: { rawIds: ['RAW-EXT-CONT-001'], metricIds: ['MET-SNS-001', 'MET-SNS-006'] },
+        contract: { rawIds: ['RAW-EXT-CONT-001', 'RAW-EXT-ENG-001', 'RAW-EXT-MON-VIDEO-001'], metricIds: ['MET-SNS-001', 'MET-SNS-006', 'MET-AI-005'] },
       },
       {
         label: '리소스 풀',
@@ -6118,6 +7229,7 @@ function App() {
       activeTrackedPosts.length,
       autoOutreachCount,
       bulkOutreachCount,
+      creatorPerformanceLearningMap.size,
       filteredCreators.length,
       fulfillmentTotals.amount,
       fulfillmentTotals.pending,
@@ -6182,56 +7294,202 @@ function App() {
     ],
   )
 
+  const operationalBrands = useMemo(() => toOperationalRecords(brands, 'brand'), [brands])
+  const operationalBrandIds = useMemo(() => new Set(operationalBrands.map((brand) => brand.id)), [operationalBrands])
+  const operationalCampaigns = useMemo(
+    () => toOperationalRecords(campaigns, 'campaign').filter((campaign) => !campaign.brandId || operationalBrandIds.has(campaign.brandId)),
+    [campaigns, operationalBrandIds],
+  )
+  const operationalCampaignIds = useMemo(() => new Set(operationalCampaigns.map((campaign) => campaign.id)), [operationalCampaigns])
+  const operationalCreators = useMemo(() => toOperationalRecords(creators, 'creator'), [creators])
+  const operationalCreatorIds = useMemo(() => new Set(operationalCreators.map((creator) => creator.id)), [operationalCreators])
+  const operationalOutreach = useMemo(
+    () =>
+      toOperationalRecords(outreach, 'outreach').filter(
+        (item) =>
+          (!item.creatorId || operationalCreatorIds.has(item.creatorId)) &&
+          (!item.campaignId || operationalCampaignIds.has(item.campaignId)),
+      ),
+    [operationalCampaignIds, operationalCreatorIds, outreach],
+  )
+  const operationalRecruitedPool = useMemo(
+    () =>
+      toOperationalRecords(recruitedPool, 'recruitedPool').filter(
+        (item) =>
+          (!item.creatorId || operationalCreatorIds.has(item.creatorId)) &&
+          (!item.campaignId || operationalCampaignIds.has(item.campaignId)),
+      ),
+    [operationalCampaignIds, operationalCreatorIds, recruitedPool],
+  )
+  const operationalFulfillmentRecords = useMemo(
+    () =>
+      toOperationalRecords(fulfillmentRecords, 'fulfillment').filter(
+        (item) =>
+          (!item.creatorId || operationalCreatorIds.has(item.creatorId)) &&
+          (!item.campaignId || operationalCampaignIds.has(item.campaignId)),
+      ),
+    [fulfillmentRecords, operationalCampaignIds, operationalCreatorIds],
+  )
+  const operationalTrackedPosts = useMemo(
+    () =>
+      toOperationalRecords(trackedPosts, 'trackedPost').filter(
+        (item) =>
+          (!item.creatorId || operationalCreatorIds.has(item.creatorId)) &&
+          (!item.campaignId || operationalCampaignIds.has(item.campaignId)),
+      ),
+    [operationalCampaignIds, operationalCreatorIds, trackedPosts],
+  )
+  const operationalContentReferences = useMemo(
+    () => toOperationalRecords(contentReferences, 'contentReference'),
+    [contentReferences],
+  )
+  const operationalRecommendations = useMemo(
+    () =>
+      toOperationalRecords(recommendations, 'recommendation').filter(
+        (item) =>
+          (!item.creatorId || operationalCreatorIds.has(item.creatorId)) &&
+          (!item.campaignId || operationalCampaignIds.has(item.campaignId)) &&
+          (!item.brandId || operationalBrandIds.has(item.brandId)),
+      ),
+    [operationalBrandIds, operationalCampaignIds, operationalCreatorIds, recommendations],
+  )
+  const operationalCandidatePoolEvidence = useMemo(
+    () => candidatePoolEvidence.filter((item) => !item.creatorId || operationalCreatorIds.has(item.creatorId)),
+    [candidatePoolEvidence, operationalCreatorIds],
+  )
+  const operationalCreatorGroups = useMemo(
+    () =>
+      toOperationalRecords(creatorGroups, 'creatorGroup')
+        .map((group) => ({
+          ...group,
+          creatorIds: (group.creatorIds ?? []).filter((creatorId) => operationalCreatorIds.has(creatorId)),
+        }))
+        .filter((group) => group.creatorIds.length),
+    [creatorGroups, operationalCreatorIds],
+  )
+  const operationalActiveBrand = operationalBrands.find((brand) => brand.id === activeBrand?.id) ?? operationalBrands[0] ?? null
+
   const dataRoomRawData = useMemo(
     () =>
       buildDataRoomExtendedRawCatalog({
         rawData: buildAdminRawDataCatalog({
-          creators,
-          outreach,
-          campaigns,
-          recruitedPool,
-          fulfillmentRecords,
-          trackedPosts,
-          contentReferences,
-          brands,
+          creators: operationalCreators,
+          outreach: operationalOutreach,
+          campaigns: operationalCampaigns,
+          recruitedPool: operationalRecruitedPool,
+          fulfillmentRecords: operationalFulfillmentRecords,
+          trackedPosts: operationalTrackedPosts,
+          contentReferences: operationalContentReferences,
+          brands: operationalBrands,
           backendConfig,
-          activeBrand,
+          activeBrand: operationalActiveBrand,
           externalReportRows,
         }),
         backendConfig,
-        creators,
-        outreach,
-        contentReferences,
-        creatorGroups,
+        creators: operationalCreators,
+        outreach: operationalOutreach,
+        contentReferences: operationalContentReferences,
+        creatorGroups: operationalCreatorGroups,
         externalReportRows,
+        campaigns: operationalCampaigns,
+        recommendations: operationalRecommendations,
+        candidatePoolEvidence: operationalCandidatePoolEvidence,
       }),
-    [activeBrand, backendConfig, brands, campaigns, contentReferences, creatorGroups, creators, externalReportRows, fulfillmentRecords, outreach, recruitedPool, trackedPosts],
+    [
+      backendConfig,
+      externalReportRows,
+      operationalActiveBrand,
+      operationalBrands,
+      operationalCampaigns,
+      operationalCandidatePoolEvidence,
+      operationalContentReferences,
+      operationalCreatorGroups,
+      operationalCreators,
+      operationalFulfillmentRecords,
+      operationalOutreach,
+      operationalRecommendations,
+      operationalRecruitedPool,
+      operationalTrackedPosts,
+    ],
   )
   const dataRoomMetrics = useMemo(
     () =>
       buildDataRoomExtendedMetricCatalog({
         metrics: buildAdminMetricCatalog({
           rawData: dataRoomRawData,
-          outreach,
-          creators,
-          campaigns,
-          recruitedPool,
-          fulfillmentRecords,
-          trackedPosts,
-          contentReferences,
+          outreach: operationalOutreach,
+          creators: operationalCreators,
+          campaigns: operationalCampaigns,
+          recruitedPool: operationalRecruitedPool,
+          fulfillmentRecords: operationalFulfillmentRecords,
+          trackedPosts: operationalTrackedPosts,
+          contentReferences: operationalContentReferences,
         }),
         rawData: dataRoomRawData,
-        creators,
-        contentReferences,
-        creatorGroups,
+        creators: operationalCreators,
+        contentReferences: operationalContentReferences,
+        creatorGroups: operationalCreatorGroups,
         externalReportRows,
+        campaigns: operationalCampaigns,
+        recommendations: operationalRecommendations,
+        candidatePoolEvidence: operationalCandidatePoolEvidence,
       }),
-    [campaigns, contentReferences, creatorGroups, creators, dataRoomRawData, externalReportRows, fulfillmentRecords, outreach, recruitedPool, trackedPosts],
+    [
+      dataRoomRawData,
+      externalReportRows,
+      operationalCampaigns,
+      operationalCandidatePoolEvidence,
+      operationalContentReferences,
+      operationalCreatorGroups,
+      operationalCreators,
+      operationalFulfillmentRecords,
+      operationalOutreach,
+      operationalRecommendations,
+      operationalRecruitedPool,
+      operationalTrackedPosts,
+    ],
   )
   const dataRoomDisplayGate = useMemo(
     () => createDataRoomDisplayGate(dataRoomRawData, dataRoomMetrics),
     [dataRoomMetrics, dataRoomRawData],
   )
+  const recommendationLearningSummary = useMemo(() => {
+    const contract = {
+      rawIds: ['RAW-EXT-CONT-001', 'RAW-EXT-ENG-001', 'RAW-EXT-MON-VIDEO-001'],
+      metricIds: ['MET-AI-005'],
+    }
+    const entries = creators
+      .map((creator) => {
+        const learning = creatorPerformanceLearningMap.get(creator.id)
+        if (!learning?.posts) return null
+        return {
+          creator,
+          learning,
+          score: getCreatorLearningScore({ ...creator, performanceLearning: learning }),
+        }
+      })
+      .filter(Boolean)
+      .sort((a, b) => b.score - a.score || b.learning.topViews - a.learning.topViews)
+    const postCount = entries.reduce((sum, item) => sum + Number(item.learning.posts || 0), 0)
+    const views = entries.reduce((sum, item) => sum + Number(item.learning.views || 0), 0)
+    const avgEngagement = entries.length
+      ? entries.reduce((sum, item) => sum + Number(item.learning.engagementRate || 0), 0) / entries.length
+      : 0
+    const sourceRawIds = uniqueList(entries.flatMap((item) => item.learning.sourceRawIds || []))
+
+    return {
+      contract,
+      canShow: dataRoomDisplayGate.canShow(contract),
+      lineage: dataRoomDisplayGate.lineage(contract),
+      creatorCount: entries.length,
+      postCount,
+      views,
+      averageViews: postCount ? Math.round(views / postCount) : 0,
+      avgEngagement,
+      sourceRawIds,
+      topEntries: entries.slice(0, 3),
+    }
+  }, [creatorPerformanceLearningMap, creators, dataRoomDisplayGate])
   const visibleWorkflowSignals = useMemo(
     () =>
       workflowSignals
@@ -6475,6 +7733,8 @@ function App() {
           item.description,
           item.formula,
           item.rawNames.join(' '),
+          item.conditionalRawIds?.join(' '),
+          item.conditionalRawNames?.join(' '),
           item.displayLocation,
           item.ownerDept,
         ]
@@ -6991,9 +8251,13 @@ function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       })
-      const payload = await response.json().catch(() => ({}))
+      const contentType = response.headers.get('content-type') || ''
+      const payload = contentType.includes('application/json')
+        ? await response.json().catch(() => ({}))
+        : {}
+      const fallbackText = contentType.includes('application/json') ? '' : await response.text().catch(() => '')
       if (!response.ok) {
-        throw new Error(payload?.message || payload?.error || `${path} 요청 실패`)
+        throw new Error(formatApiRouteFailure(path, response, payload, fallbackText))
       }
       return payload
     }
@@ -7045,6 +8309,32 @@ function App() {
             campaign: { name: 'API 연결 테스트', oneMessage: '안전하고 편한 이동식 켄넬' },
           })
           return payload?.data?.message ? '메시지 생성 성공' : '응답은 왔지만 메시지가 비어 있음'
+        },
+      },
+      {
+        key: 'openai-recommendations',
+        label: 'OpenAI 추천 보강',
+        detail: 'AI 후보 근거/제안각 생성',
+        run: async () => {
+          const payload = await postJson('/ai/recommendations/enrich', {
+            brand: { name: 'CreatorOps Test', product: '이동장 켄넬' },
+            campaign: { name: 'AI recommendation route test', goal: 'reply-friendly outreach' },
+            candidates: [
+              {
+                recommendationId: 'rec-test-1',
+                creatorId: 'creator-test-1',
+                creatorName: '테스트 크리에이터',
+                platform: 'YouTube',
+                category: '펫',
+                followers: 120000,
+                averageViews: 280000,
+                engagement: 5.8,
+                score: 92,
+                reasons: ['펫 이동장 콘텐츠와 카테고리 적합', '평균 조회수 대비 팔로워 효율 높음'],
+              },
+            ],
+          })
+          return payload?.data?.items?.length ? `보강 ${payload.data.items.length}건 성공` : '응답은 왔지만 보강 결과가 비어 있음'
         },
       },
     ]
@@ -7418,6 +8708,15 @@ function App() {
     jumpTo('dataRoom')
   }
 
+  const openDataRoomMetric = (metricId) => {
+    setSelectedDataRoomItem({ type: 'metric', id: metricId })
+    setDataRoomMetricTab('전체')
+    setDataRoomMetricStatus('전체')
+    setDataRoomMetricBundle('전체')
+    setDataRoomMetricQuery(metricId)
+    jumpTo('dataRoom')
+  }
+
   const openPracticeTour = () => {
     setPracticeStepIndex(0)
     setPracticeOpen(true)
@@ -7517,6 +8816,7 @@ function App() {
         {
           ...current,
           shortlist: current.shortlist.filter((id) => !removeIdSet.has(id)),
+          candidatePoolEvidence: (current.candidatePoolEvidence ?? []).filter((item) => !removeIdSet.has(item.creatorId)),
           outreach: current.outreach.filter(
             (item) => !(removeIdSet.has(item.creatorId) && activeCampaignIdSet.has(item.campaignId)),
           ),
@@ -7535,8 +8835,86 @@ function App() {
     removeCandidatePoolCreators(selectedCandidatePoolCreators.map((creator) => creator.id))
   }
 
+  const buildCandidatePoolEvidenceRecord = (creator, campaign, source = '발굴 저장', recommendationOverride = null) => {
+    const campaignBrief = buildCampaignDiscoveryBrief(brandBrief, campaign)
+    const recommendation = recommendationOverride ?? buildRecommendation(creator, campaignBrief, campaign)
+    const rawIds = uniqueList([
+      ...(recommendation.dataContract?.rawIds ?? []),
+      ...recommendationPolicy.rawIds.candidatePool,
+    ])
+    const metricIds = recommendation.dataContract?.metricIds ?? []
+    const strategyTrace = recommendation.dataContract?.strategyTrace ?? {}
+    const decision = getRecommendationDecision(recommendation, creator)
+    const policySummary = getRecommendationPolicyExportSummary()
+    const performanceLearningSummary = getPerformanceLearningExportSummary(creator)
+    const scoreSummary = (recommendation.scoreBreakdown ?? [])
+      .map((item) => `${item.label} ${item.value}`)
+      .join(' / ')
+
+    const evidenceId = `${campaign?.id ?? selectedCampaign?.id ?? 'campaign'}-${creator.id}-${source}`
+      .replace(/\s+/g, '-')
+      .replace(/[^a-zA-Z0-9가-힣_-]/g, '')
+
+    return {
+      id: evidenceId,
+      creatorId: creator.id,
+      campaignId: campaign?.id ?? selectedCampaign?.id ?? '',
+      brandId: activeBrand.id,
+      source,
+      score: recommendation.score ?? creator.fit ?? 0,
+      decision,
+      persona: recommendation.persona ?? '',
+      reasons: recommendation.reasons ?? [],
+      risk: recommendation.risk ?? '',
+      scoreBreakdown: recommendation.scoreBreakdown ?? [],
+      dataContract: recommendation.dataContract
+        ? { ...recommendation.dataContract, rawIds }
+        : null,
+      rawIds,
+      metricIds,
+      scoreSummary,
+      strategyKeywords: strategyTrace.keywords ?? [],
+      strategyHits: strategyTrace.hits ?? [],
+      strategyHitCount: strategyTrace.hitCount ?? 0,
+      strategyScoreImpact: strategyTrace.scoreImpact ?? 0,
+      strategyRawIds: strategyTrace.rawIds ?? [],
+      strategyMetricId: strategyTrace.metricId ?? 'MET-AI-006',
+      policyRawId: policySummary.rawId,
+      policyCriteria: policySummary.criteria,
+      policyHoldRule: policySummary.holdRule,
+      performanceLearningSummary: performanceLearningSummary.summary,
+      performanceLearningStatus: performanceLearningSummary.status,
+      performanceLearningRawIds: performanceLearningSummary.rawIds,
+      performanceLearningMetricId: performanceLearningSummary.metricId,
+      performanceLearning: creator.performanceLearning ?? null,
+      llmTrace: recommendation.llmTrace ?? null,
+      llmSourceRawIds: recommendation.llmTrace?.sourceRawIds ?? [],
+      llmMetricIds: recommendation.llmTrace?.metricIds ?? [],
+      createdAt: nowLabel(),
+    }
+  }
+
+  const mergeCandidatePoolEvidence = (currentEvidence = [], nextEvidence = []) => {
+    const nextKeys = new Set(nextEvidence.map((item) => `${item.campaignId}:${item.creatorId}`))
+    return [
+      ...nextEvidence,
+      ...currentEvidence.filter((item) => !nextKeys.has(`${item.campaignId}:${item.creatorId}`)),
+    ].slice(0, 1000)
+  }
+
   const buildCreatorProposalRecord = (creator, campaign, source = '수동') => {
-    const message = buildFriendlyProposalMessage(creator, brandBrief, campaign)
+    const campaignBrief = buildCampaignDiscoveryBrief(brandBrief, campaign)
+    const evidence = candidatePoolEvidenceByCreatorId.get(creator.id)
+    const recommendation = evidence?.scoreBreakdown?.length
+      ? {
+          score: evidence.score,
+          decision: evidence.decision,
+          reasons: evidence.reasons,
+          scoreBreakdown: evidence.scoreBreakdown,
+          dataContract: evidence.dataContract,
+        }
+      : buildRecommendation(creator, campaignBrief, campaign)
+    const message = buildFriendlyProposalMessage(creator, campaignBrief, campaign)
     const contactPlan = buildContactPlan(creator, getRecommendedContactChannelId(creator), message, campaign.name)
 
     return {
@@ -7549,8 +8927,12 @@ function App() {
       deliveryMode: contactPlan.deliveryMode,
       complianceNote: contactPlan.notice,
       message,
-      reason: `발굴 리스트 선택 제안 · ${creator.platform} · 팔로워 ${displayMetric(creator.followers)} · 평균 조회 ${displayMetric(creator.averageViews)} · 매칭 ${creator.fit ?? '-'}점`,
-      score: creator.fit,
+      reason: recommendation.reasons?.length
+        ? recommendation.reasons.join(' / ')
+        : `발굴 리스트 선택 제안 · ${creator.platform} · 팔로워 ${displayMetric(creator.followers)} · 평균 조회 ${displayMetric(creator.averageViews)} · 매칭 ${creator.fit ?? '-'}점`,
+      score: recommendation.score ?? creator.fit,
+      scoreBreakdown: recommendation.scoreBreakdown ?? [],
+      dataContract: recommendation.dataContract ?? null,
       createdAt: nowLabel(),
     }
   }
@@ -7562,12 +8944,21 @@ function App() {
     }
 
     const selectedIds = selectedDiscoveryCreators.map((creator) => creator.id)
+    const campaign = selectedCampaign
+    const nextEvidence = selectedDiscoveryCreators.map((creator) =>
+      buildCandidatePoolEvidenceRecord(
+        getCreatorWithPerformanceLearning(creator),
+        campaign,
+        '발굴 검색 결과 저장',
+      ),
+    )
 
     updateWorkspace((current) =>
       appendActivity(
         {
           ...current,
           shortlist: Array.from(new Set([...current.shortlist, ...selectedIds])),
+          candidatePoolEvidence: mergeCandidatePoolEvidence(current.candidatePoolEvidence, nextEvidence),
         },
         'shortlist',
         `발굴 리스트 ${selectedIds.length}명 메시지 전 후보 풀 저장`,
@@ -7594,6 +8985,13 @@ function App() {
     }
 
     const records = selectedDiscoveryCreators.map((creator) => buildCreatorProposalRecord(creator, campaign, '수동'))
+    const nextEvidence = selectedDiscoveryCreators.map((creator) =>
+      buildCandidatePoolEvidenceRecord(
+        getCreatorWithPerformanceLearning(creator),
+        campaign,
+        '발굴 리스트 메시지 전환',
+      ),
+    )
 
     updateWorkspace((current) =>
       appendActivity(
@@ -7601,6 +8999,7 @@ function App() {
           ...current,
           outreach: [...records, ...current.outreach],
           shortlist: Array.from(new Set([...current.shortlist, ...records.map((record) => record.creatorId)])),
+          candidatePoolEvidence: mergeCandidatePoolEvidence(current.candidatePoolEvidence, nextEvidence),
         },
         'outreach',
         `발굴 리스트 ${records.length}명 제안 메시지 검토함 저장`,
@@ -7865,8 +9264,9 @@ function App() {
   }
 
   const runRealDiscoverySearch = async () => {
-    const searchText = buildDiscoverySearchText({ query, category, brandBrief, selectedCampaign })
-    const intentTerms = getDiscoveryIntentTerms(query, category)
+    const campaignBrief = buildCampaignDiscoveryBrief(brandBrief, selectedCampaign)
+    const searchText = buildDiscoverySearchText({ query, category, brandBrief: campaignBrief, selectedCampaign })
+    const intentTerms = getDiscoveryIntentTerms(searchText, category)
     const maxResults = Math.min(Math.max(Number(realDiscoveryDraft.maxResults) || 300, 1), 1000)
     const youtubeApiKey = realDiscoveryDraft.youtubeApiKey.trim() || youtubeDraft.apiKey.trim()
     const hasServerApi = Boolean(backendConfig.apiBaseUrl)
@@ -7946,8 +9346,8 @@ function App() {
       const discoveredCreators = matchingResults.map((result, index) =>
         buildRealDiscoveryCreator(
           result,
-          brandBrief,
-          category === '\uC804\uCCB4' ? brandBrief.categories?.[0] : category,
+          campaignBrief,
+          category === '\uC804\uCCB4' ? campaignBrief.categories?.[0] : category,
           index + 1,
         ),
       )
@@ -7976,11 +9376,14 @@ function App() {
         })
         const mergedKeys = new Set(mergedCreators.map(keyFor))
         const realRecommendations = mergedCreators
-          .map((creator) => ({
-            ...buildRecommendation(creator, brandBrief, selectedCampaign),
-            brandId: activeBrand.id,
-            source: '실제 공개 검색',
-          }))
+          .map((creator) => {
+            const scoredCreator = getCreatorWithPerformanceLearning(creator)
+            return {
+              ...buildRecommendation(scoredCreator, campaignBrief, selectedCampaign),
+              brandId: activeBrand.id,
+              source: '실제 공개 검색',
+            }
+          })
           .sort((a, b) => b.score - a.score)
 
         return appendActivity(
@@ -7997,9 +9400,6 @@ function App() {
                   !mergedCreators.some((creator) => creator.id === recommendation.creatorId && recommendation.brandId === activeBrand.id),
               ),
             ].slice(0, 2000),
-            shortlist: Array.from(
-              new Set([...current.shortlist, ...mergedCreators.slice(0, 3).map((creator) => creator.id)]),
-            ),
           },
           'data',
           `${activeBrand.name} 실제 공개 발굴 · ${mergedCreators.length}명 저장`,
@@ -8010,8 +9410,8 @@ function App() {
       setDiscoveryPage(1)
       showToast(
         discoveryWarnings.length
-          ? `실제 공개 검색 결과 ${discoveredCreators.length}명을 저장했어요. 일부 API는 우회했습니다.`
-          : `실제 공개 검색 결과 ${discoveredCreators.length}명을 발굴 리스트에 저장했어요.`,
+          ? `실제 공개 검색 결과 ${discoveredCreators.length}명을 발굴 리스트에 저장했어요. 후보 풀은 선택 후 저장하세요. 일부 API는 우회했습니다.`
+          : `실제 공개 검색 결과 ${discoveredCreators.length}명을 발굴 리스트에 저장했어요. 후보 풀은 선택 후 저장하세요.`,
       )
     } catch (error) {
       showToast(error instanceof Error ? error.message : '실제 발굴 검색 중 오류가 발생했어요.')
@@ -8020,58 +9420,222 @@ function App() {
     }
   }
 
-  const runAiDiscovery = () => {
-    const campaignMinFollowers = Number(selectedCampaign?.minFollowers || brandBrief.minFollowers)
-    const campaignMaxCreatorFee = Number(selectedCampaign?.maxCreatorFee || brandBrief.maxPrice)
-    const campaignPlatforms = selectedCampaign?.preferredPlatforms
-      ? keywordList(selectedCampaign.preferredPlatforms)
-      : brandBrief.platforms
-    const eligibleCreators = creators.filter(
-      (creator) => {
+  const enrichRecommendationsWithAi = async (rankedRecommendations, campaignBrief, campaign) => {
+    const apiBaseUrl = backendConfig.apiBaseUrl?.replace(/\/$/, '')
+    if (!apiBaseUrl || !rankedRecommendations.length) {
+      return { recommendations: rankedRecommendations, status: 'local', enrichedCount: 0 }
+    }
+
+    const creatorById = new Map(creators.map((creator) => [creator.id, getCreatorWithPerformanceLearning(creator)]))
+    const candidates = rankedRecommendations.slice(0, 50).map((recommendation) => {
+      const creator = creatorById.get(recommendation.creatorId) ?? {}
+      return {
+        recommendationId: recommendation.id,
+        creatorId: recommendation.creatorId,
+        creatorName: creator.name,
+        handle: creator.handle,
+        platform: creator.platform,
+        category: creator.category,
+        country: creator.country || creator.searchCountry || creator.city,
+        followers: Number(creator.followers || 0),
+        averageViews: Number(creator.averageViews || 0),
+        engagement: Number(creator.engagement || 0),
+        price: Number(creator.price || 0),
+        score: recommendation.score,
+        decision: recommendation.decision,
+        persona: recommendation.persona,
+        reasons: (recommendation.reasons || []).slice(0, 5),
+        risk: recommendation.risk,
+        scoreBreakdown: recommendation.scoreBreakdown || [],
+      }
+    })
+
+    try {
+      const response = await fetch(`${apiBaseUrl}/ai/recommendations/enrich`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          brand: activeBrand,
+          campaign: {
+            ...campaign,
+            brief: campaignBrief,
+          },
+          candidates,
+        }),
+      })
+      const contentType = response.headers.get('content-type') || ''
+      const payload = contentType.includes('application/json')
+        ? await response.json().catch(() => ({}))
+        : {}
+      const fallbackText = contentType.includes('application/json') ? '' : await response.text().catch(() => '')
+      if (!response.ok) {
+        throw new Error(formatApiRouteFailure('/ai/recommendations/enrich', response, payload, fallbackText))
+      }
+
+      const enrichmentItems = payload?.data?.items || []
+      const enrichmentByRecommendationId = new Map(enrichmentItems.map((item) => [item.recommendationId, item]))
+      const trace = {
+        provider: 'OpenAI',
+        model: payload?.data?.model || 'gpt-4.1-mini',
+        promptVersion: payload?.data?.promptVersion || 'recommendation-enrichment-v1',
+        sourceRawIds: payload?.data?.sourceRawIds || ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-POLICY-001'],
+        metricIds: payload?.data?.metricIds || ['MET-AI-001', 'MET-AI-003', 'MET-AI-004', 'MET-AI-006', 'MET-LLM-001', 'MET-LLM-002'],
+        generatedAt: nowLabel(),
+      }
+
+      const merged = rankedRecommendations.map((recommendation) => {
+        const enrichment = enrichmentByRecommendationId.get(recommendation.id)
+        if (!enrichment) return recommendation
+
+        const aiReasons = Array.isArray(enrichment.aiReasons) ? enrichment.aiReasons.filter(Boolean) : []
+        const mergedRawIds = uniqueList([
+          ...(recommendation.dataContract?.rawIds || []),
+          'RAW-INT-AI-001',
+          'RAW-INT-LLM-BUNDLE-001',
+        ])
+        const mergedMetricIds = uniqueList([
+          ...(recommendation.dataContract?.metricIds || []),
+          'MET-LLM-001',
+          'MET-LLM-002',
+        ])
+
+        return {
+          ...recommendation,
+          aiEnriched: true,
+          aiSummary: enrichment.aiSummary || '',
+          aiReasons,
+          outreachAngle: enrichment.outreachAngle || '',
+          aiRiskNote: enrichment.riskNote || '',
+          message: enrichment.message || recommendation.message,
+          reasons: uniqueList([
+            ...(enrichment.aiSummary ? [enrichment.aiSummary] : []),
+            ...aiReasons,
+            ...(recommendation.reasons || []),
+          ]).slice(0, 8),
+          dataContract: recommendation.dataContract
+            ? {
+                ...recommendation.dataContract,
+                rawIds: mergedRawIds,
+                metricIds: mergedMetricIds,
+              }
+            : {
+                rawIds: mergedRawIds,
+                metricIds: mergedMetricIds,
+              },
+          llmTrace: trace,
+        }
+      })
+
+      return {
+        recommendations: merged,
+        status: 'openai',
+        enrichedCount: merged.filter((recommendation) => recommendation.aiEnriched).length,
+      }
+    } catch (error) {
+      console.warn('AI recommendation enrichment failed', error)
+      const message = error instanceof Error ? error.message : 'AI API 보강 실패'
+      showToast(`AI 추천 보강 실패 · ${message} 데이터룸 기준 추천으로 계속 진행합니다.`)
+      return { recommendations: rankedRecommendations, status: 'fallback', enrichedCount: 0, message }
+    }
+  }
+
+  const runAiDiscovery = async () => {
+    const campaignBrief = buildCampaignDiscoveryBrief(brandBrief, selectedCampaign)
+    const targetCampaignId = selectedCampaign?.id ?? null
+    const campaignMinFollowers = Number(campaignBrief.minFollowers || minimumVisibleFollowers)
+    const campaignMaxCreatorFee = Number(campaignBrief.maxPrice || 0)
+    const campaignMinAverageViews = Number(campaignBrief.minAverageViews || 0)
+    const campaignCountry = String(campaignBrief.country || activeBrand.country || '전체')
+    const campaignPlatforms = campaignBrief.platforms
+    const eligibleCreators = creators
+      .map((creator) => getCreatorWithPerformanceLearning(creator))
+      .filter((creator) => {
         const pendingMetrics = hasPendingMetrics(creator)
+        const strongActualPerformance =
+          Number(creator.performanceLearning?.averageViews || 0) >= recommendationPolicy.strongActualAverageViews ||
+          Number(creator.performanceLearning?.topViews || 0) >= recommendationPolicy.strongActualTopViews
         return (
           !isExampleCreator(creator) &&
+          (campaignCountry === '전체' ||
+            matchesDiscoveryCountry(creator.country, campaignCountry) ||
+            matchesDiscoveryCountry(creator.city, campaignCountry)) &&
           (pendingMetrics || creator.followers >= campaignMinFollowers) &&
-          (pendingMetrics || creator.price <= campaignMaxCreatorFee) &&
+          (pendingMetrics || !campaignMinAverageViews || creator.averageViews >= campaignMinAverageViews || strongActualPerformance) &&
+          (pendingMetrics || !campaignMaxCreatorFee || Number(creator.price || 0) <= campaignMaxCreatorFee) &&
           matchesBriefPlatform(creator, campaignPlatforms)
         )
-      },
-    )
-    const ranked = eligibleCreators
-      .map((creator) => ({
-        ...buildRecommendation(creator, brandBrief, selectedCampaign),
-        brandId: activeBrand.id,
-      }))
-      .sort((a, b) => b.score - a.score)
-      .slice(0, getCampaignRecommendationTarget(selectedCampaign))
+      })
+    const rankedPool = eligibleCreators
+      .map((creator) => {
+        const scoredCreator = creator
+        const recommendation = buildRecommendation(scoredCreator, campaignBrief, selectedCampaign)
+        const decision = getRecommendationDecision(recommendation, scoredCreator)
+        return {
+          ...recommendation,
+          decision,
+          brandId: activeBrand.id,
+        }
+      })
+      .filter((recommendation) => recommendation.decision !== recommendationPolicy.decisions.hold)
+      .sort((a, b) => {
+        const decisionGap = getRecommendationDecisionRank(b.decision) - getRecommendationDecisionRank(a.decision)
+        if (decisionGap) return decisionGap
+        return b.score - a.score
+      })
+    const ranked = rankedPool.slice(0, getCampaignRecommendationTarget(selectedCampaign))
 
     if (!ranked.length) {
       const realCreatorCount = creators.filter((creator) => !isExampleCreator(creator)).length
       showToast(
         realCreatorCount
-          ? '현재 캠페인 조건에 맞는 후보가 없습니다. 팔로워/단가/플랫폼 조건을 조정해보세요.'
+          ? '우선 제안 가능한 후보가 없습니다. 국가/평균조회/단가 조건을 조정하거나 실제 웹 발굴을 더 실행해보세요.'
           : '먼저 아래 실제 웹 발굴을 실행해서 후보를 모아주세요.',
       )
       return
     }
 
-    updateWorkspace((current) =>
-      appendActivity(
+    const enrichmentResult = await enrichRecommendationsWithAi(ranked, campaignBrief, selectedCampaign)
+    const finalRanked = enrichmentResult.recommendations
+    const enrichmentLabel =
+      enrichmentResult.status === 'openai'
+        ? ` · AI 보강 ${enrichmentResult.enrichedCount}명`
+        : enrichmentResult.status === 'fallback'
+          ? ' · AI 보강 실패, 데이터룸 점수 사용'
+          : ' · 데이터룸 점수 사용'
+
+    updateWorkspace((current) => {
+      const scopedRecommendations = current.recommendations.filter((recommendation) => {
+        if (targetCampaignId) return recommendation.campaignId !== targetCampaignId
+        return recommendation.brandId !== activeBrand.id
+      })
+
+      return appendActivity(
         {
           ...current,
-          recommendations: ranked,
-          shortlist: Array.from(new Set([...current.shortlist, ...ranked.slice(0, 3).map((item) => item.creatorId)])),
+          recommendations: [...finalRanked, ...scopedRecommendations].slice(0, 2000),
         },
         'ai',
-        `${selectedCampaign?.name ?? activeBrand.name} 조건으로 AI 후보 ${ranked.length}명 추출`,
-      ),
-    )
-    showToast(`캠페인 조건 기준으로 후보 ${ranked.length}명을 추천했어요.`)
+        `${selectedCampaign?.name ?? activeBrand.name} AI 추천 ${finalRanked.length}명${enrichmentLabel}`,
+      )
+    })
+    showToast(`AI 추천 후보 ${finalRanked.length}명 생성 완료${enrichmentLabel}`)
   }
 
   const buildRecommendationOutreachRecord = (recommendation, creator, campaign) => {
-    const message = buildFriendlyProposalMessage(creator, brandBrief, campaign)
+    const campaignBrief = buildCampaignDiscoveryBrief(brandBrief, campaign)
+    const fallbackRecommendation =
+      recommendation.scoreBreakdown?.length && recommendation.dataContract
+        ? null
+        : buildRecommendation(creator, campaignBrief, campaign)
+    const message = recommendation.message || fallbackRecommendation?.message || buildFriendlyProposalMessage(creator, campaignBrief, campaign)
     const contactPlan = buildContactPlan(creator, getRecommendedContactChannelId(creator), message, campaign.name)
+    const recommendationReasons = recommendation.reasons?.length
+      ? recommendation.reasons
+      : fallbackRecommendation?.reasons ?? []
+    const scoreBreakdown = recommendation.scoreBreakdown?.length
+      ? recommendation.scoreBreakdown
+      : fallbackRecommendation?.scoreBreakdown ?? []
+    const dataContract = recommendation.dataContract ?? fallbackRecommendation?.dataContract ?? null
 
     return {
       id: createId() + creator.id,
@@ -8083,14 +9647,17 @@ function App() {
       deliveryMode: contactPlan.deliveryMode,
       complianceNote: contactPlan.notice,
       message,
-      reason: recommendation.reasons.join(' / '),
+      reason: recommendationReasons.join(' / '),
       score: recommendation.score,
+      scoreBreakdown,
+      dataContract,
+      llmTrace: recommendation.llmTrace ?? null,
       createdAt: nowLabel(),
     }
   }
 
   const queueRecommendation = (recommendation) => {
-    const creator = creators.find((item) => item.id === recommendation.creatorId)
+    const creator = getCreatorWithPerformanceLearning(creators.find((item) => item.id === recommendation.creatorId))
     const campaign = brandCampaigns.find((item) => item.id === recommendation.campaignId) ?? selectedCampaign
     if (!creator || !campaign) {
       showToast('메시지를 저장하려면 현재 브랜드에 캠페인이 필요합니다.')
@@ -8129,21 +9696,34 @@ function App() {
     const creatorIds = selectedRecommendations.map((recommendation) => recommendation.creatorId)
 
     if (!creatorIds.length) {
-      showToast('쇼트리스트에 저장할 AI 후보를 먼저 선택하세요.')
+      showToast('메시지 전 후보 풀에 저장할 AI 후보를 먼저 선택하세요.')
       return
     }
+    const nextEvidence = selectedRecommendations
+      .map((recommendation) => {
+        const creator = getCreatorWithPerformanceLearning(creators.find((item) => item.id === recommendation.creatorId))
+        const campaign = brandCampaigns.find((item) => item.id === recommendation.campaignId) ?? selectedCampaign
+        return creator
+          ? buildCandidatePoolEvidenceRecord(creator, campaign, 'AI 추천 저장', recommendation)
+          : null
+      })
+      .filter(Boolean)
 
     updateWorkspace((current) =>
       appendActivity(
         {
           ...current,
           shortlist: Array.from(new Set([...current.shortlist, ...creatorIds])),
+          candidatePoolEvidence: mergeCandidatePoolEvidence(current.candidatePoolEvidence, nextEvidence),
         },
-        'shortlist',
-        `AI 추천 후보 ${creatorIds.length}명 쇼트리스트 저장`,
+        'pool',
+        `AI 추천 후보 ${creatorIds.length}명 메시지 전 후보 풀 저장`,
       ),
     )
-    showToast(`선택한 AI 후보 ${creatorIds.length}명을 쇼트리스트에 저장했어요.`)
+    setSelectedCandidatePoolIds(creatorIds)
+    setCandidatePoolPage(1)
+    setActiveDiscoveryPoolView('candidate')
+    showToast(`선택한 AI 후보 ${creatorIds.length}명을 메시지 전 후보 풀에 저장했어요.`)
   }
 
   const queueSelectedRecommendations = () => {
@@ -8154,7 +9734,7 @@ function App() {
 
     const records = selectedRecommendations
       .map((recommendation) => {
-        const creator = creators.find((item) => item.id === recommendation.creatorId)
+        const creator = getCreatorWithPerformanceLearning(creators.find((item) => item.id === recommendation.creatorId))
         const campaign = brandCampaigns.find((item) => item.id === recommendation.campaignId) ?? selectedCampaign
         return creator && campaign ? buildRecommendationOutreachRecord(recommendation, creator, campaign) : null
       })
@@ -8164,6 +9744,15 @@ function App() {
       showToast('선택 후보를 메시지로 저장하려면 현재 브랜드에 캠페인이 필요합니다.')
       return
     }
+    const nextEvidence = selectedRecommendations
+      .map((recommendation) => {
+        const creator = getCreatorWithPerformanceLearning(creators.find((item) => item.id === recommendation.creatorId))
+        const campaign = brandCampaigns.find((item) => item.id === recommendation.campaignId) ?? selectedCampaign
+        return creator && campaign
+          ? buildCandidatePoolEvidenceRecord(creator, campaign, 'AI 추천 메시지 전환', recommendation)
+          : null
+      })
+      .filter(Boolean)
 
     updateWorkspace((current) =>
       appendActivity(
@@ -8171,6 +9760,7 @@ function App() {
           ...current,
           outreach: [...records, ...current.outreach],
           shortlist: Array.from(new Set([...current.shortlist, ...records.map((record) => record.creatorId)])),
+          candidatePoolEvidence: mergeCandidatePoolEvidence(current.candidatePoolEvidence, nextEvidence),
         },
         'outreach',
         `AI 추천 후보 ${records.length}명 제안 메시지 검토함 저장`,
@@ -8188,7 +9778,7 @@ function App() {
       return
     }
     if (selectedCreator && selectedCampaign) {
-      setProposalText(buildFriendlyProposalMessage(selectedCreator, brandBrief, selectedCampaign))
+      setProposalText(buildFriendlyProposalMessage(selectedCreator, buildCampaignDiscoveryBrief(brandBrief, selectedCampaign), selectedCampaign))
       setProposalChannel(getRecommendedContactChannelId(selectedCreator))
     }
     setModal({ type: 'proposal' })
@@ -8245,7 +9835,7 @@ function App() {
         'brand/competitor related creators',
         'creator rows, mention volume, estimated reach, average views, engagement benchmark, pricing benchmark',
         'externalReportRows(type=brand_monitor_influencers), brandTrackingGroups fallback',
-        'MET-EXT-BRAND-001~003, MET-EXT-INF-001~003',
+        'MET-BRAND-001~002, MET-EXT-INF-001~002',
         reportBrandInfluencerRows.length ? 'connected' : 'pending_brand_tracking',
         reportBrandInfluencerRows.length,
       ],
@@ -8402,13 +9992,32 @@ function App() {
     [
       '순위',
       '추천 점수',
+      '추천 판단',
+      '추천 정책 raw',
+      '추천 기준',
+      '보류/검증 기준',
+      '추천 판단축 요약',
+      '점수 가중치',
+      '전략 키워드',
+      '전략 적중 키워드',
+      '전략 반영 점수',
+      '데이터룸 근거 수',
+      '원천 데이터 구분',
+      '점수 구성',
+      '원천 raw',
+      '계산지표',
       '크리에이터',
       '핸들',
       '플랫폼',
       '카테고리',
       '팔로워',
       '평균 조회',
+      '팔로워 대비 조회',
       '참여율',
+      '성과 점수',
+      '뷰 효율 점수',
+      '실제 성과 학습',
+      '예상 CPV',
       '예상 단가',
       '페르소나',
       '추천 이유',
@@ -8422,23 +10031,86 @@ function App() {
       '생성 시점',
     ],
     ...selectedCampaignRecommendations.map((recommendation, index) => {
-      const creator = creators.find((item) => item.id === recommendation.creatorId)
+      const policySummary = getRecommendationPolicyExportSummary()
+      const creator = getCreatorWithPerformanceLearning(creators.find((item) => item.id === recommendation.creatorId))
       const campaign = brandCampaigns.find((item) => item.id === recommendation.campaignId)
+      const campaignBrief = buildCampaignDiscoveryBrief(brandBrief, campaign ?? selectedCampaign)
       const friendlyMessage = creator
-        ? buildFriendlyProposalMessage(creator, brandBrief, campaign ?? selectedCampaign)
+        ? buildFriendlyProposalMessage(creator, campaignBrief, campaign ?? selectedCampaign)
         : recommendation.message
       const contactPlan = buildContactPlan(creator, getRecommendedContactChannelId(creator), friendlyMessage, campaign?.name)
+      const pendingMetrics = hasPendingMetrics(creator)
+      const averageViews = Number(creator?.averageViews || 0)
+      const price = Number(creator?.price || 0)
+      const costPerView = averageViews && price ? Math.round(price / averageViews) : ''
+      const learning = creator?.performanceLearning
+      const computedRecommendation = creator ? buildRecommendation(creator, campaignBrief, campaign ?? selectedCampaign) : null
+      const scoreBreakdown = recommendation.scoreBreakdown?.length
+        ? recommendation.scoreBreakdown
+        : computedRecommendation?.scoreBreakdown ?? []
+      const dataContract = recommendation.dataContract ?? computedRecommendation?.dataContract
+      const recommendationDecision = getRecommendationDecision(recommendation, creator)
+      const scoreMap = new Map(scoreBreakdown.map((item) => [item.metricId, item.value]))
+      const strategyTrace = dataContract?.strategyTrace ?? {}
+      const strategyKeywords = Array.isArray(strategyTrace.keywords)
+        ? strategyTrace.keywords
+        : keywordList(strategyTrace.keywords)
+      const strategyHits = Array.isArray(strategyTrace.hits)
+        ? strategyTrace.hits
+        : keywordList(strategyTrace.hits)
+      const rawIds = dataContract?.rawIds ?? []
+      const metricIds = dataContract?.metricIds ?? []
+      const recommendationCriteriaSummary = [
+        `성과 ${scoreMap.get('MET-AI-003') ?? '검증 필요'}`,
+        `효율 ${scoreMap.get('MET-AI-004') ?? '산정 전'}`,
+        `실제성과 ${scoreMap.get('MET-AI-005') ?? '이력 없음'}`,
+        `브랜드핏 ${scoreMap.get('MET-AI-001') ?? (creator?.fit ? `${creator.fit}점` : '검증 필요')}`,
+        `전략 ${scoreMap.get('MET-AI-006') ?? '일반 기준'}`,
+        `신뢰도 ${scoreMap.get('MET-AI-002') ?? '검증 필요'}`,
+      ].join(' / ')
+      const sourceTypeSummary = [
+        rawIds.includes('RAW-INT-CMP-BRIEF-001') ? '캠페인 브리프' : '',
+        rawIds.includes('RAW-INT-INF-001') ? '후보 프로필' : '',
+        rawIds.includes('RAW-EXT-CHN-001') ? '채널 수치' : '',
+        rawIds.includes('RAW-EXT-CONT-001') ? '콘텐츠 성과' : '',
+        rawIds.includes('RAW-EXT-ENG-001') ? '반응지표' : '',
+        rawIds.includes('RAW-EXT-MON-VIDEO-001') ? 'Video Monitor raw' : '',
+        rawIds.includes('RAW-INT-AI-001') ? 'AI 산출물' : '',
+        rawIds.includes('RAW-INT-LLM-BUNDLE-001') ? '전략/가이드 생성물' : '',
+        rawIds.includes('RAW-INT-AI-POLICY-001') ? '추천 정책' : '',
+      ].filter(Boolean).join(', ')
 
       return [
         index + 1,
         recommendation.score,
+        recommendationDecision,
+        policySummary.rawId,
+        policySummary.criteria,
+        policySummary.holdRule,
+        recommendationCriteriaSummary,
+        policySummary.weights,
+        strategyKeywords.join(', ') || '전략 키워드 없음',
+        strategyHits.join(', ') || '적중 없음',
+        strategyTrace.scoreImpact != null ? `+${strategyTrace.scoreImpact}점` : scoreMap.get('MET-AI-006') ?? '전략 없음',
+        `${rawIds.length} raw / ${metricIds.length} metric`,
+        sourceTypeSummary || '후보 프로필/캠페인 기준',
+        scoreBreakdown.map((item) => `${item.label} ${item.value}`).join(' / '),
+        rawIds.join(', '),
+        metricIds.join(', '),
         creator?.name ?? '',
         creator?.handle ?? '',
         creator?.platform ?? '',
         creator?.category ?? '',
-        hasPendingMetrics(creator) ? '수집 필요' : creator?.followers ?? 0,
-        hasPendingMetrics(creator) ? '수집 필요' : creator?.averageViews ?? 0,
-        hasPendingMetrics(creator) ? '수집 필요' : creator?.engagement ?? 0,
+        pendingMetrics ? '수집 필요' : creator?.followers ?? 0,
+        pendingMetrics ? '수집 필요' : creator?.averageViews ?? 0,
+        pendingMetrics ? '수집 필요' : `${getCreatorViralityRatio(creator).toFixed(2)}x`,
+        pendingMetrics ? '수집 필요' : creator?.engagement ?? 0,
+        pendingMetrics ? '수집 필요' : getCreatorPerformanceScore(creator),
+        pendingMetrics ? '수집 필요' : getCreatorEfficiencyScore(creator),
+        learning?.posts
+          ? `${learning.posts}건 / 평균 ${learning.averageViews} / 최고 ${learning.topViews || 0} / 참여율 ${percent(learning.engagementRate)}`
+          : '이력 없음',
+        costPerView ? `${costPerView}원/view` : '산정 전',
         creator?.price || '산정 전',
         recommendation.persona,
         recommendation.reasons.join(' / '),
@@ -8463,7 +10135,12 @@ function App() {
       '지역',
       '팔로워',
       '평균 조회',
+      '팔로워 대비 조회',
       '참여율',
+      '성과 점수',
+      '뷰 효율 점수',
+      '실제 성과 학습',
+      '예상 CPV',
       '성장률',
       '매칭 점수',
       '브랜드 안정성',
@@ -8481,31 +10158,44 @@ function App() {
       '견적 기록 수',
     ],
     ...filteredCreators.map((creator) => {
-      const contactPlan = buildContactPlan(creator)
+      const learnedCreator = getCreatorWithPerformanceLearning(creator)
+      const contactPlan = buildContactPlan(learnedCreator)
+      const pendingMetrics = hasPendingMetrics(learnedCreator)
+      const costPerView = Number(learnedCreator.averageViews || 0) && Number(learnedCreator.price || 0)
+        ? Math.round(Number(learnedCreator.price || 0) / Number(learnedCreator.averageViews || 1))
+        : ''
+      const learning = learnedCreator.performanceLearning
       return [
-        creator.name,
-        creator.handle,
-        creator.platform,
-        creator.category,
-        creator.city,
-        hasPendingMetrics(creator) ? '수집 필요' : creator.followers,
-        hasPendingMetrics(creator) ? '수집 필요' : creator.averageViews,
-        hasPendingMetrics(creator) ? '수집 필요' : creator.engagement,
-        creator.growth,
-        creator.fit,
-        creator.brandSafety,
-        creator.fakeRisk,
-        creator.price || '산정 전',
-        creator.audience,
-        creator.status,
-        creator.topics.join(', '),
+        learnedCreator.name,
+        learnedCreator.handle,
+        learnedCreator.platform,
+        learnedCreator.category,
+        learnedCreator.city,
+        pendingMetrics ? '수집 필요' : learnedCreator.followers,
+        pendingMetrics ? '수집 필요' : learnedCreator.averageViews,
+        pendingMetrics ? '수집 필요' : `${getCreatorViralityRatio(learnedCreator).toFixed(2)}x`,
+        pendingMetrics ? '수집 필요' : learnedCreator.engagement,
+        pendingMetrics ? '수집 필요' : getCreatorPerformanceScore(learnedCreator),
+        pendingMetrics ? '수집 필요' : getCreatorEfficiencyScore(learnedCreator),
+        learning?.posts
+          ? `${learning.posts}건 / 평균 ${learning.averageViews} / 참여율 ${percent(learning.engagementRate)}`
+          : '이력 없음',
+        costPerView ? `${costPerView}원/view` : '산정 전',
+        learnedCreator.growth,
+        learnedCreator.fit,
+        learnedCreator.brandSafety,
+        learnedCreator.fakeRisk,
+        learnedCreator.price || '산정 전',
+        learnedCreator.audience,
+        learnedCreator.status,
+        learnedCreator.topics.join(', '),
         contactPlan.label,
         contactPlan.deliveryMode,
-        creator.needsVerification ? '공개 수치 검증 대기' : '확인 데이터',
-        creator.sourceNote ?? '',
-        shortlist.includes(creator.id) ? 'Y' : 'N',
-        activeOutreach.filter((item) => item.creatorId === creator.id).length,
-        activeQuotes.filter((item) => item.creatorId === creator.id).length,
+        learnedCreator.needsVerification ? '공개 수치 검증 대기' : '확인 데이터',
+        learnedCreator.sourceNote ?? '',
+        shortlist.includes(learnedCreator.id) ? 'Y' : 'N',
+        activeOutreach.filter((item) => item.creatorId === learnedCreator.id).length,
+        activeQuotes.filter((item) => item.creatorId === learnedCreator.id).length,
       ]
     }),
   ]
@@ -8663,14 +10353,69 @@ function App() {
       '연락 링크',
       '권장 연락 채널',
       '발송 방식',
+      '후보 저장 출처',
+      '추천 판단',
+      '추천 정책 raw',
+      '추천 기준',
+      '보류/검증 기준',
+      '추천 판단축 요약',
+      '점수 가중치',
+      '전략 키워드',
+      '전략 적중 키워드',
+      '전략 반영 점수',
+      '실제 성과 학습',
+      '실제 성과 상태',
+      '실제 성과 raw',
+      '실제 성과 지표',
+      '데이터룸 근거 수',
+      '원천 raw',
+      '계산지표',
       '데이터 상태',
       '수집 메모',
       '현재 캠페인',
     ],
     ...candidatePoolCreators.map((creator) => {
+      const policySummary = getRecommendationPolicyExportSummary()
       const channelId = getRecommendedContactChannelId(creator)
       const profileUrl = getCreatorProfileUrl(creator, channelId)
       const contactPlan = buildContactPlan(creator, channelId, '', selectedCampaign?.name)
+      const evidence = candidatePoolEvidenceByCreatorId.get(creator.id)
+      const learnedCreator = getCreatorWithPerformanceLearning(creator)
+      const currentLearningSummary = getPerformanceLearningExportSummary(learnedCreator)
+      const storedLearningSummary = evidence?.performanceLearningSummary
+        ? {
+            summary: evidence.performanceLearningSummary,
+            status: evidence.performanceLearningStatus ?? '성과 학습 반영',
+            rawIds: evidence.performanceLearningRawIds ?? [],
+            metricId: evidence.performanceLearningMetricId ?? 'MET-AI-005',
+          }
+        : null
+      const learningSummary = storedLearningSummary ?? currentLearningSummary
+      const rawIds = evidence?.rawIds ?? evidence?.dataContract?.rawIds ?? []
+      const metricIds = evidence?.metricIds ?? evidence?.dataContract?.metricIds ?? []
+      const campaignBrief = buildCampaignDiscoveryBrief(brandBrief, selectedCampaign)
+      const recommendationForDecision = evidence?.scoreBreakdown?.length
+        ? {
+            score: evidence.score,
+            decision: evidence.decision,
+            risk: evidence.risk,
+            scoreBreakdown: evidence.scoreBreakdown,
+            dataContract: evidence.dataContract,
+        }
+        : buildRecommendation(learnedCreator, campaignBrief, selectedCampaign)
+      const recommendationDecision = getRecommendationDecision(recommendationForDecision, creator)
+      const strategyTrace = evidence?.dataContract?.strategyTrace ?? recommendationForDecision?.dataContract?.strategyTrace ?? {}
+      const strategyKeywords = Array.isArray(evidence?.strategyKeywords)
+        ? evidence.strategyKeywords
+        : Array.isArray(strategyTrace.keywords)
+          ? strategyTrace.keywords
+          : keywordList(strategyTrace.keywords)
+      const strategyHits = Array.isArray(evidence?.strategyHits)
+        ? evidence.strategyHits
+        : Array.isArray(strategyTrace.hits)
+          ? strategyTrace.hits
+          : keywordList(strategyTrace.hits)
+      const strategyScoreImpact = evidence?.strategyScoreImpact ?? strategyTrace.scoreImpact
       return [
         creator.name,
         creator.handle,
@@ -8687,6 +10432,23 @@ function App() {
         contactPlan.url || profileUrl || '링크 없음',
         contactPlan.label,
         contactPlan.deliveryMode,
+        evidence?.source ?? '후보 풀 저장',
+        recommendationDecision,
+        policySummary.rawId,
+        policySummary.criteria,
+        policySummary.holdRule,
+        evidence?.scoreSummary ?? `매칭 ${creator.fit ?? '-'}점 / 평균조회 ${displayMetric(creator.averageViews)}`,
+        policySummary.weights,
+        strategyKeywords.join(', ') || '전략 키워드 없음',
+        strategyHits.join(', ') || '적중 없음',
+        strategyScoreImpact != null ? `+${strategyScoreImpact}점` : '전략 없음',
+        learningSummary.summary,
+        learningSummary.status,
+        learningSummary.rawIds.join(', '),
+        learningSummary.metricId,
+        `${rawIds.length} raw / ${metricIds.length} metric`,
+        rawIds.join(', '),
+        metricIds.join(', '),
         creator.needsVerification ? '공개 수치 검증 대기' : '확인 데이터',
         creator.sourceNote ?? creator.status ?? '',
         selectedCampaign?.name ?? '캠페인 미선택',
@@ -8904,7 +10666,7 @@ function App() {
       guide: nextCampaign.generatedContentGuide ? 'generated' : 'not_started',
       sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001'],
       outputRawId: 'RAW-INT-AI-001',
-      packageVersion: 'strategy-director-v2.2-local',
+      packageVersion: 'strategy-director-v2.3-local',
       inputUpdatedAt: nowLabel(),
     }
 
@@ -8957,20 +10719,7 @@ function App() {
     )
   }
 
-  const buildCampaignBriefFromCampaign = (campaign = {}) => ({
-    ...brandBrief,
-    product: campaign.product || brandBrief.product,
-    persona: campaign.targetPersona || brandBrief.persona,
-    keywords: campaign.searchKeywords || brandBrief.keywords,
-    exclusions: campaign.exclusionKeywords || brandBrief.exclusions,
-    minFollowers: campaign.minFollowers || brandBrief.minFollowers,
-    maxPrice: campaign.maxCreatorFee || brandBrief.maxPrice,
-    platforms: campaign.preferredPlatforms ? keywordList(campaign.preferredPlatforms) : brandBrief.platforms,
-    learningMaterials: [
-      ...(campaign.campaignGuideMaterials ?? []),
-      ...getLearningMaterials(brandBrief),
-    ].slice(0, 80),
-  })
+  const buildCampaignBriefFromCampaign = (campaign = {}) => buildCampaignDiscoveryBrief(brandBrief, campaign)
 
   const buildCampaignStrategyInputRaw = (campaign = {}, campaignBrief = buildCampaignBriefFromCampaign(campaign), budgetValue = campaign.budget) => ({
     rawId: 'RAW-INT-CMP-BRIEF-001',
@@ -8984,6 +10733,18 @@ function App() {
     campaignType: campaign.campaignType || '제안형',
     targetPersona: campaign.targetPersona || campaignBrief.persona || '',
     keywords: campaign.searchKeywords || campaignBrief.keywords || '',
+    strategyKeywords: campaignBrief.strategyKeywords || '',
+    strategyKeywordSources:
+      campaignBrief.learningMaterials
+        ?.filter((item) => item.sourceType === 'ai_strategy_output')
+        .map((item) => ({
+          id: item.id,
+          title: item.title,
+          sourceType: item.sourceType,
+          sourceName: item.sourceName,
+          keywords: item.keywords,
+        }))
+        .slice(0, 10) || [],
     exclusions: campaign.exclusionKeywords || campaignBrief.exclusions || '',
     platforms: Array.isArray(campaignBrief.platforms) ? campaignBrief.platforms : keywordList(campaign.preferredPlatforms || ''),
     kpiGoal: campaign.kpiGoal || '',
@@ -9013,7 +10774,7 @@ function App() {
         .filter(Boolean)
         .slice(0, 20) || [],
     sourceRawIds: ['RAW-INT-BRD-001', 'RAW-INT-CMP-001'],
-    packageVersion: 'strategy-director-v2.2-local',
+    packageVersion: 'strategy-director-v2.3-local',
     collectedAt: nowLabel(),
   })
 
@@ -9052,7 +10813,7 @@ function App() {
                     strategyGeneratedAt: generatedAt,
                     sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001'],
                     outputRawId: 'RAW-INT-AI-001',
-                    packageVersion: 'strategy-director-v2.2-local',
+                    packageVersion: 'strategy-director-v2.3-local',
                     engine: backendConfig?.apiBaseUrl ? 'api-ready-local-fallback' : 'local-strategy-director',
                   },
                 }
@@ -9095,7 +10856,7 @@ function App() {
                     generatedAt,
                     sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001', 'RAW-EXT-REF-001'],
                     outputRawId: 'RAW-INT-AI-001',
-                    packageVersion: 'strategy-director-v2.2-local',
+                    packageVersion: 'strategy-director-v2.3-local',
                     engine: backendConfig?.apiBaseUrl ? 'api-ready-local-fallback' : 'local-strategy-director',
                   },
                 }
@@ -9161,7 +10922,7 @@ function App() {
                     individualGuidesGeneratedAt: generatedAt,
                     sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-INF-001', 'RAW-INT-BRD-001'],
                     outputRawId: 'RAW-INT-AI-001',
-                    packageVersion: 'strategy-director-v2.2-local',
+                    packageVersion: 'strategy-director-v2.3-local',
                     engine: backendConfig?.apiBaseUrl ? 'api-ready-local-fallback' : 'local-strategy-director',
                   },
                 }
@@ -9359,7 +11120,7 @@ function App() {
         guide: campaignDraft.generatedContentGuide ? 'generated' : 'not_started',
         sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001'],
         outputRawId: 'RAW-INT-AI-001',
-        packageVersion: 'strategy-director-v2.2-local',
+        packageVersion: 'strategy-director-v2.3-local',
       },
       progress: 12,
       creatorIds: [...shortlist],
@@ -11560,11 +13321,94 @@ function App() {
                 <span className="result-count">{`${selectedCampaignRecommendations.length}/${getCampaignRecommendationTarget(selectedCampaign)}\uBA85`}</span>
               </div>
             </div>
+            <div className={`recommendation-api-state ${aiRecommendationApiState.level}`}>
+              <div>
+                <span className="mini-label">추천 엔진 상태</span>
+                <strong>{aiRecommendationApiState.label}</strong>
+                <p>{aiRecommendationApiState.detail}</p>
+              </div>
+              <div className="recommendation-api-state-actions">
+                <button className="secondary-button compact-button" type="button" onClick={testProductionApis}>
+                  API 테스트
+                </button>
+                <button className="secondary-button compact-button" type="button" onClick={() => openDataRoomRaw('RAW-INT-LLM-BUNDLE-001')}>
+                  LLM raw 보기
+                </button>
+                <button className="secondary-button compact-button" type="button" onClick={() => openDataRoomMetric('MET-LLM-002')}>
+                  원천 추적 지표
+                </button>
+              </div>
+            </div>
+            <details className="recommendation-criteria-strip" aria-label="AI 추천 기준">
+              <summary className="recommendation-criteria-title">
+                <span>AI 추천 기준</span>
+                <small>팔로워 규모보다 조회 효율, 실제 성과 학습, 브랜드 적합도를 먼저 봅니다.</small>
+              </summary>
+              <div className="recommendation-policy-meta" aria-label="AI 추천 정책 버전">
+                <span>정책 {getRecommendationPolicyExportSummary().version}</span>
+                <span>담당 {getRecommendationPolicyExportSummary().owner}</span>
+                <span>점검 {getRecommendationPolicyExportSummary().lastUpdated}</span>
+                <button type="button" onClick={() => openDataRoomRaw(getRecommendationPolicyExportSummary().rawId)}>
+                  RAW-INT-AI-POLICY-001
+                </button>
+              </div>
+              <p className="recommendation-policy-principle">{getRecommendationPolicyExportSummary().principle}</p>
+              <div className="recommendation-policy-chips" aria-label="AI 추천 최소 기준">
+                {getRecommendationPolicyExportSummary().criteria.split(' / ').map((criteria) => (
+                  <span key={criteria}>{criteria}</span>
+                ))}
+                <button type="button" onClick={() => openDataRoomRaw(getRecommendationPolicyExportSummary().rawId)}>
+                  정책 raw 보기
+                </button>
+              </div>
+              <div className="recommendation-weight-chips" aria-label="AI 추천 점수 가중치">
+                {recommendationPolicy.weightSummary.map((item) => (
+                  <button type="button" key={item.metricId} onClick={() => openDataRoomMetric(item.metricId)}>
+                    <small>{item.label}</small>
+                    <strong>{item.value}</strong>
+                  </button>
+                ))}
+              </div>
+              <div className="recommendation-criteria-groups">
+                {recommendationPolicy.criteriaGroups.map((criteria) => (
+                  <button type="button" key={criteria.metricId} onClick={() => openDataRoomMetric(criteria.metricId)}>
+                    <strong>{criteria.title}</strong>
+                    <span>{criteria.description}</span>
+                    <small>{criteria.note}</small>
+                  </button>
+                ))}
+              </div>
+              <div className="recommendation-method-steps" aria-label="AI 추천 계산 순서">
+                {getRecommendationPolicyExportSummary().methodSteps.map((step) => (
+                  <article key={step.label}>
+                    <strong>{step.label}</strong>
+                    <span>{step.description}</span>
+                    <small>
+                      {step.metricIds.join(' · ')} / {step.rawIds.join(' · ')}
+                    </small>
+                  </article>
+                ))}
+              </div>
+              <small className="recommendation-criteria-source">
+                보류 기준: {getRecommendationPolicyExportSummary().holdRule}
+              </small>
+              <small className="recommendation-criteria-source">
+                점수 가중치: {getRecommendationPolicyExportSummary().weights}
+              </small>
+              <small className="recommendation-criteria-source">
+                원천 raw: 후보 프로필, 채널 수치, 콘텐츠 성과, 외부 리포트, 캠페인 전략/가이드
+              </small>
+            </details>
             {selectedCampaignRecommendations.length > 0 && (
               <div className="recommendation-selection-bar">
                 <div>
-                  <strong>{selectedRecommendations.length}명 선택</strong>
-                  <span>선택한 후보를 쇼트리스트에 저장하거나 제안 메시지를 검토함으로 보냅니다.</span>
+                  <strong>{selectedRecommendations.length ? `${selectedRecommendations.length}명 선택됨` : 'AI 추천 후보 선택'}</strong>
+                  <span>추천 후보는 먼저 메시지 전 후보 풀에 모으고, 제안할 사람만 메시지 검토함으로 보냅니다.</span>
+                  <div className="recommendation-action-status" aria-label="선택 후보 처리 상태">
+                    <span>신규 {selectedRecommendationFreshCount}명</span>
+                    <span>후보 풀 {selectedRecommendationCandidateCount}명</span>
+                    <span>메시지 검토함 {selectedRecommendationOutreachCount}명</span>
+                  </div>
                 </div>
                 <div>
                   <button
@@ -11574,7 +13418,7 @@ function App() {
                     disabled={!selectedRecommendations.length}
                   >
                     <BookmarkCheck size={15} />
-                    쇼트리스트 저장
+                    후보 풀 저장
                   </button>
                   <button
                     className="primary-button compact-button"
@@ -11583,7 +13427,7 @@ function App() {
                     disabled={!selectedRecommendations.length}
                   >
                     <Send size={15} />
-                    제안 메시지 생성
+                    메시지 검토함으로 보내기
                   </button>
                 </div>
               </div>
@@ -11593,20 +13437,40 @@ function App() {
                 <div className="empty-state compact-empty">
                   <Target size={22} />
                   <strong>아직 AI 추천 결과가 없습니다.</strong>
-                  <p>2단계 크리에이터 발굴에서 실제 웹 발굴을 실행한 뒤, AI 매칭 실행 버튼을 누르세요.</p>
+                  <p>AI 추천은 저장된 검색 결과 풀을 기준으로 점수화합니다. 먼저 실제 웹 발굴로 후보를 모은 뒤 AI 매칭을 실행하세요.</p>
+                  <div className="empty-action-steps" aria-label="AI 추천 생성 순서">
+                    <span>1. 실제 웹 발굴</span>
+                    <span>2. AI 매칭 실행</span>
+                    <span>3. 후보 풀 저장</span>
+                  </div>
+                  <button
+                    className="secondary-button compact-button"
+                    type="button"
+                    onClick={() => document.getElementById('discovery')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
+                  >
+                    발굴 영역으로 이동
+                  </button>
                 </div>
               ) : (
-                selectedCampaignRecommendations.map((recommendation) => (
-                  <RecommendationCard
-                    key={recommendation.id}
-                    recommendation={recommendation}
-                    creator={creators.find((creator) => creator.id === recommendation.creatorId)}
-                    checked={selectedRecommendationIds.includes(recommendation.id)}
-                    onSelect={() => setSelectedCreatorId(recommendation.creatorId)}
-                    onToggle={() => toggleRecommendationSelection(recommendation.id)}
-                    onQueue={() => queueRecommendation(recommendation)}
-                  />
-                ))
+                selectedCampaignRecommendations.map((recommendation) => {
+                  const creator = getCreatorWithPerformanceLearning(
+                    creators.find((item) => item.id === recommendation.creatorId),
+                  )
+
+                  return (
+                    <RecommendationCard
+                      key={recommendation.id}
+                      recommendation={recommendation}
+                      creator={creator}
+                      checked={selectedRecommendationIds.includes(recommendation.id)}
+                      onSelect={() => setSelectedCreatorId(recommendation.creatorId)}
+                      onToggle={() => toggleRecommendationSelection(recommendation.id)}
+                      onQueue={() => queueRecommendation(recommendation)}
+                      onOpenMetric={openDataRoomMetric}
+                      onOpenRaw={openDataRoomRaw}
+                    />
+                  )
+                })
               )}
             </div>
           </section>
@@ -11918,13 +13782,18 @@ function App() {
                 </div>
               ) : (
                 visibleDiscoveryCreators.map((creator) => {
-                  const recommendation = buildRecommendation(creator, brandBrief, selectedCampaign)
+                  const learnedCreator = getCreatorWithPerformanceLearning(creator)
+                  const recommendation = buildRecommendation(
+                    learnedCreator,
+                    buildCampaignDiscoveryBrief(brandBrief, selectedCampaign),
+                    selectedCampaign,
+                  )
 
                   return (
                     <RecommendationCard
                       key={creator.id}
                       recommendation={recommendation}
-                      creator={creator}
+                      creator={learnedCreator}
                       active={selectedCreator?.id === creator.id}
                       checked={selectedDiscoveryCreatorIds.includes(creator.id)}
                       profileUrl={getCreatorProfileUrl(creator, getRecommendedContactChannelId(creator))}
@@ -11932,6 +13801,8 @@ function App() {
                       onSelect={() => setSelectedCreatorId(creator.id)}
                       onToggle={() => toggleDiscoveryCreatorSelection(creator.id)}
                       onSave={() => toggleShortlist(creator)}
+                      onOpenMetric={openDataRoomMetric}
+                      onOpenRaw={openDataRoomRaw}
                     />
                   )
                 })
@@ -12151,16 +14022,37 @@ function App() {
               </div>
             ) : (
               visibleCandidatePoolCreators.map((creator) => {
+                const learnedCreator = getCreatorWithPerformanceLearning(creator)
                 const channelId = getRecommendedContactChannelId(creator)
                 const profileUrl = getCreatorProfileUrl(creator, channelId)
                 const contactPlan = buildContactPlan(creator, channelId, '', selectedCampaign?.name)
-                const recommendation = buildRecommendation(creator, brandBrief, selectedCampaign)
+                const storedEvidence = candidatePoolEvidenceByCreatorId.get(creator.id)
+                const recommendation = storedEvidence?.scoreBreakdown?.length
+                  ? {
+                      id: storedEvidence.id,
+                      creatorId: creator.id,
+                      campaignId: storedEvidence.campaignId,
+                      score: storedEvidence.score,
+                      persona: storedEvidence.persona || `${creator.category} 후보`,
+                      reasons: storedEvidence.reasons?.length ? storedEvidence.reasons : [storedEvidence.scoreSummary],
+                      risk: storedEvidence.risk || '데이터룸 근거 기준으로 검토 필요',
+                      scoreBreakdown: storedEvidence.scoreBreakdown,
+                      dataContract: storedEvidence.dataContract ?? {
+                        rawIds: storedEvidence.rawIds ?? [],
+                        metricIds: storedEvidence.metricIds ?? [],
+                      },
+                    }
+                  : buildRecommendation(
+                      learnedCreator,
+                      buildCampaignDiscoveryBrief(brandBrief, selectedCampaign),
+                      selectedCampaign,
+                    )
 
                 return (
                   <RecommendationCard
                     key={creator.id}
                     recommendation={recommendation}
-                    creator={creator}
+                    creator={learnedCreator}
                     active={selectedCreator?.id === creator.id}
                     checked={selectedCandidatePoolIds.includes(creator.id)}
                     profileUrl={profileUrl}
@@ -12171,6 +14063,8 @@ function App() {
                     onToggle={() => toggleCandidatePoolSelection(creator.id)}
                     onSave={() => toggleShortlist(creator)}
                     onRemove={() => removeCandidatePoolCreators([creator.id])}
+                    onOpenMetric={openDataRoomMetric}
+                    onOpenRaw={openDataRoomRaw}
                   />
                 )
               })
@@ -13707,6 +15601,70 @@ function App() {
               </div>
             </div>
 
+            {recommendationLearningSummary.canShow && (recommendationLearningSummary.creatorCount > 0 || reportVideoRows.length > 0) && (
+              <div className="report-learning-loop">
+                <div className="report-learning-head">
+                  <div>
+                    <span className="mini-label">AI 추천 학습 루프</span>
+                    <strong>
+                      {recommendationLearningSummary.creatorCount
+                        ? `${recommendationLearningSummary.creatorCount}명 성과가 다음 추천에 반영됩니다`
+                        : '성과 raw는 있으나 크리에이터 매칭이 필요합니다'}
+                    </strong>
+                    <p>
+                      리포트 콘텐츠 raw를 `MET-AI-005` 실제 성과 학습 점수로 계산해 다음 발굴/AI 추천의 조회 효율과 우선순위에 반영합니다.
+                    </p>
+                  </div>
+                  <div className="report-learning-actions">
+                    <button
+                      className="primary-button compact-button"
+                      type="button"
+                      onClick={runAiDiscovery}
+                      disabled={!recommendationLearningSummary.creatorCount}
+                    >
+                      성과 반영 추천 재계산
+                    </button>
+                    <button className="secondary-button compact-button" type="button" onClick={() => jumpTo('discovery')}>
+                      발굴에서 추천 확인
+                    </button>
+                    <button className="secondary-button compact-button" type="button" onClick={() => openDataRoomMetric('MET-AI-005')}>
+                      데이터룸 지표
+                    </button>
+                  </div>
+                </div>
+                <div className="report-learning-stats">
+                  <span>학습 콘텐츠 <strong>{recommendationLearningSummary.postCount}건</strong></span>
+                  <span>누적 조회 <strong>{compactNumber(recommendationLearningSummary.views)}</strong></span>
+                  <span>평균 조회 <strong>{compactNumber(recommendationLearningSummary.averageViews)}</strong></span>
+                  <span>평균 참여율 <strong>{percent(recommendationLearningSummary.avgEngagement)}</strong></span>
+                </div>
+                {recommendationLearningSummary.topEntries.length > 0 && (
+                  <div className="report-learning-creators">
+                    {recommendationLearningSummary.topEntries.map(({ creator, learning, score }) => (
+                      <article key={creator.id}>
+                        <strong>{creator.name}</strong>
+                        <span>{creator.platform} · {creator.country}</span>
+                        <small>{learning.posts}건 학습 · 최고 {compactNumber(learning.topViews)} 조회 · 학습 +{score}점</small>
+                      </article>
+                    ))}
+                  </div>
+                )}
+                <div className="report-learning-lineage">
+                  {(recommendationLearningSummary.sourceRawIds.length
+                    ? recommendationLearningSummary.sourceRawIds
+                    : recommendationLearningSummary.lineage
+                  ).map((rawId) => (
+                    <button className="lineage-chip" type="button" key={rawId} onClick={() => openDataRoomRaw(rawId)}>
+                      {rawId}
+                    </button>
+                  ))}
+                  <button className="lineage-chip metric-chip" type="button" onClick={() => openDataRoomMetric('MET-AI-005')}>
+                    MET-AI-005
+                  </button>
+                </div>
+              </div>
+            )}
+
             {reportBrandInfluencerRows.length > 0 && (
               <div className="report-brand-monitor-list">
                 <div className="report-section-title">
@@ -14801,7 +16759,15 @@ function App() {
                 </div>
               </div>
               <div className="modal-grid">
-                <Stat label="예상 CPV" value={won(Math.round(selectedCreator.cpm / 100))} />
+                <Stat
+                  label="예상 CPV"
+                  value={
+                    Number(selectedCreator.price || 0) && Number(selectedCreator.averageViews || 0)
+                      ? `${won(Math.round(Number(selectedCreator.price) / Number(selectedCreator.averageViews)))}/view`
+                      : '산정 전'
+                  }
+                  source="MET-AI-004"
+                />
                 <Stat label="브랜드 안정성" value={`${selectedCreator.brandSafety}`} />
                 <Stat label="응답 가능 상태" value={selectedCreator.status} />
                 <Stat label="중복 위험" value={`${selectedCreator.fakeRisk}%`} />
@@ -15681,6 +17647,8 @@ function RecommendationCard({
   profileUrl,
   contactUrl,
   contactLabel,
+  onOpenMetric,
+  onOpenRaw,
 }) {
   if (!creator) return null
   const pendingMetrics = hasPendingMetrics(creator)
@@ -15688,6 +17656,68 @@ function RecommendationCard({
   const creatorContactUrl = contactUrl || profileUrl
   const primaryReason = recommendation.reasons?.[0] || '브랜드 조건과 후보 데이터를 기준으로 매칭했습니다.'
   const detailReasons = recommendation.reasons?.slice(1, 4) ?? []
+  const virality = getCreatorViralityRatio(creator)
+  const performanceScore = getCreatorPerformanceScore(creator)
+  const efficiencyScore = getCreatorEfficiencyScore(creator)
+  const performanceLearning = creator.performanceLearning
+  const costPerView = Number(creator.averageViews || 0) && Number(creator.price || 0)
+    ? Math.round(Number(creator.price || 0) / Number(creator.averageViews || 1))
+    : null
+  const learningScore = getCreatorLearningScore(creator)
+  const traceRawIds = recommendation.dataContract?.rawIds?.length
+    ? recommendation.dataContract.rawIds
+    : performanceLearning?.sourceRawIds?.length
+      ? performanceLearning.sourceRawIds
+      : recommendationPolicy.rawIds.base
+  const traceMetricIds = recommendation.dataContract?.metricIds?.length
+    ? recommendation.dataContract.metricIds
+    : recommendationPolicy.metricIds
+  const strategyTrace = recommendation.dataContract?.strategyTrace
+  const strategyTraceText = strategyTrace?.keywordCount
+    ? strategyTrace.hitCount
+      ? `전략 적중 ${(strategyTrace.hits ?? []).slice(0, 3).join(', ')} · +${strategyTrace.scoreImpact}점`
+      : `전략 기준 적용 · +${strategyTrace.scoreImpact}점`
+    : ''
+  const scoreTraceItems = recommendation.scoreBreakdown?.length ? recommendation.scoreBreakdown : [
+    { label: '조회 성과', value: pendingMetrics ? '수집 필요' : `${performanceScore}점`, metricId: 'MET-AI-003' },
+    { label: '뷰 효율', value: pendingMetrics ? '수집 필요' : `${efficiencyScore}점`, metricId: 'MET-AI-004' },
+    {
+      label: '실제 학습',
+      value: performanceLearning?.posts ? `${performanceLearning.posts}건` : learningScore ? `${learningScore}점` : '이력 없음',
+      metricId: 'MET-AI-005',
+    },
+    { label: '브랜드 핏', value: `${creator.fit ?? recommendation.score}점`, metricId: 'MET-AI-001' },
+    { label: '전략 반영', value: '기준 적용', metricId: 'MET-AI-006' },
+    { label: '데이터', value: `${dataQuality.score}점`, metricId: 'MET-AI-002' },
+  ]
+  const visibleScoreSignals = scoreTraceItems
+    .filter((item) => !['수집 필요', '이력 없음', '전략 없음'].includes(String(item.value)))
+  const strategyScoreSignal = visibleScoreSignals.find((item) => item.metricId === 'MET-AI-006')
+  const leadScoreSignals = [
+    ...(strategyScoreSignal ? [strategyScoreSignal] : []),
+    ...visibleScoreSignals.filter((item) => item !== strategyScoreSignal),
+  ].slice(0, 3)
+  const dataState = pendingMetrics || creator.needsVerification || dataQuality.score < recommendationPolicy.minimumDataQualityScore
+    ? { label: '검증 필요', tone: 'low' }
+    : dataQuality.score >= 86
+      ? { label: '신뢰 높음', tone: 'high' }
+      : { label: '운영 가능', tone: 'medium' }
+  const hasSearchAndChannelRaw = traceRawIds.includes('RAW-EXT-SEARCH-001') || traceRawIds.includes('RAW-EXT-CHN-001')
+  const sourceSummary = performanceLearning?.posts
+    ? `성과 학습 ${performanceLearning.posts}건 · 최고 ${compactNumber(performanceLearning.topViews)} 조회`
+    : pendingMetrics
+      ? '공개 검색 후보 검증 대기'
+      : hasSearchAndChannelRaw
+        ? '검색/채널 raw 기준'
+        : '프로필 raw 기준'
+  const recommendationDecision = getRecommendationDecision(recommendation, creator)
+  const recommendationDecisionTone = getRecommendationDecisionTone(recommendationDecision)
+  const recommendationDecisionDetail = getRecommendationDecisionDetail(
+    creator,
+    recommendationDecision,
+    traceRawIds.length,
+    traceMetricIds.length,
+  )
 
   return (
     <article className={`recommendation-card ${active ? 'active' : ''} ${checked ? 'selected' : ''}`}>
@@ -15711,16 +17741,115 @@ function RecommendationCard({
         <span>가짜 팔로워 위험 {creator.fakeRisk ?? '-'}%</span>
         <span>{creator.status ?? '검토 대기'}</span>
       </div>
+      <div className="recommendation-basis-summary" aria-label="AI 추천 요약">
+        <div>
+          <small>추천 판단</small>
+          <strong>
+            {visibleScoreSignals.length
+              ? leadScoreSignals.map((item) => `${item.label} ${item.value}`).join(' · ')
+              : primaryReason}
+          </strong>
+          {strategyTraceText && <span className="recommendation-strategy-trace">{strategyTraceText}</span>}
+        </div>
+        <div>
+          <small>원천 상태</small>
+          <strong className={`data-source-status ${dataState.tone}`}>{dataState.label}</strong>
+          <span>{sourceSummary}</span>
+        </div>
+        <div>
+          <small>다음 액션</small>
+          <strong className={`recommendation-decision ${recommendationDecisionTone}`}>{recommendationDecision}</strong>
+          <span>{recommendationDecisionDetail}</span>
+        </div>
+      </div>
+      <details className="recommendation-score-trace" aria-label="AI 추천 점수 구성">
+        <summary>
+          <span>데이터룸 근거 보기</span>
+          <small>점수 {scoreTraceItems.length}개 · raw {traceRawIds.length}개 · 지표 {traceMetricIds.length}개</small>
+        </summary>
+        <div className="score-trace-items">
+          {scoreTraceItems.map((item) => (
+            item.metricId && onOpenMetric ? (
+            <button
+              className="score-trace-card"
+              type="button"
+              key={item.label}
+              onClick={(event) => {
+                event.stopPropagation()
+                onOpenMetric(item.metricId)
+              }}
+            >
+              <small>{item.label}</small>
+              <strong>{item.value}</strong>
+            </button>
+            ) : (
+            <span className="score-trace-card" key={item.label}>
+              <small>{item.label}</small>
+              <strong>{item.value}</strong>
+            </span>
+            )
+          ))}
+        </div>
+        <div className="recommendation-lineage-chips" aria-label="AI 추천 원천 raw와 계산지표">
+          {traceRawIds.map((rawId) => (
+            <button
+              type="button"
+              key={rawId}
+              onClick={(event) => {
+                event.stopPropagation()
+                onOpenRaw?.(rawId)
+              }}
+              disabled={!onOpenRaw}
+            >
+              {rawId}
+            </button>
+          ))}
+          {traceMetricIds.map((metricId) => (
+            <button
+              className="metric-chip"
+              type="button"
+              key={metricId}
+              onClick={(event) => {
+                event.stopPropagation()
+                onOpenMetric?.(metricId)
+              }}
+              disabled={!onOpenMetric}
+            >
+              {metricId}
+            </button>
+          ))}
+        </div>
+      </details>
       <div className="recommendation-metrics" aria-label={`${creator.name} 핵심 성과 지표`}>
         <span>팔로워 {displayMetric(creator.followers)}</span>
         <span>평균 조회 {displayMetric(creator.averageViews)}</span>
+        <span>조회 폭발 {pendingMetrics ? '수집 필요' : `${virality.toFixed(1)}x`}</span>
         <span>참여율 {pendingMetrics ? '수집 필요' : percent(creator.engagement)}</span>
+        <span>예상 CPV {costPerView ? `${costPerView}원` : '산정 전'}</span>
+        {performanceLearning?.posts && (
+          <span>실제 성과 {performanceLearning.posts}건 · 최고 {displayMetric(performanceLearning.topViews)}</span>
+        )}
         <span>데이터 {dataQuality.score} · {dataQuality.level}</span>
         {creator.needsVerification && <span>공개 수치 검증 대기</span>}
       </div>
       <div className="recommendation-reason-summary">
         <span>핵심 근거</span>
         <p>{primaryReason}</p>
+        {performanceLearning?.topPost && (
+          <small className="recommendation-learning-source">
+            학습 원천: {performanceLearning.topPost.title} · {performanceLearning.topPost.rawSourceId || '성과 raw'}
+          </small>
+        )}
+        {recommendation.outreachAngle && (
+          <small className="recommendation-learning-source">
+            AI 제안각: {recommendation.outreachAngle}
+          </small>
+        )}
+        {recommendation.aiEnriched && (
+          <small className="recommendation-learning-source">
+            OpenAI 보강 · {recommendation.llmTrace?.model || 'connected model'}
+          </small>
+        )}
       </div>
       {detailReasons.length > 0 && (
         <details className="recommendation-reasons">

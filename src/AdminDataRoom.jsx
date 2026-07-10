@@ -145,11 +145,11 @@ const apiRawTypes = [
 
 export default function AdminDataRoom({
   summary,
-  rawData,
+  rawData = [],
   allRawData = rawData,
-  groupedMetrics,
-  workflowCoverage,
-  pendingBundles,
+  groupedMetrics = [],
+  workflowCoverage = [],
+  pendingBundles = [],
   rawTab,
   setRawTab,
   rawStatus,
@@ -184,7 +184,7 @@ export default function AdminDataRoom({
   onDownloadExternalReportTemplate,
   apiStatus,
   onRefreshApiStatus,
-  apiEvents,
+  apiEvents = [],
   onRefreshApiEvents,
   onLog,
   onRefreshRaw,
@@ -231,6 +231,31 @@ export default function AdminDataRoom({
   const externalReportRawCount = rawRegistry.filter((item) => externalReportRawIds.has(item.id)).length
   const externalApiRawCount = rawRegistry.filter((item) => apiRawIds.has(item.id)).length
   const apiLogCount = apiEvents?.length || 0
+  const coverageSummary = workflowCoverage.reduce(
+    (acc, item) => {
+      acc.total += 1
+      if (item.status === '정상') acc.ok += 1
+      if (item.status === '오류') acc.error += 1
+      if (item.status !== '정상') acc.needsReview += 1
+      acc.missingRaw += item.missingRaw?.length || 0
+      acc.missingMetrics += item.missingMetrics?.length || 0
+      acc.conditionalRaw += item.conditionalRawIds?.length || 0
+      acc.conditionalRawAvailable += item.availableConditionalRaw?.length || 0
+      return acc
+    },
+    { total: 0, ok: 0, needsReview: 0, error: 0, missingRaw: 0, missingMetrics: 0, conditionalRaw: 0, conditionalRawAvailable: 0 },
+  )
+  const jumpToCoverageIssue = (item) => {
+    const firstMissingRaw = item.missingRaw?.[0]
+    const firstMissingMetric = item.missingMetrics?.[0]
+    if (firstMissingRaw) {
+      selectRaw(firstMissingRaw, { scroll: true })
+      return
+    }
+    if (firstMissingMetric) {
+      selectMetric(firstMissingMetric, { scroll: true })
+    }
+  }
   const currentRawSource = (() => {
     if (rawQuery === '리포트 raw') return 'report'
     if (rawQuery === 'API raw') return 'api'
@@ -587,26 +612,64 @@ export default function AdminDataRoom({
                 <h2>기능-데이터 커버리지</h2>
                 <p>프론트 화면은 이 표에 연결된 raw 데이터와 계산지표를 기준으로만 운영합니다.</p>
               </div>
-              <StatusPill status={workflowCoverage.every((item) => item.status === '정상') ? '정상' : '검증 필요'} />
+              <div className="coverage-summary-pills" aria-label="기능 데이터 연결 요약">
+                <span>정상 {coverageSummary.ok}/{coverageSummary.total}</span>
+                <span>검증 {coverageSummary.needsReview}</span>
+                <span>raw 누락 {coverageSummary.missingRaw}</span>
+                <span>지표 누락 {coverageSummary.missingMetrics}</span>
+                <span>조건부 raw {coverageSummary.conditionalRawAvailable}/{coverageSummary.conditionalRaw}</span>
+                <StatusPill status={workflowCoverage.every((item) => item.status === '정상') ? '정상' : '검증 필요'} />
+              </div>
             </div>
 
             <div className="workflow-coverage-list">
-              {workflowCoverage.map((item) => (
-                <article className="workflow-coverage-card" key={item.id}>
-                  <div className="workflow-coverage-title">
-                    <GitBranch size={16} />
-                    <div>
-                      <strong>{item.featureName}</strong>
-                      <span>{item.frontendArea}</span>
+              {workflowCoverage.map((item) => {
+                const hasRequiredIssue = Boolean(item.missingRaw?.length || item.missingMetrics?.length)
+                const conditionalWaiting = Boolean(item.missingConditionalRaw?.length)
+                const requiredRawCount = item.requiredRawIds?.length ?? item.rawIds.length
+                return (
+                  <article className="workflow-coverage-card" key={item.id}>
+                    <div className="workflow-coverage-title">
+                      <GitBranch size={16} />
+                      <div>
+                        <strong>{item.featureName}</strong>
+                        <span>{item.frontendArea}</span>
+                      </div>
+                      <StatusPill status={item.status} />
                     </div>
-                    <StatusPill status={item.status} />
-                  </div>
-                  <p>{item.algorithm}</p>
-                  <LinkedChipList label="사용 raw 데이터" items={item.rawIds} emptyText="연결 raw 없음" onClick={(id) => selectRaw(id, { scroll: true })} />
-                  <LinkedChipList label="생성/사용 지표" items={item.metricIds} emptyText="연결 지표 없음" onClick={(id) => selectMetric(id, { scroll: true })} />
-                  <small>{item.rule}</small>
-                </article>
-              ))}
+                    <div className="workflow-coverage-metrics">
+                      <span>필수 raw {requiredRawCount}개</span>
+                      {item.conditionalRawIds?.length ? (
+                        <span>조건부 raw {item.availableConditionalRaw?.length || 0}/{item.conditionalRawIds.length}</span>
+                      ) : null}
+                      <span>지표 {item.metricIds.length}개</span>
+                      {hasRequiredIssue ? (
+                        <button type="button" onClick={() => jumpToCoverageIssue(item)}>
+                          누락 확인
+                        </button>
+                      ) : (
+                        <small>{conditionalWaiting ? '조건부 raw 대기' : '연결 정상'}</small>
+                      )}
+                    </div>
+                    <p>{item.algorithm}</p>
+                    {hasRequiredIssue ? (
+                      <div className="workflow-missing-stack">
+                        <LinkedChipList label="누락 raw" items={item.missingRaw} emptyText="누락 없음" onClick={(id) => selectRaw(id, { scroll: true })} />
+                        <LinkedChipList label="누락 지표" items={item.missingMetrics} emptyText="누락 없음" onClick={(id) => selectMetric(id, { scroll: true })} />
+                      </div>
+                    ) : null}
+                    <details className="workflow-connection-detail">
+                      <summary>전체 연결 보기</summary>
+                      <LinkedChipList label="필수 raw 데이터" items={item.requiredRawIds ?? item.rawIds} emptyText="연결 raw 없음" onClick={(id) => selectRaw(id, { scroll: true })} />
+                      {item.conditionalRawIds?.length ? (
+                        <LinkedChipList label={item.conditionalLabel ?? '조건부 raw 데이터'} items={item.conditionalRawIds} emptyText="조건부 raw 없음" onClick={(id) => selectRaw(id, { scroll: true })} />
+                      ) : null}
+                      <LinkedChipList label="생성/사용 지표" items={item.metricIds} emptyText="연결 지표 없음" onClick={(id) => selectMetric(id, { scroll: true })} />
+                    </details>
+                    <small>{item.rule}</small>
+                  </article>
+                )
+              })}
             </div>
           </section>
 
@@ -697,7 +760,15 @@ export default function AdminDataRoom({
                 <div><dt>담당 부서</dt><dd>{activeDetail.ownerDept}</dd></div>
                 <div><dt>오류 확인 위치</dt><dd>{activeDetail.errorLocation}</dd></div>
               </dl>
-              <LinkedChipList label="사용 raw 데이터" items={activeDetail.rawIds} emptyText="연결 raw 없음" onClick={(id) => selectRaw(id, { scroll: true })} />
+              <LinkedChipList label="필수 raw 데이터" items={activeDetail.rawIds} emptyText="연결 raw 없음" onClick={(id) => selectRaw(id, { scroll: true })} />
+              {activeDetail.conditionalRawIds?.length ? (
+                <LinkedChipList
+                  label={activeDetail.conditionalLabel ?? '조건부 raw 데이터'}
+                  items={activeDetail.conditionalRawIds}
+                  emptyText="조건부 raw 없음"
+                  onClick={(id) => selectRaw(id, { scroll: true })}
+                />
+              ) : null}
               <label className="ops-note-box">
                 <span>운영 메모</span>
                 <textarea readOnly value={`${activeDetail.note}\n계산 오류 시 raw 데이터 수집 상태와 계산 로그를 함께 확인합니다.`} />

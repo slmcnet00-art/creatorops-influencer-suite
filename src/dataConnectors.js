@@ -28,6 +28,32 @@ export const competitorDataBlueprints = [
 const CREATOROPS_API_BASE_URL = import.meta.env.VITE_CREATOROPS_API_BASE_URL || ''
 const CREATOROPS_API_TIMEOUT_MS = 15000
 
+function formatCreatorOpsApiFailure(path, response, payload = {}, fallbackText = '') {
+  const status = Number(response?.status || 0)
+  const statusHints = {
+    400: '요청 파라미터를 확인해야 합니다.',
+    401: 'API 키가 없거나 인증이 만료되었습니다.',
+    402: '결제/크레딧 설정이 필요합니다.',
+    403: 'API 권한 또는 허용 도메인을 확인해야 합니다.',
+    404: '배포된 API 서버에 해당 라우트가 없습니다. 백엔드 배포 반영이 필요합니다.',
+    408: 'API 응답 시간이 초과되었습니다.',
+    429: '쿼터 초과 또는 속도 제한 상태입니다.',
+    500: '서버 처리 오류입니다.',
+    502: '외부 API 응답 변환 중 오류입니다.',
+    503: '외부 API가 일시적으로 불안정합니다.',
+  }
+  const upstreamMessage =
+    payload?.message ||
+    payload?.error?.message ||
+    (typeof payload?.error === 'string' ? payload.error : '') ||
+    fallbackText ||
+    response?.statusText ||
+    ''
+  const hint = statusHints[status] || 'CreatorOps API 요청에 실패했습니다.'
+  const details = upstreamMessage ? ` (${String(upstreamMessage).slice(0, 180)})` : ''
+  return `${path} · ${status || 'network'}: ${hint}${details}`
+}
+
 async function callCreatorOpsApi(path, body) {
   if (!CREATOROPS_API_BASE_URL) return null
 
@@ -45,10 +71,16 @@ async function callCreatorOpsApi(path, body) {
       body: JSON.stringify(body),
       signal: controller.signal,
     })
-    payload = await response.json().catch(() => ({}))
+    const contentType = response.headers.get('content-type') || ''
+    if (contentType.includes('application/json')) {
+      payload = await response.json().catch(() => ({}))
+    } else {
+      const text = await response.text().catch(() => '')
+      payload = { message: text }
+    }
   } catch (error) {
     if (error?.name === 'AbortError') {
-      throw new Error('CreatorOps API response timed out. Check quota, billing, or server logs.', { cause: error })
+      throw new Error('CreatorOps API 응답이 지연되었습니다. 쿼터, 결제, 서버 로그를 확인하세요.', { cause: error })
     }
     throw error
   } finally {
@@ -56,7 +88,7 @@ async function callCreatorOpsApi(path, body) {
   }
 
   if (!response.ok) {
-    throw new Error(payload?.message || payload?.error || 'CreatorOps API 요청에 실패했습니다.')
+    throw new Error(formatCreatorOpsApiFailure(path, response, payload))
   }
 
   return payload?.data ?? payload

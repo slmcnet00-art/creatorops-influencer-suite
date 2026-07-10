@@ -1,10 +1,13 @@
-import 'dotenv/config'
+import { config as loadEnv } from 'dotenv'
 import cors from 'cors'
 import express from 'express'
 import { existsSync } from 'node:fs'
 import { createClient } from '@supabase/supabase-js'
 
 /* global document */
+
+loadEnv()
+loadEnv({ path: '.env.local', override: false })
 
 const app = express()
 const port = Number(process.env.PORT || 8787)
@@ -621,6 +624,33 @@ app.post('/ai/content-guide', async (request, response, next) => {
     const prompt = buildContentGuidePrompt({ brand, campaign, seedingType, channel, references })
     const guide = await callOpenAIText(prompt)
     response.json({ data: { guide } })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/ai/recommendations/enrich', async (request, response, next) => {
+  try {
+    const { brand, campaign, candidates } = request.body || {}
+    const safeCandidates = Array.isArray(candidates) ? candidates.slice(0, 50) : []
+    if (!safeCandidates.length) throw httpError(400, 'candidates are required.')
+
+    const prompt = buildRecommendationEnrichmentPrompt({ brand, campaign, candidates: safeCandidates })
+    const rawText = await callOpenAIText(prompt)
+    const parsed = parseAiJsonObject(rawText)
+    const items = Array.isArray(parsed.items)
+      ? parsed.items.map(normalizeRecommendationEnrichmentItem).filter(Boolean)
+      : []
+
+    response.json({
+      data: {
+        items,
+        model: process.env.OPENAI_MODEL || 'gpt-4.1-mini',
+        promptVersion: 'recommendation-enrichment-v1',
+        sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-POLICY-001'],
+        metricIds: ['MET-AI-001', 'MET-AI-003', 'MET-AI-004', 'MET-AI-006', 'MET-LLM-001', 'MET-LLM-002'],
+      },
+    })
   } catch (error) {
     next(error)
   }
@@ -3174,6 +3204,68 @@ function buildContentGuidePrompt({ brand = {}, campaign = {}, seedingType = '', 
   ].join('\\n')
 }
 
+function buildRecommendationEnrichmentPrompt({ brand = {}, campaign = {}, candidates = [] } = {}) {
+  const cleanBrand = sanitizeAiPromptValue(brand)
+  const cleanCampaign = sanitizeAiPromptValue(campaign)
+  const cleanCandidates = sanitizeAiPromptValue(candidates)
+  return [
+    'You are an influencer campaign strategist for a Korean B2B SaaS operations tool.',
+    'The candidates below were already ranked by deterministic raw-data scoring. Do not invent numbers, followers, views, emails, or metrics.',
+    'Use only the supplied candidate data. Your job is to enrich the top candidates with human-readable reasoning, a campaign angle, and a warmer outreach message.',
+    'Write Korean copy for user-facing fields. Keep each field concise and practical.',
+    'Return JSON only. No markdown, no commentary.',
+    'Required JSON shape:',
+    '{"items":[{"recommendationId":"string","creatorId":"string","aiSummary":"string","aiReasons":["string","string","string"],"outreachAngle":"string","riskNote":"string","message":"string"}]}',
+    'Rules:',
+    '- aiSummary: one sentence explaining why this creator is a fit.',
+    '- aiReasons: up to 3 concrete reasons tied to the supplied data.',
+    '- outreachAngle: one specific proposal angle or content hook.',
+    '- riskNote: short caveat if metrics are weak or verification is needed. Empty string if no issue.',
+    '- message: friendly Korean first-contact email/DM. Include a specific compliment, campaign fit, proposal, and a reply-friendly question. Mention ad disclosure naturally.',
+    '- Never copy broken/mojibake text. Rewrite naturally if any input looks corrupted.',
+    `Brand: ${JSON.stringify(cleanBrand || {})}`,
+    `Campaign: ${JSON.stringify(cleanCampaign || {})}`,
+    `Candidates: ${JSON.stringify(cleanCandidates || [])}`,
+  ].join('\\n')
+}
+
+function parseAiJsonObject(text = '') {
+  const trimmed = String(text || '').trim()
+  if (!trimmed) return {}
+  try {
+    return JSON.parse(trimmed)
+  } catch {
+    const fenced = trimmed.match(/```(?:json)?\s*([\s\S]*?)```/i)
+    const firstBrace = trimmed.indexOf('{')
+    const lastBrace = trimmed.lastIndexOf('}')
+    const candidate = fenced?.[1] || (firstBrace >= 0 && lastBrace > firstBrace ? trimmed.slice(firstBrace, lastBrace + 1) : '')
+    if (!candidate) throw httpError(502, 'AI response was not valid JSON.')
+    try {
+      return JSON.parse(candidate)
+    } catch {
+      throw httpError(502, 'AI response was not valid JSON.')
+    }
+  }
+}
+
+function normalizeRecommendationEnrichmentItem(item = {}) {
+  const recommendationId = String(item.recommendationId || '').trim()
+  const creatorId = String(item.creatorId || '').trim()
+  if (!recommendationId || !creatorId) return null
+
+  return {
+    recommendationId,
+    creatorId,
+    aiSummary: String(item.aiSummary || '').trim().slice(0, 500),
+    aiReasons: Array.isArray(item.aiReasons)
+      ? item.aiReasons.map((reason) => String(reason || '').trim()).filter(Boolean).slice(0, 3)
+      : [],
+    outreachAngle: String(item.outreachAngle || '').trim().slice(0, 500),
+    riskNote: String(item.riskNote || '').trim().slice(0, 500),
+    message: String(item.message || '').trim().slice(0, 2500),
+  }
+}
+
 function buildGmailRawMessage({ to, subject, message }) {
   const headers = [
     `To: ${to}`,
@@ -3394,7 +3486,30 @@ async function fetchJson(url, options) {
   const response = await fetch(url, options)
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) {
-    throw httpError(response.status, payload?.error?.message || payload?.message || 'External API request failed.')
+    const statusHints = {
+      400: 'request parameters need review',
+      401: 'API key or authentication is missing',
+      402: 'billing or credits are required',
+      403: 'API permission or allowed origin needs review',
+      404: 'upstream endpoint was not found',
+      408: 'upstream request timed out',
+      429: 'quota or rate limit exceeded',
+      500: 'upstream service error',
+      502: 'upstream response parsing failed',
+      503: 'upstream service is temporarily unavailable',
+    }
+    const upstreamMessage = payload?.error?.message || payload?.message || response.statusText || 'External API request failed.'
+    const host = (() => {
+      try {
+        return new URL(url).hostname
+      } catch {
+        return 'external-api'
+      }
+    })()
+    throw httpError(
+      response.status,
+      `${host} ${response.status}: ${statusHints[response.status] || 'request failed'} (${String(upstreamMessage).slice(0, 220)})`,
+    )
   }
   return payload
 }

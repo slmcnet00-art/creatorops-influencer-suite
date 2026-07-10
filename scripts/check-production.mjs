@@ -36,6 +36,24 @@ const endpointChecks = await Promise.all([
     query: 'pet creator',
     maxResults: 1,
   }),
+  checkPost('ai-recommendation-enrichment-contract', `${apiUrl}/ai/recommendations/enrich`, {
+    brand: { name: 'CreatorOps Production Check', product: 'test product' },
+    campaign: { name: 'production route check', goal: 'verify AI recommendation enrichment' },
+    candidates: [
+      {
+        recommendationId: 'rec-production-check',
+        creatorId: 'creator-production-check',
+        creatorName: 'Production Check Creator',
+        platform: 'YouTube',
+        category: 'review',
+        followers: 120000,
+        averageViews: 280000,
+        engagement: 5.8,
+        score: 92,
+        reasons: ['route check candidate'],
+      },
+    ],
+  }),
   checkPost('ai-message-contract', `${apiUrl}/ai/outreach-message`, {
     creator: { name: 'test' },
     brand: { brandName: 'test' },
@@ -54,6 +72,10 @@ if (failed.length) {
   if (failed.some((check) => check.label === 'api')) {
     console.log('- Render에서 creatorops-api 서비스가 생성/배포됐는지 확인하세요.')
     console.log('- Render Blueprint Sync 또는 New Web Service 생성 후 환경변수 API 키를 입력해야 합니다.')
+  }
+  if (failed.some((check) => check.label === 'ai-recommendation-enrichment-contract')) {
+    console.log('- /ai/recommendations/enrich가 404면 최신 server/index.js가 API 서비스에 배포되지 않은 상태입니다.')
+    console.log('- 501 또는 OPENAI_API_KEY 오류면 라우트는 배포됐고 Render 환경변수 OPENAI_API_KEY만 확인하면 됩니다.')
   }
   process.exitCode = 1
 }

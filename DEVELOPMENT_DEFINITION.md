@@ -30,7 +30,7 @@ CreatorOps는 브랜드에 맞는 인플루언서를 발굴하고, 섭외 메시
 | 다중 브랜드 관리 | 구현 완료 | 브랜드별 캠페인/후보/메시지 컨텍스트 분리 |
 | 캠페인 선택 컨텍스트 | 구현 완료 | 발굴/메시지/리포트 상단에서 캠페인 선택 |
 | 캠페인 생성/상세 | 구현 완료 | 생성 모달 확대, 상세 모달 대형화 |
-| AI 추천 후보 | 구현 완료 | 현재는 로컬 점수화/룰 기반 |
+| AI 추천 후보 | 구현 완료 | 데이터룸 raw/metric 점수화 후 OpenAI 보강 API로 추천 사유/제안 메시지 개인화 |
 | 실제 후보 발굴 | 부분 구현 | YouTube/Google API 또는 API 서버 프록시 필요 |
 | 메시지 검토함 | 구현 완료 | 상태 필터, 상세 보기, 복사, 연락 채널 열기, 선택/전체 선택, 일괄 발송 완료, 발송/응답 로그, 응답 메모 |
 | 섭외 완료 풀 | 구현 완료 | 캠페인 상세 안에서 캠페인별 저장 및 광고주 컨펌용 지표/추천 근거 표시 |
@@ -105,10 +105,24 @@ CreatorOps는 브랜드에 맞는 인플루언서를 발굴하고, 섭외 메시
 ### 4.6 AI 추천 후보
 
 - 후보별 매칭 점수, 추천 이유, 리스크, 제안 메시지 초안을 생성한다.
-- AI 추천 후보 카드에는 팔로워, 평균 조회수, 참여율이 바로 표시된다.
-- 후보를 선택해 쇼트리스트 저장 또는 메시지 검토함으로 일괄 전송할 수 있다.
+- AI 추천 후보 카드에는 팔로워, 평균 조회수, 팔로워 대비 조회 폭발률, 참여율, 예상 CPV, 실제 성과 학습 여부가 표시된다.
+- 후보를 선택해 메시지 전 후보 풀에 저장하거나 메시지 검토함으로 일괄 전송할 수 있다.
+- 실제 웹 발굴이나 AI 추천 실행만으로는 메시지 전 후보 풀에 자동 저장하지 않는다. 운영자가 선택 후 `후보 풀 저장`을 눌러야 `candidatePoolEvidence`와 함께 후보 풀이 생성된다.
+- 후보 풀 저장 시 추천 정책 raw, 추천/보류 기준, 점수 구성, 실제 성과 학습 요약, 실제 성과 raw, 연결 metric ID를 스냅샷으로 보존한다.
 - AI 추천 리스트는 엑셀 다운로드와 Google Sheets 전송 흐름을 지원한다.
-- 현재 AI 추천은 로컬 룰/스코어링 중심이며, OpenAI API 서버 연결 후 고도화 가능하다.
+- AI 추천 판단은 `우선 제안`, `후보 유지`, `검증 후 제안`, `보류 검토`로 나뉜다.
+- 정렬은 `우선 제안 -> 후보 유지 -> 검증 후 제안` 순으로 이루어지며, `보류 검토` 후보는 추천 실행 결과에서 제외한다.
+- 추천 기준은 팔로워 규모보다 광고 효율이 잘 나올 가능성을 우선한다. 평균 조회수, 팔로워 대비 조회 폭발률, 참여율, 예상 CPV, 실제 업로드 성과 학습, 브랜드/카테고리/국가/전략 키워드 적합도, 데이터 신뢰도를 조합한다.
+- AI 추천 영역 상단에는 최소 팔로워, 평균 조회/폭발계수, 데이터 품질, 우선 제안 점수 기준을 칩으로 표시하고 `RAW-INT-AI-POLICY-001` 정책 raw로 바로 이동할 수 있게 한다.
+- AI 추천 기준에는 조회 성과 32%, 뷰 효율 16%, 실제 성과 학습 최대 +18점, 전략 반영 최대 +8점, 리스크/제외어 감점 구조를 함께 표시하고 각 항목은 `MET-AI-003`~`MET-AI-006`, `MET-AI-002`로 연결한다.
+- AI 추천 기준은 `REC-PERF-2026-07-10` 정책 버전을 표시한다. 계산 순서는 브리프 적합 -> 성과 효율 -> 실제 성과 학습 -> 리스크 게이트이며, 각 단계의 raw/metric ID를 추천 기준 패널에서 확인할 수 있다.
+- 팔로워 1천 미만, 평균 조회수 5만 미만이면서 팔로워 대비 조회 0.2x 미만, 국가 불일치, 제외 키워드 감지, 데이터 품질 낮음은 감점 또는 보류 기준이다. 단, 리포트/Video Monitor raw에서 실제 성과가 강하게 확인된 후보는 보정한다.
+- 추천 카드의 `데이터룸 근거 보기`는 기본 raw(`RAW-INT-BRD-001`, `RAW-INT-CMP-BRIEF-001`, `RAW-INT-INF-001`, `RAW-INT-AI-001`, `RAW-INT-AI-POLICY-001`, `RAW-EXT-SEARCH-001`, `RAW-EXT-CHN-001`, `RAW-INT-QUALITY-001`)와 계산지표 `MET-AI-001`~`MET-AI-006` 연결을 표시한다.
+- 실제 성과 학습이 있는 후보에만 `RAW-EXT-MON-VIDEO-001`을 추가 표시하고, 메시지 전 후보 풀에 저장된 뒤에만 `RAW-INT-POOL-EVIDENCE-001`을 후보 저장 근거 raw로 표시한다.
+- AI 추천 리스트와 메시지 전 후보 풀 엑셀에는 점수 가중치, 전략 키워드, 전략 적중 키워드, 전략 반영 점수, raw/metric ID를 함께 내보낸다.
+- 추천 생성은 1차 데이터룸 raw/metric 점수화와 2차 OpenAI 보강으로 나뉜다. 1차 점수, 판단값, 확정 표시는 데이터룸 raw/metric 근거가 있는 항목만 사용하며, 2차 OpenAI는 추천 사유 문장, 페르소나, 제안 각도, 친근한 메시지 초안을 보강한다.
+- OpenAI 보강은 API 서버의 `/ai/recommendations/enrich`를 호출한다. `OPENAI_API_KEY`가 없거나 API 라우트가 미배포된 경우 추천 생성은 중단하지 않고 데이터룸 기준 추천으로 fallback 하며, AI 추천 영역 상단에 `추천 엔진 상태`로 표시한다.
+- OpenAI 보강 산출물에는 `RAW-INT-LLM-BUNDLE-001`, `MET-LLM-001`, `MET-LLM-002`를 연결해 어떤 raw를 읽고 어떤 모델/프롬프트 버전으로 문구가 생성됐는지 추적한다.
 
 ### 4.7 메시지 운영
 
@@ -182,6 +196,7 @@ CreatorOps는 브랜드에 맞는 인플루언서를 발굴하고, 섭외 메시
 - 데이터룸에 없는 데이터는 기능에서 확정값으로 사용하지 않고, `번외 데이터 번들`에 보류/대체 수집 기준으로 등록한다.
 - 추가된 raw 번들은 외부 검색 원본 결과, AI 생성 실행 로그, 내보내기/다운로드 로그, 팀 계정/권한 데이터, 데이터 품질 판정 로그, 미지원/부분지원 플랫폼 지표 보류 번들이다.
 - 추가된 계산지표 번들은 AI 매칭/가치생성, 콘텐츠 가이드, 데이터 운영, 내보내기, 팀/권한이다.
+- 프랙티스/샘플 데이터는 사용법 안내용으로만 남기고, 운영 데이터룸 raw/metric 집계와 프론트 확정 수치에서는 제외한다.
 - `기능-데이터 커버리지` 보드는 대시보드, 캠페인, 발굴, AI 추천, 메시지 전 후보 풀, 메시지, 리포트, 레퍼런스, 가이드 생성, 내보내기, 권한 설정이 어떤 raw/metric에 의존하는지 보여준다.
 - Instagram/TikTok 저장, 공유, 정확 조회수, 정확 팔로워처럼 공식 권한 없이는 완전 수집이 어려운 지표는 `RAW-EXT-UNSUPPORTED-001`로 분리하고 UI에는 수집 필요 또는 검증 필요로 표시한다.
 
@@ -195,6 +210,7 @@ CreatorOps는 브랜드에 맞는 인플루언서를 발굴하고, 섭외 메시
 | campaign | id, brandId, name, owner, budget, spend, revenue, deadline, schedule, objective, campaignType, mission, reward, approvalFlow, commerceMetric, kpiGoal, targetViews, targetConversions, targetOrders, targetRevenue, sellerRecruitTarget, brandGuideAttachments, campaignGuideMaterials, generatedContentGuide, creatorIds |
 | creator | id, name, handle, profileUrl, contactEmail, preferredContactChannel, platform, category, followers, averageViews, engagement, price, audience, fit, brandSafety, fakeRisk, metricSources, needsVerification, sourceNote |
 | recommendation | id, creatorId, campaignId, brandId, score, persona, reasons, risk, message |
+| candidatePoolEvidence | id, creatorId, campaignId, source, decision, score, persona, reasons, risk, scoreBreakdown, dataContract, rawIds, metricIds, scoreSummary, strategyKeywords, strategyHits, strategyHitCount, strategyScoreImpact, strategyRawIds, strategyMetricId, policyRawId, policyCriteria, policyHoldRule, performanceLearningSummary, performanceLearningStatus, performanceLearningRawIds, performanceLearningMetricId, createdAt |
 | outreach | id, creatorId, campaignId, source, channel, deliveryMode, complianceNote, status, message, reason, sentAt, createdAt |
 | recruitedPool | id, creatorId, campaignId, source, channel, status, note, createdAt |
 | fulfillmentRecord | id, campaignId, creatorId, recipient, handle, phone, address, bank, accountNumber, accountHolder, paymentAmount, courier, trackingNumber, deliveryStatus, memo |
@@ -221,6 +237,7 @@ API 상세 계약은 `API_INTEGRATION_CONTRACT.md`에 별도로 정리되어 있
 | POST `/references/search` | 구현 | YouTube Data API, TikTok Commercial Content API, Brave Search 기반 콘텐츠/광고 레퍼런스 검색 |
 | POST `/ai/outreach-message` | 구현 | OpenAI 기반 섭외 제안 메시지 생성 |
 | POST `/ai/content-guide` | 구현 | OpenAI 기반 콘텐츠 가이드 생성 |
+| POST `/ai/recommendations/enrich` | 로컬 구현 / 운영 재배포 필요 | 데이터룸 raw/metric으로 이미 점수화된 후보의 추천 사유, 제안각, 친근한 메시지만 OpenAI로 보강 |
 | POST `/outreach/gmail/send` | 예약 | Gmail OAuth 토큰 저장소 연결 전까지 501 반환 |
 
 필요 환경변수:
@@ -288,11 +305,11 @@ npm run render:create-api
 
 ## 10. 다음 개발 우선순위
 
-1. Render에서 `creatorops-suite-api` 서비스 생성 또는 Blueprint Sync
+1. Render API 서비스에 최신 `server/index.js` 재배포 후 `/ai/recommendations/enrich`가 404가 아니라 501/200으로 응답하는지 확인
 2. Supabase 프로젝트 생성 및 `supabase/schema.sql` 실행
 3. Render 환경변수에 Supabase/YouTube/Google/OpenAI 키 입력
 4. 프론트 `VITE_CREATOROPS_API_BASE_URL`을 API 서비스 URL로 연결
-5. OpenAI 기반 실제 추천/메시지/가이드 생성 프론트 연결
+5. `npm run production:check`로 YouTube 쿼터, OpenAI 추천 보강, 메시지 생성, API health를 함께 확인
 6. Gmail OAuth 토큰 저장소와 실제 이메일 발송 로그 연결
 7. Supabase Auth 기반 팀 초대, 역할 권한, 브랜드 접근권한 실제 적용
 8. 다운로드/발송/권한 변경 감사 로그 구현

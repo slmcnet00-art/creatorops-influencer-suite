@@ -62,6 +62,7 @@ data_room
 - 계산에 쓰인 raw ID를 metric snapshot에 저장한다.
 - 프론트는 DB에 없는 수치를 확정값처럼 보여주지 않는다.
 - API/크롤링/수동 업로드/외부 리포트는 모두 같은 import/job 로그 구조에 연결한다.
+- 프랙티스/샘플 데이터는 별도 안내용 데이터로만 유지하고, 운영 raw/metric snapshot에는 집계하지 않는다.
 
 ## Raw 데이터 카탈로그 우선순위
 
@@ -78,6 +79,7 @@ data_room
 | P1 | RAW-EXT-MON-VIDEO-001 | 외부 영상 모니터 상세/일별 리포트 | 엑셀 업로드 | external_report_imports, external_report_rows, performance_snapshots |
 | P1 | RAW-EXT-MON-WB-001 | 외부 워크벤치 델타/기여도 리포트 | 엑셀 업로드 | external_report_imports, external_report_rows, metric_snapshots |
 | P2 | RAW-INT-AI-001 | AI 생성 실행 로그 | API | ai_generation_runs |
+| P2 | RAW-INT-AI-POLICY-001 | AI 추천 정책/가중치 | 정책 버전 관리 | recommendation_policy_versions |
 | P2 | RAW-INT-EXPORT-001 | 다운로드/내보내기 로그 | 프론트/API 이벤트 | export_events |
 | P2 | RAW-EXT-UNSUPPORTED-001 | 미지원/부분지원 플랫폼 지표 | 보류/수동/인증 | data_quality_reviews, unsupported_metric_requests |
 
@@ -196,8 +198,37 @@ data_room
 | 콘텐츠 성과 | 평균 조회수, 콘텐츠 성장률, 채널별 성과 | RAW-EXT-CONT-001, RAW-EXT-MON-VIDEO-001 |
 | 브랜드/경쟁 추적 | 저장 브랜드 수, 경쟁 콘텐츠 평균 조회수 | RAW-EXT-BRAND-001, RAW-EXT-MON-INF-001 |
 | 외부 리포트/벤치마크 | 외부 모니터 인플루언서 수, 평균 단가, 델타 랭킹, 기여도 | RAW-EXT-MON-INF-001, RAW-EXT-MON-VIDEO-001, RAW-EXT-MON-WB-001 |
-| AI 매칭 | 브랜드-크리에이터 적합도, 후보 우선순위 | RAW-INT-BRD-001, RAW-INT-INF-001, RAW-INT-QUALITY-001 |
+| AI 매칭 | 브랜드-크리에이터 적합도, 후보 우선순위, 실제 성과 학습, 전략 반영 | 기본: RAW-INT-BRD-001, RAW-INT-CMP-BRIEF-001, RAW-INT-INF-001, RAW-INT-AI-001, RAW-INT-AI-POLICY-001, RAW-INT-QUALITY-001, RAW-EXT-SEARCH-001, RAW-EXT-CHN-001, RAW-EXT-CONT-001, RAW-EXT-ENG-001 / 조건부: 실제 성과 학습 시 RAW-EXT-MON-VIDEO-001, 후보 풀 저장 시 RAW-INT-POOL-EVIDENCE-001 |
 | 데이터 운영 | 수집 성공률, 미지원 데이터 비율 | RAW-EXT-SEARCH-001, RAW-EXT-UNSUPPORTED-001 |
+
+### AI 추천/후보 풀 근거 적재
+
+AI 추천은 단순 팔로워 순위가 아니라 캠페인 브리프와 실제 성과 raw를 조합한 계산지표로 운영한다.
+
+- 핵심 지표: `MET-AI-003` 후보 우선순위 점수
+- 보조 지표: `MET-AI-001` 브랜드-크리에이터 적합도, `MET-AI-002` 데이터 품질 점수, `MET-AI-004` 예상 뷰 효율 점수, `MET-AI-005` 실제 성과 학습 점수, `MET-AI-006` 캠페인 전략 반영 점수
+- 판단값: `우선 제안`, `후보 유지`, `검증 후 제안`, `보류 검토`
+- 보류 기준: 팔로워 1천 미만, 평균 조회수 5만 미만이면서 팔로워 대비 조회 0.2x 미만, 국가 불일치, 제외 키워드 감지, 데이터 품질 낮음
+- 보정 기준: 리포트 콘텐츠 추적 또는 Video Monitor raw에서 실제 업로드 성과가 확인되면 팔로워 규모보다 성과 학습 점수를 우선 반영
+- 추천 정책 raw: 팔로워/평균 조회/폭발계수/데이터 품질/우선 제안 점수 같은 문턱값은 `RAW-INT-AI-POLICY-001`에 버전별로 저장한다.
+- 현재 정책 버전: `REC-PERF-2026-07-10`. 정책 원칙은 "팔로워 규모보다 조회 효율, 실제 성과 학습, 캠페인 핏을 우선"이며 변경 시 `recommendation_policy_versions`에 기준값, 가중치, 담당자, 적용 시작일을 함께 남긴다.
+- 계산 순서: 1) 브리프 적합(`RAW-INT-BRD-001`, `RAW-INT-CMP-BRIEF-001`) 2) 성과 효율(`RAW-EXT-CHN-001`, `RAW-EXT-CONT-001`, `RAW-EXT-ENG-001`) 3) 실제 성과 학습(`RAW-EXT-MON-VIDEO-001`, 성과 이력이 있을 때만) 4) 후보 풀 저장 근거(`RAW-INT-POOL-EVIDENCE-001`, 저장 이후) 5) 리스크 게이트(`RAW-INT-QUALITY-001`, `RAW-INT-AI-POLICY-001`).
+- 적재 위치: 현재 MVP는 `workspace_snapshots.payload.candidatePoolEvidence`에 저장하고, 운영 DB에서는 `recommendation_scores`와 `metric_snapshots`로 분리한다.
+- 후보 풀 스냅샷: 후보를 메시지 전 풀에 저장하는 순간 추천 정책 raw, 보류 기준, 점수 구성, 실제 성과 학습 요약, 실제 성과 raw, 캠페인 전략/가이드 키워드 적중 근거, 연결 metric ID를 함께 저장한다.
+- 프론트 표시 원칙: 후보 카드/엑셀/메시지 전 후보 풀에는 추천 판단, 점수 구성, 사용 raw ID, 사용 metric ID가 함께 남아야 한다.
+
+### OpenAI 추천 보강 적재
+
+OpenAI는 후보의 수치나 점수를 새로 만들지 않고, 이미 데이터룸 raw/metric으로 계산된 후보를 사람이 읽기 쉬운 추천 사유와 메시지로 보강하는 역할만 한다.
+
+- API 엔드포인트: `/ai/recommendations/enrich`
+- 필수 서버 시크릿: `OPENAI_API_KEY`, 선택값 `OPENAI_MODEL`
+- 입력 raw: `RAW-INT-CMP-BRIEF-001`, `RAW-INT-BRD-001`, `RAW-INT-INF-001`, `RAW-INT-AI-POLICY-001`
+- 출력 raw: `RAW-INT-LLM-BUNDLE-001`
+- 연결 지표: `MET-LLM-001` LLM 산출물 저장률, `MET-LLM-002` LLM 원천 추적률
+- 저장 대상: 추천 사유, 추천 각도, 리스크 노트, 제안 메시지, 모델명, 프롬프트 버전, 입력 raw ID, 후보 ID
+- fallback: `OPENAI_API_KEY` 누락, 라우트 미배포, 쿼터 제한 시 AI 추천은 중단하지 않고 `MET-AI-001`~`MET-AI-006` 기반 추천으로만 표시한다. 이 상태는 발굴 화면의 `추천 엔진 상태`와 데이터룸 API raw 적재 상태에서 확인한다.
+- 운영 원칙: OpenAI가 생성한 문구라도 sourceRawIds, metricIds, promptVersion, model이 없으면 고객용 화면에는 확정 문구로 표시하지 않고 검증 필요 상태로 둔다.
 
 ## 3번 데이터룸 적재 MVP 범위
 
