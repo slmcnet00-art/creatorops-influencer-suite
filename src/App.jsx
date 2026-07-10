@@ -18002,6 +18002,13 @@ function OutreachItem({
   const sourceTone = item.source === '자동' ? 'auto-source' : item.source === '대량 섭외' ? 'bulk-source' : 'manual-source'
   const contactPlan = buildContactPlan(creator, item.channel, item.message, campaign?.name)
   const contactEmail = getCreatorContactEmail(creator)
+  const reasonParts = String(item.reason || '')
+    .split('/')
+    .map((part) => part.trim())
+    .filter(Boolean)
+  const metricLine = creator
+    ? `${creator.platform} · 팔로워 ${compactNumber(creator.followers)} · 평균 조회 ${compactNumber(creator.averageViews)} · 매칭 ${creator.fit ?? '-'}점`
+    : '후보 지표 확인 필요'
 
   return (
     <article className="record-item">
@@ -18024,8 +18031,20 @@ function OutreachItem({
           )}
           <span>{contactEmail ? 'Gmail/Outlook 발송 대상' : `${contactPlan.shortLabel} 작업 대상`}</span>
         </div>
-        <p>{contactPlan.deliveryMode} · {contactPlan.description}</p>
-        {item.reason && <p>{item.reason}</p>}
+        <div className="message-brief-line">
+          <span>{contactPlan.deliveryMode}</span>
+          <span>{metricLine}</span>
+        </div>
+        {reasonParts.length > 0 && (
+          <details className="message-reason-details">
+            <summary>발굴 근거 보기</summary>
+            <ul>
+              {reasonParts.slice(0, 4).map((part, index) => (
+                <li key={`${item.id}-reason-${index}`}>{part}</li>
+              ))}
+            </ul>
+          </details>
+        )}
       </div>
       <div className="record-actions">
         <button className="primary-button compact-button" type="button" onClick={onOpenDetail}>

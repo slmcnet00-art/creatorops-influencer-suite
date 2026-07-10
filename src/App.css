@@ -5098,6 +5098,51 @@
   color: var(--text-muted);
 }
 
+.message-brief-line {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  margin-top: 8px;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.message-brief-line span {
+  max-width: min(100%, 520px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.message-reason-details {
+  margin-top: 8px;
+  color: var(--text-soft);
+  font-size: 12px;
+}
+
+.message-reason-details summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--accent);
+  font-weight: 800;
+  list-style-position: inside;
+}
+
+.message-reason-details ul {
+  display: grid;
+  gap: 4px;
+  margin: 7px 0 0;
+  padding: 8px 10px 8px 24px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-strong);
+}
+
+.message-reason-details li {
+  line-height: 1.42;
+}
+
 .secondary-button {
   text-decoration: none;
 }
