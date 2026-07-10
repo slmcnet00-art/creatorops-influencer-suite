@@ -1476,6 +1476,16 @@ function getRecommendedContactChannelId(creator) {
   return 'manual_other'
 }
 
+function getCreatorContactEmail(creator) {
+  return String(
+    creator?.contactEmail ||
+    creator?.businessEmail ||
+    creator?.publicEmail ||
+    creator?.email ||
+    '',
+  ).trim()
+}
+
 function getCreatorProfileUrl(creator, channelId) {
   if (!creator) return ''
   if (creator.profileUrl) return creator.profileUrl
@@ -6180,11 +6190,6 @@ function App() {
   } = workspace
 
   const currentAccount = accounts.find((account) => account.id === activeAccountId) ?? accounts[0] ?? defaultWorkspace.accounts[0]
-  const currentRole = teamRoleCatalog[currentAccount?.role] ?? teamRoleCatalog.Manager
-  const currentAccountCaption =
-    currentRole.label === currentAccount?.name
-      ? `${team.name} · ${currentAccount.name}`
-      : `${team.name} · ${currentAccount?.name ?? '계정'} · ${currentRole.label}`
   const canManagePermissions = currentAccount?.role === 'Owner' || currentAccount?.role === 'Admin'
   const accessibleSectionIds = useMemo(() => {
     if (currentAccount?.role === 'Client') return ['dashboard', 'campaigns', 'groups', 'report', 'references', 'settings']
@@ -6317,6 +6322,7 @@ function App() {
         activeOutreachDetailCampaign?.name,
       )
     : null
+  const activeOutreachDetailEmail = getCreatorContactEmail(activeOutreachDetailCreator)
   const activeDmBulkItems = modal?.type === 'dmBulk'
     ? (modal.ids ?? []).map((id) => activeOutreach.find((item) => item.id === id)).filter(Boolean)
     : []
@@ -12571,7 +12577,7 @@ function App() {
       sourceLabel: material.sourceName,
       material,
     })
-    showToast('제작 레퍼런스 분석을 열었어요. 내용을 확인한 뒤 가이드에 차용하세요.')
+    showToast('제작 레퍼런스 분석을 열었어요. 괜찮으면 AI 가이드 참고자료로 저장하세요.')
   }
 
   const borrowReferenceForGuide = () => {
@@ -12599,10 +12605,10 @@ function App() {
           ),
         },
         'reference',
-        `${referenceGuideUsage.referenceTitle} 제작 레퍼런스를 브랜드 학습자료에 차용`,
+        `${referenceGuideUsage.referenceTitle} 제작 레퍼런스를 AI 가이드 참고자료로 저장`,
       ),
     )
-    showToast('제작 레퍼런스를 브랜드 학습자료에 차용했어요.')
+    showToast('AI 가이드 생성 참고자료로 저장했어요. 다음 가이드 생성부터 반영됩니다.')
   }
 
   const activeCampaignForModal =
@@ -12677,7 +12683,6 @@ function App() {
               ))}
             </select>
           </label>
-          <p>{currentAccountCaption}</p>
         </div>
 
         <nav className="nav-list" aria-label="주요 메뉴">
@@ -14997,7 +15002,12 @@ function App() {
               <div>
                 <span className="mini-label">제작 저장</span>
                 <strong>제작 레퍼런스 저장 리스트</strong>
-                <p>50만+ 조회 또는 팔로워 대비 터진 콘텐츠를 변형 스크립트로 바꿔 캠페인 가이드에 반영합니다.</p>
+                <p>
+                  저장한 영상/이미지를 바로 가이드에 붙이는 영역은 아닙니다.
+                  먼저 <b>분석 보기</b>로 후킹, 컷 흐름, 제품 등장 타이밍, CTA를 확인하고,
+                  괜찮은 레퍼런스만 <b>가이드 차용</b>으로 AI 참고자료에 저장합니다.
+                  저장된 참고자료는 캠페인 상세에서 <b>전략 생성</b> 또는 <b>가이드 재생성</b>을 다시 누를 때 반영됩니다.
+                </p>
               </div>
               <span>{savedProductionReferences.length}개 저장됨</span>
             </div>
@@ -15033,9 +15043,17 @@ function App() {
                   <span className="mini-label">레퍼런스 분석</span>
                   <strong>{referenceGuideUsage.referenceTitle}</strong>
                   <p>
-                    아래 분석 내용을 읽어보고 괜찮으면 {referenceGuideUsage.campaignName} 가이드의 브랜드 학습자료에 차용하세요.
-                    차용 후 다음 가이드 생성부터 후킹/컷 구성/CTA 변형 재료로 사용됩니다.
+                    버튼을 눌러도 현재 전략이나 가이드는 바로 생성되지 않습니다.
+                    이 레퍼런스의 쓸 만한 구조만 저장하고, 캠페인 상세에서 전략 생성 또는 가이드 재생성을 누를 때 AI가 참고합니다.
                   </p>
+                </div>
+                <div className="reference-borrow-scope">
+                  <span>AI가 참고하는 영역</span>
+                  <div>
+                    {['첫 3초 후킹', '컷 흐름', '제품 등장 타이밍', '근거 제시 방식', '댓글/링크 CTA', '금지 복제 요소'].map((scope) => (
+                      <strong key={scope}>{scope}</strong>
+                    ))}
+                  </div>
                 </div>
                 <div className="reference-usage-grid">
                   <article>
@@ -15044,9 +15062,9 @@ function App() {
                     <small>{referenceGuideUsage.sourceUrl || '링크 미입력'}</small>
                   </article>
                   <article>
-                    <span>가이드 적용 방식</span>
-                    <strong>구조 차용 · 문안 재작성</strong>
-                    <small>원본 자막/구도/문장은 복제하지 않고 문제 제기, 제품 등장, 근거, CTA 순서만 변형합니다.</small>
+                    <span>AI 적용 방식</span>
+                    <strong>저장만 함 · 생성은 별도 버튼에서</strong>
+                    <small>원본 자막/구도/문장은 복제하지 않고 문제 제기, 제품 등장, 근거, CTA 순서만 다음 생성 요청에 전달합니다.</small>
                   </article>
                 </div>
                 <pre>{referenceGuideUsage.material.doSay}</pre>
@@ -17271,6 +17289,16 @@ function App() {
                 </div>
                 <strong>💌 {activeOutreachDetailCreator?.name ?? '크리에이터'}에게 보낼 제안 메시지</strong>
                 <p>{activeOutreachDetailCampaign?.name ?? '캠페인 없음'} · {activeOutreachDetail.createdAt} · {activeOutreachDetailPlan?.label ?? '연락 채널 확인'}</p>
+                <div className="outreach-contact-summary">
+                  <span>연락 이메일</span>
+                  {activeOutreachDetailEmail ? (
+                    <a href={`mailto:${activeOutreachDetailEmail}`}>{activeOutreachDetailEmail}</a>
+                  ) : (
+                    <strong>이메일 없음</strong>
+                  )}
+                  <span>처리 방식</span>
+                  <strong>{activeOutreachDetailEmail ? '이메일 발송 가능' : `${activeOutreachDetailPlan?.shortLabel ?? 'DM'} 작업 대상`}</strong>
+                </div>
               </div>
               <div className="outreach-message-preview friendly-message-preview">
                 <span>메시지 미리보기</span>
@@ -17973,6 +18001,7 @@ function OutreachItem({
   const canComplete = item.status === '응답' || item.status === '발송 완료'
   const sourceTone = item.source === '자동' ? 'auto-source' : item.source === '대량 섭외' ? 'bulk-source' : 'manual-source'
   const contactPlan = buildContactPlan(creator, item.channel, item.message, campaign?.name)
+  const contactEmail = getCreatorContactEmail(creator)
 
   return (
     <article className="record-item">
@@ -17987,6 +18016,14 @@ function OutreachItem({
         <span className={`channel-chip ${contactPlan.tone}`}>{contactPlan.shortLabel}</span>
         <strong>{creator?.name ?? '알 수 없는 후보'}</strong>
         <p>{campaign?.name ?? '캠페인 없음'} · {item.createdAt}</p>
+        <div className="message-contact-line">
+          {contactEmail ? (
+            <a href={`mailto:${contactEmail}`}>이메일 {contactEmail}</a>
+          ) : (
+            <span className="contact-missing">이메일 없음</span>
+          )}
+          <span>{contactEmail ? 'Gmail/Outlook 발송 대상' : `${contactPlan.shortLabel} 작업 대상`}</span>
+        </div>
         <p>{contactPlan.deliveryMode} · {contactPlan.description}</p>
         {item.reason && <p>{item.reason}</p>}
       </div>
