@@ -4,7 +4,6 @@ import {
   ClipboardList,
   Database,
   Filter,
-  GitBranch,
   RefreshCw,
   Search,
   UsersRound,
@@ -86,6 +85,73 @@ function LinkedChipList({ label, items, emptyText, onClick }) {
         <small>{emptyText}</small>
       )}
     </div>
+  )
+}
+
+function rawText(item = {}) {
+  return [
+    item.id,
+    item.name,
+    item.description,
+    item.scope,
+    item.category,
+    item.method,
+    item.cycle,
+    item.source,
+    item.sourceLocation,
+    item.storageLocation,
+    item.ownerDept,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
+function isManualRaw(item = {}) {
+  const text = rawText(item)
+  return /수동|업로드|엑셀|파일|스프레드시트|sheet|csv|xlsx|manual|localstorage|보고서|보완/.test(text)
+}
+
+function classifyRawResponsibility(item = {}) {
+  const text = rawText(item)
+
+  if (/higgsfield|heygen|provider|생성 provider|이미지 생성|영상 생성|provider job/.test(text)) {
+    return 'provider'
+  }
+
+  if (/openai|llm|ai\/데이터|프롬프트|전략|가이드|추천|분석\/생성|카피 생성/.test(text)) {
+    return 'ai'
+  }
+
+  if (/크롤|crawler|수집기|공개 레퍼런스|벤치마크|피드 수집|공개 콘텐츠/.test(text)) {
+    return 'crawler'
+  }
+
+  if (/api|youtube|instagram|tiktok|meta|google|brave|search|sns|채널\/프로필|매체/.test(text)) {
+    return 'mediaApi'
+  }
+
+  if (item.scope === '내부' || /db|내부|브랜드|sku|utm|crm|운영 로그|권한|workspace/.test(text)) {
+    return 'db'
+  }
+
+  return item.scope === '외부' ? 'crawler' : 'db'
+}
+
+function getRawComposition(rawIds = [], rawById = new Map()) {
+  return Array.from(new Set(rawIds)).reduce(
+    (acc, rawId) => {
+      const raw = rawById.get(rawId)
+      if (!raw) {
+        acc.missing += 1
+      } else if (isManualRaw(raw)) {
+        acc.manual += 1
+      } else {
+        acc.automated += 1
+      }
+      return acc
+    },
+    { manual: 0, automated: 0, missing: 0 },
   )
 }
 
@@ -195,6 +261,14 @@ export default function AdminDataRoom({
   const [apiDiagnosticsOpen, setApiDiagnosticsOpen] = useState(false)
   const rawRegistryRef = useRef(null)
   const metricRegistryRef = useRef(null)
+  const importPanelRef = useRef(null)
+  const apiStatusPanelRef = useRef(null)
+  const apiLogPanelRef = useRef(null)
+  const scrollToPanel = (ref) => {
+    window.setTimeout(() => {
+      ref.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    }, 80)
+  }
   const scrollToRegistryTarget = (selector, fallbackRef) => {
     window.setTimeout(() => {
       const target = document.querySelector(selector)
@@ -226,6 +300,7 @@ export default function AdminDataRoom({
     }
   }
   const rawRegistry = allRawData?.length ? allRawData : rawData
+  const rawById = new Map(rawRegistry.map((item) => [item.id, item]))
   const externalReportRawIds = new Set(externalReportRawTypes.map((item) => item.id))
   const apiRawIds = new Set(apiRawTypes.map((item) => item.id))
   const externalReportRawCount = rawRegistry.filter((item) => externalReportRawIds.has(item.id)).length
@@ -245,6 +320,73 @@ export default function AdminDataRoom({
     },
     { total: 0, ok: 0, needsReview: 0, error: 0, missingRaw: 0, missingMetrics: 0, conditionalRaw: 0, conditionalRawAvailable: 0 },
   )
+  const responsibilityCounts = rawRegistry.reduce(
+    (acc, item) => {
+      const key = classifyRawResponsibility(item)
+      acc[key] += 1
+      return acc
+    },
+    { mediaApi: 0, crawler: 0, ai: 0, provider: 0, db: 0 },
+  )
+  const responsibilityGroups = [
+    {
+      key: 'mediaApi',
+      label: '매체/API',
+      count: responsibilityCounts.mediaApi,
+      description: '광고 계정 세팅, 성과 수집, 예산/ON-OFF처럼 매체 권한이 필요한 원천입니다.',
+      query: 'API raw',
+      tab: '외부',
+    },
+    {
+      key: 'crawler',
+      label: '크롤러/수집기',
+      count: responsibilityCounts.crawler,
+      description: '공개 레퍼런스, 피드, 경쟁사 소재처럼 API 한계가 있는 자료 수집 영역입니다.',
+      query: '레퍼런스',
+      tab: '전체',
+    },
+    {
+      key: 'ai',
+      label: 'OpenAI 분석/생성',
+      count: responsibilityCounts.ai,
+      description: '전략, 카피, 프롬프트, 리포트 코멘트, 위닝 패턴 분석처럼 판단/생성하는 영역입니다.',
+      query: 'AI',
+      tab: '전체',
+    },
+    {
+      key: 'provider',
+      label: '생성 Provider',
+      count: responsibilityCounts.provider,
+      description: 'Higgsfield, HeyGen 등 이미지/영상 생성 결과와 provider job을 관리하는 영역입니다.',
+      query: 'Provider',
+      tab: '전체',
+    },
+    {
+      key: 'db',
+      label: '내부 DB',
+      count: responsibilityCounts.db,
+      description: '브랜드, SKU, UTM, 미디어믹스, 운영 로그처럼 솔루션 내부 기준 데이터입니다.',
+      query: '',
+      tab: '내부',
+    },
+  ]
+  const workflowStatusSummary = workflowCoverage.reduce(
+    (acc, item) => {
+      const hasExceptionRaw = item.rawIds?.includes('RAW-EXT-UNSUPPORTED-001')
+      if (item.status === '정상') acc.complete += 1
+      else if (item.status === '오류') acc.missing += 1
+      else if (hasExceptionRaw || item.status === '부분지원') acc.exception += 1
+      else acc.partial += 1
+      return acc
+    },
+    { complete: 0, partial: 0, exception: 0, missing: 0 },
+  )
+  const workflowRawIds = Array.from(new Set(workflowCoverage.flatMap((item) => item.rawIds || [])))
+  const workflowMetricIds = Array.from(new Set(workflowCoverage.flatMap((item) => item.metricIds || [])))
+  const workflowComposition = {
+    ...getRawComposition(workflowRawIds, rawById),
+    computed: workflowMetricIds.length,
+  }
   const jumpToCoverageIssue = (item) => {
     const firstMissingRaw = item.missingRaw?.[0]
     const firstMissingMetric = item.missingMetrics?.[0]
@@ -255,6 +397,40 @@ export default function AdminDataRoom({
     if (firstMissingMetric) {
       selectMetric(firstMissingMetric, { scroll: true })
     }
+  }
+  const focusResponsibilityGroup = (group) => {
+    setRawTab(group.tab)
+    setRawStatus('전체')
+    setRawCategory('전체')
+    setRawMethod('전체')
+    setRawOwner('전체')
+    setRawQuery(group.query)
+    scrollToPanel(rawRegistryRef)
+  }
+  const renderLineageTokens = (ids = [], type = 'raw') => (
+    <div className="lineage-token-stack">
+      {ids.length ? (
+        ids.slice(0, 4).map((id) => (
+          <button
+            type="button"
+            className="lineage-token"
+            key={id}
+            onClick={() => (type === 'metric' ? selectMetric(id, { scroll: true }) : selectRaw(id, { scroll: true }))}
+          >
+            {id}
+          </button>
+        ))
+      ) : (
+        <small>연결 없음</small>
+      )}
+      {ids.length > 4 ? <small>+{ids.length - 4}개</small> : null}
+    </div>
+  )
+  const getWorkflowTreatment = (item, composition) => {
+    if (item.missingRaw?.length || item.missingMetrics?.length || composition.missing) return '누락 raw/지표 등록 필요'
+    if (item.rawIds?.includes('RAW-EXT-UNSUPPORTED-001')) return '번외 raw로 보류 관리'
+    if (item.missingConditionalRaw?.length) return '조건부 raw 적재 시 반영'
+    return '매핑 완료'
   }
   const currentRawSource = (() => {
     if (rawQuery === '리포트 raw') return 'report'
@@ -300,7 +476,151 @@ export default function AdminDataRoom({
         <MiniStat label="마지막 동기화" value={summary.lastSync} />
       </section>
 
-      <section className="panel data-room-import-panel">
+      <section className="panel data-responsibility-panel" aria-label="데이터룸 구분 목록">
+        <div className="data-room-map-heading">
+          <div>
+            <span className="mini-label">DATA RESPONSIBILITY MAP</span>
+            <h2>데이터룸 구분 목록</h2>
+            <p>프론트 기능은 아래 raw 처리 주체를 통해 수집, 판단, 생성, 저장 경로를 분리합니다.</p>
+          </div>
+          <span className="section-count-badge">5개 구분</span>
+        </div>
+        <div className="responsibility-card-grid">
+          {responsibilityGroups.map((group) => (
+            <button
+              type="button"
+              className={`responsibility-card ${group.key}`}
+              key={group.key}
+              onClick={() => focusResponsibilityGroup(group)}
+            >
+              <span>{group.label}</span>
+              <strong>{group.count}개</strong>
+              <p>{group.description}</p>
+            </button>
+          ))}
+        </div>
+      </section>
+
+      <section className="panel data-room-snapshot-panel" aria-label="raw to metric snapshots">
+        <div>
+          <span className="mini-label">LIVE PIPELINE STORAGE</span>
+          <h2>Raw to metric snapshots</h2>
+          <p>운영 대시보드가 마지막으로 계산한 raw 정규화와 계산지표 스냅샷을 이곳에서 확인합니다.</p>
+        </div>
+        <div className="snapshot-strip">
+          <span>최근 동기화 {summary.lastSync}</span>
+          <span>raw {summary.rawTotal}개</span>
+          <span>계산지표 {summary.metricTotal}개</span>
+          <span>프론트 매핑 {coverageSummary.ok}/{coverageSummary.total}</span>
+        </div>
+      </section>
+
+      <section className="panel data-room-panel data-room-dashboard-map">
+        <div className="panel-heading">
+          <div>
+            <span className="mini-label">DATAROOM TO DASHBOARD</span>
+            <h2>프론트 기능 raw 매핑 검증</h2>
+            <p>프론트에 보이는 기능은 반드시 데이터룸 raw 데이터와 계산지표에 연결됩니다. 정식 API가 없으면 번외 raw 또는 수동 업로드 raw로 계산 흐름을 유지합니다.</p>
+          </div>
+          <div className="coverage-score-grid" aria-label="프론트 기능 raw 매핑 상태">
+            <span className="ok"><strong>{workflowStatusSummary.complete}</strong>완료</span>
+            <span className="warning"><strong>{workflowStatusSummary.partial}</strong>부분</span>
+            <span className="info"><strong>{workflowStatusSummary.exception}</strong>번외</span>
+            <span className="error"><strong>{workflowStatusSummary.missing}</strong>누락</span>
+          </div>
+        </div>
+        <div className="dashboard-map-chip-row">
+          <span>수동 데이터 {workflowComposition.manual}개</span>
+          <span>자동 데이터 {workflowComposition.automated}개</span>
+          <span>계산데이터 {workflowComposition.computed}개</span>
+          {workflowComposition.missing ? <span>미등록 raw {workflowComposition.missing}개</span> : null}
+        </div>
+        <div className="workflow-coverage-table-wrap">
+          <table className="workflow-coverage-table">
+            <thead>
+              <tr>
+                <th>영역</th>
+                <th>프론트 기능</th>
+                <th>연결 raw 데이터</th>
+                <th>데이터 구성</th>
+                <th>연결 계산지표</th>
+                <th>상태</th>
+                <th>데이터룸 처리</th>
+                <th>메모</th>
+              </tr>
+            </thead>
+            <tbody>
+              {workflowCoverage.map((item) => {
+                const composition = getRawComposition(item.rawIds || [], rawById)
+                return (
+                  <tr key={item.id}>
+                    <td><strong>{item.frontendArea}</strong></td>
+                    <td>
+                      <strong>{item.featureName}</strong>
+                      <span>{item.rule}</span>
+                    </td>
+                    <td>{renderLineageTokens(item.rawIds || [], 'raw')}</td>
+                    <td>
+                      <div className="data-composition-chips">
+                        <span>수동 {composition.manual}</span>
+                        <span>자동 {composition.automated}</span>
+                        <span>계산 {item.metricIds?.length || 0}</span>
+                        {composition.missing ? <span className="error">미등록 {composition.missing}</span> : null}
+                      </div>
+                    </td>
+                    <td>{renderLineageTokens(item.metricIds || [], 'metric')}</td>
+                    <td><StatusPill status={item.status} /></td>
+                    <td>
+                      {(item.missingRaw?.length || item.missingMetrics?.length || composition.missing) ? (
+                        <button className="coverage-action-button" type="button" onClick={() => jumpToCoverageIssue(item)}>
+                          누락 확인
+                        </button>
+                      ) : (
+                        <span className="coverage-note">{getWorkflowTreatment(item, composition)}</span>
+                      )}
+                    </td>
+                    <td><span className="coverage-note">{item.algorithm}</span></td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="panel data-room-ops-panel" aria-label="data room operation checks">
+        <div className="data-room-ops-heading">
+          <div>
+            <span className="mini-label">{'\uC6B4\uC601 \uC810\uAC80'}</span>
+            <h2>{'\uB370\uC774\uD130\uB8F8 \uC624\uB298 \uD655\uC778\uD560 \uAC83'}</h2>
+          </div>
+          <small>{'\uC5C5\uB85C\uB4DC, API \uC0C1\uD0DC, \uB85C\uADF8, \uC9C0\uD45C \uC5F0\uACB0\uC744 \uBC14\uB85C \uC810\uAC80\uD569\uB2C8\uB2E4.'}</small>
+        </div>
+        <div className="data-room-ops-grid">
+          <button type="button" onClick={() => scrollToPanel(importPanelRef)}>
+            <small>{'\uB9AC\uD3EC\uD2B8 raw'}</small>
+            <strong>{externalReportRawCount}{'\uAC1C'}</strong>
+            <span>{externalReportRawCount ? '\uC5C5\uB85C\uB4DC \uC6D0\uCC9C \uD655\uC778' : '\uBCF4\uC644 \uC5D1\uC140 \uC5C5\uB85C\uB4DC \uB300\uAE30'}</span>
+          </button>
+          <button type="button" onClick={() => scrollToPanel(apiStatusPanelRef)}>
+            <small>{'API raw'}</small>
+            <strong>{externalApiRawCount}{'\uAC1C'}</strong>
+            <span>{apiStatus?.ok ? '\uC801\uC7AC \uAC00\uB2A5' : '\uC124\uC815 \uD655\uC778 \uD544\uC694'}</span>
+          </button>
+          <button type="button" onClick={() => scrollToPanel(apiLogPanelRef)}>
+            <small>{'\uC218\uC9D1 \uB85C\uADF8'}</small>
+            <strong>{apiLogCount}{'\uAC74'}</strong>
+            <span>{apiLogCount ? '\uCD5C\uADFC \uC774\uBCA4\uD2B8 \uD655\uC778' : '\uBC1C\uAD74/\uB808\uD37C\uB7F0\uC2A4 \uC2E4\uD589 \uD6C4 \uB204\uC801'}</span>
+          </button>
+          <button type="button" onClick={() => scrollToPanel(metricRegistryRef)}>
+            <small>{'\uC9C0\uD45C \uC5F0\uACB0'}</small>
+            <strong>{coverageSummary.ok}/{coverageSummary.total}</strong>
+            <span>{coverageSummary.needsReview ? '\uB204\uB77D raw/\uC9C0\uD45C \uD655\uC778' : '\uD504\uB860\uD2B8 \uC5F0\uACB0 \uC815\uC0C1'}</span>
+          </button>
+        </div>
+      </section>
+
+      <section className="panel data-room-import-panel" ref={importPanelRef}>
         <div>
           <span className="mini-label">리포트 원천 적재</span>
           <h2>리포트 raw 적재</h2>
@@ -318,7 +638,7 @@ export default function AdminDataRoom({
         </div>
       </section>
 
-      <section className="panel data-room-api-status-panel">
+      <section className="panel data-room-api-status-panel" ref={apiStatusPanelRef}>
         <div className="api-status-compact-row">
           <div>
             <span className="mini-label">API 원천 적재</span>
@@ -383,7 +703,7 @@ export default function AdminDataRoom({
         )}
       </section>
 
-      <section className={`panel data-room-api-log-panel ${apiEvents?.length ? '' : 'compact'}`}>
+      <section className={`panel data-room-api-log-panel ${apiEvents?.length ? '' : 'compact'}`} ref={apiLogPanelRef}>
         <div className="panel-heading">
           <div>
             <span className="mini-label">API 수집 이벤트</span>
@@ -453,27 +773,30 @@ export default function AdminDataRoom({
             </div>
 
             <div className="raw-source-shortcuts">
-              <span>원천 구분</span>
+              <span>표시 범위</span>
               <button
                 type="button"
+                aria-label="리포트 원천 데이터만 보기"
                 className={currentRawSource === 'report' ? 'active' : ''}
                 onClick={showExternalReportRaw}
               >
-                리포트 raw
+                리포트 원천
               </button>
               <button
                 type="button"
+                aria-label="API 원천 데이터만 보기"
                 className={currentRawSource === 'api' ? 'active' : ''}
                 onClick={showExternalApiRaw}
               >
-                API raw
+                API 원천
               </button>
               <button
                 type="button"
+                aria-label="전체 원천 데이터 보기"
                 className={currentRawSource === 'all' ? 'active' : ''}
                 onClick={showAllRaw}
               >
-                전체 raw
+                전체 원천
               </button>
             </div>
 
@@ -602,74 +925,6 @@ export default function AdminDataRoom({
             <div className="data-room-actions-row">
               <button className="secondary-button compact-button" type="button" onClick={onMetricLog}>오류 로그 확인</button>
               <button className="primary-button compact-button" type="button" onClick={onRecalculate}>재계산 요청</button>
-            </div>
-          </section>
-
-          <section className="panel data-room-panel">
-            <div className="panel-heading">
-              <div>
-                <span className="mini-label">기능-데이터 연결</span>
-                <h2>기능-데이터 커버리지</h2>
-                <p>프론트 화면은 이 표에 연결된 raw 데이터와 계산지표를 기준으로만 운영합니다.</p>
-              </div>
-              <div className="coverage-summary-pills" aria-label="기능 데이터 연결 요약">
-                <span>정상 {coverageSummary.ok}/{coverageSummary.total}</span>
-                <span>검증 {coverageSummary.needsReview}</span>
-                <span>raw 누락 {coverageSummary.missingRaw}</span>
-                <span>지표 누락 {coverageSummary.missingMetrics}</span>
-                <span>조건부 raw {coverageSummary.conditionalRawAvailable}/{coverageSummary.conditionalRaw}</span>
-                <StatusPill status={workflowCoverage.every((item) => item.status === '정상') ? '정상' : '검증 필요'} />
-              </div>
-            </div>
-
-            <div className="workflow-coverage-list">
-              {workflowCoverage.map((item) => {
-                const hasRequiredIssue = Boolean(item.missingRaw?.length || item.missingMetrics?.length)
-                const conditionalWaiting = Boolean(item.missingConditionalRaw?.length)
-                const requiredRawCount = item.requiredRawIds?.length ?? item.rawIds.length
-                return (
-                  <article className="workflow-coverage-card" key={item.id}>
-                    <div className="workflow-coverage-title">
-                      <GitBranch size={16} />
-                      <div>
-                        <strong>{item.featureName}</strong>
-                        <span>{item.frontendArea}</span>
-                      </div>
-                      <StatusPill status={item.status} />
-                    </div>
-                    <div className="workflow-coverage-metrics">
-                      <span>필수 raw {requiredRawCount}개</span>
-                      {item.conditionalRawIds?.length ? (
-                        <span>조건부 raw {item.availableConditionalRaw?.length || 0}/{item.conditionalRawIds.length}</span>
-                      ) : null}
-                      <span>지표 {item.metricIds.length}개</span>
-                      {hasRequiredIssue ? (
-                        <button type="button" onClick={() => jumpToCoverageIssue(item)}>
-                          누락 확인
-                        </button>
-                      ) : (
-                        <small>{conditionalWaiting ? '조건부 raw 대기' : '연결 정상'}</small>
-                      )}
-                    </div>
-                    <p>{item.algorithm}</p>
-                    {hasRequiredIssue ? (
-                      <div className="workflow-missing-stack">
-                        <LinkedChipList label="누락 raw" items={item.missingRaw} emptyText="누락 없음" onClick={(id) => selectRaw(id, { scroll: true })} />
-                        <LinkedChipList label="누락 지표" items={item.missingMetrics} emptyText="누락 없음" onClick={(id) => selectMetric(id, { scroll: true })} />
-                      </div>
-                    ) : null}
-                    <details className="workflow-connection-detail">
-                      <summary>전체 연결 보기</summary>
-                      <LinkedChipList label="필수 raw 데이터" items={item.requiredRawIds ?? item.rawIds} emptyText="연결 raw 없음" onClick={(id) => selectRaw(id, { scroll: true })} />
-                      {item.conditionalRawIds?.length ? (
-                        <LinkedChipList label={item.conditionalLabel ?? '조건부 raw 데이터'} items={item.conditionalRawIds} emptyText="조건부 raw 없음" onClick={(id) => selectRaw(id, { scroll: true })} />
-                      ) : null}
-                      <LinkedChipList label="생성/사용 지표" items={item.metricIds} emptyText="연결 지표 없음" onClick={(id) => selectMetric(id, { scroll: true })} />
-                    </details>
-                    <small>{item.rule}</small>
-                  </article>
-                )
-              })}
             </div>
           </section>
 

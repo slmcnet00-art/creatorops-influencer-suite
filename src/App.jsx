@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowUpRight,
   BarChart3,
@@ -102,6 +102,8 @@ const EXTERNAL_REPORT_PROFILES = [
     ],
   },
 ]
+const BULK_TRACKING_RAW_SOURCE_ID = 'RAW-EXT-CONT-BULK-001'
+const BULK_CREATOR_GROUP_RAW_SOURCE_ID = 'RAW-INT-GROUP-BULK-001'
 
 const practiceTourSteps = [
   {
@@ -374,7 +376,7 @@ const recommendationPolicy = {
       'RAW-EXT-CHN-001',
       'RAW-INT-QUALITY-001',
     ],
-    fallbackPerformance: ['RAW-EXT-CONT-001', 'RAW-EXT-ENG-001'],
+    fallbackPerformance: ['RAW-EXT-CONT-001', BULK_TRACKING_RAW_SOURCE_ID, 'RAW-EXT-ENG-001'],
     actualPerformance: ['RAW-EXT-MON-VIDEO-001'],
     candidatePool: ['RAW-INT-POOL-EVIDENCE-001'],
   },
@@ -5204,10 +5206,10 @@ function buildAdminMetricCatalog({ rawData, outreach, creators, campaigns, recru
   const nowText = new Date().toLocaleString('ko-KR')
   const rawRefs = {
     crm: ['RAW-INT-CRM-001'],
-    pool: ['RAW-INT-INF-001', 'RAW-EXT-CHN-001'],
+    pool: ['RAW-INT-INF-001', 'RAW-EXT-CHN-001', BULK_CREATOR_GROUP_RAW_SOURCE_ID],
     campaign: ['RAW-INT-CMP-001', 'RAW-INT-BRD-001'],
     finance: ['RAW-INT-FIN-001'],
-    sns: ['RAW-EXT-CONT-001', 'RAW-EXT-ENG-001'],
+    sns: ['RAW-EXT-CONT-001', BULK_TRACKING_RAW_SOURCE_ID, 'RAW-EXT-ENG-001'],
     expectedViews: ['RAW-INT-INF-001', 'RAW-INT-CMP-001', 'RAW-EXT-CHN-001', 'RAW-EXT-SNS-001'],
     reference: ['RAW-EXT-REF-001', 'RAW-EXT-BENCH-001'],
     generation: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001', 'RAW-INT-AI-001'],
@@ -5231,7 +5233,7 @@ function buildAdminMetricCatalog({ rawData, outreach, creators, campaigns, recru
     ['MET-POOL-004', '등급별 인플루언서 수', '인플루언서 풀 관리 번들', '내부', 'fit/data quality 점수 기준 등급별 수', 'groupBy(score_band(fit, dataQuality)).count', rawRefs.pool, '전체', '실시간', '정상', '발굴, 대시보드', 'A/B/C 등급별 섭외 우선순위', 'A등급 0건', '중간', '데이터팀', 'creator scoring logs', '등급 정책 확정 필요'],
     ['MET-POOL-005', '최근 업데이트 인플루언서 수', '인플루언서 풀 관리 번들', '내부', '최근 7일 내 수정/수집된 크리에이터 수', 'count(creators.updatedAt >= now-7d)', rawRefs.pool, '최근 7일', '일 1회', '검증 필요', '데이터룸', '수집 활동량 지표', '0건 7일 이상', '중간', '데이터팀', 'creator snapshots', 'updatedAt 도입 필요'],
     ['MET-CMP-001', '섭외 진행률', '캠페인 운영 번들', '내부', '섭외 완료 수 / 목표 인원 수', 'recruited_count / campaign.recommendationTargetCount * 100', ['RAW-INT-CMP-001', 'RAW-INT-INF-001'], '캠페인 기간', '실시간', '정상', '캠페인, 대시보드', '목표 인원 미설정 시 해석 제한', '마감 3일 전 50% 미만', '높음', 'PM/운영', 'campaign + recruitedPool', `${campaigns.length}개 캠페인`],
-    ['MET-CMP-002', '콘텐츠 업로드 완료율', '캠페인 운영 번들', '내부', '업로드 완료 콘텐츠 수 / 섭외 완료 수', 'uploaded_content_count / recruited_count * 100', ['RAW-INT-CMP-001', 'RAW-EXT-CONT-001'], '캠페인 기간', '일 1회', trackedPosts.length ? '정상' : '지연', '리포트, 캠페인', '업로드 링크 미등록 시 낮게 표시', '업로드 마감 후 80% 미만', '높음', '운영팀', 'trackedPosts status', `${trackedPosts.length}건 콘텐츠`],
+    ['MET-CMP-002', '콘텐츠 업로드 완료율', '캠페인 운영 번들', '내부', '업로드 완료 콘텐츠 수 / 섭외 완료 수', 'uploaded_content_count / recruited_count * 100', ['RAW-INT-CMP-001', 'RAW-EXT-CONT-001', BULK_TRACKING_RAW_SOURCE_ID], '캠페인 기간', '일 1회', trackedPosts.length ? '정상' : '지연', '리포트, 캠페인', '업로드 링크 미등록 시 낮게 표시', '업로드 마감 후 80% 미만', '높음', '운영팀', 'trackedPosts status', `${trackedPosts.length}건 콘텐츠`],
     ['MET-CMP-003', '보고서 생성률', '캠페인 운영 번들', '내부', '보고서 생성 캠페인 수 / 전체 캠페인 수', 'report_generated_campaigns / campaigns * 100', rawRefs.campaign, '월간', '일 1회', '정상', '리포트', '완료 캠페인 기준으로 해석', '완료 캠페인 중 0건', '중간', 'PM', 'report export logs', 'export log 테이블 필요'],
     ['MET-CMP-004', '캠페인별 운영 리드타임', '캠페인 운영 번들', '내부', '모집 시작일부터 보고 완료일까지 일수', 'dateDiff(reportDoneAt, recruitingStartAt)', rawRefs.campaign, '캠페인 기간', '일 1회', '검증 필요', '내부 보고서', '일정 필드 입력률 확인 필요', '목표 대비 +30% 초과', '중간', 'PM', 'campaign schedule fields', '스케줄 필드 정규화 필요'],
     ['MET-FIN-001', '계약 완료율', '계약/정산 번들', '내부', '계약 완료 건수 / 섭외 완료 건수', 'contract_done / recruited_count * 100', ['RAW-INT-FIN-001', 'RAW-INT-INF-001'], '캠페인 기간', '실시간', '검증 필요', '내부 보고서', '계약 상태 입력 표준화 필요', '70% 미만', '중간', '운영/재무', 'quote + contract status', '계약 모듈 확장 예정'],
@@ -5246,13 +5248,13 @@ function buildAdminMetricCatalog({ rawData, outreach, creators, campaigns, recru
     ['MET-SNS-006', '참여율', 'SNS 반응 번들', '외부', '좋아요+댓글+공유+저장 / 조회수', '(likes+comments+shares+saves)/views*100', rawRefs.sns, '캠페인 기간', '매일/즉시', '정상', '대시보드, 리포트', '조회수 0이면 계산 제외', '20% 초과 또는 0.1% 미만', '중간', '데이터팀', 'metric calculation logs', '이상치 플래그 필요'],
     ['MET-CONT-001', '평균 조회수', '콘텐츠 성과 번들', '외부', '콘텐츠별 조회수 평균', 'avg(trackedPosts.views)', ['RAW-EXT-CONT-001'], '캠페인 기간', '매일/즉시', '정상', '리포트', '게시 후 경과일 함께 확인', '카테고리 평균 대비 -50%', '중간', '데이터팀', 'trackedPosts', '초기 24시간은 별도 표시'],
     ['MET-CONT-002', '콘텐츠별 반응률', '콘텐츠 성과 번들', '외부', '콘텐츠별 참여율', 'engagement / views * 100 by content', rawRefs.sns, '캠페인 기간', '매일/즉시', '정상', '리포트 상세', '소형 계정은 변동성 큼', '평균 대비 3표준편차', '중간', '데이터팀', 'metric calculation logs', '콘텐츠별 이상치 확인'],
-    ['MET-CONT-003', '채널별 성과 비교', '콘텐츠 성과 번들', '외부', 'YouTube/Instagram/TikTok별 조회/참여 비교', 'groupBy(platform).sum/views/engagement', ['RAW-EXT-CHN-001', 'RAW-EXT-CONT-001'], '캠페인 기간', '일 1회', '정상', '리포트', '플랫폼별 알고리즘 차이를 감안', '한 채널만 80% 이상 편중', '중간', 'PM/데이터', 'platform group metrics', '채널 믹스 최적화에 사용'],
+    ['MET-CONT-003', '채널별 성과 비교', '콘텐츠 성과 번들', '외부', 'YouTube/Instagram/TikTok별 조회/참여 비교', 'groupBy(platform).sum/views/engagement', ['RAW-EXT-CHN-001', 'RAW-EXT-CONT-001', BULK_TRACKING_RAW_SOURCE_ID], '캠페인 기간', '일 1회', '정상', '리포트', '플랫폼별 알고리즘 차이를 감안', '한 채널만 80% 이상 편중', '중간', 'PM/데이터', 'platform group metrics', '채널 믹스 최적화에 사용'],
     ['MET-CONT-004', '콘텐츠 성장률', '콘텐츠 성과 번들', '외부', '전일 대비 조회수 증가율', '(views_today-views_yesterday)/views_yesterday*100', ['RAW-EXT-CONT-001'], '최근 7일', '매일', '검증 필요', '리포트', '일별 스냅샷 저장 후 활성화', '음수 전환', '중간', '데이터팀', 'daily_content_snapshots', '스냅샷 테이블 필요'],
     ['MET-CONT-005', '후보 예상 조회수', '콘텐츠 성과 번들', '외부', '발굴/저장 후보의 평균 조회수를 캠페인 후보 기준으로 합산한 예상 조회수', 'sum(creators.averageViews where candidate matches current campaign/filter)', rawRefs.expectedViews, '현재 캠페인/필터 기준', '후보 검색/필터 변경 시', creators.length ? '검증 필요' : '지연', '대시보드, 발굴', '실제 업로드 성과가 아니라 섭외 전 후보 raw 기반 추정치로 해석', '평균 조회수 0 또는 상위 1개 후보가 예상 조회수의 80% 이상', '중간', 'PM/데이터', 'creator.metricSources + campaign filter logs', `${compactNumber(expectedViewsTotal)} 예상 조회`],
     ['MET-BENCH-001', '레퍼런스 콘텐츠 수', '레퍼런스/벤치마크 번들', '외부', '저장된 제작 레퍼런스 콘텐츠 수', 'count(contentReferences)', ['RAW-EXT-REF-001'], '전체', '실시간', '정상', '레퍼런스', '저장된 레퍼런스만 계산', '0건', '높음', '콘텐츠팀', 'contentReferences', `${contentReferences.length}개`],
     ['MET-BENCH-002', '벤치마크 평균 조회수', '레퍼런스/벤치마크 번들', '외부', '벤치마크 콘텐츠 조회수 평균', 'avg(reference.views)', rawRefs.reference, '최근 30일', '검색/저장 시', contentReferences.length ? '정상' : '지연', '전략, 리포트', '50만 이상 터진 콘텐츠 중심', '평균 5만 미만', '중간', '전략/데이터', 'references/search logs', '검색 품질에 따라 변동'],
     ['MET-BENCH-003', '카테고리별 평균 반응률', '레퍼런스/벤치마크 번들', '외부', '카테고리별 레퍼런스 참여율 평균', 'groupBy(category).avg(engagementRate)', rawRefs.reference, '최근 30일', '주 1회', '검증 필요', '전략, 가이드 생성', '카테고리 태깅 정확도 확인', '태깅 없음 30% 이상', '중간', '전략/데이터', 'benchmark tag logs', '카테고리 태깅 자동화 필요'],
-    ['MET-BENCH-004', '경쟁 콘텐츠 대비 성과지수', '레퍼런스/벤치마크 번들', '외부', '우리 콘텐츠 조회/반응을 벤치마크 평균과 비교', '(campaign_score / benchmark_score) * 100', ['RAW-EXT-CONT-001', 'RAW-EXT-ENG-001', 'RAW-EXT-BENCH-001'], '캠페인 기간', '일 1회', '검증 필요', '고객사 리포트', '100 이상이면 벤치마크 상회', '70 미만', '중간', 'PM/데이터', 'benchmark metric logs', '벤치마크 표본 수 표시 필요'],
+    ['MET-BENCH-004', '경쟁 콘텐츠 대비 성과지수', '레퍼런스/벤치마크 번들', '외부', '우리 콘텐츠 조회/반응을 벤치마크 평균과 비교', '(campaign_score / benchmark_score) * 100', ['RAW-EXT-CONT-001', BULK_TRACKING_RAW_SOURCE_ID, 'RAW-EXT-ENG-001', 'RAW-EXT-BENCH-001'], '캠페인 기간', '일 1회', '검증 필요', '고객사 리포트', '100 이상이면 벤치마크 상회', '70 미만', '중간', 'PM/데이터', 'benchmark metric logs', '벤치마크 표본 수 표시 필요'],
     ['MET-AI-GEN-001', '캠페인 전략 생성률', 'AI 전략/가이드 번들', '내부', '전략 산출물이 생성된 캠페인 수 / 전체 캠페인 수', 'count(campaign.influencerStrategy) / count(campaigns) * 100', rawRefs.generation, '캠페인 기준', '전략 생성 시', campaigns.length ? (strategyGeneratedCount ? '정상' : '검증 필요') : '지연', '캠페인 상세, 데이터룸', '캠페인 생성 입력 raw가 있어야 전략 산출물을 신뢰 지표로 사용', '캠페인 1개 이상인데 전략 생성 0건', '중간', 'PM/전략팀', 'campaign.strategyInputRaw + ai_generation_runs', `${strategyGeneratedCount}/${campaigns.length}개 전략 생성`],
     ['MET-AI-GEN-002', '공통 인플루언서 가이드 생성률', 'AI 전략/가이드 번들', '내부', '캠페인 공통 전달 가이드가 생성된 캠페인 수 / 전체 캠페인 수', 'count(campaign.generatedContentGuide) / count(campaigns) * 100', rawRefs.generation, '캠페인 기준', '공통 가이드 생성 시', campaigns.length ? (guideGeneratedCount ? '정상' : '검증 필요') : '지연', '캠페인 상세, 데이터룸', '공통 가이드는 캠페인 입력 raw, 브랜드 학습자료, 저장 레퍼런스가 결합된 산출물로 해석', '전략은 있는데 공통 가이드가 없는 캠페인', '중간', '콘텐츠팀', 'campaign.generatedContentGuide + ai_generation_runs', `${guideGeneratedCount}/${campaigns.length}개 공통 가이드 생성`],
     ['MET-AI-GEN-003', '개별 인플루언서 가이드 수', 'AI 전략/가이드 번들', '내부', '크리에이터별 개인화 전달 가이드 생성 건수', 'sum(count(campaign.individualContentGuides))', ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-001'], '캠페인/크리에이터 기준', '개별 가이드 생성 시', individualGuideCount ? '정상' : '검증 필요', '캠페인 상세, 데이터룸', '공통 가이드는 캠페인 기준, 개별 가이드는 크리에이터별 톤/컷/후킹 기준으로 해석', '섭외 완료 또는 배정 후보가 있는데 개별 가이드 0건', '중간', '콘텐츠팀', 'campaign.individualContentGuides + ai_generation_runs', `${individualGuideCount}건 개별 가이드 생성`],
@@ -5298,6 +5300,12 @@ function buildDataRoomExtendedRawCatalog({
   const apiStatus = backendConfig?.apiBaseUrl ? '정상' : '지연'
   const externalVideoRawCount = externalReportRows.filter(isExternalVideoRawRow).length
   const externalBrandRawCount = externalReportRows.filter(isExternalBrandInfluencerRawRow).length
+  const bulkTrackingRawRows = externalReportRows.filter(
+    (row) => row?.rawSourceId === BULK_TRACKING_RAW_SOURCE_ID || row?.normalizedType === 'content_tracking_bulk',
+  )
+  const bulkCreatorGroupRawRows = externalReportRows.filter(
+    (row) => row?.rawSourceId === BULK_CREATOR_GROUP_RAW_SOURCE_ID || row?.normalizedType === 'creator_group_bulk',
+  )
   const strategyArtifactCount = campaigns.filter(
     (campaign) => campaign.influencerStrategy || campaign.generatedContentGuide || Object.keys(campaign.individualContentGuides || {}).length,
   ).length
@@ -5307,6 +5315,16 @@ function buildDataRoomExtendedRawCatalog({
   const candidatePoolEvidenceCount = candidatePoolEvidence.length
   const aiRawStatus = aiArtifactCount ? '정상' : backendConfig?.apiBaseUrl ? '검증 필요' : '지연'
   const latestExternalImportAt = externalReportRows
+    .map((row) => row.importedAt)
+    .filter(Boolean)
+    .sort()
+    .at(-1)
+  const latestBulkTrackingImportAt = bulkTrackingRawRows
+    .map((row) => row.importedAt)
+    .filter(Boolean)
+    .sort()
+    .at(-1)
+  const latestBulkCreatorGroupImportAt = bulkCreatorGroupRawRows
     .map((row) => row.importedAt)
     .filter(Boolean)
     .sort()
@@ -5582,6 +5600,54 @@ function buildDataRoomExtendedRawCatalog({
       active: true,
     },
     {
+      id: BULK_TRACKING_RAW_SOURCE_ID,
+      name: '콘텐츠 추적 대량등록 raw',
+      scope: '외부',
+      category: '콘텐츠 추적',
+      description: '대량등록 양식으로 업로드한 콘텐츠 URL과 성과 지표를 행 단위로 적재합니다.',
+      purpose: '콘텐츠 URL, 크리에이터, 조회/반응/전환 지표를 리포트와 캠페인 진행현황 계산에 연결',
+      method: '수동 업로드 / URL 메타데이터',
+      cycle: '업로드 시',
+      lastCollectedAt: latestBulkTrackingImportAt || '-',
+      nextCollectAt: '다음 업로드 시',
+      status: bulkTrackingRawRows.length ? '정상' : '미수집',
+      sourceLocation: '리포트 > 콘텐츠 추적 대량등록',
+      storageLocation: storageBase + ' / externalReportRows(rawSourceId=' + BULK_TRACKING_RAW_SOURCE_ID + '), trackedPosts',
+      dashboardArea: '리포트, 캠페인 진행현황, 데이터룸',
+      metricIds: ['MET-CMP-002', 'MET-SNS-001', 'MET-SNS-002', 'MET-SNS-003', 'MET-SNS-004', 'MET-SNS-005', 'MET-SNS-006', 'MET-CONT-001', 'MET-CONT-002', 'MET-CONT-003', 'MET-CONT-004'],
+      ownerDept: '리포트/운영팀',
+      opsOwner: 'Report Operator',
+      techOwner: 'Frontend/Data',
+      qualityIssue: 'URL 누락, 플랫폼/크리에이터 매칭 오류, 숫자 단위 변환 오류 점검 필요',
+      logLocation: 'externalReportRows / trackedPosts / future: raw_ingestion_events',
+      note: bulkTrackingRawRows.length + '행 적재',
+      active: true,
+    },
+    {
+      id: BULK_CREATOR_GROUP_RAW_SOURCE_ID,
+      name: '후보 그룹 대량등록 raw',
+      scope: '내부',
+      category: '후보 그룹/세그먼트',
+      description: '후보 그룹 양식으로 업로드한 인플루언서 리스트와 그룹 정보를 행 단위로 적재합니다.',
+      purpose: '반복 섭외 후보를 그룹화하고, 후보 그룹/발굴/메시지 화면에서 동일한 원천을 참조',
+      method: '수동 업로드 / 후보 리스트 가져오기',
+      cycle: '업로드 시',
+      lastCollectedAt: latestBulkCreatorGroupImportAt || '-',
+      nextCollectAt: '다음 업로드 시',
+      status: bulkCreatorGroupRawRows.length ? '정상' : '미수집',
+      sourceLocation: '후보 그룹 > 리스트 대량등록',
+      storageLocation: storageBase + ' / externalReportRows(rawSourceId=' + BULK_CREATOR_GROUP_RAW_SOURCE_ID + '), creatorGroups, creators',
+      dashboardArea: '후보 그룹, 발굴, 메시지, 데이터룸',
+      metricIds: ['MET-POOL-001', 'MET-POOL-002', 'MET-POOL-003', 'MET-POOL-006'],
+      ownerDept: '크리에이터 운영팀',
+      opsOwner: 'Creator Manager',
+      techOwner: 'Frontend/Data',
+      qualityIssue: '프로필 URL/핸들 누락, 중복 후보, 이메일/DM 채널 누락, 팔로워/조회수 단위 변환 오류 점검 필요',
+      logLocation: 'externalReportRows / creatorGroups / creators / future: raw_ingestion_events',
+      note: bulkCreatorGroupRawRows.length + '행 적재',
+      active: true,
+    },
+    {
       id: 'RAW-EXT-MON-WB-001',
       name: '외부 영상 모니터 워크벤치 분석 리포트',
       scope: '외부',
@@ -5720,11 +5786,11 @@ function buildDataRoomExtendedMetricCatalog({
   const efficiencyMetricStatus = efficiencyRecommendationCount ? '정상' : '검증 필요'
   const learningMetricStatus = learningRecommendationCount ? '정상' : '검증 필요'
   const rows = [
-    ['MET-AI-001', '브랜드-크리에이터 적합도', 'AI 매칭/가치생성 번들', '내부', '브랜드 브리프와 후보 프로필/성과를 조합하되 조회수, 광고 효율, 실제 업로드 성과 학습은 데이터가 있을 때만 반영하는 매칭 점수', 'base + platform_fit + category_fit + keyword_fit + performance_fit + efficiency_fit + conditional(actual_performance_learning) + safety_fit - risk_penalty', ['RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-POLICY-001', 'RAW-EXT-CHN-001', 'RAW-INT-QUALITY-001', 'RAW-EXT-CONT-001', 'RAW-EXT-ENG-001'], '캠페인 기준', '후보 갱신 시', aiRecommendationStatus, '발굴, AI 추천', '80점 이상 우선 제안, 60점 미만 보류. 실제 성과 학습과 후보 풀 저장 근거는 쌓인 경우에만 가산/보정', '데이터 품질 50점 미만 또는 평균 조회수 1만 미만', '중간', 'PM/데이터', 'ai_generation_runs + data_quality_reviews + conditional: creator_performance_learning_map/candidatePoolEvidence', `${creators.length}명 후보 · 추천 ${recommendations.length}건 · 후보 풀 근거 ${candidatePoolEvidence.length}건 기준`, { conditionalRawIds: ['RAW-EXT-MON-VIDEO-001', 'RAW-INT-POOL-EVIDENCE-001'], conditionalLabel: '성과 학습/후보 저장 후 반영 raw' }],
+    ['MET-AI-001', '브랜드-크리에이터 적합도', 'AI 매칭/가치생성 번들', '내부', '브랜드 브리프와 후보 프로필/성과를 조합하되 조회수, 광고 효율, 실제 업로드 성과 학습은 데이터가 있을 때만 반영하는 매칭 점수', 'base + platform_fit + category_fit + keyword_fit + performance_fit + efficiency_fit + conditional(actual_performance_learning) + safety_fit - risk_penalty', ['RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-POLICY-001', 'RAW-EXT-CHN-001', 'RAW-INT-QUALITY-001', 'RAW-EXT-CONT-001', BULK_TRACKING_RAW_SOURCE_ID, 'RAW-EXT-ENG-001'], '캠페인 기준', '후보 갱신 시', aiRecommendationStatus, '발굴, AI 추천', '80점 이상 우선 제안, 60점 미만 보류. 실제 성과 학습과 후보 풀 저장 근거는 쌓인 경우에만 가산/보정', '데이터 품질 50점 미만 또는 평균 조회수 1만 미만', '중간', 'PM/데이터', 'ai_generation_runs + data_quality_reviews + conditional: creator_performance_learning_map/candidatePoolEvidence', `${creators.length}명 후보 · 추천 ${recommendations.length}건 · 후보 풀 근거 ${candidatePoolEvidence.length}건 기준`, { conditionalRawIds: ['RAW-EXT-MON-VIDEO-001', 'RAW-INT-POOL-EVIDENCE-001'], conditionalLabel: '성과 학습/후보 저장 후 반영 raw' }],
     ['MET-AI-002', '데이터 품질 점수', 'AI 매칭/가치생성 번들', '내부', '공식 API 여부, 최신성, 국가/플랫폼 일치, 팔로워/조회수 확인 여부', 'official_source*35 + freshness*20 + metric_completeness*25 + country_match*20', ['RAW-INT-QUALITY-001', 'RAW-EXT-SEARCH-001', 'RAW-EXT-UNSUPPORTED-001'], '검색/저장 시', '실시간', '검증 필요', '발굴, 레퍼런스, 데이터룸', '80점 이상 운영 가능, 60점 이하는 보류 권장', '팔로워 미수집+국가 불일치', '중간', '데이터팀', 'data_quality_reviews', '키워드별 수동 검수 대체 지표'],
-    ['MET-AI-003', '후보 우선순위 점수', 'AI 매칭/가치생성 번들', '내부', '평균 조회수, 팔로워 대비 조회 폭발계수, 참여율, 예상 CPV, 브랜드 적합도, 연락 가능성을 결합하고 실제 업로드 성과는 있는 후보만 보정', `campaign_country_match + performance_score*0.32 + efficiency_score*0.16 + conditional(actual_performance_learning_score) + brand_fit + keyword_fit + safety_fit - exclusion_penalty, then decision_gate(${recommendationPolicy.decisions.priority} > ${recommendationPolicy.decisions.keep} > ${recommendationPolicy.decisions.verify} > ${recommendationPolicy.decisions.hold})`, ['RAW-INT-INF-001', 'RAW-EXT-SEARCH-001', 'RAW-EXT-CHN-001', 'RAW-INT-AI-001', 'RAW-INT-AI-POLICY-001', 'RAW-EXT-CONT-001', 'RAW-EXT-ENG-001'], '캠페인 기준', '후보 매칭/저장 시', aiRecommendationStatus, 'AI 추천, 메시지 전 후보 풀', `${recommendationPolicy.decisions.hold} 후보는 AI 추천 실행 결과에서 제외하고, ${recommendationPolicy.decisions.priority}/${recommendationPolicy.decisions.keep}/${recommendationPolicy.decisions.verify} 순으로 메시지 전 후보 풀에 전환`, `팔로워 ${compactNumber(recommendationPolicy.minimumFollowers)} 미만, 평균 조회수 ${compactNumber(recommendationPolicy.minimumAverageViews)} 미만+팔로워 대비 조회 ${recommendationPolicy.minimumVirality}x 미만, 국가 불일치. 단 실제 추적 성과가 강한 후보는 성과 학습 점수로 보정`, '중간', 'PM/데이터', 'creator scoring logs + conditional: report_metric_snapshots/candidate_pool_evidence_events', `추천 ${recommendations.length}건 · 후보 풀 근거 ${candidatePoolEvidence.length}건 · 광고 효율 후보를 먼저 추천하도록 팔로워 규모보다 평균 조회/폭발계수/CPV/실제 성과를 우선 반영`, { conditionalRawIds: ['RAW-EXT-MON-VIDEO-001', 'RAW-INT-POOL-EVIDENCE-001'], conditionalLabel: '성과 학습/후보 저장 후 반영 raw' }],
+    ['MET-AI-003', '후보 우선순위 점수', 'AI 매칭/가치생성 번들', '내부', '평균 조회수, 팔로워 대비 조회 폭발계수, 참여율, 예상 CPV, 브랜드 적합도, 연락 가능성을 결합하고 실제 업로드 성과는 있는 후보만 보정', `campaign_country_match + performance_score*0.32 + efficiency_score*0.16 + conditional(actual_performance_learning_score) + brand_fit + keyword_fit + safety_fit - exclusion_penalty, then decision_gate(${recommendationPolicy.decisions.priority} > ${recommendationPolicy.decisions.keep} > ${recommendationPolicy.decisions.verify} > ${recommendationPolicy.decisions.hold})`, ['RAW-INT-INF-001', 'RAW-EXT-SEARCH-001', 'RAW-EXT-CHN-001', 'RAW-INT-AI-001', 'RAW-INT-AI-POLICY-001', 'RAW-EXT-CONT-001', BULK_TRACKING_RAW_SOURCE_ID, 'RAW-EXT-ENG-001'], '캠페인 기준', '후보 매칭/저장 시', aiRecommendationStatus, 'AI 추천, 메시지 전 후보 풀', `${recommendationPolicy.decisions.hold} 후보는 AI 추천 실행 결과에서 제외하고, ${recommendationPolicy.decisions.priority}/${recommendationPolicy.decisions.keep}/${recommendationPolicy.decisions.verify} 순으로 메시지 전 후보 풀에 전환`, `팔로워 ${compactNumber(recommendationPolicy.minimumFollowers)} 미만, 평균 조회수 ${compactNumber(recommendationPolicy.minimumAverageViews)} 미만+팔로워 대비 조회 ${recommendationPolicy.minimumVirality}x 미만, 국가 불일치. 단 실제 추적 성과가 강한 후보는 성과 학습 점수로 보정`, '중간', 'PM/데이터', 'creator scoring logs + conditional: report_metric_snapshots/candidate_pool_evidence_events', `추천 ${recommendations.length}건 · 후보 풀 근거 ${candidatePoolEvidence.length}건 · 광고 효율 후보를 먼저 추천하도록 팔로워 규모보다 평균 조회/폭발계수/CPV/실제 성과를 우선 반영`, { conditionalRawIds: ['RAW-EXT-MON-VIDEO-001', 'RAW-INT-POOL-EVIDENCE-001'], conditionalLabel: '성과 학습/후보 저장 후 반영 raw' }],
     ['MET-AI-004', '예상 뷰 효율 점수', 'AI 매칭/가치생성 번들', '내부', '후보의 예상 단가를 평균 조회수로 나눠 캠페인 예산 대비 조회 효율을 판단', 'price / max(average_views, 1), lower_cost_per_view => higher_efficiency_score', ['RAW-INT-INF-001', 'RAW-EXT-CHN-001', 'RAW-INT-QUALITY-001'], '캠페인 기준', '후보 매칭 시', efficiencyMetricStatus, 'AI 추천, 캠페인 상세, 리포트', 'CPV가 낮고 조회 폭발계수가 높을수록 우선 제안', '평균 조회수 미수집 또는 단가 미수집', '중간', 'PM/데이터', 'creator scoring logs / pricing table', `${efficiencyRecommendationCount}건 추천에서 뷰 효율 계산 가능`],
-    ['MET-AI-005', '실제 성과 학습 점수', 'AI 매칭/가치생성 번들', '내부', '리포트 콘텐츠 추적과 Video Monitor Data raw에서 크리에이터별 실제 업로드 성과를 합산해 다음 추천 점수에 반영', 'actual_view_fit + uplift_fit + engagement_fit + conversion_fit, max 18 bonus into performance_score and recommendation_score', ['RAW-INT-INF-001', 'RAW-EXT-CONT-001', 'RAW-EXT-ENG-001', 'RAW-EXT-MON-VIDEO-001'], '캠페인/크리에이터 기준', '리포트 갱신 또는 후보 매칭 시', learningMetricStatus, 'AI 추천, 발굴, 리포트, 데이터룸', '실제 성과 이력이 있는 후보는 다음 캠페인 추천에서 우선 검토', '성과 raw가 없거나 creatorId/handle 매칭 실패', '중간', 'PM/데이터', 'creator_performance_learning_map / report_metric_snapshots', `${learningRecommendationCount}건 추천에 실제 성과 학습 표시 · 프론트 추천 카드와 엑셀에는 실제 성과 학습 건수/평균 조회/최고 조회/참여율을 표시`],
+    ['MET-AI-005', '실제 성과 학습 점수', 'AI 매칭/가치생성 번들', '내부', '리포트 콘텐츠 추적과 Video Monitor Data raw에서 크리에이터별 실제 업로드 성과를 합산해 다음 추천 점수에 반영', 'actual_view_fit + uplift_fit + engagement_fit + conversion_fit, max 18 bonus into performance_score and recommendation_score', ['RAW-INT-INF-001', 'RAW-EXT-CONT-001', BULK_TRACKING_RAW_SOURCE_ID, 'RAW-EXT-ENG-001', 'RAW-EXT-MON-VIDEO-001'], '캠페인/크리에이터 기준', '리포트 갱신 또는 후보 매칭 시', learningMetricStatus, 'AI 추천, 발굴, 리포트, 데이터룸', '실제 성과 이력이 있는 후보는 다음 캠페인 추천에서 우선 검토', '성과 raw가 없거나 creatorId/handle 매칭 실패', '중간', 'PM/데이터', 'creator_performance_learning_map / report_metric_snapshots', `${learningRecommendationCount}건 추천에 실제 성과 학습 표시 · 프론트 추천 카드와 엑셀에는 실제 성과 학습 건수/평균 조회/최고 조회/참여율을 표시`],
     ['MET-AI-006', '캠페인 전략 반영 점수', 'AI 매칭/가치생성 번들', '내부', '캠페인 전략과 공통/개별 가이드에서 추출한 키워드가 후보 프로필, 카테고리, 주제, 성과 맥락과 얼마나 맞는지 계산', 'min(strategy_keyword_hit_count * 3, 8) added to recommendation_score + strategy_hit_count displayed in score trace', ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-AI-001', 'RAW-INT-AI-POLICY-001', 'RAW-INT-INF-001', 'RAW-INT-LLM-BUNDLE-001'], '캠페인/후보 기준', '전략 생성 또는 후보 매칭 시', strategyMetricStatus, 'AI 추천, 발굴, 캠페인 상세, 데이터룸', '전략 키워드가 후보 텍스트와 맞을수록 우선순위가 올라가며, 전략이 없으면 일반 브랜드/성과 기준만 사용', '전략 생성 완료인데 전략 반영 0개가 지속되거나 후보 설명에 전략 근거가 없는 경우', '중간', 'PM/전략/데이터', 'campaign.influencerStrategy + generatedContentGuide + recommendation.scoreBreakdown', `전략/가이드 ${strategyGeneratedCount}개 · 전략 적중 추천 ${strategyMatchedRecommendationCount}건`],
     ['MET-GUIDE-001', '레퍼런스 변형 가이드 생성률', '콘텐츠 가이드 번들', '내부', '저장 레퍼런스가 캠페인 가이드/스크립트로 전환된 비율', 'guide_reference_count / saved_reference_count * 100', ['RAW-INT-CMP-BRIEF-001', 'RAW-EXT-REF-001', 'RAW-INT-AI-001'], '캠페인 기준', '가이드 생성 시', '검증 필요', '캠페인 상세, 레퍼런스', '저장만 하고 가이드 반영이 안 되면 운영 누락', '저장 레퍼런스 5개 이상인데 0%', '중간', '콘텐츠팀', 'campaign.strategyInputRaw / ai_generation_runs / content_guides', `${contentReferences.length}개 레퍼런스`],
     ['MET-OPS-001', '외부 수집 성공률', '데이터 운영 번들', '외부', '외부 검색/API 요청 중 성공한 요청 비율', 'successful_collection_jobs / total_collection_jobs * 100', ['RAW-EXT-SEARCH-001'], '최근 24시간', '실시간', '검증 필요', '데이터룸, 설정 API 테스트', '95% 이상 정상, 80% 미만 장애 검토', '연속 3회 실패', '중간', '데이터/개발', 'Render API logs', '수집 로그 테이블 연결 필요'],
@@ -5742,7 +5808,7 @@ function buildDataRoomExtendedMetricCatalog({
   rows.push(
     ['MET-BRAND-001', '저장 경쟁사/브랜드 수', '브랜드/경쟁 추적 번들', '외부', '브랜드 검색 및 추적에 저장된 경쟁사/브랜드 raw 수', 'count(contentReferences where referenceKind=brand)', ['RAW-EXT-BRAND-001'], '캠페인 기준', '검색/저장 시', contentReferences.some((item) => (item.referenceKind || item.trackingType) === 'brand') ? '정상' : '검증 필요', '레퍼런스, 브랜드 인사이트, 데이터룸', '경쟁사 저장 수가 많을수록 벤치마크 계산 신뢰도 상승', '0개면 브랜드 인사이트 경쟁 지표 비활성', '중간', 'PM/데이터팀', 'brand_tracking_sources / contentReferences', `${contentReferences.filter((item) => (item.referenceKind || item.trackingType) === 'brand').length}개 저장`],
     ['MET-BRAND-002', '경쟁 콘텐츠 평균 조회수', '브랜드/경쟁 추적 번들', '외부', '저장 경쟁사/브랜드 콘텐츠의 평균 조회수와 반응 수준', 'avg(views) over brand tracking references', ['RAW-EXT-BRAND-001', 'RAW-EXT-ENG-001'], '캠페인 기준', '검색/저장 시', '검증 필요', '브랜드 인사이트, 레퍼런스', '우리 콘텐츠 목표 조회수와 후킹 기준을 잡는 벤치마크', '조회수 0 또는 썸네일 없음 비율 30% 이상', '중간', '데이터팀', 'Render API logs / brand_tracking_sources', '외부 API 한계로 플랫폼별 검증 상태와 함께 표시'],
-    ['MET-POOL-006', '후보 그룹/세그먼트 수', '인플루언서 풀 관리 번들', '내부', '운영자가 저장한 후보 그룹과 그룹별 멤버 수', 'count(creatorGroups), sum(group.creatorIds)', ['RAW-INT-GROUP-001', 'RAW-INT-INF-001'], '전체', '그룹 변경 시', creatorGroups.length ? '정상' : '검증 필요', '후보 그룹, 메시지 전 후보 풀', '후보 그룹은 반복 섭외와 캠페인 재사용을 위한 운영 단위', '그룹 멤버 0명 또는 삭제된 creatorId 참조', '높음', '운영팀', 'workspace activities / creator_group_events', `${creatorGroups.length}개 그룹`],
+    ['MET-POOL-006', '후보 그룹/세그먼트 수', '인플루언서 풀 관리 번들', '내부', '운영자가 저장한 후보 그룹과 그룹별 멤버 수', 'count(creatorGroups), sum(group.creatorIds)', ['RAW-INT-GROUP-001', BULK_CREATOR_GROUP_RAW_SOURCE_ID, 'RAW-INT-INF-001'], '전체', '그룹 변경 시', creatorGroups.length ? '정상' : '검증 필요', '후보 그룹, 메시지 전 후보 풀', '후보 그룹은 반복 섭외와 캠페인 재사용을 위한 운영 단위', '그룹 멤버 0명 또는 삭제된 creatorId 참조', '높음', '운영팀', 'workspace activities / creator_group_events', `${creatorGroups.length}개 그룹`],
     ['MET-EXT-INF-001', '외부 모니터 인플루언서 수', '외부 API/벤치마크 번들', '외부', '외부 API로 적재한 브랜드 모니터 인플루언서 후보 채널 수', 'count(external_api_raw where type=brand_monitor_influencers)', ['RAW-EXT-MON-INF-001'], 'API 수집 기준', 'API 수집 시', '검증 필요', '브랜드 인사이트, 발굴, 데이터룸', '외부 벤치마크 후보 풀 크기와 카테고리 커버리지 확인', '중복 채널 10% 이상', '중간', '데이터/운영팀', 'external_api_ingestion_logs', '외부 API 응답 기준 1,000행 이상 수집 구조 확인'],
     ['MET-EXT-INF-002', '외부 모니터 평균 성과/단가', '외부 API/벤치마크 번들', '외부', '구독자, 평균 조회수, 총 조회수, 참여율, 예상 단가를 채널 단위로 집계', 'avg(subscribers), avg(average_views), avg(engagement_rate), median(price_range)', ['RAW-EXT-MON-INF-001'], 'API 수집 기준', 'API 수집 시', '검증 필요', '브랜드 인사이트, 후보 추천 기준', '우리 후보 조건과 비교해 적정 팔로워/조회수/단가 범위를 잡음', '가격 공란 30% 이상 또는 참여율 0%', '중간', '데이터팀', 'external_api_ingestion_logs', 'API 필드: subscribers, average_views, total_views, engagement_rate, price'],
     ['MET-EXT-VIDEO-001', '외부 모니터 콘텐츠 총 성과', '외부 API/벤치마크 번들', '외부', '영상 모니터 프로젝트의 총 조회수, 좋아요, 댓글, 공유, 저장, 추정 영상가치', 'sum(views, likes, comments, shares, collects), sum(est_video_value)', ['RAW-EXT-MON-VIDEO-001'], '프로젝트 기간', 'API 수집 시', '검증 필요', '리포트, 브랜드 인사이트', '캠페인 전체 성과와 광고주 보고서 총량 비교', '조회수 0 콘텐츠 30% 이상', '중간', '리포트팀', 'external_api_ingestion_logs / report_metric_snapshots', 'projects/videos API 응답 기준'],
@@ -5794,7 +5860,7 @@ function buildDataRoomWorkflowCoverage({ rawData, metrics }) {
     ['WF-AI-RECOMMEND', 'AI 추천 후보와 근거', '발굴', ['RAW-INT-BRD-001', 'RAW-INT-CMP-BRIEF-001', 'RAW-INT-INF-001', 'RAW-INT-AI-001', 'RAW-INT-AI-POLICY-001', 'RAW-INT-QUALITY-001', 'RAW-EXT-CONT-001', 'RAW-EXT-ENG-001'], ['MET-AI-001', 'MET-AI-002', 'MET-AI-003', 'MET-AI-004', 'MET-AI-005', 'MET-AI-006'], '브랜드 브리프와 캠페인 전략/가이드, 후보 성과/품질 점수를 조합해 추천 이유와 리스크 생성. 실제 업로드 성과 학습과 후보 풀 근거는 데이터가 쌓인 뒤 조건부로 반영', '추천 근거에는 사용 raw ID, 품질 점수, 성과 학습 여부, 전략 반영 여부가 남아야 함', { conditionalRawIds: ['RAW-EXT-MON-VIDEO-001', 'RAW-INT-POOL-EVIDENCE-001'], conditionalLabel: '성과 학습/후보 풀 저장 후 반영' }],
     ['WF-CANDIDATE-POOL', '메시지 전 후보 풀', '발굴/메시지', ['RAW-INT-INF-001', 'RAW-INT-QUALITY-001', 'RAW-INT-POOL-EVIDENCE-001'], ['MET-POOL-001', 'MET-AI-003'], '저장된 후보만 메시지 전 풀로 이동하고 삭제 시 메시지 대기 리스트와 함께 정리', '풀에 없는 후보는 메시지 일괄 생성 대상이 아니며, 후보 풀 근거 raw가 없으면 추천 사유를 확정값으로 표시하지 않음'],
     ['WF-MESSAGE', '제안/응답 발송', '메시지', ['RAW-INT-CRM-001', 'RAW-INT-AI-001', 'RAW-INT-EXPORT-001'], ['MET-CRM-001', 'MET-CRM-004', 'MET-CRM-005'], '이메일 가능 후보는 발송 로그, DM 대상은 작업용 엑셀/복사 로그로 분리', 'DM 우회 자동화는 정책상 raw로 두지 않고 작업 로그만 관리'],
-    ['WF-REPORT', '콘텐츠 추적/리포트', '리포트', ['RAW-INT-CMP-001', 'RAW-EXT-CONT-001', 'RAW-EXT-ENG-001', 'RAW-EXT-UNSUPPORTED-001'], ['MET-SNS-001', 'MET-SNS-006', 'MET-CONT-001', 'MET-CONT-004'], '업로드 URL 기준으로 공개 지표를 갱신하고 미지원 지표는 수집 필요로 표시', '데이터룸에 저장되지 않은 수치는 보고서에 확정값으로 표시하지 않음'],
+    ['WF-REPORT', '콘텐츠 추적/리포트', '리포트', ['RAW-INT-CMP-001', 'RAW-EXT-CONT-001', BULK_TRACKING_RAW_SOURCE_ID, 'RAW-EXT-ENG-001', 'RAW-EXT-UNSUPPORTED-001'], ['MET-SNS-001', 'MET-SNS-006', 'MET-CONT-001', 'MET-CONT-004'], '업로드 URL 기준으로 공개 지표를 갱신하고 미지원 지표는 수집 필요로 표시', '데이터룸에 저장되지 않은 수치는 보고서에 확정값으로 표시하지 않음'],
     ['WF-REFERENCE', '콘텐츠 레퍼런스 검색/저장', '레퍼런스', ['RAW-EXT-SEARCH-001', 'RAW-EXT-REF-001', 'RAW-EXT-BENCH-001', 'RAW-INT-QUALITY-001'], ['MET-BENCH-001', 'MET-BENCH-002', 'MET-BENCH-003'], '50만 이상 또는 팔로워 대비 터진 콘텐츠를 우선 수집하고 품질 기준 미달은 제외', '검색 결과 원문이 없는 레퍼런스는 저장 링크 검증 대상으로 둠'],
     ['WF-GUIDE', '전략/콘텐츠 가이드 생성', '캠페인 상세/레퍼런스', ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001', 'RAW-INT-INF-001', 'RAW-EXT-REF-001', 'RAW-INT-AI-001'], ['MET-AI-GEN-001', 'MET-AI-GEN-002', 'MET-AI-GEN-003', 'MET-GUIDE-001', 'MET-BENCH-002'], '캠페인 생성 입력 raw와 저장 레퍼런스를 원메시지/후킹/스크립트 구조로 변환하고, 섭외/배정 크리에이터 기준으로 개별 전달 가이드를 생성', '전략/공통 가이드/개별 가이드 산출물은 캠페인 raw와 AI 실행 로그에 남김'],
     ['WF-EXPORT', '엑셀/시트/DOCX/PPT 내보내기', '발굴/리포트/캠페인', ['RAW-INT-EXPORT-001', 'RAW-INT-INF-001', 'RAW-INT-CMP-001'], ['MET-EXPORT-001'], '광고주 전달 산출물 생성 시 데이터 버전과 다운로드 종류를 기록', '내보내기 로그가 없으면 전달본 기준 추적 불가'],
@@ -5803,7 +5869,7 @@ function buildDataRoomWorkflowCoverage({ rawData, metrics }) {
 
   coverage.push(
     ['WF-BRAND-TRACKING', '브랜드/경쟁사 검색 및 추적', '레퍼런스/브랜드 인사이트', ['RAW-EXT-SEARCH-001', 'RAW-EXT-BRAND-001', 'RAW-EXT-BENCH-001', 'RAW-INT-QUALITY-001'], ['MET-BRAND-001', 'MET-BRAND-002', 'MET-BENCH-001'], '경쟁사 저장 raw를 기반으로 브랜드 비교/벤치마크 지표를 생성', '브랜드 추적 raw가 없으면 브랜드 인사이트 경쟁 지표는 비활성 또는 샘플로 표시'],
-    ['WF-GROUPS', '후보 그룹/세그먼트 관리', '후보 그룹/메시지', ['RAW-INT-GROUP-001', 'RAW-INT-INF-001'], ['MET-POOL-006', 'MET-POOL-001'], '후보 그룹 raw의 creatorIds를 후보 풀과 캠페인 배정으로 연결', '후보 그룹에 없는 후보는 메시지 대량 발송 대상으로 자동 포함하지 않음'],
+    ['WF-GROUPS', '후보 그룹/세그먼트 관리', '후보 그룹/메시지', ['RAW-INT-GROUP-001', BULK_CREATOR_GROUP_RAW_SOURCE_ID, 'RAW-INT-INF-001'], ['MET-POOL-006', 'MET-POOL-001'], '후보 그룹 raw의 creatorIds를 후보 풀과 캠페인 배정으로 연결', '후보 그룹에 없는 후보는 메시지 대량 발송 대상으로 자동 포함하지 않음'],
   )
 
   return coverage.map(([id, featureName, frontendArea, itemRawIds, itemMetricIds, algorithm, rule, options = {}]) => {
@@ -6146,6 +6212,8 @@ function App() {
   const [creatorGroupTypeFilter, setCreatorGroupTypeFilter] = useState('전체')
   const [selectedCreatorGroupId, setSelectedCreatorGroupId] = useState(defaultCreatorGroups[0]?.id ?? '')
   const [selectedCreatorGroupMemberIds, setSelectedCreatorGroupMemberIds] = useState([])
+  const trackingBulkInputRef = useRef(null)
+  const creatorGroupBulkInputRef = useRef(null)
   const [dataRoomRawTab, setDataRoomRawTab] = useState('전체')
   const [dataRoomRawStatus, setDataRoomRawStatus] = useState('전체')
   const [dataRoomRawCategory, setDataRoomRawCategory] = useState('전체')
@@ -7542,9 +7610,21 @@ function App() {
           detail: selectedCampaign ? selectedCampaign.name : '캠페인 선택 필요',
           contract: { rawIds: ['RAW-INT-CMP-001', 'RAW-INT-INF-001'], metricIds: ['MET-CMP-001', 'MET-CRM-005'] },
         },
-      ]
-        .filter((card) => dataRoomDisplayGate.canShow(card.contract))
-        .map((card) => ({ ...card, lineage: dataRoomDisplayGate.lineage(card.contract) })),
+      ].map((card) => {
+        const canShow = dataRoomDisplayGate.canShow(card.contract)
+        const lineage = dataRoomDisplayGate.lineage(card.contract)
+        const fallbackLineage = [...(card.contract.metricIds || []), ...(card.contract.rawIds || [])].slice(0, 2)
+        return canShow
+          ? { ...card, lineage }
+          : {
+              ...card,
+              value: '데이터 대기',
+              delta: '데이터룸 확인',
+              detail: '원천 raw/계산지표 연결 후 표시',
+              lineage: lineage.length ? lineage : fallbackLineage,
+              gated: true,
+            }
+      }),
     [
       activeRecruitedPool.length,
       dataRoomDisplayGate,
@@ -7966,6 +8046,422 @@ function App() {
     ])
     showToast('외부 리포트 보완 raw 양식을 다운로드했어요.')
   }
+
+  const downloadTrackingBulkTemplate = () => {
+    exportExcelFile('creatorops-content-tracking-bulk-template.xls', 'content_tracking', [
+      [
+        'campaign_name',
+        'creator_name',
+        'creator_handle',
+        'profile_url',
+        'platform',
+        'content_url',
+        'content_title',
+        'published_at',
+        'views',
+        'likes',
+        'comments',
+        'shares',
+        'saves',
+        'conversions',
+        'memo',
+      ],
+      [
+        selectedCampaign?.name || '신규 인플루언서 캠페인',
+        '민서로그',
+        '@minseo.log',
+        'https://www.youtube.com/@minseolog',
+        'YouTube',
+        'https://www.youtube.com/watch?v=example',
+        '제품 사용 후기 영상',
+        '2026-07-11',
+        120000,
+        5400,
+        320,
+        180,
+        900,
+        80,
+        'URL 기준 성과 추적',
+      ],
+    ])
+    showToast('콘텐츠 추적 대량 등록 양식을 다운로드했습니다.')
+  }
+
+  const handleTrackingBulkUpload = async (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    try {
+      const rows = await readSheet(file)
+      const sourceRows = buildExternalRowsFromSheet(rows, 'content_tracking_bulk')
+      const payloads = sourceRows.map((row) => row.payload)
+      if (!payloads.length) {
+        showToast('콘텐츠 URL이 포함된 행을 찾지 못했습니다.')
+        return
+      }
+
+      const importedAt = new Date().toISOString()
+      const rawRows = sourceRows.map((row) => {
+        const payload = row.payload
+        const url = String(
+          getPayloadValue(payload, ['content_url', 'content url', 'video url', 'post url', 'url', 'link', '콘텐츠 URL', '영상 URL', '링크']) ?? '',
+        ).trim()
+        return {
+          ...row,
+          id: [BULK_TRACKING_RAW_SOURCE_ID, file.name, row.rowIndex, importedAt].join('-'),
+          rawSourceId: BULK_TRACKING_RAW_SOURCE_ID,
+          normalizedType: 'content_tracking_bulk',
+          reportType: 'content_tracking_bulk_upload',
+          sourceName: '콘텐츠 추적 대량등록',
+          fileName: file.name,
+          sheetName: 'bulk_upload',
+          importedAt,
+          url,
+          metrics: {
+            views: parseMetricNumber(getPayloadValue(payload, ['views', 'view count', 'play count', '조회수', '재생수'])),
+            likes: parseMetricNumber(getPayloadValue(payload, ['likes', 'like count', '좋아요'])),
+            comments: parseMetricNumber(getPayloadValue(payload, ['comments', 'comment count', '댓글'])),
+            shares: parseMetricNumber(getPayloadValue(payload, ['shares', 'share count', '공유'])),
+            saves: parseMetricNumber(getPayloadValue(payload, ['saves', 'bookmarks', 'collects', '저장'])),
+            conversions: parseMetricNumber(getPayloadValue(payload, ['conversions', 'orders', 'purchase', '전환', '주문', '구매'])),
+          },
+        }
+      })
+
+      let importedCount = 0
+      let skippedCount = 0
+
+      updateWorkspace((current) => {
+        const currentCampaigns = current.campaigns ?? []
+        const nextCreators = [...(current.creators ?? [])]
+        const nextTrackedPosts = [...(current.trackedPosts ?? [])]
+        const nextExternalReportRows = dedupeExternalReportRows([...(current.externalReportRows ?? []), ...rawRows]).slice(-12000)
+        const seenUrls = new Set(nextTrackedPosts.map((post) => String(post.url || '').trim().toLowerCase()).filter(Boolean))
+
+        payloads.forEach((payload, index) => {
+          const rawRow = rawRows[index]
+          const url = String(
+            getPayloadValue(payload, ['content_url', 'content url', 'video url', 'post url', 'url', 'link', '??? URL', '?? URL', '??']) ?? '',
+          ).trim()
+          const normalizedUrl = url.toLowerCase()
+          if (!url || seenUrls.has(normalizedUrl)) {
+            skippedCount += 1
+            return
+          }
+
+          const campaignName = String(getPayloadValue(payload, ['campaign_name', 'campaign', 'campaign name', '???', '????']) ?? '').trim()
+          const targetCampaign =
+            currentCampaigns.find((campaign) => campaignName && campaign.name === campaignName) ||
+            currentCampaigns.find((campaign) => campaign.id === selectedCampaign?.id) ||
+            currentCampaigns[0]
+
+          if (!targetCampaign) {
+            skippedCount += 1
+            return
+          }
+
+          const platform = String(getPayloadValue(payload, ['platform', 'channel', '플랫폼', '채널']) || inferPlatformFromUrl(url) || 'Instagram')
+          const profileUrl = String(getPayloadValue(payload, ['profile_url', 'profile url', 'channel url', '프로필 URL', '채널 URL']) || '').trim()
+          const handle = String(getPayloadValue(payload, ['creator_handle', 'handle', 'account', '??', '??', '???']) || deriveHandleFromUrl(profileUrl || url) || '').trim()
+          const creatorName = String(getPayloadValue(payload, ['creator_name', 'creator', 'influencer', '?????', '?????', '??']) || handle.replace(/^@/, '') || 'Imported creator').trim()
+          const followers = parseMetricNumber(getPayloadValue(payload, ['followers', 'subscribers', 'fans', '팔로워', '구독자']))
+          const views = parseMetricNumber(getPayloadValue(payload, ['views', 'view count', 'play count', '???', '???']))
+          const likes = parseMetricNumber(getPayloadValue(payload, ['likes', 'like count', '???']))
+          const comments = parseMetricNumber(getPayloadValue(payload, ['comments', 'comment count', '??']))
+          const shares = parseMetricNumber(getPayloadValue(payload, ['shares', 'share count', '??']))
+          const saves = parseMetricNumber(getPayloadValue(payload, ['saves', 'bookmarks', 'collects', '??']))
+          const conversions = parseMetricNumber(getPayloadValue(payload, ['conversions', 'orders', 'purchase', '??', '??', '??']))
+
+          const existingCreator = nextCreators.find((creator) => {
+            const creatorProfile = String(creator.profileUrl || creator.sourceUrl || '').toLowerCase()
+            const creatorHandle = String(creator.handle || '').toLowerCase()
+            return (profileUrl && creatorProfile === profileUrl.toLowerCase()) || (handle && creatorHandle === handle.toLowerCase())
+          })
+
+          let creatorId = existingCreator?.id
+          if (!creatorId) {
+            creatorId = createId()
+            nextCreators.unshift({
+              id: creatorId,
+              isDemo: false,
+              name: creatorName,
+              handle,
+              avatar: 'https://images.unsplash.com/photo-1527980965255-d3b416303d12?auto=format&fit=crop&w=160&q=80',
+              platform,
+              profileUrl: profileUrl || url,
+              contactEmail: String(getPayloadValue(payload, ['email', 'contact_email', '이메일']) || '').trim(),
+              preferredContactChannel: platform === 'YouTube' ? 'email' : platform === 'TikTok' ? 'tiktok_dm' : 'instagram_dm',
+              category: String(getPayloadValue(payload, ['category', '카테고리']) || activeBrand.category || '기타'),
+              country: String(getPayloadValue(payload, ['country', '국가']) || activeBrand.country || 'KR'),
+              followers,
+              averageViews: views,
+              engagement: views ? Number((((likes + comments + shares + saves) / Math.max(views, 1)) * 100).toFixed(1)) : 0,
+              growth: 0,
+              fit: 78,
+              brandSafety: 80,
+              fakeRisk: 0,
+              cpm: 0,
+              price: views ? Math.max(200000, Math.round(views * (platform === 'YouTube' ? 18 : 14))) : 0,
+              audience: '??? ?? ???? ??',
+              city: '',
+              lastPost: nowLabel(),
+              status: '?? ??',
+              topics: [activeBrand.category || '???', platform],
+              source: 'Content tracking bulk upload',
+              sourceUrl: url,
+              rawSourceId: BULK_TRACKING_RAW_SOURCE_ID,
+              rawRowId: rawRow?.id,
+              metricsPending: !followers && !views,
+              needsVerification: true,
+            })
+          }
+
+          nextTrackedPosts.unshift({
+            id: createId(),
+            campaignId: targetCampaign.id,
+            creatorId,
+            platform,
+            title: String(getPayloadValue(payload, ['content_title', 'title', 'video title', '??? ??', '??']) || '???? ???').trim(),
+            url,
+            status: views || likes || comments || shares || saves ? '?? ???' : '?? ?? ??',
+            publishedAt: String(getPayloadValue(payload, ['published_at', 'published', 'date', '????', '???']) || nowLabel()).trim(),
+            views,
+            likes,
+            comments,
+            shares,
+            saves,
+            conversions,
+            rawSourceId: BULK_TRACKING_RAW_SOURCE_ID,
+            rawRowId: rawRow?.id,
+            metricsSource: '???? ???',
+            lastChecked: nowLabel(),
+          })
+          seenUrls.add(normalizedUrl)
+          importedCount += 1
+        })
+
+        if (!importedCount) {
+          return {
+            ...current,
+            externalReportRows: nextExternalReportRows,
+          }
+        }
+        return appendActivity(
+          {
+            ...current,
+            creators: nextCreators,
+            trackedPosts: nextTrackedPosts,
+            externalReportRows: nextExternalReportRows,
+          },
+          'tracking',
+          '??? ?? URL ' + importedCount + '? ?? ??',
+        )
+      })
+
+      setDataRoomImportStatus('??? ?? ???? raw ' + rawRows.length + '? ?? ? ?? ?? ' + importedCount + '?')
+      showToast('??? ?? ' + importedCount + '?? ??????. ??/?? ' + skippedCount + '?? ????, ???? raw? ??????.')
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '??? ?? ????? ??????.')
+    }
+  }
+
+
+  const downloadCreatorGroupBulkTemplate = () => {
+    exportExcelFile('creatorops-favorite-influencer-list-template.xls', 'favorite_influencers', [
+      [
+        'group_name',
+        'group_type',
+        'creator_name',
+        'handle',
+        'platform',
+        'country',
+        'profile_url',
+        'followers',
+        'average_views',
+        'engagement_rate',
+        'category',
+        'email',
+        'memo',
+      ],
+      [
+        '뷰티_KR_우선 제안',
+        '즐겨찾기',
+        '민서로그',
+        '@minseo.log',
+        'YouTube',
+        'KR',
+        'https://www.youtube.com/@minseolog',
+        1240000,
+        284000,
+        '5.8%',
+        '뷰티',
+        'partnership@minseolog.example',
+        '반복 제안 후보',
+      ],
+    ])
+    showToast('즐겨찾는 인플루언서 리스트 양식을 다운로드했습니다.')
+  }
+
+  const handleCreatorGroupBulkUpload = async (event) => {
+    const file = event.target.files?.[0]
+    event.target.value = ''
+    if (!file) return
+
+    try {
+      const rows = await readSheet(file)
+      const sourceRows = buildExternalRowsFromSheet(rows, 'creator_group_bulk')
+      const payloads = sourceRows.map((row) => row.payload)
+      if (!payloads.length) {
+        showToast('후보 정보가 포함된 행을 찾지 못했습니다.')
+        return
+      }
+
+      const importedAt = new Date().toISOString()
+      const rawRows = sourceRows.map((row) => {
+        const payload = row.payload
+        return {
+          ...row,
+          id: [BULK_CREATOR_GROUP_RAW_SOURCE_ID, file.name, row.rowIndex, importedAt].join('-'),
+          rawSourceId: BULK_CREATOR_GROUP_RAW_SOURCE_ID,
+          normalizedType: 'creator_group_bulk',
+          reportType: 'creator_group_bulk_upload',
+          sourceName: '후보 그룹 대량등록',
+          fileName: file.name,
+          sheetName: 'bulk_upload',
+          importedAt,
+          metrics: {
+            followers: parseMetricNumber(getPayloadValue(payload, ['followers', 'subscribers', 'fans', '팔로워', '구독자'])),
+            averageViews: parseMetricNumber(getPayloadValue(payload, ['average_views', 'average views', 'avg views', '평균 조회수'])),
+            engagement: parseRatePercent(getPayloadValue(payload, ['engagement_rate', 'engagement', '참여율'])),
+          },
+        }
+      })
+
+      let importedCreators = 0
+      let importedGroups = 0
+      let skippedRows = 0
+
+      updateWorkspace((current) => {
+        const nextCreators = [...(current.creators ?? [])]
+        const nextExternalReportRows = dedupeExternalReportRows([...(current.externalReportRows ?? []), ...rawRows]).slice(-12000)
+        const groupMap = new Map((current.creatorGroups ?? []).map((group) => [String(group.name || '').toLowerCase(), { ...group, creatorIds: [...(group.creatorIds ?? [])] }]))
+
+        payloads.forEach((payload, index) => {
+          const rawRow = rawRows[index]
+          const profileUrl = String(getPayloadValue(payload, ['profile_url', 'profile url', 'channel url', '??? URL', '?? URL']) || '').trim()
+          const handle = String(getPayloadValue(payload, ['handle', 'creator_handle', 'account', '핸들', '계정', '아이디']) || deriveHandleFromUrl(profileUrl) || '').trim()
+          const creatorName = String(getPayloadValue(payload, ['creator_name', 'creator', 'influencer', 'name', '크리에이터', '인플루언서', '이름']) || handle.replace(/^@/, '') || '').trim()
+          if (!creatorName && !handle && !profileUrl) {
+            skippedRows += 1
+            return
+          }
+
+          const platform = String(getPayloadValue(payload, ['platform', 'channel', '???', '??']) || inferPlatformFromUrl(profileUrl) || 'Instagram')
+          const followers = parseMetricNumber(getPayloadValue(payload, ['followers', 'subscribers', 'fans', '팔로워', '구독자']))
+          const averageViews = parseMetricNumber(getPayloadValue(payload, ['average_views', 'average views', 'avg views', '평균 조회수']))
+          const engagement = parseRatePercent(getPayloadValue(payload, ['engagement_rate', 'engagement', '참여율']))
+          const country = String(getPayloadValue(payload, ['country', '??']) || activeBrand.country || 'KR').trim()
+          const category = String(getPayloadValue(payload, ['category', '????']) || activeBrand.category || '???').trim()
+          const email = String(getPayloadValue(payload, ['email', 'contact_email', '???']) || '').trim()
+
+          let creator = nextCreators.find((item) => {
+            const itemProfile = String(item.profileUrl || item.sourceUrl || '').toLowerCase()
+            const itemHandle = String(item.handle || '').toLowerCase()
+            return (profileUrl && itemProfile === profileUrl.toLowerCase()) || (handle && itemHandle === handle.toLowerCase())
+          })
+
+          if (!creator) {
+            creator = {
+              id: createId(),
+              isDemo: false,
+              name: creatorName || handle.replace(/^@/, '') || 'Imported creator',
+              handle,
+              avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=160&q=80',
+              platform,
+              profileUrl,
+              contactEmail: email,
+              preferredContactChannel: email ? 'email' : platform === 'TikTok' ? 'tiktok_dm' : 'instagram_dm',
+              category,
+              country,
+              followers,
+              averageViews,
+              engagement,
+              growth: 0,
+              fit: 82,
+              brandSafety: 82,
+              fakeRisk: 0,
+              cpm: 0,
+              price: averageViews ? Math.max(200000, Math.round(averageViews * 12)) : 0,
+              audience: String(getPayloadValue(payload, ['memo', 'note', '??']) || '???? ?? ??'),
+              city: '',
+              lastPost: nowLabel(),
+              status: '??? ??',
+              topics: [category, platform],
+              source: 'Creator group bulk upload',
+              sourceUrl: profileUrl,
+              rawSourceId: BULK_CREATOR_GROUP_RAW_SOURCE_ID,
+              rawRowId: rawRow?.id,
+              metricsPending: !followers && !averageViews,
+              needsVerification: true,
+            }
+            nextCreators.unshift(creator)
+            importedCreators += 1
+          }
+
+          const groupName = String(getPayloadValue(payload, ['group_name', 'group name', 'list name', '???', '????']) || activeBrand.name + ' ?? ??').trim()
+          const groupKey = groupName.toLowerCase()
+          const groupType = String(getPayloadValue(payload, ['group_type', 'group type', 'type', '?? ??', '??']) || '????').trim()
+          const currentGroup = groupMap.get(groupKey)
+
+          if (currentGroup) {
+            currentGroup.creatorIds = Array.from(new Set([...(currentGroup.creatorIds ?? []), creator.id]))
+            currentGroup.platform = currentGroup.platform || platform
+            currentGroup.rawSourceId = currentGroup.rawSourceId || BULK_CREATOR_GROUP_RAW_SOURCE_ID
+            currentGroup.rawRowIds = Array.from(new Set([...(currentGroup.rawRowIds ?? []), rawRow?.id].filter(Boolean)))
+            groupMap.set(groupKey, currentGroup)
+          } else {
+            groupMap.set(groupKey, {
+              id: createId(),
+              name: groupName,
+              description: String(getPayloadValue(payload, ['memo', 'note', 'description', '??', '??']) || '?????? ??? ?? ??'),
+              platform,
+              type: groupType,
+              owner: currentAccount?.name || '?? ???',
+              creatorIds: [creator.id],
+              rawSourceId: BULK_CREATOR_GROUP_RAW_SOURCE_ID,
+              rawRowIds: [rawRow?.id].filter(Boolean),
+              createdAt: nowLabel(),
+            })
+            importedGroups += 1
+          }
+        })
+
+        if (!importedCreators && !importedGroups) {
+          return {
+            ...current,
+            externalReportRows: nextExternalReportRows,
+          }
+        }
+        return appendActivity(
+          {
+            ...current,
+            creators: nextCreators,
+            creatorGroups: Array.from(groupMap.values()),
+            externalReportRows: nextExternalReportRows,
+          },
+          'group',
+          '?? ?? ???? ' + importedCreators + '? ??',
+        )
+      })
+
+      setDataRoomImportStatus('?? ?? ???? raw ' + rawRows.length + '? ?? ? ?? ?? ' + importedCreators + '? ??')
+      showToast('?? ???? ???????. ?? ' + importedCreators + '?, ?? ?? ' + importedGroups + '?, ?? ' + skippedRows + '?. ???? raw? ??????.')
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '?? ?? ????? ??????.')
+    }
+  }
+
 
   const activeDataRoomDetail =
     selectedDataRoomItem.type === 'metric'
@@ -14097,10 +14593,27 @@ function App() {
               <span className="mini-label">저장 목록</span>
               <h2>후보 그룹 {creatorGroupSummary.groups}개</h2>
             </div>
-            <button className="primary-button compact-button" type="button" onClick={createCreatorGroup}>
-              <Plus size={15} />
-              새 후보 그룹 만들기
-            </button>
+                        <div className="panel-heading-actions">
+              <input
+                ref={creatorGroupBulkInputRef}
+                type="file"
+                accept=".xlsx,.xls"
+                hidden
+                onChange={handleCreatorGroupBulkUpload}
+              />
+              <button className="secondary-button compact-button" type="button" onClick={downloadCreatorGroupBulkTemplate}>
+                <Download size={15} />
+                {'\uB9AC\uC2A4\uD2B8 \uC591\uC2DD'}
+              </button>
+              <button className="secondary-button compact-button" type="button" onClick={() => creatorGroupBulkInputRef.current?.click()}>
+                <Plus size={15} />
+                {'\uC5D1\uC140 \uC5C5\uB85C\uB4DC'}
+              </button>
+              <button className="primary-button compact-button" type="button" onClick={createCreatorGroup}>
+                <Plus size={15} />
+                {'\uC0C8 \uD6C4\uBCF4 \uADF8\uB8F9 \uB9CC\uB4E4\uAE30'}
+              </button>
+            </div>
           </div>
 
           <div className="creator-group-position-note">
@@ -15523,8 +16036,25 @@ function App() {
                 <h2>성과 모니터링</h2>
               </div>
               <div className="panel-heading-actions">
-                <button className="icon-button" type="button" title="콘텐츠 추적 등록" onClick={() => setModal({ type: 'tracking' })}>
-                  <Plus size={18} />
+                <input
+                  ref={trackingBulkInputRef}
+                  type="file"
+                  accept=".xlsx,.xls"
+                  hidden
+                  onChange={handleTrackingBulkUpload}
+                />
+                <button className="primary-button compact-button" type="button" title="콘텐츠 추적 단일 추가" onClick={() => setModal({ type: 'tracking' })}>
+                  <Plus size={15} />
+                  단일 추가
+                </button>
+                <span className="report-action-divider" aria-hidden="true" />
+                <button className="secondary-button compact-button" type="button" title="content-tracking-bulk-template" onClick={downloadTrackingBulkTemplate}>
+                  <Download size={15} />
+                  대량 양식
+                </button>
+                <button className="secondary-button compact-button" type="button" title="content-tracking-bulk-upload" onClick={() => trackingBulkInputRef.current?.click()}>
+                  <Plus size={15} />
+                  대량 업로드
                 </button>
                 <button className="icon-button" type="button" title="성과 데이터 즉시 갱신" onClick={refreshTracking}>
                   <RefreshCw size={18} />
@@ -17568,9 +18098,9 @@ function PracticeTour({ steps, currentIndex, currentStep, onClose, onDismiss, on
   )
 }
 
-function MetricCard({ icon, label, value, delta, detail, lineage = [] }) {
+function MetricCard({ icon, label, value, delta, detail, lineage = [], gated = false }) {
   return (
-    <article className="metric-card">
+    <article className={`metric-card ${gated ? 'gated' : ''}`}>
       <div className="metric-icon">{icon}</div>
       <span>{label}</span>
       <strong>{value}</strong>
@@ -17746,6 +18276,23 @@ function RecommendationCard({
     traceRawIds.length,
     traceMetricIds.length,
   )
+  const emailContact = creator.email || creator.contactEmail || creator.publicEmail
+  const contactState = emailContact
+    ? '\uC774\uBA54\uC77C \uD655\uC778'
+    : creatorContactUrl
+      ? 'DM/\uD504\uB85C\uD544 \uD655\uC778'
+      : '\uC5F0\uB77D\uCC98 \uD655\uC778 \uD544\uC694'
+  const viralityLabel = pendingMetrics || !Number.isFinite(virality)
+    ? '\uC218\uC9D1 \uD544\uC694'
+    : `${virality.toFixed(1)}x`
+  const recommendationCriteria = [
+    { label: '\uD50C\uB7AB\uD3FC', value: creator.platform || '-' },
+    { label: '\uAD6D\uAC00', value: creator.country || '-' },
+    { label: '\uD314\uB85C\uC6CC', value: displayMetric(creator.followers) },
+    { label: '\uD3C9\uADE0 \uC870\uD68C', value: pendingMetrics ? '\uC218\uC9D1 \uD544\uC694' : displayMetric(creator.averageViews) },
+    { label: '\uC870\uD68C \uD3ED\uBC1C', value: viralityLabel },
+    { label: '\uC5F0\uB77D', value: contactState },
+  ]
 
   return (
     <article className={`recommendation-card ${active ? 'active' : ''} ${checked ? 'selected' : ''}`}>
@@ -17789,6 +18336,14 @@ function RecommendationCard({
           <strong className={`recommendation-decision ${recommendationDecisionTone}`}>{recommendationDecision}</strong>
           <span>{recommendationDecisionDetail}</span>
         </div>
+      </div>
+      <div className="recommendation-criteria-mini" aria-label="AI recommendation applied criteria">
+        {recommendationCriteria.map((item) => (
+          <span key={item.label}>
+            <small>{item.label}</small>
+            <strong>{item.value}</strong>
+          </span>
+        ))}
       </div>
       <details className="recommendation-score-trace" aria-label="AI 추천 점수 구성">
         <summary>
@@ -17999,22 +18554,24 @@ function OutreachItem({
   onComplete,
 }) {
   const canComplete = item.status === '응답' || item.status === '발송 완료'
-  const sourceTone = item.source === '자동' ? 'auto-source' : item.source === '대량 섭외' ? 'bulk-source' : 'manual-source'
+  const isAiSource = item.source === '자동' || item.source === 'AI 추천'
+  const sourceTone = isAiSource ? 'auto-source' : item.source === '대량 섭외' ? 'bulk-source' : 'manual-source'
   const contactPlan = buildContactPlan(creator, item.channel, item.message, campaign?.name)
   const contactEmail = getCreatorContactEmail(creator)
   const isEmailChannel = contactPlan.id === 'email'
   const canEmailSend = isEmailChannel && Boolean(contactEmail)
-  const sourceLabel = item.source === '자동' ? 'AI 추천' : item.source ?? '수동'
+  const sourceLabel = isAiSource ? 'AI 추천' : item.source ?? '수동'
   const contactStatusLabel = canEmailSend
     ? 'Gmail/Outlook 발송 대상'
     : isEmailChannel
-      ? '이메일 수집 후 발송 가능'
+      ? '이메일 수집 전 자동 발송 불가'
       : `${contactPlan.shortLabel} 작업 대상`
   const deliveryReadiness = canEmailSend
     ? '이메일 자동 발송 가능'
     : isEmailChannel
       ? '이메일 수집 필요 · 자동 발송 불가'
       : `${contactPlan.shortLabel} 수동 작업`
+  const deliveryTone = canEmailSend ? 'ready' : isEmailChannel ? 'missing' : 'manual'
   const reasonParts = String(item.reason || '')
     .split('/')
     .map((part) => part.trim())
@@ -18036,7 +18593,7 @@ function OutreachItem({
         <span className={`channel-chip ${contactPlan.tone}`}>{contactPlan.shortLabel}</span>
         <strong>{creator?.name ?? '알 수 없는 후보'}</strong>
         <p>{campaign?.name ?? '캠페인 없음'} · {item.createdAt}</p>
-        <div className="message-contact-line">
+        <div className={`message-contact-line ${deliveryTone}`}>
           {contactEmail ? (
             <a href={`mailto:${contactEmail}`}>이메일 {contactEmail}</a>
           ) : (
@@ -18045,7 +18602,7 @@ function OutreachItem({
           <span>{contactStatusLabel}</span>
         </div>
         <div className="message-brief-line">
-          <span>{deliveryReadiness}</span>
+          <span className={`delivery-readiness ${deliveryTone}`}>{deliveryReadiness}</span>
           <span>{metricLine}</span>
         </div>
         {reasonParts.length > 0 && (
