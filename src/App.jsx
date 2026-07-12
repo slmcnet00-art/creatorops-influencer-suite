@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
+  ArrowRight,
   ArrowUpRight,
   BarChart3,
   Bookmark,
@@ -29,6 +30,7 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   Target,
+  Trash2,
   TrendingUp,
   UsersRound,
   Video,
@@ -849,7 +851,7 @@ const defaultBrands = [
     id: 201,
     name: '스킨케어 D2C 브랜드',
     owner: '스킨케어 D2C 브랜드',
-    color: '#0071e3',
+    color: '#2563eb',
     brief: defaultBrandBrief,
   },
   {
@@ -1365,7 +1367,7 @@ function normalizeBrand(brand, index = 0) {
     id: Number(brand?.id) || fallback.id || createId(),
     name: brand?.name || brief.brandName,
     owner: brand?.owner || fallback.owner || brand?.name || brief.brandName,
-    color: brand?.color || fallback.color || '#0071e3',
+    color: brand?.color || fallback.color || '#2563eb',
     brief,
   }
 }
@@ -9146,7 +9148,7 @@ function App() {
       id: createId(),
       name: brandDraft.name || '신규 브랜드',
       owner: brandDraft.owner || brandDraft.name || 'New Brand',
-      color: '#0071e3',
+      color: '#2563eb',
       brief: {
         ...defaultBrandBrief,
         brandName: brandDraft.name || '신규 브랜드',
@@ -13330,51 +13332,54 @@ function App() {
 
         {visibleSection === 'dashboard' && (
           <>
-            <section className="dashboard-action-board" aria-label="오늘의 운영 액션">
-              <div className="dashboard-action-head">
-                <div>
-                  <span className="mini-label">오늘 할 일</span>
-                  <h2>오늘 먼저 처리할 일</h2>
-                </div>
-                <p>캠페인 기준으로 발굴, 후보 저장, 메시지 발송, 성과 추적을 이어서 진행합니다.</p>
+            <section className="flow" aria-label="오늘의 운영 액션">
+              <div className="flow-head">
+                <div className="flow-title">오늘 먼저 처리할 일</div>
+                <div className="flow-note">발굴 → 후보 저장 → 메시지 발송 → 성과 추적 순서로 이어집니다</div>
               </div>
-              <div className="dashboard-action-list">
+              <div className="steps">
                 {dashboardActionItems.map((item, index) => (
-                  <article className="dashboard-action-card" key={item.label}>
-                    <span className="dashboard-action-index">{index + 1}</span>
-                    <div>
-                      <small>{item.label}</small>
-                      <strong>{item.title}</strong>
-                      <p>{item.detail}</p>
+                  <button
+                    type="button"
+                    className={`step${index === 0 ? ' active' : ''}`}
+                    key={item.label}
+                    disabled={!item.enabled}
+                    onClick={item.onClick}
+                  >
+                    <div className="step-n">
+                      <div className="step-dot">{index + 1}</div>
+                      <span className="step-kicker">{item.label}</span>
                     </div>
-                    <button
-                      className={index === 0 ? 'primary-button compact-button' : 'secondary-button compact-button'}
-                      type="button"
-                      disabled={!item.enabled}
-                      onClick={item.onClick}
-                    >
+                    <div className="step-h">{item.title}</div>
+                    <div className="step-d">{item.detail}</div>
+                    <div className="step-cta">
                       {item.action}
-                    </button>
-                  </article>
+                      <ArrowRight size={15} className="step-cta-ic" />
+                    </div>
+                  </button>
                 ))}
               </div>
             </section>
 
-            <section className="workflow-strip" aria-label="인플루언서 운영 흐름">
-              {visibleWorkflowSignals.map((signal) => (
-                <WorkflowSignal key={signal.label} signal={signal} />
-              ))}
-            </section>
+            <div className="section-lbl">핵심 지표</div>
+            {dashboardMetricCards.length ? (
+              <div className="kpi-hero">
+                {dashboardMetricCards.map(({ key, ...card }) => (
+                  <KpiCard key={key} {...card} />
+                ))}
+              </div>
+            ) : (
+              <div className="data-room-gated-empty">
+                데이터룸에 연결된 raw/계산지표가 없어 대시보드 수치를 숨겼습니다. 데이터룸에서 수집 상태를 먼저 확인하세요.
+              </div>
+            )}
 
-            <section className="metric-grid" aria-label="핵심 지표">
-              {dashboardMetricCards.length ? (
-                dashboardMetricCards.map(({ key, ...card }) => <MetricCard key={key} {...card} />)
-              ) : (
-                <div className="data-room-gated-empty">
-                  데이터룸에 연결된 raw/계산지표가 없어 대시보드 수치를 숨겼습니다. 데이터룸에서 수집 상태를 먼저 확인하세요.
-                </div>
-              )}
-            </section>
+            <div className="section-lbl section-lbl-gap">운영 세부</div>
+            <div className="stat-grid">
+              {visibleWorkflowSignals.map((signal) => (
+                <StatTile key={signal.label} signal={signal} />
+              ))}
+            </div>
           </>
         )}
 
@@ -14607,7 +14612,7 @@ function App() {
               </button>
               <button className="secondary-button compact-button" type="button" onClick={() => creatorGroupBulkInputRef.current?.click()}>
                 <Plus size={15} />
-                {'\uC5D1\uC140 \uC5C5\uB85C\uB4DC'}
+                \uB9AC\uC2A4\uD2B8 \uCD94\uAC00
               </button>
               <button className="primary-button compact-button" type="button" onClick={createCreatorGroup}>
                 <Plus size={15} />
@@ -14693,7 +14698,7 @@ function App() {
                           deleteCreatorGroup(group)
                         }}
                       >
-                        삭제
+                        <Trash2 size={15} aria-hidden="true" />
                       </button>
                     </div>
                     <div className="creator-group-metrics">
@@ -14763,8 +14768,13 @@ function App() {
                   <button className="primary-button compact-button" type="button" onClick={assignSelectedCreatorGroupMembersToCampaign} disabled={!selectedCreatorGroupMembers.length}>
                     선택 {selectedCreatorGroupMembers.length}명 캠페인 배정
                   </button>
-                  <button className="danger-button compact-button" type="button" onClick={() => deleteCreatorGroup(selectedCreatorGroup)}>
-                    그룹 삭제
+                  <button
+                    className="icon-delete-button"
+                    type="button"
+                    aria-label="그룹 삭제"
+                    onClick={() => deleteCreatorGroup(selectedCreatorGroup)}
+                  >
+                    <Trash2 size={16} aria-hidden="true" />
                   </button>
                 </div>
                 {selectedCreatorGroupCreators.length ? (
@@ -15125,20 +15135,6 @@ function App() {
               <span>{contentTrackingReferences.length}개 콘텐츠 raw · 제작 저장 {savedProductionReferences.length}개</span>
             </div>
           )}
-
-          <div className="reference-summary">
-            <Stat
-              label={hasReferenceSearchResults ? 'API raw' : '저장 raw'}
-              value={
-                hasReferenceSearchResults
-                  ? `${visibleReferences.length}개 미리보기`
-                  : `${visibleReferences.length}/${selectedCampaignReferences.length}개`
-              }
-            />
-            <Stat label="제작 저장" value={`${savedProductionReferences.length}개`} />
-            <Stat label="누적 조회" value={compactNumber(referenceTotals.views)} />
-            <Stat label="누적 공유" value={compactNumber(referenceTotals.shares)} />
-          </div>
 
           <div className="reference-country-tabs" aria-label="레퍼런스 국가 빠른 필터">
             {referenceCountryOptions.map((countryOption) => (
@@ -15651,8 +15647,13 @@ function App() {
                         캠페인 수정
                       </button>
                     )}
-                    <button className="danger-button compact-button" type="button" onClick={() => deleteCampaign(activeCampaignForModal.id)}>
-                      캠페인 삭제
+                    <button
+                      className="icon-delete-button"
+                      type="button"
+                      aria-label="캠페인 삭제"
+                      onClick={() => deleteCampaign(activeCampaignForModal.id)}
+                    >
+                      <Trash2 size={16} aria-hidden="true" />
                     </button>
                   </div>
                 </div>
@@ -15727,13 +15728,28 @@ function App() {
                   </div>
                 )}
 
-                <div className="campaign-stat-strip">
-                  <Stat label="예산" value={won(activeCampaignForModal.budget)} />
-                  <Stat label="집행" value={won(activeCampaignForModal.spend)} />
-                  <Stat label="예상 매출" value={won(activeCampaignForModal.revenue)} />
-                  <Stat label="진행률" value={`${activeCampaignForModal.progress}%`} />
-                  <Stat label={'AI 추천 목표'} value={`${getCampaignRecommendationTarget(activeCampaignForModal)}명`} />
-                  <Stat label="셀러 목표" value={`${activeCampaignForModal.sellerRecruitTarget ?? 0}명`} />
+                <div className="campaign-kpi-block">
+                  <div className="dashboard-section-label">
+                    <span className="mini-label">핵심 지표</span>
+                    <small>진행률 · 예산 집행 · 예상 매출</small>
+                  </div>
+                  <div className="campaign-stat-strip core">
+                    <Stat label="진행률" value={`${activeCampaignForModal.progress}%`} />
+                    <Stat label="예산" value={won(activeCampaignForModal.budget)} />
+                    <Stat label="집행" value={won(activeCampaignForModal.spend)} />
+                    <Stat label="예상 매출" value={won(activeCampaignForModal.revenue)} />
+                  </div>
+                </div>
+
+                <div className="campaign-kpi-block">
+                  <div className="dashboard-section-label">
+                    <span className="mini-label">목표</span>
+                    <small>섭외 목표 인원</small>
+                  </div>
+                  <div className="campaign-goal-strip">
+                    <Stat label={'AI 추천 목표'} value={`${getCampaignRecommendationTarget(activeCampaignForModal)}명`} />
+                    <Stat label="셀러 목표" value={`${activeCampaignForModal.sellerRecruitTarget ?? 0}명`} />
+                  </div>
                 </div>
 
                 <div className="campaign-schedule-timeline">
@@ -15758,6 +15774,10 @@ function App() {
                   </div>
                 </div>
 
+                <div className="dashboard-section-label">
+                  <span className="mini-label">캠페인 개요</span>
+                  <small>제품 · 타깃 · 후보 조건 · KPI · 미션 · 검수</small>
+                </div>
                 <div className="campaign-playbook">
                   <article>
                     <span>제품/서비스</span>
@@ -15789,6 +15809,10 @@ function App() {
                   </article>
                 </div>
 
+                <div className="dashboard-section-label">
+                  <span className="mini-label">가이드</span>
+                  <small>전략 · 콘텐츠 · 첨부 · 개별 가이드</small>
+                </div>
                 <div className="campaign-guide-detail">
                   <span className="mini-label">인플루언서 전략</span>
                   <strong>캠페인 전략</strong>
@@ -16084,20 +16108,28 @@ function App() {
               <BarChart3 size={24} />
             </div>
 
+            <div className="dashboard-section-label report-section-pad">
+              <span className="mini-label">품질 스코어</span>
+              <small>후보 핏 · 안정성 · 응답 가능성</small>
+            </div>
             <div className="score-list">
               {scoreBands.map((item) => (
                 <div className="score-row" key={item.label}>
                   <div>
                     <span>{item.label}</span>
-                    <strong>{item.value}</strong>
+                    <strong>{item.value}<em>점</em></strong>
                   </div>
-                  <div className={`score-bar ${item.tone}`}>
+                  <div className="score-bar">
                     <span style={{ width: `${item.value}%` }} />
                   </div>
                 </div>
               ))}
             </div>
 
+            <div className="dashboard-section-label report-section-pad">
+              <span className="mini-label">핵심 지표</span>
+              <small>추적 콘텐츠 성과 요약</small>
+            </div>
             <div className="tracking-metrics">
               {reportMetricCards.length ? (
                 reportMetricCards.map((card) => <Stat key={card.key} label={card.label} value={card.value} source={card.lineage?.[0]} />)
@@ -16318,6 +16350,10 @@ function App() {
                 </article>
               ))}
             </div>
+            <div className="dashboard-section-label">
+              <span className="mini-label">핵심 지표</span>
+              <small>상태별 건수 · 클릭하면 필터</small>
+            </div>
             <div className="message-stage-board" aria-label="메시지 운영 상태">
               {outreachStatusFilters.map((filter) => (
                 <button
@@ -16354,6 +16390,10 @@ function App() {
               )}
               <span>{filteredCampaignOutreach.length} / {selectedCampaignOutreach.length}</span>
             </div>
+            <div className="dashboard-section-label">
+              <span className="mini-label">발송 작업</span>
+              <small>선택한 후보에게 이메일/DM 발송</small>
+            </div>
             <div className="message-bulk-toolbar">
               <label className="selection-check">
                 <input
@@ -16364,7 +16404,15 @@ function App() {
                 />
                 전체 선택
               </label>
-              <span>선택 {selectedOutreachItems.length}건 · 이메일 {selectedEmailOutreachItems.length}건 · DM {selectedDmOutreachItems.length}건 · 중복 차단 {selectedDuplicateOutreachCount}건 · Gmail {gmailConnected ? '연결됨' : '미연결'}</span>
+              <div className="message-bulk-stats">
+                <span><em>{selectedOutreachItems.length}</em>선택</span>
+                <span><em>{selectedEmailOutreachItems.length}</em>이메일</span>
+                <span><em>{selectedDmOutreachItems.length}</em>DM</span>
+                <span><em>{selectedDuplicateOutreachCount}</em>중복 차단</span>
+                <span className={`gmail-state ${gmailConnected ? 'on' : 'off'}`}>
+                  Gmail {gmailConnected ? '연결됨' : '미연결'}
+                </span>
+              </div>
               <button
                 className="secondary-button compact-button"
                 type="button"
@@ -16737,7 +16785,7 @@ function App() {
                 <strong>KPI 목표</strong>
                 <p>리포트 기준이 되는 조회수, 전환, 주문, 매출 목표입니다.</p>
               </div>
-              <div className="modal-two-col">
+              <div className="modal-three-col">
                 <label>
                   KPI 목표
                   <input
@@ -16755,8 +16803,6 @@ function App() {
                     placeholder="50"
                   />
                 </label>
-              </div>
-              <div className="modal-two-col">
                 <label>
                   목표 조회수
                   <input
@@ -16775,8 +16821,6 @@ function App() {
                     placeholder="3000"
                   />
                 </label>
-              </div>
-              <div className="modal-two-col">
                 <label>
                   목표 주문
                   <input
@@ -18127,6 +18171,51 @@ function WorkflowSignal({ signal }) {
   )
 }
 
+function splitUnit(value) {
+  const str = String(value ?? '')
+  const match = str.match(/^(.*\d)\s*([가-힣%]+)$/)
+  if (match) return { num: match[1], unit: match[2] }
+  return { num: str, unit: '' }
+}
+
+function KpiCard({ icon, label, value, delta, detail }) {
+  const { num, unit } = splitUnit(value)
+  return (
+    <article className="kpi">
+      <div className="kpi-top">
+        <div className="kpi-ic">{icon}</div>
+        {delta ? (
+          <span className="kpi-trend up">
+            <TrendingUp size={13} />
+            {delta}
+          </span>
+        ) : null}
+      </div>
+      <div className="kpi-val">
+        {num}
+        {unit ? <span className="unit">{unit}</span> : null}
+      </div>
+      <div className="kpi-lbl">{label}</div>
+      {detail ? <div className="kpi-sub">{detail}</div> : null}
+    </article>
+  )
+}
+
+function StatTile({ signal }) {
+  const { num, unit } = splitUnit(signal.value)
+  return (
+    <div className="stat">
+      <div className="stat-ic">{signal.icon}</div>
+      <div className="stat-val">
+        {num}
+        {unit ? <span className="u">{unit}</span> : null}
+      </div>
+      <div className="stat-lbl">{signal.label}</div>
+      {signal.lineage?.length ? <div className="stat-code">{signal.lineage[0]}</div> : null}
+    </div>
+  )
+}
+
 function SelectPill({ icon, value, options, onChange, label }) {
   return (
     <label className="select-pill">
@@ -18290,6 +18379,8 @@ function RecommendationCard({
     { label: '\uAD6D\uAC00', value: creator.country || '-' },
     { label: '\uD314\uB85C\uC6CC', value: displayMetric(creator.followers) },
     { label: '\uD3C9\uADE0 \uC870\uD68C', value: pendingMetrics ? '\uC218\uC9D1 \uD544\uC694' : displayMetric(creator.averageViews) },
+    { label: '\uCC38\uC5EC\uC728', value: pendingMetrics ? '\uC218\uC9D1 \uD544\uC694' : percent(creator.engagement), tone: 'primary' },
+    { label: '\uC608\uC0C1 CPV', value: costPerView ? `${costPerView}\uC6D0` : '\uC0B0\uC815 \uC804' },
     { label: '\uC870\uD68C \uD3ED\uBC1C', value: viralityLabel },
     { label: '\uC5F0\uB77D', value: contactState },
   ]
@@ -18305,7 +18396,9 @@ function RecommendationCard({
           <img src={creator.avatar} alt="" />
           <div>
             <strong>{creator.name}</strong>
-            <span>{recommendation.persona}</span>
+            <span>
+              {[creator.platform, creator.country, recommendation.persona].filter(Boolean).join(' · ')}
+            </span>
           </div>
         </button>
         <div className="ai-score">{recommendation.score}</div>
@@ -18339,7 +18432,7 @@ function RecommendationCard({
       </div>
       <div className="recommendation-criteria-mini" aria-label="AI recommendation applied criteria">
         {recommendationCriteria.map((item) => (
-          <span key={item.label}>
+          <span key={item.label} className={item.tone === 'primary' ? 'is-primary' : ''}>
             <small>{item.label}</small>
             <strong>{item.value}</strong>
           </span>
@@ -18403,18 +18496,6 @@ function RecommendationCard({
           ))}
         </div>
       </details>
-      <div className="recommendation-metrics" aria-label={`${creator.name} 핵심 성과 지표`}>
-        <span>팔로워 {displayMetric(creator.followers)}</span>
-        <span>평균 조회 {displayMetric(creator.averageViews)}</span>
-        <span>조회 폭발 {pendingMetrics ? '수집 필요' : `${virality.toFixed(1)}x`}</span>
-        <span>참여율 {pendingMetrics ? '수집 필요' : percent(creator.engagement)}</span>
-        <span>예상 CPV {costPerView ? `${costPerView}원` : '산정 전'}</span>
-        {performanceLearning?.posts && (
-          <span>실제 성과 {performanceLearning.posts}건 · 최고 {displayMetric(performanceLearning.topViews)}</span>
-        )}
-        <span>데이터 {dataQuality.score} · {dataQuality.level}</span>
-        {creator.needsVerification && <span>공개 수치 검증 대기</span>}
-      </div>
       <div className="recommendation-reason-summary">
         <span>핵심 근거</span>
         <p>{primaryReason}</p>
@@ -18485,6 +18566,14 @@ function RecommendationCard({
 function CampaignCard({ campaign, creators, kpiSummary, onOpen, onDelete }) {
   return (
     <article className="campaign-row">
+      <button
+        className="card-delete-icon"
+        type="button"
+        aria-label={`${campaign.name} 캠페인 삭제`}
+        onClick={onDelete}
+      >
+        <Trash2 size={15} aria-hidden="true" />
+      </button>
       <div className="campaign-main">
         <div>
           <div className="campaign-badges">
@@ -18511,7 +18600,7 @@ function CampaignCard({ campaign, creators, kpiSummary, onOpen, onDelete }) {
       </div>
       {kpiSummary?.metrics?.length > 0 && (
         <div className="campaign-kpi-preview">
-          <div>
+          <div className="campaign-kpi-hero">
             <span>KPI 달성률</span>
             <strong>{kpiSummary.progress}%</strong>
           </div>
@@ -18530,9 +18619,6 @@ function CampaignCard({ campaign, creators, kpiSummary, onOpen, onDelete }) {
       <div className="campaign-card-actions">
         <button className="primary-button compact-button" type="button" onClick={onOpen}>
           캠페인 상세 보기
-        </button>
-        <button className="danger-button compact-button" type="button" onClick={onDelete}>
-          캠페인 삭제
         </button>
       </div>
       <div className="progress-line">
@@ -18617,7 +18703,7 @@ function OutreachItem({
         )}
       </div>
       <div className="record-actions">
-        <button className="primary-button compact-button" type="button" onClick={onOpenDetail}>
+        <button className="secondary-button compact-button" type="button" onClick={onOpenDetail}>
           상세 보기
         </button>
         <button className="secondary-button compact-button" type="button" onClick={onCopy}>

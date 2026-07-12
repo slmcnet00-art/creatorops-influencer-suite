@@ -62,9 +62,9 @@ function ownerLabel(value) {
   return ownerDisplayLabels[value] ?? value
 }
 
-function MiniStat({ label, value }) {
+function MiniStat({ label, value, tone }) {
   return (
-    <article className="data-room-summary-card">
+    <article className={`data-room-summary-card${tone ? ` tone-${tone}` : ''}`}>
       <span>{label}</span>
       <strong>{value}</strong>
     </article>
@@ -464,16 +464,24 @@ export default function AdminDataRoom({
 
   return (
     <section className="data-room-page">
-      <section className="data-room-summary" aria-label="어드민 데이터룸 요약">
-        <MiniStat label="Raw 전체" value={`${summary.rawTotal}개`} />
-        <MiniStat label="정상 수집" value={`${summary.rawOk}개`} />
-        <MiniStat label="지연" value={`${summary.rawDelayed}개`} />
-        <MiniStat label="오류" value={`${summary.rawError}개`} />
-        <MiniStat label="중단" value={`${summary.rawPaused}개`} />
-        <MiniStat label="내부/외부" value={`${summary.internal}/${summary.external}`} />
-        <MiniStat label="계산지표" value={`${summary.metricTotal}개`} />
-        <MiniStat label="지표 오류" value={`${summary.metricError}개`} />
-        <MiniStat label="마지막 동기화" value={summary.lastSync} />
+      <section className="data-room-summary-wrap" aria-label="어드민 데이터룸 요약">
+        <div className="dashboard-section-label">
+          <span className="mini-label">핵심 지표</span>
+          <small>수집 상태 요약</small>
+        </div>
+        <div className="data-room-summary primary">
+          <MiniStat label="Raw 전체" value={`${summary.rawTotal}개`} />
+          <MiniStat label="정상 수집" value={`${summary.rawOk}개`} tone="ok" />
+          <MiniStat label="오류" value={`${summary.rawError}개`} tone="error" />
+          <MiniStat label="계산지표" value={`${summary.metricTotal}개`} />
+        </div>
+        <div className="data-room-summary secondary">
+          <MiniStat label="지연" value={`${summary.rawDelayed}개`} tone="warning" />
+          <MiniStat label="중단" value={`${summary.rawPaused}개`} tone="paused" />
+          <MiniStat label="내부/외부" value={`${summary.internal}/${summary.external}`} />
+          <MiniStat label="지표 오류" value={`${summary.metricError}개`} tone="error" />
+          <MiniStat label="마지막 동기화" value={summary.lastSync} />
+        </div>
       </section>
 
       <section className="panel data-responsibility-panel" aria-label="데이터룸 구분 목록">
