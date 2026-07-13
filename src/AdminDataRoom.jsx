@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
 import {
   AlertTriangle,
+  ChevronDown,
   ClipboardList,
   Database,
   Filter,
@@ -214,6 +215,7 @@ export default function AdminDataRoom({
   rawData = [],
   allRawData = rawData,
   groupedMetrics = [],
+  allMetrics = [],
   workflowCoverage = [],
   pendingBundles = [],
   rawTab,
@@ -239,7 +241,6 @@ export default function AdminDataRoom({
   rawCategories,
   rawMethods,
   rawOwners,
-  metricBundles,
   selectedItem,
   setSelectedItem,
   activeDetail,
@@ -259,6 +260,7 @@ export default function AdminDataRoom({
 }) {
   const [detailOpen, setDetailOpen] = useState(false)
   const [apiDiagnosticsOpen, setApiDiagnosticsOpen] = useState(false)
+  const [openMetricBundles, setOpenMetricBundles] = useState({})
   const rawRegistryRef = useRef(null)
   const metricRegistryRef = useRef(null)
   const importPanelRef = useRef(null)
@@ -275,6 +277,67 @@ export default function AdminDataRoom({
       ;(target || fallbackRef.current)?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     }, 120)
   }
+  const metricRegistry = allMetrics?.length ? allMetrics : groupedMetrics.flatMap((group) => group.metrics)
+  const bonusMetricBundleName = 'LLM 번외 데이터 번들'
+  const isCoreMetricBundle = (bundle) => bundle !== bonusMetricBundleName
+  const visibleMetricRegistry = metricRegistry.filter((metric) => isCoreMetricBundle(metric.bundle))
+  const metricBundleOptions = ['전체', ...new Set(visibleMetricRegistry.map((metric) => metric.bundle))]
+  const selectedMetricBundle = metricBundleOptions.includes(metricBundle) ? metricBundle : '전체'
+  const metricBundleKey = (scope, bundle) => `${scope || '전체'}__${bundle || '미분류'}`
+  const metricBundleDomId = (scope, bundle) =>
+    `metric-bundle-${Array.from(metricBundleKey(scope, bundle))
+      .map((character) => character.charCodeAt(0).toString(36))
+      .join('-')}`
+  const getMetricById = (metricId) => metricRegistry.find((metric) => metric.id === metricId)
+  const toggleMetricBundle = (scope, bundle) => {
+    const key = metricBundleKey(scope, bundle)
+    setOpenMetricBundles((current) => ({ ...current, [key]: !current[key] }))
+  }
+  const openMetricBundle = (metric) => {
+    if (!metric) return
+    setOpenMetricBundles((current) => ({
+      ...current,
+      [metricBundleKey(metric.scope, metric.bundle)]: true,
+    }))
+  }
+  const jumpToMetricBundle = (bundle) => {
+    const nextBundle = metricBundleOptions.includes(bundle) ? bundle : '전체'
+    setMetricBundle(nextBundle)
+    if (nextBundle === '전체') {
+      scrollToPanel(metricRegistryRef)
+      return
+    }
+    const targetMetric = visibleMetricRegistry.find((metric) => metric.bundle === nextBundle && (metricTab === '전체' || metric.scope === metricTab))
+    if (!targetMetric) return
+    openMetricBundle(targetMetric)
+    window.setTimeout(() => {
+      document.getElementById(metricBundleDomId(targetMetric.scope, targetMetric.bundle))?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      })
+    }, 120)
+  }
+  const metricStatusBase = visibleMetricRegistry.filter((metric) => {
+    const matchesTab = metricTab === '전체' || metric.scope === metricTab
+    const matchesBundle = selectedMetricBundle === '전체' || metric.bundle === selectedMetricBundle
+    return matchesTab && matchesBundle
+  })
+  const metricStatusCounts = metricStatuses.reduce((acc, status) => {
+    acc[status] = status === '전체' ? metricStatusBase.length : metricStatusBase.filter((metric) => metric.status === status).length
+    return acc
+  }, {})
+  const metricScopeGroups = scopes
+    .filter((scope) => scope !== '전체' && (metricTab === '전체' || metricTab === scope))
+    .map((scope) => ({
+      scope,
+      groups: groupedMetrics
+        .map((group) => ({
+          ...group,
+          metrics: group.metrics.filter((metric) => metric.scope === scope && isCoreMetricBundle(metric.bundle)),
+        }))
+        .filter((group) => group.metrics.length),
+    }))
+    .filter((group) => group.groups.length)
   const selectRaw = (rawId, options = {}) => {
     setSelectedItem({ type: 'raw', id: rawId })
     setDetailOpen(true)
@@ -289,6 +352,8 @@ export default function AdminDataRoom({
     }
   }
   const selectMetric = (metricId, options = {}) => {
+    const metric = getMetricById(metricId)
+    openMetricBundle(metric)
     setSelectedItem({ type: 'metric', id: metricId })
     setDetailOpen(true)
     if (options.scroll) {
@@ -296,6 +361,14 @@ export default function AdminDataRoom({
       setMetricStatus('전체')
       setMetricBundle('전체')
       setMetricQuery('')
+      if (metric) {
+        window.setTimeout(() => {
+          document.getElementById(metricBundleDomId(metric.scope, metric.bundle))?.scrollIntoView({
+            behavior: 'smooth',
+            block: 'start',
+          })
+        }, 120)
+      }
       scrollToRegistryTarget(`[data-metric-id="${String(metricId).replace(/"/g, '\\"')}"]`, metricRegistryRef)
     }
   }
@@ -484,6 +557,38 @@ export default function AdminDataRoom({
         </div>
       </section>
 
+      <section className="panel data-room-ops-panel" aria-label="data room operation checks">
+        <div className="data-room-ops-heading">
+          <div>
+            <span className="mini-label">{'\uC6B4\uC601 \uC810\uAC80'}</span>
+            <h2>{'\uB370\uC774\uD130\uB8F8 \uC624\uB298 \uD655\uC778\uD560 \uAC83'}</h2>
+          </div>
+          <small>{'\uC5C5\uB85C\uB4DC, API \uC0C1\uD0DC, \uB85C\uADF8, \uC9C0\uD45C \uC5F0\uACB0\uC744 \uBC14\uB85C \uC810\uAC80\uD569\uB2C8\uB2E4.'}</small>
+        </div>
+        <div className="data-room-ops-grid">
+          <button type="button" onClick={() => scrollToPanel(importPanelRef)}>
+            <small>{'\uB9AC\uD3EC\uD2B8 raw'}</small>
+            <strong>{externalReportRawCount}{'\uAC1C'}</strong>
+            <span>{externalReportRawCount ? '\uC5C5\uB85C\uB4DC \uC6D0\uCC9C \uD655\uC778' : '\uBCF4\uC644 \uC5D1\uC140 \uC5C5\uB85C\uB4DC \uB300\uAE30'}</span>
+          </button>
+          <button type="button" onClick={() => scrollToPanel(apiStatusPanelRef)}>
+            <small>{'API raw'}</small>
+            <strong>{externalApiRawCount}{'\uAC1C'}</strong>
+            <span>{apiStatus?.ok ? '\uC801\uC7AC \uAC00\uB2A5' : '\uC124\uC815 \uD655\uC778 \uD544\uC694'}</span>
+          </button>
+          <button type="button" onClick={() => scrollToPanel(apiLogPanelRef)}>
+            <small>{'\uC218\uC9D1 \uB85C\uADF8'}</small>
+            <strong>{apiLogCount}{'\uAC74'}</strong>
+            <span>{apiLogCount ? '\uCD5C\uADFC \uC774\uBCA4\uD2B8 \uD655\uC778' : '\uBC1C\uAD74/\uB808\uD37C\uB7F0\uC2A4 \uC2E4\uD589 \uD6C4 \uB204\uC801'}</span>
+          </button>
+          <button type="button" onClick={() => scrollToPanel(metricRegistryRef)}>
+            <small>{'\uC9C0\uD45C \uC5F0\uACB0'}</small>
+            <strong>{coverageSummary.ok}/{coverageSummary.total}</strong>
+            <span>{coverageSummary.needsReview ? '\uB204\uB77D raw/\uC9C0\uD45C \uD655\uC778' : '\uD504\uB860\uD2B8 \uC5F0\uACB0 \uC815\uC0C1'}</span>
+          </button>
+        </div>
+      </section>
+
       <section className="panel data-responsibility-panel" aria-label="데이터룸 구분 목록">
         <div className="data-room-map-heading">
           <div>
@@ -596,38 +701,6 @@ export default function AdminDataRoom({
         </div>
       </section>
 
-      <section className="panel data-room-ops-panel" aria-label="data room operation checks">
-        <div className="data-room-ops-heading">
-          <div>
-            <span className="mini-label">{'\uC6B4\uC601 \uC810\uAC80'}</span>
-            <h2>{'\uB370\uC774\uD130\uB8F8 \uC624\uB298 \uD655\uC778\uD560 \uAC83'}</h2>
-          </div>
-          <small>{'\uC5C5\uB85C\uB4DC, API \uC0C1\uD0DC, \uB85C\uADF8, \uC9C0\uD45C \uC5F0\uACB0\uC744 \uBC14\uB85C \uC810\uAC80\uD569\uB2C8\uB2E4.'}</small>
-        </div>
-        <div className="data-room-ops-grid">
-          <button type="button" onClick={() => scrollToPanel(importPanelRef)}>
-            <small>{'\uB9AC\uD3EC\uD2B8 raw'}</small>
-            <strong>{externalReportRawCount}{'\uAC1C'}</strong>
-            <span>{externalReportRawCount ? '\uC5C5\uB85C\uB4DC \uC6D0\uCC9C \uD655\uC778' : '\uBCF4\uC644 \uC5D1\uC140 \uC5C5\uB85C\uB4DC \uB300\uAE30'}</span>
-          </button>
-          <button type="button" onClick={() => scrollToPanel(apiStatusPanelRef)}>
-            <small>{'API raw'}</small>
-            <strong>{externalApiRawCount}{'\uAC1C'}</strong>
-            <span>{apiStatus?.ok ? '\uC801\uC7AC \uAC00\uB2A5' : '\uC124\uC815 \uD655\uC778 \uD544\uC694'}</span>
-          </button>
-          <button type="button" onClick={() => scrollToPanel(apiLogPanelRef)}>
-            <small>{'\uC218\uC9D1 \uB85C\uADF8'}</small>
-            <strong>{apiLogCount}{'\uAC74'}</strong>
-            <span>{apiLogCount ? '\uCD5C\uADFC \uC774\uBCA4\uD2B8 \uD655\uC778' : '\uBC1C\uAD74/\uB808\uD37C\uB7F0\uC2A4 \uC2E4\uD589 \uD6C4 \uB204\uC801'}</span>
-          </button>
-          <button type="button" onClick={() => scrollToPanel(metricRegistryRef)}>
-            <small>{'\uC9C0\uD45C \uC5F0\uACB0'}</small>
-            <strong>{coverageSummary.ok}/{coverageSummary.total}</strong>
-            <span>{coverageSummary.needsReview ? '\uB204\uB77D raw/\uC9C0\uD45C \uD655\uC778' : '\uD504\uB860\uD2B8 \uC5F0\uACB0 \uC815\uC0C1'}</span>
-          </button>
-        </div>
-      </section>
-
       <section className="panel data-room-import-panel" ref={importPanelRef}>
         <div>
           <span className="mini-label">리포트 원천 적재</span>
@@ -709,36 +782,35 @@ export default function AdminDataRoom({
             </ol>
           </div>
         )}
-      </section>
-
-      <section className={`panel data-room-api-log-panel ${apiEvents?.length ? '' : 'compact'}`} ref={apiLogPanelRef}>
-        <div className="panel-heading">
-          <div>
-            <span className="mini-label">API 수집 이벤트</span>
-            <h2>최근 API 수집 로그</h2>
-          </div>
-          <button className="secondary-button compact-button" type="button" onClick={onRefreshApiEvents}>
-            새로고침
-          </button>
-        </div>
-        <div className="api-event-list">
-          {apiEvents?.length ? (
-            apiEvents.map((event) => (
-              <button type="button" className="api-event-row" key={event.id} onClick={() => selectRaw(event.raw_source_id, { scroll: true })}>
-                <span className={`data-status ${event.status === 'success' ? 'ok' : event.status === 'partial' ? 'warning' : 'error'}`}>{event.status}</span>
-                <strong>{event.provider}</strong>
-                <span>{event.endpoint}</span>
-                <span>{event.platform || '-'} · {event.country || '-'}</span>
-                <span className="api-event-query">{event.query || '-'}</span>
-                <span>{event.result_count}건</span>
-                <small>{event.error_message || new Date(event.created_at).toLocaleString('ko-KR')}</small>
-              </button>
-            ))
-          ) : (
-            <div className="api-event-empty">
-              아직 저장된 API 수집 로그가 없습니다. 발굴/레퍼런스/콘텐츠 갱신 API를 실행하면 이곳에 raw 이벤트가 쌓입니다.
+        <div className="api-status-log-preview" ref={apiLogPanelRef}>
+          <div className="api-status-log-heading">
+            <div>
+              <strong>최근 수집 로그</strong>
+              <small>{apiLogCount ? `최근 ${Math.min(apiEvents.length, 3)}건 표시 · 전체 ${apiLogCount}건` : '아직 저장된 API 이벤트가 없습니다.'}</small>
             </div>
-          )}
+            <button className="secondary-button compact-button" type="button" onClick={onRefreshApiEvents}>
+              새로고침
+            </button>
+          </div>
+          <div className="api-event-list">
+            {apiEvents?.length ? (
+              apiEvents.slice(0, 3).map((event) => (
+                <button type="button" className="api-event-row" key={event.id} onClick={() => selectRaw(event.raw_source_id, { scroll: true })}>
+                  <span className={`data-status ${event.status === 'success' ? 'ok' : event.status === 'partial' ? 'warning' : 'error'}`}>{event.status}</span>
+                  <strong>{event.provider}</strong>
+                  <span>{event.endpoint}</span>
+                  <span>{event.platform || '-'} · {event.country || '-'}</span>
+                  <span className="api-event-query">{event.query || '-'}</span>
+                  <span>{event.result_count}건</span>
+                  <small>{event.error_message || new Date(event.created_at).toLocaleString('ko-KR')}</small>
+                </button>
+              ))
+            ) : (
+              <div className="api-event-empty">
+                발굴, 레퍼런스, 콘텐츠 갱신 API를 실행하면 이곳에 최근 raw 수집 이벤트가 표시됩니다.
+              </div>
+            )}
+          </div>
         </div>
       </section>
 
@@ -871,6 +943,7 @@ export default function AdminDataRoom({
               <div>
                 <span className="mini-label">계산지표 저장소</span>
                 <h2>계산지표 관리</h2>
+                <p>현재 앱에서 쓰는 실제 계산지표 번들을 내부/외부 기준으로 접어 관리합니다.</p>
               </div>
               <div className="panel-heading-actions">
                 {scopes.map((scope) => (
@@ -886,48 +959,93 @@ export default function AdminDataRoom({
               </div>
             </div>
 
-            <div className="filter-bar data-room-filters">
-              <label className="search-box">
-                <Search size={16} />
-                <input
-                  value={metricQuery}
-                  onChange={(event) => setMetricQuery(event.target.value)}
-                  placeholder="지표명, 계산식, raw 데이터 검색"
-                />
-              </label>
-              <SelectPill label="상태" icon={<Filter size={15} />} value={metricStatus} options={metricStatuses} onChange={setMetricStatus} />
-              <SelectPill label="번들" icon={<ClipboardList size={15} />} value={metricBundle} options={metricBundles} onChange={setMetricBundle} />
+            <div className="filter-bar data-room-filters metric-filter-bar">
+              <div className="metric-status-chip-row" aria-label="계산 상태 필터">
+                {metricStatuses.map((status) => (
+                  <button
+                    type="button"
+                    className={`status-filter-chip ${metricStatus === status ? 'active' : ''} ${statusClass(status)}`}
+                    key={status}
+                    onClick={() => setMetricStatus(status)}
+                  >
+                    {status}
+                    <span>{metricStatusCounts[status] ?? 0}</span>
+                  </button>
+                ))}
+              </div>
+              <SelectPill
+                label="번들 바로가기"
+                icon={<ClipboardList size={15} />}
+                value={selectedMetricBundle}
+                options={metricBundleOptions}
+                onChange={jumpToMetricBundle}
+              />
             </div>
 
             <div className="metric-bundle-list">
-              {groupedMetrics.map((group) => (
-                <article className="metric-bundle" key={group.bundle}>
-                  <div className="metric-bundle-heading">
-                    <strong>{group.bundle}</strong>
-                    <span>{group.metrics.length}개 세부지표</span>
+              {metricScopeGroups.map((scopeGroup) => (
+                <section className="metric-scope-group" key={scopeGroup.scope}>
+                  <div className="metric-scope-heading">
+                    <span>{scopeGroup.scope}</span>
+                    <small>{scopeGroup.groups.reduce((sum, group) => sum + group.metrics.length, 0)}개 지표</small>
                   </div>
-                  <div className="metric-bundle-items">
-                    {group.metrics.map((metric) => (
-                      <button
-                        type="button"
-                        data-metric-id={metric.id}
-                        className={`metric-row-button ${selectedItem.type === 'metric' && selectedItem.id === metric.id ? 'active' : ''}`}
-                        key={metric.id}
-                        onClick={() => selectMetric(metric.id)}
-                      >
-                        <div>
-                          <span>{metric.id}</span>
-                          <strong>{metric.name}</strong>
-                          <small>{metric.description}</small>
-                        </div>
-                        <code>{metric.formula}</code>
-                        <StatusPill status={metric.status} />
-                      </button>
-                    ))}
-                  </div>
-                </article>
+                  {scopeGroup.groups.map((group) => {
+                    const bundleKey = metricBundleKey(scopeGroup.scope, group.bundle)
+                    const isOpen = Boolean(openMetricBundles[bundleKey])
+                    const okCount = group.metrics.filter((metric) => metric.status === '정상').length
+                    const reviewCount = group.metrics.filter((metric) => ['검증 필요', '지연'].includes(metric.status)).length
+                    const errorCount = group.metrics.filter((metric) => metric.status === '오류').length
+                    return (
+                      <article className={`metric-bundle ${isOpen ? 'open' : ''}`} id={metricBundleDomId(scopeGroup.scope, group.bundle)} key={bundleKey}>
+                        <button
+                          type="button"
+                          className="metric-bundle-heading"
+                          aria-expanded={isOpen}
+                          onClick={() => toggleMetricBundle(scopeGroup.scope, group.bundle)}
+                        >
+                          <div>
+                            <span className="mini-label">{scopeGroup.scope} 지표 번들</span>
+                            <strong>{group.bundle}</strong>
+                            <small>{group.metrics.length}개 세부지표</small>
+                          </div>
+                          <div className="metric-bundle-badges">
+                            <span className="metric-count-badge ok">정상 {okCount}</span>
+                            <span className="metric-count-badge warning">검증 {reviewCount}</span>
+                            {errorCount ? <span className="metric-count-badge error">오류 {errorCount}</span> : null}
+                            <ChevronDown size={18} className="metric-bundle-chevron" />
+                          </div>
+                        </button>
+                        {isOpen && (
+                          <div className="metric-bundle-items">
+                            {group.metrics.map((metric) => (
+                              <button
+                                type="button"
+                                data-metric-id={metric.id}
+                                className={`metric-row-button ${selectedItem.type === 'metric' && selectedItem.id === metric.id ? 'active' : ''}`}
+                                key={metric.id}
+                                onClick={() => selectMetric(metric.id)}
+                              >
+                                <div className="metric-row-main">
+                                  <span>{metric.id}</span>
+                                  <strong>{metric.name}</strong>
+                                  <small>{metric.description}</small>
+                                </div>
+                                <div className="metric-row-raw">
+                                  <span>사용 raw</span>
+                                  <small>{metric.rawNames?.slice(0, 2).join(' · ') || '연결 raw 없음'}</small>
+                                </div>
+                                <code className="metric-formula-chip">{metric.formula}</code>
+                                <StatusPill status={metric.status} />
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                      </article>
+                    )
+                  })}
+                </section>
               ))}
-              {!groupedMetrics.length && <div className="empty-table-cell">조건에 맞는 계산지표가 없습니다.</div>}
+              {!metricScopeGroups.length && <div className="empty-table-cell">조건에 맞는 계산지표가 없습니다.</div>}
             </div>
 
             <div className="data-room-actions-row">

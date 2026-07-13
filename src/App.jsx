@@ -2069,6 +2069,20 @@ function getCreatorsByIds(creators, ids) {
   return ids.map((id) => creators.find((creator) => creator.id === id)).filter(Boolean)
 }
 
+function getCreatorPriceValue(creator = {}) {
+  return Number(creator.price || creator.estimatedPrice || creator.unitPrice || 0)
+}
+
+function getCreatorGroupPriceStats(groupCreators = []) {
+  const prices = groupCreators.map(getCreatorPriceValue).filter((price) => price > 0)
+  const total = prices.reduce((sum, price) => sum + price, 0)
+  return {
+    total,
+    average: prices.length ? Math.round(total / prices.length) : 0,
+    pricedCount: prices.length,
+  }
+}
+
 function keywordList(value) {
   return String(value || '')
     .split(',')
@@ -6746,22 +6760,27 @@ function App() {
       return (creatorGroupTypeFilter === '전체' || group.type === creatorGroupTypeFilter) && (!query || searchable.includes(query))
     })
   }, [creatorGroupQuery, creatorGroupTypeFilter, creators, safeCreatorGroups])
-  const creatorGroupSummary = useMemo(
-    () =>
-      safeCreatorGroups.reduce(
-        (summary, group) => {
-          const groupCreators = getCreatorsByIds(creators, group.creatorIds || [])
-          return {
-            groups: summary.groups + 1,
-            creators: summary.creators + groupCreators.length,
-            avgFollowers: summary.avgFollowers + groupCreators.reduce((sum, creator) => sum + Number(creator.followers || 0), 0),
-            avgViews: summary.avgViews + groupCreators.reduce((sum, creator) => sum + Number(creator.avgViews || 0), 0),
-          }
-        },
-        { groups: 0, creators: 0, avgFollowers: 0, avgViews: 0 },
-      ),
-    [creators, safeCreatorGroups],
-  )
+  const creatorGroupSummary = useMemo(() => {
+    const summary = safeCreatorGroups.reduce(
+      (groupSummary, group) => {
+        const groupCreators = getCreatorsByIds(creators, group.creatorIds || [])
+        const priceStats = getCreatorGroupPriceStats(groupCreators)
+        return {
+          groups: groupSummary.groups + 1,
+          creators: groupSummary.creators + groupCreators.length,
+          avgFollowers: groupSummary.avgFollowers + groupCreators.reduce((sum, creator) => sum + Number(creator.followers || 0), 0),
+          avgViews: groupSummary.avgViews + groupCreators.reduce((sum, creator) => sum + Number(creator.avgViews || 0), 0),
+          totalPrice: groupSummary.totalPrice + priceStats.total,
+          pricedCreators: groupSummary.pricedCreators + priceStats.pricedCount,
+        }
+      },
+      { groups: 0, creators: 0, avgFollowers: 0, avgViews: 0, totalPrice: 0, pricedCreators: 0 },
+    )
+    return {
+      ...summary,
+      avgPrice: summary.pricedCreators ? Math.round(summary.totalPrice / summary.pricedCreators) : 0,
+    }
+  }, [creators, safeCreatorGroups])
   const selectedCreatorGroup = useMemo(
     () => visibleCreatorGroups.find((group) => group.id === selectedCreatorGroupId) ?? visibleCreatorGroups[0] ?? null,
     [selectedCreatorGroupId, visibleCreatorGroups],
@@ -6769,6 +6788,10 @@ function App() {
   const selectedCreatorGroupCreators = useMemo(
     () => (selectedCreatorGroup ? getCreatorsByIds(creators, selectedCreatorGroup.creatorIds || []) : []),
     [creators, selectedCreatorGroup],
+  )
+  const selectedCreatorGroupPriceStats = useMemo(
+    () => getCreatorGroupPriceStats(selectedCreatorGroupCreators),
+    [selectedCreatorGroupCreators],
   )
   const selectedCreatorGroupMembers = useMemo(
     () => selectedCreatorGroupCreators.filter((creator) => selectedCreatorGroupMemberIds.includes(creator.id)),
@@ -7785,10 +7808,6 @@ function App() {
   const dataRoomRawOwners = useMemo(
     () => ['전체', ...new Set(dataRoomRawData.map((item) => item.ownerDept))],
     [dataRoomRawData],
-  )
-  const dataRoomMetricBundles = useMemo(
-    () => ['전체', ...new Set(dataRoomMetrics.map((item) => item.bundle))],
-    [dataRoomMetrics],
   )
   const filteredDataRoomRawData = useMemo(() => {
     const rawSourceQuery = dataRoomRawQuery.trim()
@@ -13601,6 +13620,7 @@ function App() {
             rawData={filteredDataRoomRawData}
             allRawData={dataRoomRawData}
             groupedMetrics={groupedDataRoomMetrics}
+            allMetrics={dataRoomMetrics}
             workflowCoverage={dataRoomWorkflowCoverage}
             pendingBundles={dataRoomPendingBundles}
             rawTab={dataRoomRawTab}
@@ -13626,7 +13646,6 @@ function App() {
             rawCategories={dataRoomRawCategories}
             rawMethods={dataRoomRawMethods}
             rawOwners={dataRoomRawOwners}
-            metricBundles={dataRoomMetricBundles}
             selectedItem={selectedDataRoomItem}
             setSelectedItem={setSelectedDataRoomItem}
             activeDetail={activeDataRoomDetail}
@@ -14864,6 +14883,7 @@ function App() {
             <Stat label="누적 멤버" value={`${creatorGroupSummary.creators}명`} />
             <Stat label="총 팔로워" value={compactNumber(creatorGroupSummary.avgFollowers)} />
             <Stat label="총 평균 조회" value={compactNumber(creatorGroupSummary.avgViews)} />
+            <Stat label="평균 단가" value={creatorGroupSummary.avgPrice ? won(creatorGroupSummary.avgPrice) : '산정 전'} />
           </div>
 
           <div className="creator-group-toolbar">
@@ -14896,6 +14916,7 @@ function App() {
                 const platforms = Array.from(new Set(groupCreators.map((creator) => creator.platform).filter(Boolean))).slice(0, 3)
                 const groupViews = groupCreators.reduce((sum, creator) => sum + Number(creator.avgViews || 0), 0)
                 const groupFollowers = groupCreators.reduce((sum, creator) => sum + Number(creator.followers || 0), 0)
+                const groupPriceStats = getCreatorGroupPriceStats(groupCreators)
                 const active = selectedCreatorGroup?.id === group.id
 
                 return (
@@ -14935,6 +14956,7 @@ function App() {
                       <span>멤버 {groupCreators.length}명</span>
                       <span>팔로워 {compactNumber(groupFollowers)}</span>
                       <span>평균조회 {compactNumber(groupViews)}</span>
+                      <span>평균단가 {groupPriceStats.average ? won(groupPriceStats.average) : '산정 전'}</span>
                     </div>
                     <div className="creator-group-platforms">
                       {(platforms.length ? platforms : [group.platform || 'All']).map((platformName) => (
@@ -14983,7 +15005,11 @@ function App() {
                     <h3>{selectedCreatorGroup.name}</h3>
                     <p>{selectedCreatorGroup.description}</p>
                   </div>
-                  <span>{selectedCreatorGroupCreators.length}명</span>
+                  <div className="creator-group-detail-badges">
+                    <span>{selectedCreatorGroupCreators.length}명</span>
+                    <span>평균 단가 {selectedCreatorGroupPriceStats.average ? won(selectedCreatorGroupPriceStats.average) : '산정 전'}</span>
+                    <span>총 예상 {selectedCreatorGroupPriceStats.total ? won(selectedCreatorGroupPriceStats.total) : '산정 전'}</span>
+                  </div>
                 </div>
                 <div className="creator-group-detail-actions">
                   <button className="secondary-button compact-button" type="button" onClick={toggleAllCreatorGroupMembers} disabled={!selectedCreatorGroupCreators.length}>
@@ -15038,6 +15064,10 @@ function App() {
                         <div>
                           <strong>{percent(creator.engagement)}</strong>
                           <span>참여율</span>
+                        </div>
+                        <div className="creator-group-price-metric">
+                          <strong>{getCreatorPriceValue(creator) ? won(getCreatorPriceValue(creator)) : '산정 전'}</strong>
+                          <span>예상 단가</span>
                         </div>
                         <a href={creator.profileUrl || '#'} target="_blank" rel="noreferrer" aria-label={`${creator.name} 채널 보기`}>
                           채널 보기
