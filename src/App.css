@@ -1189,8 +1189,10 @@
   border-radius: 8px;
   color: var(--text-soft);
   background: rgba(255, 255, 255, 0.64);
-  font-size: 13px;
-  font-weight: 800;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.5;
+  word-break: keep-all;
 }
 
 .reference-search-status.loading {

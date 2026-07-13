@@ -49,6 +49,9 @@ function formatCreatorOpsApiFailure(path, response, payload = {}, fallbackText =
     fallbackText ||
     response?.statusText ||
     ''
+  if (status === 402) {
+    return `${path} · 402: 검색 API 크레딧 또는 결제 설정이 필요합니다.`
+  }
   const hint = statusHints[status] || 'CreatorOps API 요청에 실패했습니다.'
   const details = upstreamMessage ? ` (${String(upstreamMessage).slice(0, 180)})` : ''
   return `${path} · ${status || 'network'}: ${hint}${details}`

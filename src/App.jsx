@@ -12954,7 +12954,13 @@ function App() {
       })
       showToast(`${incoming.length}개 레퍼런스를 가져왔어요. 필요한 항목만 저장하세요.`)
     } catch (error) {
-      const message = error instanceof Error ? error.message : '레퍼런스 검색에 실패했어요.'
+      const rawMessage = error instanceof Error ? error.message : '레퍼런스 검색에 실패했어요.'
+      const isBillingLimit =
+        /\/references\/search/i.test(rawMessage) &&
+        /(402|Payment Required|billing|credits|결제|크레딧)/i.test(rawMessage)
+      const message = isBillingLimit
+        ? '검색 API 크레딧이 소진되어 새 레퍼런스 검색을 잠시 중단했어요. 저장된 레퍼런스는 그대로 볼 수 있고, 급한 콘텐츠는 [링크로 찾기]로 URL을 저장해 분석하세요.'
+        : rawMessage
       setReferenceSearchStatus({ mode: 'error', message })
       showToast(message)
     }
