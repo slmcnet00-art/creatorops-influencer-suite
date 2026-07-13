@@ -5602,7 +5602,7 @@ function buildDataRoomExtendedRawCatalog({
       active: true,
     },
     {
-      id: BULK_TRACKING_RAW_SOURCE_ID,
+      id: 'RAW-EXT-CONT-BULK-001',
       name: '콘텐츠 추적 대량등록 raw',
       scope: '외부',
       category: '콘텐츠 추적',
@@ -5626,7 +5626,7 @@ function buildDataRoomExtendedRawCatalog({
       active: true,
     },
     {
-      id: BULK_CREATOR_GROUP_RAW_SOURCE_ID,
+      id: 'RAW-INT-GROUP-BULK-001',
       name: '후보 그룹 대량등록 raw',
       scope: '내부',
       category: '후보 그룹/세그먼트',
@@ -13703,7 +13703,7 @@ function App() {
               <div className="panel-heading-actions">
                 <button className="primary-button compact-button" type="button" onClick={runRealDiscoverySearch} disabled={realDiscoverySearching}>
                   <Search size={16} />
-                  {realDiscoverySearching ? '실제 후보 검색 중' : '1단계 실제 웹 발굴'}
+                  {realDiscoverySearching ? '실제 후보 검색 중' : '실제 웹 발굴'}
                 </button>
               </div>
             </div>
@@ -14612,7 +14612,7 @@ function App() {
               </button>
               <button className="secondary-button compact-button" type="button" onClick={() => creatorGroupBulkInputRef.current?.click()}>
                 <Plus size={15} />
-                \uB9AC\uC2A4\uD2B8 \uCD94\uAC00
+                {'리스트 업로드'}
               </button>
               <button className="primary-button compact-button" type="button" onClick={createCreatorGroup}>
                 <Plus size={15} />
@@ -16485,7 +16485,7 @@ function App() {
           <section className="panel wide-log-panel">
             <div className="panel-heading">
               <div>
-                <span className="mini-label">작업 로그</span>
+                <span className="mini-label">ACTIVITY</span>
                 <h2>작업 로그</h2>
               </div>
               <History size={19} />
