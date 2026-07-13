@@ -265,80 +265,6 @@ async function readExternalReportWorkbook(file, profile) {
   return sheets.filter((sheet) => sheet.rows.length)
 }
 
-const influencerBrandGuideTemplate = `# 인플루언서 브랜드 가이드
-
-## 업체/브랜드 기본 정보
-- 상호명:
-- 브랜드명:
-- 담당자:
-- 이메일:
-- 홈페이지:
-- 브랜드 채널: Instagram / YouTube / TikTok
-
-## 캠페인 목적
-- 목적:
-- 활용처: 브랜딩 / SNS 업로드 / 광고 소재 / 상세페이지 / 구매 전환 / 공동구매
-- KPI:
-
-## 기존 진행 사례
-- 만족했던 사례:
-- 불만족했던 사례:
-- 참고 링크:
-
-## 원메시지
-- 영상에서 반드시 전달해야 할 한 문장:
-
-## 타깃 페르소나
-- 연령/성별/라이프스타일:
-- 주요 고민:
-- 구매를 망설이는 이유:
-- 구매를 결심하는 조건:
-
-## USP / 셀링 포인트
-1.
-2.
-3.
-4.
-5.
-
-## 영상 제작 방향
-- 영상 유형: 상세 리뷰 / 감성 브랜딩 / 인터뷰 / 룩북 / 언박싱 / 사용법 시연 / 비교 리뷰 / 공동구매
-- 벤치마킹 링크:
-- 따라야 할 점:
-- 피해야 할 점:
-
-## 영상 내러티브
-1. 첫 3초 후킹:
-2. 문제/공감 상황:
-3. 제품 사용 장면:
-4. 구매 전 망설임 해소:
-5. CTA:
-
-## 자막 / 나레이션 / 배경음악
-- 자막:
-- 나레이션:
-- 배경음악:
-- 폰트/이미지 저작권:
-
-## 크리에이터 전달 사항
-- 세로형 9:16 비율
-- 첫 3초 후킹 필수
-- 가능하면 30초 이내
-- 페르소나에 맞는 공감 스크립트
-- 상업적 이용 가능한 폰트/음원/이미지만 사용
-
-## 금지/주의 표현
--
-
-## 검수 체크리스트
-- [ ] 원메시지가 첫 3초 안에 드러나는가?
-- [ ] 타깃 페르소나가 공감할 상황이 있는가?
-- [ ] USP가 장면으로 보여지는가?
-- [ ] 과장 표현, 의학적 효능 단정, 경쟁사 실명 비교가 없는가?
-- [ ] 상업적 이용 가능한 폰트/음원/이미지를 사용했는가?
-- [ ] CTA가 자연스럽게 연결되는가?
-`
-
 const minimumVisibleFollowers = 1000
 
 const recommendationPolicy = {
@@ -1329,28 +1255,59 @@ const teamRoleCatalog = {
   Owner: {
     label: '운영 총괄',
     description: '팀/계정/권한/전체 브랜드를 관리합니다.',
+    dataScope: '전체 브랜드 DB',
     permissions: ['전체 데이터', '권한 부여', '삭제/초기화', '다운로드'],
   },
   Admin: {
     label: '관리자',
     description: '브랜드와 캠페인 운영을 관리합니다.',
+    dataScope: '전체 브랜드 DB',
     permissions: ['브랜드 관리', '캠페인 관리', '데이터 다운로드'],
   },
   Manager: {
     label: '브랜드 매니저',
     description: '배정된 브랜드의 발굴, 메시지, 리포트를 운영합니다.',
+    dataScope: '배정 브랜드 DB',
     permissions: ['발굴', '메시지', '리포트'],
   },
   Client: {
     label: '클라이언트',
     description: '배정된 브랜드의 승인용 풀과 리포트를 봅니다.',
+    dataScope: '배정 브랜드 승인/리포트',
     permissions: ['컨펌 보기', '리포트 보기'],
   },
   Analyst: {
     label: '분석 담당',
     description: '데이터 품질과 성과 리포트만 확인합니다.',
+    dataScope: '배정 브랜드 데이터룸/리포트',
     permissions: ['데이터 검토', '리포트 보기'],
   },
+}
+
+const fullBrandAccessRoles = new Set(['Owner', 'Admin'])
+
+function normalizeRole(role) {
+  return teamRoleCatalog[role] ? role : 'Manager'
+}
+
+function getAccountBrandIds(account, brands) {
+  if (!account) return []
+  const allBrandIds = brands.map((brand) => brand.id)
+  if (fullBrandAccessRoles.has(normalizeRole(account.role))) return allBrandIds
+  const allowedIds = new Set(account.brandIds ?? [])
+  return allBrandIds.filter((brandId) => allowedIds.has(brandId))
+}
+
+function getAccessibleBrands(account, brands) {
+  const accessibleIds = new Set(getAccountBrandIds(account, brands))
+  return brands.filter((brand) => accessibleIds.has(brand.id))
+}
+
+function getAccountBrandScopeLabel(account, brands) {
+  const role = normalizeRole(account?.role)
+  if (fullBrandAccessRoles.has(role)) return `전체 ${brands.length}개 브랜드`
+  const count = getAccountBrandIds(account, brands).length
+  return `${count}/${brands.length}개 브랜드`
 }
 
 function normalizeBrand(brand, index = 0) {
@@ -1700,6 +1657,26 @@ function normalizeWorkspace(saved) {
   const activeBrandId = normalizedBrands.some((brand) => brand.id === saved?.activeBrandId)
     ? saved.activeBrandId
     : normalizedBrands[0]?.id
+  const sourceAccounts = saved?.accounts?.length ? saved.accounts : defaultWorkspace.accounts
+  const normalizedAccounts = sourceAccounts.map((account) => {
+    const role = normalizeRole(account.role)
+    const validBrandIds = (account.brandIds ?? []).filter((brandId) =>
+      normalizedBrands.some((brand) => brand.id === brandId),
+    )
+    const brandIds = fullBrandAccessRoles.has(role)
+      ? normalizedBrands.map((brand) => brand.id)
+      : validBrandIds.length
+        ? validBrandIds
+        : normalizedBrands[0]?.id
+          ? [normalizedBrands[0].id]
+          : []
+
+    return {
+      ...account,
+      role,
+      brandIds,
+    }
+  })
 
   return {
     ...defaultWorkspace,
@@ -1708,11 +1685,11 @@ function normalizeWorkspace(saved) {
       ...defaultWorkspace.team,
       ...(saved?.team ?? {}),
     },
-    accounts: saved?.accounts?.length ? saved.accounts : defaultWorkspace.accounts,
+    accounts: normalizedAccounts,
     activeAccountId:
-      saved?.accounts?.some((account) => account.id === saved?.activeAccountId)
+      normalizedAccounts.some((account) => account.id === saved?.activeAccountId)
         ? saved.activeAccountId
-        : defaultWorkspace.activeAccountId,
+        : normalizedAccounts[0]?.id ?? defaultWorkspace.activeAccountId,
     brands: normalizedBrands,
     activeBrandId,
     creators: normalizedCreators,
@@ -2176,6 +2153,25 @@ function buildLearningMaterialsFromRows(rawRows, sourceType, sourceName = '') {
   })
 }
 
+async function readLearningWorkbookRows(file) {
+  if (/\.xlsx$/i.test(file.name)) return readSheet(file)
+
+  const text = await file.text()
+  const document = new DOMParser().parseFromString(text, 'text/xml')
+  const nodes = (name) => {
+    const namespaced = Array.from(document.getElementsByTagNameNS('*', name))
+    return namespaced.length ? namespaced : Array.from(document.getElementsByTagName(name))
+  }
+  const rows = nodes('Row').map((row) =>
+    (Array.from(row.getElementsByTagNameNS('*', 'Data')).length
+      ? Array.from(row.getElementsByTagNameNS('*', 'Data'))
+      : Array.from(row.getElementsByTagName('Data'))
+    ).map((cell) => cell.textContent || ''),
+  )
+  if (!rows.some((row) => row.some(Boolean))) throw new Error('Empty workbook')
+  return rows
+}
+
 function buildGuideLearningMaterial(text, sourceName = '') {
   const clean = String(text || '').trim()
   if (!clean) return null
@@ -2201,6 +2197,26 @@ function buildGuideLearningMaterial(text, sourceName = '') {
       .join(', '),
     doSay,
     dontSay,
+    createdAt: nowLabel(),
+  }
+}
+
+function buildGoogleSheetLearningMaterial(url, sourceName = 'Google Sheet 학습자료') {
+  const cleanUrl = String(url || '').trim()
+  if (!cleanUrl) return null
+  const normalizedUrl = /^https?:\/\//i.test(cleanUrl) ? cleanUrl : `https://${cleanUrl}`
+  if (!/docs\.google\.com\/spreadsheets|drive\.google\.com/i.test(normalizedUrl)) return null
+
+  return {
+    id: createId(),
+    title: sourceName,
+    sourceType: 'Google Sheet 첨부',
+    sourceName: normalizedUrl,
+    summary: `캠페인 전략과 인플루언서 가이드 생성 시 참조할 브랜드/제품 학습자료 Google Sheet입니다. 운영자는 시트의 USP, 타깃, 금지 표현, 후킹 포인트를 최신 원천으로 관리합니다.`,
+    keywords: '브랜드 학습자료, 제품 USP, 타깃 페르소나, 후킹 포인트, 금지 표현, Google Sheet',
+    doSay: 'Google Sheet에 정리된 USP, 원메시지, 후킹 포인트, 증명 자료를 우선 반영',
+    dontSay: '시트에 금지/주의로 표시된 표현, 과장 효능, 경쟁사 실명 비교는 제외',
+    url: normalizedUrl,
     createdAt: nowLabel(),
   }
 }
@@ -4965,15 +4981,15 @@ function buildAdminRawDataCatalog({
       name: '캠페인 전략 생성 입력 raw',
       scope: '내부',
       category: '캠페인 전략',
-      description: '캠페인 생성 시 입력한 브랜드/제품, 타깃, 키워드, KPI, 예산, 학습자료 연결값',
+      description: '캠페인 생성 시 입력한 브랜드/제품, 타깃, 키워드, KPI, 예산, 엑셀/파일/Google Sheet 학습자료 연결값',
       purpose: '캠페인 전략 제안서와 인플루언서 전달용 가이드 생성의 원천 입력값',
       method: 'DB 연동',
       cycle: '캠페인 생성/수정 시',
       lastCollectedAt: campaigns.some((campaign) => campaign.strategyInputRaw) ? nowText : '-',
       nextCollectAt: '캠페인 생성/수정 시',
       status: campaigns.some((campaign) => campaign.strategyInputRaw) ? '정상' : campaigns.length ? '검증 필요' : '미수집',
-      sourceLocation: '캠페인 생성/수정 폼',
-      storageLocation: `${storageBase} / campaigns.strategyInputRaw`,
+      sourceLocation: '캠페인 생성/수정 폼, 브랜드/제품 학습자료 엑셀, Google Sheet URL',
+      storageLocation: `${storageBase} / campaigns.strategyInputRaw, campaigns.campaignGuideMaterials, campaigns.brandGuideAttachments`,
       dashboardArea: '캠페인 상세, 전략/가이드 생성',
       metricIds: ['MET-AI-GEN-001', 'MET-AI-GEN-002', 'MET-AI-GEN-003', 'MET-GUIDE-001'],
       ownerDept: 'PM/전략팀',
@@ -5013,15 +5029,15 @@ function buildAdminRawDataCatalog({
       name: '고객사/브랜드 운영 데이터',
       scope: '내부',
       category: '브랜드/고객사',
-      description: '브랜드, 제품/서비스, 타깃 페르소나, 금지 키워드, 학습자료',
+      description: '브랜드, 제품/서비스, 타깃 페르소나, 금지 키워드, 엑셀/파일/Google Sheet 학습자료',
       purpose: 'AI 추천, 메시지 생성, 가이드 생성의 기준 데이터',
       method: 'DB 연동',
       cycle: '브랜드/캠페인 수정 시',
       lastCollectedAt: brands.length ? nowText : '-',
       nextCollectAt: '이벤트 발생 시',
       status: brands.length ? '정상' : '미수집',
-      sourceLocation: '브랜드 설정, 캠페인 생성/수정',
-      storageLocation: `${storageBase} / brands, brand.brief`,
+      sourceLocation: '브랜드 설정, 캠페인 생성/수정, 학습자료 첨부/Google Sheet URL',
+      storageLocation: `${storageBase} / brands, brand.brief.learningMaterials`,
       dashboardArea: '대시보드, 캠페인, 발굴, 메시지',
       metricIds: ['MET-CMP-001', 'MET-POOL-003', 'MET-AI-GEN-001', 'MET-AI-GEN-002', 'MET-AI-GEN-003'],
       ownerDept: 'CS/PM',
@@ -5483,26 +5499,26 @@ function buildDataRoomExtendedRawCatalog({
     },
     {
       id: 'RAW-INT-AUTH-001',
-      name: '팀 계정/권한 데이터',
+      name: '브랜드별 DB 접근권한 데이터',
       scope: '내부',
       category: '권한/계정',
-      description: '팀, 계정, 역할, 브랜드/캠페인 접근 권한, 초대 상태',
-      purpose: '같은 팀이 같은 풀을 보고 Google Ads처럼 관리 권한을 부여',
+      description: '팀, 계정, 역할 등급, 브랜드별 접근 가능 DB, 초대 상태, 권한 변경 이력',
+      purpose: '권한을 받은 계정만 같은 브랜드의 캠페인/후보/메시지/리포트/데이터룸을 공유',
       method: '팀 로그인 / DB 연동',
       cycle: '권한 변경 시',
       lastCollectedAt: nowText,
       nextCollectAt: '권한 변경 시',
       status: backendConfig?.hasSupabase ? '정상' : '지연',
       sourceLocation: '팀 로그인/권한 시스템, 설정 > 팀 권한',
-      storageLocation: `${storageBase} / workspaces, workspace_members`,
+      storageLocation: `${storageBase} / workspaces, workspace_members, brand_memberships, brand_scoped_snapshots, permission_audit_logs`,
       dashboardArea: '설정, 데이터룸, 전체 메뉴 접근 제어',
       metricIds: ['MET-AUTH-001'],
       ownerDept: '운영/개발',
       opsOwner: 'Admin',
       techOwner: 'Backend/Login',
-      qualityIssue: '초대/역할 변경 감사 로그와 캠페인 단위 권한 분리 필요',
-      logLocation: 'team_login_logs / future: permission_audit_logs',
-      note: '프론트 접근 가능 섹션과 데이터 접근 권한의 기준 데이터',
+      qualityIssue: '운영 전환 시 Supabase Auth, brand_memberships, brand_scoped_snapshots, RLS 정책으로 브랜드별 데이터 격리 검증 필요',
+      logLocation: 'team_login_logs / permission_audit_logs / supabase auth logs',
+      note: '브랜드 선택, 메뉴 접근, 프론트 데이터 필터링의 기준 원천',
       active: true,
     },
     {
@@ -5798,7 +5814,7 @@ function buildDataRoomExtendedMetricCatalog({
     ['MET-OPS-001', '외부 수집 성공률', '데이터 운영 번들', '외부', '외부 검색/API 요청 중 성공한 요청 비율', 'successful_collection_jobs / total_collection_jobs * 100', ['RAW-EXT-SEARCH-001'], '최근 24시간', '실시간', '검증 필요', '데이터룸, 설정 API 테스트', '95% 이상 정상, 80% 미만 장애 검토', '연속 3회 실패', '중간', '데이터/개발', 'Render API logs', '수집 로그 테이블 연결 필요'],
     ['MET-OPS-002', '미지원 데이터 비율', '데이터 운영 번들', '외부', '프론트 표시 항목 중 부분지원/미지원 raw에 의존하는 비율', 'unsupported_metric_count / visible_metric_count * 100', ['RAW-EXT-UNSUPPORTED-001', 'RAW-INT-QUALITY-001'], '전체', '일 1회', '검증 필요', '데이터룸, 리포트', '비율이 높을수록 공식 API/OAuth 우선순위 상승', '30% 이상', '중간', 'PM/데이터', 'unsupported_metric_requests', '프론트에는 검증 필요/수집 필요로 표시'],
     ['MET-EXPORT-001', '전달 산출물 생성 수', '내보내기 번들', '내부', '엑셀/시트/문서/리포트로 광고주에게 전달 가능한 산출물 생성 수', 'count(export_events)', ['RAW-INT-EXPORT-001'], '최근 30일', '실시간', '검증 필요', '대시보드, 리포트, 발굴', '클라이언트 전달 이력과 연결', '다운로드 실패 1건 이상', '중간', 'CS/운영', 'export_events', '실제 DB 로그 연결 전까지 브라우저 이벤트 중심'],
-    ['MET-AUTH-001', '권한 커버리지', '팀/권한 번들', '내부', '팀 멤버가 접근 가능한 브랜드/캠페인/데이터룸 범위', 'assigned_permission_count / required_permission_count * 100', ['RAW-INT-AUTH-001', 'RAW-INT-OPS-001'], '전체', '권한 변경 시', '정상', '설정, 데이터룸', '팀 단위 풀 공유와 관리권한 기준', '운영 총괄이 없는 워크스페이스', '높음', '운영/개발', 'permission_audit_logs', '팀 로그인과 workspace_members 기준'],
+    ['MET-AUTH-001', '브랜드 DB 권한 커버리지', '팀/권한 번들', '내부', '계정별 역할 등급과 브랜드별 DB 접근권한이 필요한 범위만큼 부여됐는지 확인', 'count(valid brand_memberships + role_permissions) / count(required brand_access_rules) * 100', ['RAW-INT-AUTH-001', 'RAW-INT-OPS-001'], '전체', '권한 변경 시', '정상', '설정, 데이터룸', '같은 브랜드 권한자는 같은 데이터 화면을 보고, 권한 없는 브랜드 데이터는 보이지 않아야 함', '브랜드 접근권한 0개 계정 또는 Owner/Admin 부재', '높음', '운영/개발', 'permission_audit_logs / RLS policy test logs', '브랜드 선택, 캠페인/후보/메시지/리포트/데이터룸 필터링의 기준 지표'],
   ]
 
   rows.push(
@@ -6103,6 +6119,7 @@ function App() {
     sellerRecruitTarget: '',
     brandGuideAttachments: [],
     campaignGuideMaterials: [],
+    campaignGuideSheetUrl: '',
     guideSeedType: '무가시딩',
     guideChannel: 'Instagram Reels',
     oneMessage: '',
@@ -6275,13 +6292,26 @@ function App() {
   const safePracticeStepIndex = Math.min(Math.max(practiceStepIndex, 0), Math.max(practiceSteps.length - 1, 0))
   const currentPracticeStep = practiceSteps[safePracticeStepIndex] ?? practiceTourSteps[0]
   const accessibleBrands = useMemo(
-    () =>
-      currentAccount?.role === 'Owner' || currentAccount?.role === 'Admin'
-        ? brands
-        : brands.filter((brand) => currentAccount?.brandIds?.includes(brand.id)),
+    () => getAccessibleBrands(currentAccount, brands),
     [brands, currentAccount],
   )
-  const activeBrand = brands.find((brand) => brand.id === activeBrandId) ?? brands[0] ?? defaultBrands[0]
+  useEffect(() => {
+    if (!accessibleBrands.length) return
+    if (accessibleBrands.some((brand) => brand.id === activeBrandId)) return
+
+    const nextBrandId = accessibleBrands[0].id
+    setWorkspace((current) => ({
+      ...current,
+      activeBrandId: nextBrandId,
+    }))
+    setSelectedCampaignId(campaigns.find((campaign) => campaign.brandId === nextBrandId)?.id)
+  }, [accessibleBrands, activeBrandId, campaigns, setWorkspace])
+
+  const activeBrand =
+    accessibleBrands.find((brand) => brand.id === activeBrandId) ??
+    accessibleBrands[0] ??
+    brands[0] ??
+    defaultBrands[0]
   const brandBrief = activeBrand?.brief ?? defaultBrandBrief
   const brandCampaigns = useMemo(
     () => campaigns.filter((campaign) => campaign.brandId === activeBrand.id),
@@ -8871,8 +8901,11 @@ function App() {
 
   const switchBrand = (brandId) => {
     const nextBrandId = Number(brandId)
-    const nextBrand = brands.find((brand) => brand.id === nextBrandId)
-    if (!nextBrand) return
+    const nextBrand = accessibleBrands.find((brand) => brand.id === nextBrandId)
+    if (!nextBrand) {
+      showToast('현재 계정에는 이 브랜드 DB 접근권한이 없습니다.')
+      return
+    }
 
     updateWorkspace((current) => ({
       ...current,
@@ -8885,7 +8918,7 @@ function App() {
   const switchAccount = (accountId) => {
     const nextAccount = accounts.find((account) => account.id === accountId)
     if (!nextAccount) return
-    const nextBrandId = nextAccount.brandIds?.[0] ?? activeBrandId
+    const nextBrandId = getAccessibleBrands(nextAccount, brands)[0]?.id ?? activeBrandId
 
     setCandidatePoolPage(1)
     updateWorkspace((current) =>
@@ -8910,6 +8943,7 @@ function App() {
       showToast('운영 총괄 또는 관리자만 계정 권한을 변경할 수 있습니다.')
       return
     }
+    const normalizedRole = normalizeRole(role)
 
     updateWorkspace((current) =>
       appendActivity(
@@ -8919,13 +8953,18 @@ function App() {
             account.id === accountId
               ? {
                   ...account,
-                  role,
+                  role: normalizedRole,
+                  brandIds: fullBrandAccessRoles.has(normalizedRole)
+                    ? current.brands.map((brand) => brand.id)
+                    : account.brandIds?.length
+                      ? account.brandIds
+                      : [current.activeBrandId].filter(Boolean),
                 }
               : account,
           ),
         },
         'team',
-        `${accounts.find((account) => account.id === accountId)?.name ?? '계정'} 권한을 ${role}로 변경`,
+        `${accounts.find((account) => account.id === accountId)?.name ?? '계정'} 권한을 ${normalizedRole}로 변경`,
       ),
     )
   }
@@ -8933,6 +8972,13 @@ function App() {
   const toggleAccountBrandAccess = (accountId, brandId) => {
     if (!canManagePermissions) {
       showToast('운영 총괄 또는 관리자만 브랜드 접근권한을 변경할 수 있습니다.')
+      return
+    }
+    const targetAccount = accounts.find((account) => account.id === accountId)
+    if (!targetAccount || fullBrandAccessRoles.has(normalizeRole(targetAccount.role))) return
+    const currentBrandIds = targetAccount.brandIds ?? []
+    if (currentBrandIds.includes(brandId) && currentBrandIds.length <= 1) {
+      showToast('최소 1개 브랜드 DB 접근권한은 남겨야 합니다.')
       return
     }
 
@@ -9144,6 +9190,10 @@ function App() {
 
   const createBrand = (event) => {
     event.preventDefault()
+    if (!canManagePermissions) {
+      showToast('운영 총괄 또는 관리자만 브랜드 워크스페이스를 추가할 수 있습니다.')
+      return
+    }
     const nextBrand = normalizeBrand({
       id: createId(),
       name: brandDraft.name || '신규 브랜드',
@@ -9165,6 +9215,16 @@ function App() {
         {
           ...current,
           brands: [nextBrand, ...current.brands],
+          accounts: current.accounts.map((account) => {
+            const role = normalizeRole(account.role)
+            if (fullBrandAccessRoles.has(role) || account.id === current.activeAccountId) {
+              return {
+                ...account,
+                brandIds: [...new Set([...(account.brandIds ?? []), nextBrand.id])],
+              }
+            }
+            return account
+          }),
           activeBrandId: nextBrand.id,
         },
         'brand',
@@ -9682,20 +9742,34 @@ function App() {
   }
 
   const downloadCampaignGuideTemplate = () => {
-    const filledTemplate = influencerBrandGuideTemplate
-      .replace('- 브랜드명:', `- 브랜드명: ${activeBrand.name}`)
-      .replace('- 목적:', `- 목적: ${campaignDraft.objective || brandBrief.goal || ''}`)
-      .replace('- KPI:', `- KPI: ${campaignDraft.kpiGoal || ''}`)
-      .replace('- 영상에서 반드시 전달해야 할 한 문장:', `- 영상에서 반드시 전달해야 할 한 문장: ${brandBrief.product ? `${brandBrief.product}의 핵심 메시지` : ''}`)
-      .replace('- 연령/성별/라이프스타일:', `- 연령/성별/라이프스타일: ${brandBrief.persona || ''}`)
-      .replace('- 금지/주의 표현', `- 금지/주의 표현\n${brandBrief.exclusions || '-'}`)
+    const rows = [
+      ['항목', '입력값', '예시', '가이드/비고'],
+      ['브랜드명', activeBrand.name || '', '예: 바닐라코', '캠페인을 진행하는 브랜드명'],
+      ['회사/클라이언트명', activeBrand.owner || '', '예: Brand D', '광고주/내부 관리 주체'],
+      ['제품/서비스', campaignDraft.product || brandBrief.product || '', '예: 클렌징밤', '콘텐츠의 핵심 제품 또는 서비스'],
+      ['캠페인 목적', campaignDraft.objective || brandBrief.goal || '', '예: 구매 전환, 리뷰 확보', '전략 생성 시 문제 유형 판단에 사용'],
+      ['핵심 원메시지', campaignDraft.oneMessage || '', '예: 진한 메이크업도 자극 없이 한 번에', '인플루언서가 반드시 전달할 한 문장'],
+      ['타깃 페르소나', campaignDraft.targetPersona || brandBrief.persona || '', '예: 빠른 클렌징을 원하는 20-30대', '발굴/메시지 톤 기준'],
+      ['포함 키워드', campaignDraft.searchKeywords || brandBrief.keywords || '', '예: 클렌징밤, 워터프루프, 저자극', '발굴 검색어와 가이드 키워드'],
+      ['제외/금지 키워드', campaignDraft.exclusionKeywords || brandBrief.exclusions || '', '예: 치료, 즉시 개선, 경쟁사 실명', '표시광고/브랜드 리스크 차단'],
+      ['후킹 포인트', campaignDraft.hookPoints || '', '예: 10초 안에 워터프루프 메이크업 지우기', '숏폼 첫 3초 소재'],
+      ['증명 자료', '', '예: 임상, 리뷰, 성분표, 전후 비교 가능 범위', '가이드에서 근거로 변환'],
+      ['레퍼런스 링크', '', '예: https://youtube.com/watch?v=...', '저장 레퍼런스와 함께 가이드 변형에 사용'],
+      ['Google Sheet URL', campaignDraft.campaignGuideSheetUrl || '', '예: https://docs.google.com/spreadsheets/d/...', '시트를 계속 업데이트할 경우 입력'],
+    ]
+    const guideRows = [
+      ['사용 단계', '설명'],
+      ['1. 작성', '학습자료_입력양식 시트의 입력값 칸을 채웁니다.'],
+      ['2. 첨부', '작성한 엑셀을 캠페인 생성의 가이드 첨부에 업로드하거나 Google Sheet URL을 붙여넣습니다.'],
+      ['3. 저장', '캠페인 생성 시 RAW-INT-CMP-BRIEF-001, RAW-INT-BRD-001 원천으로 저장됩니다.'],
+      ['4. 활용', '전략 생성, 인플루언서 가이드 생성, 제안 메시지 생성에서 원천 학습자료로 사용합니다.'],
+    ]
 
-    exportFile(
-      `creatorops-${activeBrand.name || 'brand'}-influencer-guide.md`,
-      'text/markdown;charset=utf-8',
-      filledTemplate,
-    )
-    showToast('인플루언서 브랜드 가이드 양식을 다운로드했어요.')
+    exportExcelWorkbook(`creatorops-${activeBrand.name || 'brand'}-brand-learning-template.xls`, [
+      { name: '학습자료_입력양식', rows },
+      { name: '작성_업로드_가이드', rows: guideRows },
+    ])
+    showToast('브랜드/제품 학습자료 엑셀 양식을 다운로드했어요.')
   }
 
   const buildCampaignBriefFromDraft = (draft = campaignDraft) => ({
@@ -9728,8 +9802,8 @@ function App() {
 
     try {
       let materials = []
-      if (/\.xlsx$/i.test(file.name)) {
-        materials = buildLearningMaterialsFromRows(await readSheet(file), '캠페인 브랜드 가이드 첨부', file.name)
+      if (/\.(xlsx|xls)$/i.test(file.name)) {
+        materials = buildLearningMaterialsFromRows(await readLearningWorkbookRows(file), '캠페인 브랜드 가이드 첨부', file.name)
       } else if (/\.(md|txt|csv|tsv)$/i.test(file.name)) {
         const text = await file.text()
         const guideMaterial = buildGuideLearningMaterial(text, file.name)
@@ -9741,7 +9815,7 @@ function App() {
       } else if (/\.zip$/i.test(file.name)) {
         materials = await buildLearningMaterialsFromZipFile(file)
       } else {
-        showToast('지원하지 않는 파일 형식입니다. .docx, .zip, .md, .txt, .csv, .tsv, .xlsx를 첨부해주세요.')
+        showToast('지원하지 않는 파일 형식입니다. .docx, .zip, .md, .txt, .csv, .tsv, .xlsx, .xls를 첨부해주세요.')
         return
       }
 
@@ -9765,6 +9839,116 @@ function App() {
     } finally {
       event.target.value = ''
     }
+  }
+
+  const attachCampaignGuideSheet = () => {
+    const material = buildGoogleSheetLearningMaterial(campaignDraft.campaignGuideSheetUrl)
+    if (!material) {
+      showToast('Google Sheet 또는 Google Drive 링크를 입력해주세요.')
+      return
+    }
+
+    const nextAttachment = {
+      id: createId(),
+      name: 'Google Sheet 학습자료',
+      type: 'google-sheet',
+      url: material.url,
+      size: 0,
+      uploadedAt: nowLabel(),
+      learningMaterialCount: 1,
+    }
+
+    setCampaignDraft((current) => ({
+      ...current,
+      campaignGuideSheetUrl: '',
+      brandGuideAttachments: [nextAttachment, ...(current.brandGuideAttachments ?? [])].slice(0, 8),
+      campaignGuideMaterials: [material, ...(current.campaignGuideMaterials ?? [])].slice(0, 20),
+    }))
+    showToast('Google Sheet 링크를 캠페인 학습자료로 첨부했어요.')
+  }
+
+  const showDemoDiscoveryCandidates = (reason = 'API 한도 또는 연결 제한으로 실제 검색 결과를 가져오지 못했습니다.') => {
+    const campaignBrief = buildCampaignDiscoveryBrief(brandBrief, selectedCampaign)
+    const searchText = buildDiscoverySearchText({ query, category, brandBrief: campaignBrief, selectedCampaign })
+    const searchTerms = keywordList(searchText).slice(0, 8)
+    const selectedPlatform = platform === '전체' ? null : platform
+    const selectedCategory = category === '전체' ? campaignBrief.categories?.[0] || '리뷰' : category
+    const selectedCountry =
+      discoveryFilters.country && discoveryFilters.country !== '전체'
+        ? discoveryFilters.country
+        : activeBrand.country || 'KR'
+    const maxDemoCount = Math.min(Math.max(Number(realDiscoveryDraft.maxResults) || 12, 6), 12)
+    const basePool = defaultCreators.filter(
+      (creator) =>
+        (!selectedPlatform || creator.platform === selectedPlatform) &&
+        (selectedCategory === '전체' || creator.category === selectedCategory || campaignBrief.categories?.includes(creator.category)),
+    )
+    const sourcePool = basePool.length ? basePool : defaultCreators
+    const queryLabel = query.trim() || campaignBrief.product || selectedCampaign?.name || activeBrand.name
+    const demoCreators = sourcePool.slice(0, maxDemoCount).map((creator, index) => {
+      const demoId = createId() + index
+      return {
+        ...creator,
+        id: demoId,
+        name: queryLabel ? `${creator.name}` : creator.name,
+        category: selectedCategory === '전체' ? creator.category : selectedCategory,
+        country: selectedCountry,
+        city: selectedCountry,
+        topics: Array.from(new Set([...(creator.topics || []), queryLabel, campaignBrief.product, ...searchTerms].filter(Boolean))),
+        status: '데모 후보',
+        sourceType: 'design-demo-discovery',
+        sourceName: 'CreatorOps demo discovery preview',
+        sourceCollectedAt: nowLabel(),
+        sourceNote: `데모/디자인 검토용 후보입니다. 실제 raw 데이터가 아니라 ${reason} 상태에서 리스트 UI를 확인하기 위해 표시됩니다.`,
+        discoveryKey: `demo-discovery:${activeBrand.id}:${selectedCampaign?.id || 'campaign'}:${demoId}`,
+        isDemo: true,
+        isSynthetic: true,
+        needsVerification: true,
+        metricSources: [
+          {
+            label: '디자인 검토용 데모',
+            rawId: 'RAW-EXT-UNSUPPORTED-001',
+            metricId: 'MET-AI-002',
+            status: '검증 필요',
+          },
+        ],
+      }
+    })
+
+    if (!demoCreators.length) {
+      showToast('표시할 데모 후보를 만들지 못했어요. 필터를 조금 넓혀주세요.')
+      return
+    }
+
+    updateWorkspace((current) => {
+      const demoRecommendations = demoCreators.map((creator) => ({
+        ...buildRecommendation(creator, campaignBrief, selectedCampaign),
+        brandId: activeBrand.id,
+        campaignId: selectedCampaign?.id,
+        source: '데모 후보',
+      }))
+
+      return appendActivity(
+        {
+          ...current,
+          creators: [
+            ...demoCreators,
+            ...current.creators.filter((creator) => creator.sourceType !== 'design-demo-discovery'),
+          ],
+          recommendations: [
+            ...demoRecommendations,
+            ...current.recommendations.filter((recommendation) => recommendation.source !== '데모 후보'),
+          ].slice(0, 2000),
+        },
+        'data',
+        `${activeBrand.name} 데모 발굴 후보 ${demoCreators.length}명 표시`,
+      )
+    })
+
+    setShowExampleCreators(true)
+    setSelectedCreatorId(demoCreators[0].id)
+    setDiscoveryPage(1)
+    showToast(`API 제한으로 실제 검색이 막혀 데모 후보 ${demoCreators.length}명을 표시했어요. 디자인 검토용입니다.`)
   }
 
   const runRealDiscoverySearch = async () => {
@@ -9857,13 +10041,12 @@ function App() {
       )
 
       if (!discoveredCreators.length) {
-        showToast(
-          results.length
-            ? '검색 결과가 현재 키워드/카테고리 조건과 맞지 않아 저장하지 않았어요. 검색어를 조금 넓혀주세요.'
-            : discoveryWarnings.length
-              ? `연결된 검색 API가 실패했습니다. ${discoveryWarnings[0]}`
-              : '실제 검색 결과에서 가져올 프로필을 찾지 못했어요. 검색어를 더 구체화해주세요.',
-        )
+        const demoReason = results.length
+          ? '검색 결과가 현재 키워드/카테고리 조건과 맞지 않습니다.'
+          : discoveryWarnings.length
+            ? `검색 API 제한: ${discoveryWarnings[0]}`
+            : '실제 검색 결과에서 가져올 프로필을 찾지 못했습니다.'
+        showDemoDiscoveryCandidates(demoReason)
         return
       }
 
@@ -9918,7 +10101,8 @@ function App() {
           : `실제 공개 검색 결과 ${discoveredCreators.length}명을 발굴 리스트에 저장했어요. 후보 풀은 선택 후 저장하세요.`,
       )
     } catch (error) {
-      showToast(error instanceof Error ? error.message : '실제 발굴 검색 중 오류가 발생했어요.')
+      const message = error instanceof Error ? error.message : '실제 발굴 검색 중 오류가 발생했습니다.'
+      showDemoDiscoveryCandidates(`검색 API 오류: ${message.slice(0, 120)}`)
     } finally {
       setRealDiscoverySearching(false)
     }
@@ -11249,6 +11433,17 @@ function App() {
           keywords: item.keywords,
         }))
         .slice(0, 10) || [],
+    learningMaterialSources:
+      campaignBrief.learningMaterials
+        ?.map((item) => ({
+          id: item.id,
+          title: item.title,
+          sourceType: item.sourceType,
+          sourceName: item.sourceName,
+          url: item.url,
+        }))
+        .slice(0, 20) || [],
+    campaignGuideSheetUrl: campaign.campaignGuideSheetUrl || campaignBrief.learningMaterials?.find((item) => item.sourceType === 'Google Sheet 첨부')?.url || '',
     exclusions: campaign.exclusionKeywords || campaignBrief.exclusions || '',
     platforms: Array.isArray(campaignBrief.platforms) ? campaignBrief.platforms : keywordList(campaign.preferredPlatforms || ''),
     kpiGoal: campaign.kpiGoal || '',
@@ -11577,6 +11772,10 @@ function App() {
       recommendationTargetCount: Number(campaignDraft.recommendationTargetCount) || 0,
       brandGuideAttachments: campaignDraft.brandGuideAttachments ?? [],
       campaignGuideMaterials: campaignDraft.campaignGuideMaterials ?? [],
+      campaignGuideSheetUrl:
+        campaignDraft.campaignGuideSheetUrl ||
+        campaignDraft.campaignGuideMaterials?.find((item) => item.sourceType === 'Google Sheet 첨부')?.url ||
+        '',
       guideSeedType: campaignDraft.guideSeedType,
       guideChannel: campaignDraft.guideChannel,
       oneMessage: campaignDraft.oneMessage,
@@ -11611,6 +11810,10 @@ function App() {
           targetRevenue: normalizeNumericTarget(campaignDraft.targetRevenue),
           sellerRecruitTarget: Number(campaignDraft.sellerRecruitTarget) || 0,
           recommendationTargetCount: Number(campaignDraft.recommendationTargetCount) || 0,
+          campaignGuideSheetUrl:
+            campaignDraft.campaignGuideSheetUrl ||
+            campaignDraft.campaignGuideMaterials?.find((item) => item.sourceType === 'Google Sheet 첨부')?.url ||
+            '',
           guideSeedType: campaignDraft.guideSeedType,
           guideChannel: campaignDraft.guideChannel,
           oneMessage: campaignDraft.oneMessage,
@@ -11692,6 +11895,7 @@ function App() {
       sellerRecruitTarget: '',
       brandGuideAttachments: [],
       campaignGuideMaterials: [],
+      campaignGuideSheetUrl: '',
       guideSeedType: '무가시딩',
       guideChannel: 'Instagram Reels',
       oneMessage: '',
@@ -13173,9 +13377,11 @@ function App() {
         <div className="brand-switcher">
           <div className="brand-switcher-head">
             <span className="mini-label">브랜드 워크스페이스</span>
-            <button className="icon-button mini-icon-button" type="button" title="브랜드 추가" onClick={() => setModal({ type: 'brand' })}>
-              <Plus size={15} />
-            </button>
+            {canManagePermissions && (
+              <button className="icon-button mini-icon-button" type="button" title="브랜드 추가" onClick={() => setModal({ type: 'brand' })}>
+                <Plus size={15} />
+              </button>
+            )}
           </div>
           <label>
             <span>관리 브랜드</span>
@@ -13569,7 +13775,12 @@ function App() {
               <div className="settings-current-account">
                 <div>
                   <strong>{team.name}</strong>
-                  <p>같은 팀 계정은 같은 크리에이터 풀과 캠페인 데이터를 공유하고, 역할과 브랜드 접근권한으로 볼 수 있는 범위를 나눕니다.</p>
+                  <p>브랜드별 DB를 기준으로 캠페인, 후보 풀, 메시지, 리포트, 데이터룸 접근 범위를 나눕니다.</p>
+                  <div className="brand-db-scope-summary">
+                    <span>현재 계정 등급: {teamRoleCatalog[currentAccount.role]?.label ?? currentAccount.role}</span>
+                    <span>접근 브랜드: {getAccountBrandScopeLabel(currentAccount, brands)}</span>
+                    <span>현재 DB: {activeBrand.name}</span>
+                  </div>
                 </div>
                 <label>
                   현재 계정
@@ -13603,6 +13814,7 @@ function App() {
               <div className="team-account-list settings-account-list">
                 {accounts.map((account) => {
                   const role = teamRoleCatalog[account.role] ?? teamRoleCatalog.Manager
+                  const accessibleBrandIds = new Set(getAccountBrandIds(account, brands))
                   return (
                     <article className={account.id === currentAccount.id ? 'active-account-card' : ''} key={account.id}>
                       <div>
@@ -13610,22 +13822,27 @@ function App() {
                         <span>{account.email}</span>
                         <small>{account.status} · 최근 활동 {account.lastActive}</small>
                       </div>
-                      <select
-                        value={account.role}
-                        onChange={(event) => updateAccountRole(account.id, event.target.value)}
-                        disabled={!canManagePermissions}
-                      >
-                        {Object.keys(teamRoleCatalog).map((roleKey) => (
-                          <option value={roleKey} key={roleKey}>
-                            {teamRoleCatalog[roleKey]?.label ?? roleKey}
-                          </option>
-                        ))}
-                      </select>
-                      <p>{role.description}</p>
+                      <div className="account-role-controls">
+                        <span>{role.dataScope}</span>
+                        <select
+                          value={account.role}
+                          onChange={(event) => updateAccountRole(account.id, event.target.value)}
+                          disabled={!canManagePermissions}
+                        >
+                          {Object.keys(teamRoleCatalog).map((roleKey) => (
+                            <option value={roleKey} key={roleKey}>
+                              {teamRoleCatalog[roleKey]?.label ?? roleKey}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <p>
+                        {role.description} · 접근 {getAccountBrandScopeLabel(account, brands)}
+                      </p>
                       <div className="account-brand-access">
                         {brands.map((brand) => (
                           <button
-                            className={account.brandIds?.includes(brand.id) ? 'selected' : ''}
+                            className={accessibleBrandIds.has(brand.id) ? 'selected' : ''}
                             type="button"
                             key={brand.id}
                             onClick={() => toggleAccountBrandAccess(account.id, brand.id)}
@@ -14143,6 +14360,13 @@ function App() {
                 </div>
               )}
               <div className="real-discovery-actions">
+                <button
+                  className="secondary-button compact-button"
+                  type="button"
+                  onClick={() => showDemoDiscoveryCandidates('수동 데모 보기')}
+                >
+                  데모 후보 보기
+                </button>
                 <button
                   className="secondary-button compact-button"
                   type="button"
@@ -15869,6 +16093,7 @@ function App() {
                       {activeCampaignForModal.brandGuideAttachments.map((item) => (
                         <span key={item.id}>
                           {item.name} · {item.uploadedAt}
+                          {item.type === 'google-sheet' ? ' · Google Sheet' : ''}
                           {item.learningMaterialCount ? ` · 학습자료 ${item.learningMaterialCount}건 반영` : ''}
                         </span>
                       ))}
@@ -16533,7 +16758,11 @@ function App() {
               ? 'campaign-create-modal'
               : modal.type === 'outreachDetail'
                 ? 'outreach-detail-card'
-                : ''
+                : modal.type === 'tracking'
+                  ? 'tracking-wide-modal'
+                  : modal.type === 'fulfillment'
+                    ? 'fulfillment-modal-card'
+                    : ''
           }
           onClose={() => setModal(null)}
         >
@@ -16707,18 +16936,29 @@ function App() {
                 <div className="campaign-guide-actions">
                   <button className="secondary-button compact-button" type="button" onClick={downloadCampaignGuideTemplate}>
                     <Download size={16} />
-                    양식 다운로드
+                    엑셀 양식
                   </button>
                   <label className="guide-file-input">
                     가이드 첨부
-                    <input accept=".docx,.zip,.md,.txt,.csv,.tsv,.xlsx" type="file" onChange={attachCampaignGuideFile} />
+                    <input accept=".docx,.zip,.md,.txt,.csv,.tsv,.xlsx,.xls" type="file" onChange={attachCampaignGuideFile} />
                   </label>
+                </div>
+                <div className="guide-sheet-attach">
+                  <input
+                    value={campaignDraft.campaignGuideSheetUrl}
+                    onChange={(event) => setCampaignDraft({ ...campaignDraft, campaignGuideSheetUrl: event.target.value })}
+                    placeholder="Google Sheet URL 붙여넣기"
+                  />
+                  <button className="secondary-button compact-button" type="button" onClick={attachCampaignGuideSheet}>
+                    구글시트 첨부
+                  </button>
                 </div>
                 {(campaignDraft.brandGuideAttachments ?? []).length > 0 && (
                   <div className="guide-attachment-list">
                     {campaignDraft.brandGuideAttachments.map((item) => (
                       <span key={item.id}>
-                        {item.name} · {Math.max(1, Math.round(item.size / 1024))}KB
+                        {item.name}
+                        {item.type !== 'google-sheet' ? ` · ${Math.max(1, Math.round(item.size / 1024))}KB` : ''}
                         {item.learningMaterialCount ? ` · 학습자료 ${item.learningMaterialCount}건` : ''}
                       </span>
                     ))}
@@ -17078,7 +17318,7 @@ function App() {
           )}
 
           {modal.type === 'tracking' && (
-            <form className="modal-form" onSubmit={createTrackedPost}>
+            <form className="modal-form tracking-modal-form" onSubmit={createTrackedPost}>
               <div className="quote-box">
                 <BarChart3 size={22} />
                 <div>
@@ -17709,6 +17949,7 @@ function App() {
                     {activeCampaignForModal.brandGuideAttachments.map((item) => (
                       <span key={item.id}>
                         {item.name} · {item.uploadedAt}
+                        {item.type === 'google-sheet' ? ' · Google Sheet' : ''}
                         {item.learningMaterialCount ? ` · 학습자료 ${item.learningMaterialCount}건 반영` : ''}
                       </span>
                     ))}

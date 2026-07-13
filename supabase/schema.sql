@@ -11,11 +11,39 @@ create table if not exists public.workspace_members (
   id bigserial primary key,
   workspace_id text not null references public.workspaces(id) on delete cascade,
   user_id uuid not null references auth.users(id) on delete cascade,
-  role text not null check (role in ('Owner', 'Manager', 'Marketer', 'Analyst', 'Client')),
+  role text not null check (role in ('Owner', 'Admin', 'Manager', 'Marketer', 'Analyst', 'Client')),
   invited_email text,
   status text not null default 'active' check (status in ('invited', 'active', 'disabled')),
   created_at timestamptz not null default now(),
   unique (workspace_id, user_id)
+);
+
+alter table public.workspace_members drop constraint if exists workspace_members_role_check;
+alter table public.workspace_members
+  add constraint workspace_members_role_check
+  check (role in ('Owner', 'Admin', 'Manager', 'Marketer', 'Analyst', 'Client'));
+
+create table if not exists public.brand_memberships (
+  id bigserial primary key,
+  workspace_id text not null references public.workspaces(id) on delete cascade,
+  brand_id text not null,
+  user_id uuid not null references auth.users(id) on delete cascade,
+  role text not null check (role in ('Admin', 'Manager', 'Marketer', 'Analyst', 'Client')),
+  status text not null default 'active' check (status in ('invited', 'active', 'disabled')),
+  invited_email text,
+  granted_by uuid references auth.users(id),
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (workspace_id, brand_id, user_id)
+);
+
+create table if not exists public.brand_scoped_snapshots (
+  workspace_id text not null references public.workspaces(id) on delete cascade,
+  brand_id text not null,
+  payload jsonb not null,
+  updated_at timestamptz not null default now(),
+  created_at timestamptz not null default now(),
+  primary key (workspace_id, brand_id)
 );
 
 create or replace function public.is_workspace_member(target_workspace_id text, allowed_roles text[] default null)
@@ -32,6 +60,25 @@ as $$
       and member.status = 'active'
       and (allowed_roles is null or member.role = any(allowed_roles))
   );
+$$;
+
+create or replace function public.has_brand_access(target_workspace_id text, target_brand_id text, allowed_roles text[] default null)
+returns boolean
+language sql
+security definer
+set search_path = public
+as $$
+  select
+    public.is_workspace_member(target_workspace_id, array['Owner', 'Admin'])
+    or exists (
+      select 1
+      from public.brand_memberships member
+      where member.workspace_id = target_workspace_id
+        and member.brand_id = target_brand_id
+        and member.user_id = auth.uid()
+        and member.status = 'active'
+        and (allowed_roles is null or member.role = any(allowed_roles))
+    );
 $$;
 
 create table if not exists public.workspace_snapshots (
@@ -300,7 +347,9 @@ create table if not exists public.export_events (
 
 alter table public.workspaces enable row level security;
 alter table public.workspace_members enable row level security;
+alter table public.brand_memberships enable row level security;
 alter table public.workspace_snapshots enable row level security;
+alter table public.brand_scoped_snapshots enable row level security;
 alter table public.provider_connections enable row level security;
 alter table public.outreach_messages enable row level security;
 alter table public.content_tracking enable row level security;
@@ -328,8 +377,12 @@ drop policy if exists "Owners can update workspaces" on public.workspaces;
 drop policy if exists "Authenticated users can create owned workspaces" on public.workspaces;
 drop policy if exists "Members can read workspace members" on public.workspace_members;
 drop policy if exists "Owners and managers can manage workspace members" on public.workspace_members;
+drop policy if exists "Members can read brand memberships" on public.brand_memberships;
+drop policy if exists "Owners and admins can manage brand memberships" on public.brand_memberships;
 drop policy if exists "Members can read workspace snapshots" on public.workspace_snapshots;
 drop policy if exists "Members can write workspace snapshots" on public.workspace_snapshots;
+drop policy if exists "Brand members can read brand scoped snapshots" on public.brand_scoped_snapshots;
+drop policy if exists "Brand operators can write brand scoped snapshots" on public.brand_scoped_snapshots;
 drop policy if exists "Members can read provider connections" on public.provider_connections;
 drop policy if exists "Members can manage own provider connections" on public.provider_connections;
 drop policy if exists "Members can read outreach messages" on public.outreach_messages;
@@ -379,8 +432,17 @@ create policy "Members can read workspace members"
 
 create policy "Owners and managers can manage workspace members"
   on public.workspace_members for all to authenticated
-  using (public.is_workspace_member(workspace_id, array['Owner', 'Manager']))
-  with check (public.is_workspace_member(workspace_id, array['Owner', 'Manager']));
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']))
+  with check (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']));
+
+create policy "Members can read brand memberships"
+  on public.brand_memberships for select to authenticated
+  using (public.is_workspace_member(workspace_id));
+
+create policy "Owners and admins can manage brand memberships"
+  on public.brand_memberships for all to authenticated
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Admin']))
+  with check (public.is_workspace_member(workspace_id, array['Owner', 'Admin']));
 
 create policy "Members can read workspace snapshots"
   on public.workspace_snapshots for select to authenticated
@@ -390,6 +452,15 @@ create policy "Members can write workspace snapshots"
   on public.workspace_snapshots for all to authenticated
   using (public.is_workspace_member(workspace_id))
   with check (public.is_workspace_member(workspace_id));
+
+create policy "Brand members can read brand scoped snapshots"
+  on public.brand_scoped_snapshots for select to authenticated
+  using (public.has_brand_access(workspace_id, brand_id));
+
+create policy "Brand operators can write brand scoped snapshots"
+  on public.brand_scoped_snapshots for all to authenticated
+  using (public.has_brand_access(workspace_id, brand_id, array['Admin', 'Manager', 'Marketer', 'Analyst']))
+  with check (public.has_brand_access(workspace_id, brand_id, array['Admin', 'Manager', 'Marketer', 'Analyst']));
 
 create policy "Members can read provider connections"
   on public.provider_connections for select to authenticated
@@ -444,8 +515,8 @@ create policy "Members can read raw data sources"
 
 create policy "Owners and managers can manage raw data sources"
   on public.raw_data_sources for all to authenticated
-  using (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Manager']))
-  with check (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Manager']));
+  using (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']))
+  with check (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']));
 
 create policy "Members can read metric definitions"
   on public.metric_definitions for select to authenticated
@@ -453,8 +524,8 @@ create policy "Members can read metric definitions"
 
 create policy "Owners and managers can manage metric definitions"
   on public.metric_definitions for all to authenticated
-  using (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Manager']))
-  with check (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Manager']));
+  using (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']))
+  with check (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']));
 
 create policy "Members can read external report imports"
   on public.external_report_imports for select to authenticated
@@ -462,8 +533,8 @@ create policy "Members can read external report imports"
 
 create policy "Members can write external report imports"
   on public.external_report_imports for all to authenticated
-  using (public.is_workspace_member(workspace_id, array['Owner', 'Manager', 'Marketer', 'Analyst']))
-  with check (public.is_workspace_member(workspace_id, array['Owner', 'Manager', 'Marketer', 'Analyst']));
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']))
+  with check (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']));
 
 create policy "Members can read external report rows"
   on public.external_report_rows for select to authenticated
@@ -471,8 +542,8 @@ create policy "Members can read external report rows"
 
 create policy "Members can write external report rows"
   on public.external_report_rows for all to authenticated
-  using (public.is_workspace_member(workspace_id, array['Owner', 'Manager', 'Marketer', 'Analyst']))
-  with check (public.is_workspace_member(workspace_id, array['Owner', 'Manager', 'Marketer', 'Analyst']));
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']))
+  with check (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']));
 
 create policy "Members can read external search events"
   on public.external_search_events for select to authenticated
@@ -488,8 +559,8 @@ create policy "Members can read metric snapshots"
 
 create policy "Members can write metric snapshots"
   on public.metric_snapshots for all to authenticated
-  using (public.is_workspace_member(workspace_id, array['Owner', 'Manager', 'Marketer', 'Analyst']))
-  with check (public.is_workspace_member(workspace_id, array['Owner', 'Manager', 'Marketer', 'Analyst']));
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']))
+  with check (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']));
 
 create policy "Members can read data quality reviews"
   on public.data_quality_reviews for select to authenticated
@@ -497,8 +568,8 @@ create policy "Members can read data quality reviews"
 
 create policy "Members can write data quality reviews"
   on public.data_quality_reviews for all to authenticated
-  using (public.is_workspace_member(workspace_id, array['Owner', 'Manager', 'Marketer', 'Analyst']))
-  with check (public.is_workspace_member(workspace_id, array['Owner', 'Manager', 'Marketer', 'Analyst']));
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']))
+  with check (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']));
 
 create policy "Members can read unsupported metric requests"
   on public.unsupported_metric_requests for select to authenticated
@@ -506,8 +577,8 @@ create policy "Members can read unsupported metric requests"
 
 create policy "Members can write unsupported metric requests"
   on public.unsupported_metric_requests for all to authenticated
-  using (public.is_workspace_member(workspace_id, array['Owner', 'Manager', 'Marketer', 'Analyst']))
-  with check (public.is_workspace_member(workspace_id, array['Owner', 'Manager', 'Marketer', 'Analyst']));
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']))
+  with check (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']));
 
 create policy "Members can read ai generation runs"
   on public.ai_generation_runs for select to authenticated
