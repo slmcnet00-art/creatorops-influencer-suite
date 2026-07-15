@@ -23,7 +23,7 @@ const servicePayload = {
     { key: 'NODE_VERSION', value: '22' },
     {
       key: 'CORS_ORIGIN',
-      value: process.env.CORS_ORIGIN || 'https://creatorops-influencer-suite.onrender.com,http://localhost:5173',
+      value: process.env.CORS_ORIGIN || 'https://creatorops-influencer-suite.onrender.com,http://localhost:5173,http://127.0.0.1:5173',
     },
     { key: 'YOUTUBE_DATA_API_KEY', value: process.env.YOUTUBE_DATA_API_KEY || '' },
     { key: 'GOOGLE_SEARCH_API_KEY', value: process.env.GOOGLE_SEARCH_API_KEY || '' },

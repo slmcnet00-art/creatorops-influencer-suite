@@ -23,14 +23,36 @@ const WORKSPACE_ID = process.env.WORKSPACE_ID || process.env.VITE_WORKSPACE_ID |
 const searchCache = new Map()
 let tiktokCommercialTokenCache = { token: '', expiresAt: 0 }
 let supabaseAdminClient
-const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173')
+const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://127.0.0.1:5173')
   .split(',')
   .map((origin) => origin.trim())
   .filter(Boolean)
 
+function isAllowedCorsOrigin(origin) {
+  if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) return true
+
+  try {
+    const requestedUrl = new URL(origin)
+    const isLocalHost = requestedUrl.hostname === 'localhost' || requestedUrl.hostname === '127.0.0.1'
+    if (!isLocalHost) return false
+
+    return allowedOrigins.some((allowedOrigin) => {
+      try {
+        const allowedUrl = new URL(allowedOrigin)
+        const allowedIsLocalHost = allowedUrl.hostname === 'localhost' || allowedUrl.hostname === '127.0.0.1'
+        return allowedIsLocalHost && allowedUrl.protocol === requestedUrl.protocol && allowedUrl.port === requestedUrl.port
+      } catch {
+        return false
+      }
+    })
+  } catch {
+    return false
+  }
+}
+
 app.use(cors({
   origin(origin, callback) {
-    if (!origin || allowedOrigins.includes('*') || allowedOrigins.includes(origin)) {
+    if (!origin || isAllowedCorsOrigin(origin)) {
       callback(null, true)
       return
     }
@@ -328,6 +350,55 @@ const DATA_ROOM_RAW_SOURCE_META = {
     method: 'API / 공개 snapshot',
     cycle: '성과 갱신 시',
     dashboardArea: '리포트, 데이터룸',
+  },
+  'RAW-EXT-SERP-001': {
+    category: '검색 결과 URL 추론',
+    name: '검색 결과 URL 추론 raw',
+    method: 'Search API',
+    cycle: '검색 요청 시',
+    dashboardArea: '발굴, 레퍼런스, 데이터룸',
+  },
+  'RAW-EXT-TT-RESEARCH-001': {
+    category: 'TikTok 승인 API',
+    name: 'TikTok Research API raw',
+    method: 'TikTok Research API',
+    cycle: '승인 API 수집 시',
+    dashboardArea: '발굴, 레퍼런스, 리포트, 데이터룸',
+  },
+  'RAW-EXT-TT-COMMERCIAL-001': {
+    category: 'TikTok 상업 콘텐츠 API',
+    name: 'TikTok Commercial Content API raw',
+    method: 'TikTok Commercial Content API',
+    cycle: '상업 콘텐츠 검색 시',
+    dashboardArea: '레퍼런스, 브랜드 추적, 데이터룸',
+  },
+  'RAW-EXT-TT-SNAPSHOT-001': {
+    category: 'TikTok 공개 스냅샷',
+    name: 'TikTok 공개 화면 스냅샷 raw',
+    method: 'Public snapshot / 수동 검증',
+    cycle: '저장/검증 시',
+    dashboardArea: '발굴, 리포트, 레퍼런스, 데이터룸',
+  },
+  'RAW-EXT-IG-BUSINESS-001': {
+    category: 'Instagram 승인 API',
+    name: 'Instagram Graph API / Business Discovery raw',
+    method: 'Instagram Graph API',
+    cycle: '승인 API 수집 시',
+    dashboardArea: '발굴, 브랜드 추적, 리포트, 데이터룸',
+  },
+  'RAW-EXT-IG-CREATOR-AUTH-001': {
+    category: 'Instagram 인증 인사이트',
+    name: 'Instagram 크리에이터 인증 인사이트 raw',
+    method: 'Creator OAuth / Media kit',
+    cycle: '크리에이터 승인 갱신 시',
+    dashboardArea: '리포트, 후보 검증, 데이터룸',
+  },
+  'RAW-EXT-IG-SNAPSHOT-001': {
+    category: 'Instagram 공개 스냅샷',
+    name: 'Instagram 공개 프로필/릴스 스냅샷 raw',
+    method: 'Public snapshot / 수동 검증',
+    cycle: '저장/검증 시',
+    dashboardArea: '발굴, 레퍼런스, 리포트, 데이터룸',
   },
 }
 
@@ -1115,7 +1186,12 @@ function debugReferenceSearch(label, payload) {
 async function searchYouTubeVideoReferences({ query, country, sort, maxResults }) {
   const cacheKey = getSearchCacheKey('youtube-references', { query, country, sort, maxResults })
   const cached = readSearchCache(cacheKey)
-  if (cached) return cached
+  if (cached) {
+    const validatedCache = hasProductSpecificEvidenceTerms(query)
+      ? filterProductSpecificEvidence(cached, query)
+      : cached
+    if (validatedCache.length) return validatedCache
+  }
 
   const key = requireEnv('YOUTUBE_DATA_API_KEY')
   const regionCode = normalizeRegionCode(country)
@@ -1169,10 +1245,11 @@ async function searchYouTubeVideoReferences({ query, country, sort, maxResults }
     const channelIds = [...new Set(videos.map((item) => item.snippet?.channelId).filter(Boolean))]
     const channelMap = await fetchYouTubeChannelStatsMap(channelIds)
 
-    const references = filterAndRankDiscoveryIntent(
-      videos.map((item) => normalizeYouTubeReference(item, channelMap, regionCode || country || 'GLOBAL')),
-      query,
-    ).slice(0, maxResults)
+    const normalizedReferences = videos.map((item) => normalizeYouTubeReference(item, channelMap, regionCode || country || 'GLOBAL'))
+    const evidenceReferences = hasProductSpecificEvidenceTerms(query)
+      ? filterProductSpecificEvidence(normalizedReferences, query)
+      : normalizedReferences
+    const references = filterAndRankDiscoveryIntent(evidenceReferences, query).slice(0, maxResults)
     writeSearchCache(cacheKey, references)
     return references
   } catch (error) {
@@ -1479,7 +1556,7 @@ function getReferenceQueryTokens(query) {
     categoryAliases.push('food', 'recipe', 'cook', 'cooking', 'homecook', 'homecooking', 'koreanfood', 'k-food')
   }
   if (hasPetDiscoveryIntent(lowerQuery)) {
-    categoryAliases.push('pet', 'dog', 'cat', 'puppy', 'kitten')
+    categoryAliases.push('pet', 'dog', 'cat', 'puppy', 'kitten', 'kennel', 'carrier', 'crate')
   }
   if (hasFashionDiscoveryIntent(lowerQuery)) {
     categoryAliases.push('fashion', 'style', 'lookbook', 'outfit')
@@ -2096,6 +2173,9 @@ function expandProductSearchAliases(query) {
   if (/\uBC14\uB2D0\uB77C\uCF54|banila/.test(lower)) aliases.push('banila co')
   if (/\uD074\uB80C\uC9D5\s*\uBC24|cleansing\s*balm|clean\s*it\s*zero/.test(lower)) {
     aliases.push('clean it zero', 'cleansing balm')
+  }
+  if (/\uCF04\uB12C|\uC774\uB3D9\uC7A5|kennel|pet\s*carrier|dog\s*carrier|travel\s*crate|crate/.test(lower)) {
+    aliases.push('pet carrier', 'dog carrier', 'kennel crate', '\uAC15\uC544\uC9C0 \uC774\uB3D9\uC7A5')
   }
   if (/\uBDF0\uD2F0|\uD654\uC7A5|\uC2A4\uD0A8\uCF00\uC5B4|beauty|skincare|cosmetic/.test(lower)) {
     aliases.push('k beauty', 'skincare review')
@@ -3820,6 +3900,29 @@ function getProductSpecificEvidenceTerms(query) {
     text.includes('clean it zero')
   ) {
     terms.push('\uD074\uB80C\uC9D5\uBC24', '\uD074\uB80C\uC9D5 \uBC24', 'cleansing balm', 'clean it zero', 'cleanitzero')
+  }
+  if (
+    text.includes('\uCF04\uB12C') ||
+    compactText.includes('\uCF04\uB12C') ||
+    text.includes('\uC774\uB3D9\uC7A5') ||
+    compactText.includes('\uC774\uB3D9\uC7A5') ||
+    text.includes('kennel') ||
+    text.includes('pet carrier') ||
+    text.includes('dog carrier') ||
+    text.includes('travel crate') ||
+    text.includes('crate')
+  ) {
+    terms.push(
+      '\uCF04\uB12C',
+      '\uC774\uB3D9\uC7A5',
+      '\uAC15\uC544\uC9C0 \uC774\uB3D9\uC7A5',
+      '\uBC18\uB824\uACAC \uC774\uB3D9\uC7A5',
+      'kennel',
+      'pet carrier',
+      'dog carrier',
+      'travel crate',
+      'crate',
+    )
   }
   return [...new Set(terms)]
 }

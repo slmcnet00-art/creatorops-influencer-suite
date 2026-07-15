@@ -106,6 +106,16 @@ const EXTERNAL_REPORT_PROFILES = [
 ]
 const BULK_TRACKING_RAW_SOURCE_ID = 'RAW-EXT-CONT-BULK-001'
 const BULK_CREATOR_GROUP_RAW_SOURCE_ID = 'RAW-INT-GROUP-BULK-001'
+const PLATFORM_RAW_SOURCE_IDS = {
+  searchInference: 'RAW-EXT-SERP-001',
+  tiktokResearch: 'RAW-EXT-TT-RESEARCH-001',
+  tiktokCommercial: 'RAW-EXT-TT-COMMERCIAL-001',
+  tiktokSnapshot: 'RAW-EXT-TT-SNAPSHOT-001',
+  instagramBusiness: 'RAW-EXT-IG-BUSINESS-001',
+  instagramCreatorAuth: 'RAW-EXT-IG-CREATOR-AUTH-001',
+  instagramSnapshot: 'RAW-EXT-IG-SNAPSHOT-001',
+}
+const SOCIAL_PLATFORM_RAW_IDS = Object.values(PLATFORM_RAW_SOURCE_IDS)
 
 const practiceTourSteps = [
   {
@@ -5390,6 +5400,174 @@ function buildDataRoomExtendedRawCatalog({
       active: true,
     },
     {
+      id: PLATFORM_RAW_SOURCE_IDS.searchInference,
+      name: '검색 결과 URL 추론 raw',
+      scope: '외부',
+      category: '검색/추론',
+      description: 'Google Custom Search/Brave Search 결과 URL, 제목, 스니펫, 국가/플랫폼 조건을 저장한 원천',
+      purpose: 'Instagram/TikTok 공식 검색 API가 없거나 제한될 때 후보/레퍼런스의 발견 경로를 재현',
+      method: 'Search API',
+      cycle: '검색 요청 시',
+      lastCollectedAt: nowText,
+      nextCollectAt: '검색 요청 시',
+      status: apiStatus,
+      sourceLocation: 'Google Custom Search, Brave Search, server /discovery/google-profiles/search',
+      storageLocation: `${storageBase} / future: external_search_events`,
+      dashboardArea: '발굴, 레퍼런스, 데이터룸 수집 로그',
+      metricIds: ['MET-OPS-001', 'MET-AI-002', 'MET-AI-003', 'MET-BENCH-001'],
+      ownerDept: '데이터팀',
+      opsOwner: 'Data Operator',
+      techOwner: 'Backend/Data',
+      qualityIssue: '검색 결과는 실제 팔로워/조회수를 보장하지 않으므로 후보 확정 전 채널/콘텐츠 스냅샷이 필요',
+      logLocation: 'Render API logs / future: external_search_events',
+      note: '검색 결과는 발견용 raw이며 최종 성과 수치 원천으로 쓰지 않음',
+      active: true,
+    },
+    {
+      id: PLATFORM_RAW_SOURCE_IDS.tiktokResearch,
+      name: 'TikTok Research API raw',
+      scope: '외부',
+      category: 'TikTok 공식 API',
+      description: '승인된 TikTok Research API로 수집하는 공개 영상/계정/통계 원천',
+      purpose: '대량 TikTok 후보/콘텐츠 검색과 조회수·좋아요·댓글 같은 공개 성과 검증',
+      method: 'API',
+      cycle: '승인 후 검색/갱신 시',
+      lastCollectedAt: '-',
+      nextCollectAt: 'API 승인 후',
+      status: '미수집',
+      sourceLocation: 'TikTok Research API',
+      storageLocation: `${storageBase} / future: tiktok_research_snapshots`,
+      dashboardArea: '발굴, 레퍼런스, 리포트, 데이터룸',
+      metricIds: ['MET-OPS-001', 'MET-AI-002', 'MET-AI-003', 'MET-CONT-001', 'MET-SNS-006'],
+      ownerDept: '데이터팀',
+      opsOwner: 'Data Operator',
+      techOwner: 'Backend/API',
+      qualityIssue: '앱 심사/쿼터 승인 전에는 운영 데이터로 확정 표시 불가',
+      logLocation: 'future: tiktok_research_jobs',
+      note: '승인형 공식 API. 대량 수집의 1순위 목표 원천',
+      active: true,
+    },
+    {
+      id: PLATFORM_RAW_SOURCE_IDS.tiktokCommercial,
+      name: 'TikTok Commercial Content API raw',
+      scope: '외부',
+      category: 'TikTok 공식 API',
+      description: 'TikTok Commercial Content API에서 반환되는 광고/상업 콘텐츠 검색 결과와 공개 반응 지표',
+      purpose: '상업 콘텐츠 레퍼런스, 후킹 소재, 벤치마크 콘텐츠 수집',
+      method: 'API',
+      cycle: '레퍼런스 검색 시',
+      lastCollectedAt: contentReferences.some((item) => item.platform === 'TikTok' && String(item.source || item.sourceNote || '').includes('Commercial')) ? nowText : '-',
+      nextCollectAt: '검색 요청 시',
+      status: contentReferences.some((item) => item.platform === 'TikTok' && String(item.source || item.sourceNote || '').includes('Commercial')) ? '정상' : '검증 필요',
+      sourceLocation: 'TikTok Commercial Content API / server reference search',
+      storageLocation: `${storageBase} / contentReferences, future: tiktok_commercial_content_raw`,
+      dashboardArea: '레퍼런스, 콘텐츠 가이드, 데이터룸',
+      metricIds: ['MET-OPS-001', 'MET-BENCH-001', 'MET-BENCH-002', 'MET-BENCH-003'],
+      ownerDept: '콘텐츠/데이터팀',
+      opsOwner: 'Content PM',
+      techOwner: 'Backend/API',
+      qualityIssue: '상업 콘텐츠 중심이라 일반 크리에이터 발굴 raw와 분리해야 함',
+      logLocation: 'Render API logs / future: tiktok_commercial_content_raw',
+      note: '레퍼런스용 공식 raw. 일반 후보 발굴 전체를 대체하지 않음',
+      active: true,
+    },
+    {
+      id: PLATFORM_RAW_SOURCE_IDS.tiktokSnapshot,
+      name: 'TikTok 공개 스냅샷 raw',
+      scope: '외부',
+      category: 'TikTok 공개 스냅샷',
+      description: '공개 TikTok 프로필/영상 페이지에서 확인 가능한 핸들, 썸네일, 조회수, 좋아요, 댓글 등 스냅샷',
+      purpose: '공식 API가 닿지 않는 TikTok 후보/콘텐츠를 보류·검증 상태로 적재',
+      method: '공개 페이지 스냅샷',
+      cycle: 'URL 저장/검증 시',
+      lastCollectedAt: creators.some((creator) => creator.platform === 'TikTok') || contentReferences.some((item) => item.platform === 'TikTok') ? nowText : '-',
+      nextCollectAt: 'URL 검증 시',
+      status: creators.some((creator) => creator.platform === 'TikTok') || contentReferences.some((item) => item.platform === 'TikTok') ? '검증 필요' : '미수집',
+      sourceLocation: 'TikTok public URL, rendered snapshot, manual verification',
+      storageLocation: `${storageBase} / creators.metricSources, contentReferences`,
+      dashboardArea: '발굴, 레퍼런스, 리포트',
+      metricIds: ['MET-AI-002', 'MET-AI-003', 'MET-CONT-001', 'MET-SNS-006', 'MET-OPS-002'],
+      ownerDept: '데이터팀',
+      opsOwner: 'Data QA',
+      techOwner: 'Backend/Data',
+      qualityIssue: '페이지 구조 변경, 로그인/지역 제한, 조회수 노출 방식 변경 시 오류 가능',
+      logLocation: 'future: tiktok_public_snapshot_jobs',
+      note: '운영 가능하지만 공식 API보다 낮은 신뢰도로 표시',
+      active: true,
+    },
+    {
+      id: PLATFORM_RAW_SOURCE_IDS.instagramBusiness,
+      name: 'Instagram Graph/Business API raw',
+      scope: '외부',
+      category: 'Instagram 공식 API',
+      description: '브랜드/광고주 소유 Instagram Business 계정과 연결된 미디어/인사이트 원천',
+      purpose: '우리 브랜드 계정 또는 권한 받은 계정의 공식 성과와 콘텐츠 추적',
+      method: 'API / OAuth',
+      cycle: '권한 연결 후 매일/즉시',
+      lastCollectedAt: '-',
+      nextCollectAt: 'Meta 앱 권한 연결 후',
+      status: '미수집',
+      sourceLocation: 'Instagram Graph API, Meta Business OAuth',
+      storageLocation: `${storageBase} / future: instagram_business_insights`,
+      dashboardArea: '리포트, 브랜드 추적, 데이터룸',
+      metricIds: ['MET-OPS-001', 'MET-CONT-001', 'MET-CONT-002', 'MET-SNS-006'],
+      ownerDept: '데이터팀',
+      opsOwner: 'Data Operator',
+      techOwner: 'Backend/API',
+      qualityIssue: '타인 계정 공개 발굴에는 제한적이며 계정 권한/OAuth가 필요',
+      logLocation: 'future: instagram_graph_jobs',
+      note: '소유/권한 계정 성과용 공식 raw',
+      active: true,
+    },
+    {
+      id: PLATFORM_RAW_SOURCE_IDS.instagramCreatorAuth,
+      name: 'Instagram 크리에이터 승인 인사이트 raw',
+      scope: '외부',
+      category: 'Instagram 승인 데이터',
+      description: '크리에이터가 제공한 미디어킷, 인사이트 캡처, OAuth/파트너 권한 기반 성과 데이터',
+      purpose: '섭외/계약 단계에서 팔로워, 도달, 저장, 공유 등 비공개 지표를 검증',
+      method: 'OAuth / 파일 업로드 / 미디어킷',
+      cycle: '크리에이터 승인/자료 제출 시',
+      lastCollectedAt: '-',
+      nextCollectAt: '승인 자료 제출 시',
+      status: '미수집',
+      sourceLocation: 'Creator media kit, Instagram insights export, future OAuth flow',
+      storageLocation: `${storageBase} / future: creator_authorized_insights`,
+      dashboardArea: '후보 검증, 메시지, 리포트, 데이터룸',
+      metricIds: ['MET-AI-002', 'MET-AI-003', 'MET-SNS-006', 'MET-OPS-002'],
+      ownerDept: '운영/데이터팀',
+      opsOwner: 'Creator Manager',
+      techOwner: 'Backend/Data',
+      qualityIssue: '크리에이터 제출 자료의 최신성/위변조 검증 절차 필요',
+      logLocation: 'future: creator_authorized_insight_uploads',
+      note: '공개 수집 한계를 보완하는 승인형 raw',
+      active: true,
+    },
+    {
+      id: PLATFORM_RAW_SOURCE_IDS.instagramSnapshot,
+      name: 'Instagram 공개 스냅샷 raw',
+      scope: '외부',
+      category: 'Instagram 공개 스냅샷',
+      description: '공개 Instagram 프로필/릴스/게시물에서 노출되는 제목, 썸네일, 좋아요/댓글, 공개 메타데이터 스냅샷',
+      purpose: '공식 권한이 없는 Instagram 후보/레퍼런스를 발견·보류·검증 상태로 적재',
+      method: '공개 페이지 렌더링/검색 결과',
+      cycle: '검색/URL 저장 시',
+      lastCollectedAt: creators.some((creator) => creator.platform === 'Instagram') || contentReferences.some((item) => item.platform === 'Instagram') ? nowText : '-',
+      nextCollectAt: '검색/URL 검증 시',
+      status: creators.some((creator) => creator.platform === 'Instagram') || contentReferences.some((item) => item.platform === 'Instagram') ? '검증 필요' : '미수집',
+      sourceLocation: 'Instagram public URL, rendered snapshot, search result cache',
+      storageLocation: `${storageBase} / creators.metricSources, contentReferences`,
+      dashboardArea: '발굴, 레퍼런스, 리포트',
+      metricIds: ['MET-AI-002', 'MET-AI-003', 'MET-CONT-002', 'MET-SNS-006', 'MET-OPS-002'],
+      ownerDept: '데이터팀',
+      opsOwner: 'Data QA',
+      techOwner: 'Backend/Data',
+      qualityIssue: '로그인/지역/봇 방지/페이지 렌더링 차이로 팔로워·조회수 누락 가능',
+      logLocation: 'future: instagram_public_snapshot_jobs',
+      note: '발견/보조 검증용 raw. 공식 인사이트와 구분해서 표시',
+      active: true,
+    },
+    {
       id: 'RAW-INT-AI-001',
       name: 'AI 생성 실행 로그',
       scope: '내부',
@@ -5879,6 +6057,37 @@ function buildDataRoomExtendedMetricCatalog({
       note,
     }))
 
+  const platformMetricRawAugments = {
+    'MET-AI-002': SOCIAL_PLATFORM_RAW_IDS,
+    'MET-AI-003': SOCIAL_PLATFORM_RAW_IDS,
+    'MET-AI-004': [
+      PLATFORM_RAW_SOURCE_IDS.tiktokResearch,
+      PLATFORM_RAW_SOURCE_IDS.tiktokCommercial,
+      PLATFORM_RAW_SOURCE_IDS.tiktokSnapshot,
+      PLATFORM_RAW_SOURCE_IDS.instagramBusiness,
+      PLATFORM_RAW_SOURCE_IDS.instagramCreatorAuth,
+      PLATFORM_RAW_SOURCE_IDS.instagramSnapshot,
+    ],
+    'MET-OPS-001': SOCIAL_PLATFORM_RAW_IDS,
+    'MET-OPS-002': [
+      PLATFORM_RAW_SOURCE_IDS.searchInference,
+      PLATFORM_RAW_SOURCE_IDS.tiktokSnapshot,
+      PLATFORM_RAW_SOURCE_IDS.instagramSnapshot,
+      'RAW-EXT-UNSUPPORTED-001',
+    ],
+  }
+
+  extraMetrics.forEach((metric) => {
+    const additions = platformMetricRawAugments[metric.id]
+    if (!additions) return
+    additions.forEach((rawId) => {
+      if (!metric.rawIds.includes(rawId)) {
+        metric.rawIds.push(rawId)
+        metric.rawNames.push(rawName(rawId))
+      }
+    })
+  })
+
   return [...metrics, ...extraMetrics]
 }
 
@@ -5903,6 +6112,43 @@ function buildDataRoomWorkflowCoverage({ rawData, metrics }) {
     ['WF-BRAND-TRACKING', '브랜드/경쟁사 검색 및 추적', '레퍼런스/브랜드 인사이트', ['RAW-EXT-SEARCH-001', 'RAW-EXT-BRAND-001', 'RAW-EXT-BENCH-001', 'RAW-INT-QUALITY-001'], ['MET-BRAND-001', 'MET-BRAND-002', 'MET-BENCH-001'], '경쟁사 저장 raw를 기반으로 브랜드 비교/벤치마크 지표를 생성', '브랜드 추적 raw가 없으면 브랜드 인사이트 경쟁 지표는 비활성 또는 샘플로 표시'],
     ['WF-GROUPS', '후보 그룹/세그먼트 관리', '후보 그룹/메시지', ['RAW-INT-GROUP-001', BULK_CREATOR_GROUP_RAW_SOURCE_ID, 'RAW-INT-INF-001'], ['MET-POOL-006', 'MET-POOL-001'], '후보 그룹 raw의 creatorIds를 후보 풀과 캠페인 배정으로 연결', '후보 그룹에 없는 후보는 메시지 대량 발송 대상으로 자동 포함하지 않음'],
   )
+
+  const workflowRawAugments = {
+    'WF-DISCOVERY': [
+      PLATFORM_RAW_SOURCE_IDS.searchInference,
+      PLATFORM_RAW_SOURCE_IDS.tiktokResearch,
+      PLATFORM_RAW_SOURCE_IDS.tiktokSnapshot,
+      PLATFORM_RAW_SOURCE_IDS.instagramSnapshot,
+    ],
+    'WF-AI-RECOMMEND': SOCIAL_PLATFORM_RAW_IDS,
+    'WF-REPORT': [
+      PLATFORM_RAW_SOURCE_IDS.tiktokResearch,
+      PLATFORM_RAW_SOURCE_IDS.tiktokSnapshot,
+      PLATFORM_RAW_SOURCE_IDS.instagramBusiness,
+      PLATFORM_RAW_SOURCE_IDS.instagramCreatorAuth,
+      PLATFORM_RAW_SOURCE_IDS.instagramSnapshot,
+    ],
+    'WF-REFERENCE': [
+      PLATFORM_RAW_SOURCE_IDS.searchInference,
+      PLATFORM_RAW_SOURCE_IDS.tiktokCommercial,
+      PLATFORM_RAW_SOURCE_IDS.tiktokSnapshot,
+      PLATFORM_RAW_SOURCE_IDS.instagramSnapshot,
+    ],
+    'WF-BRAND-TRACKING': [
+      PLATFORM_RAW_SOURCE_IDS.searchInference,
+      PLATFORM_RAW_SOURCE_IDS.tiktokCommercial,
+      PLATFORM_RAW_SOURCE_IDS.instagramBusiness,
+      PLATFORM_RAW_SOURCE_IDS.instagramSnapshot,
+    ],
+  }
+
+  coverage.forEach((item) => {
+    const additions = workflowRawAugments[item[0]]
+    if (!additions) return
+    additions.forEach((rawId) => {
+      if (!item[3].includes(rawId)) item[3].push(rawId)
+    })
+  })
 
   return coverage.map(([id, featureName, frontendArea, itemRawIds, itemMetricIds, algorithm, rule, options = {}]) => {
     const conditionalRawIds = options.conditionalRawIds ?? []
@@ -6058,6 +6304,7 @@ function App() {
   const [discoveryFilters, setDiscoveryFilters] = useState(defaultDiscoveryFilters)
   const [activeDiscoveryPoolView, setActiveDiscoveryPoolView] = useState('search')
   const [selectedCreatorId, setSelectedCreatorId] = useState(workspace.creators[0]?.id)
+  const [selectedRecommendationDetailId, setSelectedRecommendationDetailId] = useState('')
   const [selectedCampaignId, setSelectedCampaignId] = useState(
     workspace.campaigns.find((campaign) => campaign.brandId === workspace.activeBrandId)?.id ?? workspace.campaigns[0]?.id,
   )
@@ -6318,6 +6565,7 @@ function App() {
       ...current,
       activeBrandId: nextBrandId,
     }))
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setSelectedCampaignId(campaigns.find((campaign) => campaign.brandId === nextBrandId)?.id)
   }, [accessibleBrands, activeBrandId, campaigns, setWorkspace])
 
@@ -6412,6 +6660,13 @@ function App() {
   const selectedRecommendations = useMemo(
     () => selectedCampaignRecommendations.filter((recommendation) => selectedRecommendationIds.includes(recommendation.id)),
     [selectedCampaignRecommendations, selectedRecommendationIds],
+  )
+  const selectedRecommendationDetail = useMemo(
+    () =>
+      selectedCampaignRecommendations.find(
+        (recommendation) => recommendation.creatorId === selectedRecommendationDetailId,
+      ),
+    [selectedCampaignRecommendations, selectedRecommendationDetailId],
   )
   const allRecommendationsSelected =
     selectedCampaignRecommendations.length > 0 && selectedRecommendations.length === selectedCampaignRecommendations.length
@@ -7088,6 +7343,33 @@ function App() {
   )
   const getCreatorWithPerformanceLearning = (creator) =>
     attachPerformanceLearning(creator, creatorPerformanceLearningMap)
+  const selectedRecommendationCreator = useMemo(
+    () =>
+      selectedRecommendationDetail
+        ? attachPerformanceLearning(
+            creators.find((creator) => creator.id === selectedRecommendationDetail.creatorId),
+            creatorPerformanceLearningMap,
+          )
+        : null,
+    [creators, creatorPerformanceLearningMap, selectedRecommendationDetail],
+  )
+  const selectedRecommendationQuality = getCreatorDataQuality(selectedRecommendationCreator)
+  const selectedRecommendationEvidence = useMemo(
+    () => buildCreatorSourceEvidence(selectedRecommendationCreator),
+    [selectedRecommendationCreator],
+  )
+  const selectedRecommendationRawIds = useMemo(() => {
+    if (selectedRecommendationDetail?.dataContract?.rawIds?.length) {
+      return selectedRecommendationDetail.dataContract.rawIds
+    }
+
+    return Array.from(
+      new Set(selectedRecommendationEvidence.map((source) => source.rawId).filter(Boolean)),
+    )
+  }, [selectedRecommendationDetail, selectedRecommendationEvidence])
+  const selectedRecommendationMetricIds = selectedRecommendationDetail?.dataContract?.metricIds?.length
+    ? selectedRecommendationDetail.dataContract.metricIds
+    : recommendationPolicy.metricIds
   const reportBrandInfluencerRows = useMemo(
     () =>
       externalBrandInfluencerRows.length
@@ -11452,7 +11734,7 @@ function App() {
           keywords: item.keywords,
         }))
         .slice(0, 10) || [],
-    learningMaterialSources:
+    learningMaterialDetails:
       campaignBrief.learningMaterials
         ?.map((item) => ({
           id: item.id,
@@ -14211,7 +14493,10 @@ function App() {
                       recommendation={recommendation}
                       creator={creator}
                       checked={selectedRecommendationIds.includes(recommendation.id)}
-                      onSelect={() => setSelectedCreatorId(recommendation.creatorId)}
+                      onSelect={() => {
+                        setSelectedCreatorId(recommendation.creatorId)
+                        setSelectedRecommendationDetailId(recommendation.creatorId)
+                      }}
                       onToggle={() => toggleRecommendationSelection(recommendation.id)}
                       onQueue={() => queueRecommendation(recommendation)}
                       onOpenMetric={openDataRoomMetric}
@@ -14221,6 +14506,96 @@ function App() {
                 })
               )}
             </div>
+            {selectedRecommendationCreator && selectedRecommendationDetail && (
+              <aside className="recommendation-detail-panel" aria-label="AI 추천 후보 상세">
+                <div className="recommendation-detail-header">
+                  <div className="recommendation-detail-identity">
+                    <img src={selectedRecommendationCreator.avatar} alt="" />
+                    <div>
+                      <span className="mini-label">AI 추천 후보 상세</span>
+                      <h3>{selectedRecommendationCreator.name}</h3>
+                      <p>
+                        {[selectedRecommendationCreator.handle, selectedRecommendationCreator.platform, selectedRecommendationCreator.country]
+                          .filter(Boolean)
+                          .join(' · ')}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="recommendation-detail-actions">
+                    {(selectedRecommendationCreator.profileUrl || selectedRecommendationCreator.url) && (
+                      <a
+                        className="secondary-button compact-button"
+                        href={selectedRecommendationCreator.profileUrl || selectedRecommendationCreator.url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        <ArrowUpRight size={15} />
+                        채널 보기
+                      </a>
+                    )}
+                    <button
+                      className="secondary-button compact-button"
+                      type="button"
+                      onClick={() => queueRecommendation(selectedRecommendationDetail)}
+                    >
+                      메시지 검토함
+                    </button>
+                    <button
+                      className="icon-button"
+                      type="button"
+                      aria-label="AI 추천 후보 상세 닫기"
+                      onClick={() => setSelectedRecommendationDetailId('')}
+                    >
+                      <X size={16} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="recommendation-detail-stats">
+                  <Stat label="팔로워" value={displayMetric(selectedRecommendationCreator.followers)} />
+                  <Stat
+                    label="평균 조회"
+                    value={hasPendingMetrics(selectedRecommendationCreator) ? '수집 필요' : displayMetric(selectedRecommendationCreator.averageViews)}
+                  />
+                  <Stat
+                    label="참여율"
+                    value={hasPendingMetrics(selectedRecommendationCreator) ? '수집 필요' : percent(selectedRecommendationCreator.engagement)}
+                  />
+                  <Stat
+                    label="예상 단가"
+                    value={selectedRecommendationCreator.price ? won(selectedRecommendationCreator.price) : '산정 전'}
+                  />
+                  <Stat label="매칭 점수" value={`${selectedRecommendationDetail.score ?? selectedRecommendationCreator.fit ?? 0}점`} />
+                  <Stat label="데이터 신뢰도" value={`${selectedRecommendationQuality.score}%`} />
+                </div>
+
+                <div className="recommendation-detail-body">
+                  <div>
+                    <span>추천 근거</span>
+                    <p>{selectedRecommendationDetail.reasons?.[0] || '브랜드 조건과 후보 데이터를 기준으로 추천했습니다.'}</p>
+                  </div>
+                  <div>
+                    <span>제안 메시지 방향</span>
+                    <p>{selectedRecommendationDetail.outreachAngle || '제품 사용 맥락과 후보 채널 톤을 맞춰 제안 메시지에 반영합니다.'}</p>
+                  </div>
+                  <div>
+                    <span>데이터룸 근거</span>
+                    <div className="recommendation-detail-chips">
+                      {selectedRecommendationRawIds.map((rawId) => (
+                        <button type="button" key={rawId} onClick={() => openDataRoomRaw(rawId)}>
+                          {rawId}
+                        </button>
+                      ))}
+                      {selectedRecommendationMetricIds.map((metricId) => (
+                        <button className="metric-chip" type="button" key={metricId} onClick={() => openDataRoomMetric(metricId)}>
+                          {metricId}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </aside>
+            )}
           </section>
         </section>
 
@@ -14651,7 +15026,21 @@ function App() {
                       <strong>{source.metric}</strong>
                       <span>{source.source}</span>
                     </div>
-                    <small>{source.confidence}%</small>
+                    <div className="source-ledger-meta">
+                      <small>{source.confidence}%</small>
+                      <span className={`source-status ${source.status === '정상' ? 'ready' : 'warning'}`}>
+                        {source.status}
+                      </span>
+                      {source.rawId && (
+                        <button
+                          className="source-raw-link"
+                          type="button"
+                          onClick={() => openDataRoomRaw(source.rawId)}
+                        >
+                          {source.rawId}
+                        </button>
+                      )}
+                    </div>
                   </article>
                 ))}
               </div>
@@ -18419,6 +18808,7 @@ function PracticeTour({ steps, currentIndex, currentStep, onClose, onDismiss, on
   )
 }
 
+// eslint-disable-next-line no-unused-vars
 function MetricCard({ icon, label, value, delta, detail, lineage = [], gated = false }) {
   return (
     <article className={`metric-card ${gated ? 'gated' : ''}`}>
@@ -18434,6 +18824,7 @@ function MetricCard({ icon, label, value, delta, detail, lineage = [], gated = f
   )
 }
 
+// eslint-disable-next-line no-unused-vars
 function WorkflowSignal({ signal }) {
   return (
     <article className={`workflow-card ${signal.tone}`}>
@@ -18583,9 +18974,10 @@ function RecommendationCard({
   const virality = getCreatorViralityRatio(creator)
   const performanceScore = getCreatorPerformanceScore(creator)
   const efficiencyScore = getCreatorEfficiencyScore(creator)
+  const creatorPrice = getCreatorPriceValue(creator)
   const performanceLearning = creator.performanceLearning
-  const costPerView = Number(creator.averageViews || 0) && Number(creator.price || 0)
-    ? Math.round(Number(creator.price || 0) / Number(creator.averageViews || 1))
+  const costPerView = Number(creator.averageViews || 0) && creatorPrice
+    ? Math.round(creatorPrice / Number(creator.averageViews || 1))
     : null
   const learningScore = getCreatorLearningScore(creator)
   const traceRawIds = recommendation.dataContract?.rawIds?.length
@@ -18642,12 +19034,6 @@ function RecommendationCard({
     traceRawIds.length,
     traceMetricIds.length,
   )
-  const emailContact = creator.email || creator.contactEmail || creator.publicEmail
-  const contactState = emailContact
-    ? '\uC774\uBA54\uC77C \uD655\uC778'
-    : creatorContactUrl
-      ? 'DM/\uD504\uB85C\uD544 \uD655\uC778'
-      : '\uC5F0\uB77D\uCC98 \uD655\uC778 \uD544\uC694'
   const viralityLabel = pendingMetrics || !Number.isFinite(virality)
     ? '\uC218\uC9D1 \uD544\uC694'
     : `${virality.toFixed(1)}x`
@@ -18657,9 +19043,9 @@ function RecommendationCard({
     { label: '\uD314\uB85C\uC6CC', value: displayMetric(creator.followers) },
     { label: '\uD3C9\uADE0 \uC870\uD68C', value: pendingMetrics ? '\uC218\uC9D1 \uD544\uC694' : displayMetric(creator.averageViews) },
     { label: '\uCC38\uC5EC\uC728', value: pendingMetrics ? '\uC218\uC9D1 \uD544\uC694' : percent(creator.engagement), tone: 'primary' },
+    { label: '\uC608\uC0C1 \uB2E8\uAC00', value: creatorPrice ? won(creatorPrice) : '\uC0B0\uC815 \uC804', tone: creatorPrice ? 'primary' : undefined },
     { label: '\uC608\uC0C1 CPV', value: costPerView ? `${costPerView}\uC6D0` : '\uC0B0\uC815 \uC804' },
     { label: '\uC870\uD68C \uD3ED\uBC1C', value: viralityLabel },
-    { label: '\uC5F0\uB77D', value: contactState },
   ]
 
   return (
@@ -18805,6 +19191,11 @@ function RecommendationCard({
       <div className="recommendation-footer">
         <span>{recommendation.risk}</span>
         <div className="recommendation-footer-actions">
+          {onSelect && (
+            <button className="secondary-button compact-button" type="button" onClick={onSelect}>
+              상세 보기
+            </button>
+          )}
           {creatorContactUrl && (
             <a
               className="secondary-button compact-button"

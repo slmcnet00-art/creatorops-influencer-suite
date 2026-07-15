@@ -236,7 +236,6 @@ export default function AdminDataRoom({
   setMetricStatus,
   metricBundle,
   setMetricBundle,
-  metricQuery,
   setMetricQuery,
   rawCategories,
   rawMethods,

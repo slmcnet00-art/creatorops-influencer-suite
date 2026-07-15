@@ -193,59 +193,209 @@ export const dataConnectorBlueprints = [
   },
 ]
 
+const CREATOR_RAW_SOURCE_IDS = {
+  youtubeChannel: 'RAW-EXT-CHN-001',
+  searchInference: 'RAW-EXT-SERP-001',
+  tiktokResearch: 'RAW-EXT-TT-RESEARCH-001',
+  tiktokCommercial: 'RAW-EXT-TT-COMMERCIAL-001',
+  tiktokSnapshot: 'RAW-EXT-TT-SNAPSHOT-001',
+  instagramBusiness: 'RAW-EXT-IG-BUSINESS-001',
+  instagramCreatorAuth: 'RAW-EXT-IG-CREATOR-AUTH-001',
+  instagramSnapshot: 'RAW-EXT-IG-SNAPSHOT-001',
+}
+
+const OFFICIAL_CREATOR_RAW_IDS = new Set([
+  CREATOR_RAW_SOURCE_IDS.youtubeChannel,
+  CREATOR_RAW_SOURCE_IDS.tiktokResearch,
+  CREATOR_RAW_SOURCE_IDS.tiktokCommercial,
+  CREATOR_RAW_SOURCE_IDS.instagramBusiness,
+  CREATOR_RAW_SOURCE_IDS.instagramCreatorAuth,
+])
+
+const SNAPSHOT_CREATOR_RAW_IDS = new Set([
+  CREATOR_RAW_SOURCE_IDS.searchInference,
+  CREATOR_RAW_SOURCE_IDS.tiktokSnapshot,
+  CREATOR_RAW_SOURCE_IDS.instagramSnapshot,
+])
+
+function clampConfidence(value) {
+  return Math.max(0, Math.min(100, Math.round(Number(value) || 0)))
+}
+
+function collectCreatorSourceText(creator) {
+  return [
+    creator.source,
+    creator.sourceLabel,
+    creator.sourceMethod,
+    creator.discoverySource,
+    creator.notes,
+    creator.rawSourceId,
+    ...(creator.dataContract?.rawIds || []),
+    ...(creator.metricSources || []).flatMap((source) => [
+      source.source,
+      source.method,
+      source.rawId,
+      source.status,
+    ]),
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+}
+
+function resolveCreatorRawSource(creator) {
+  const platform = creator?.platform || ''
+  const sourceText = collectCreatorSourceText(creator || {})
+
+  if (platform === 'YouTube') {
+    return {
+      rawId: CREATOR_RAW_SOURCE_IDS.youtubeChannel,
+      source: 'YouTube Data API / 채널 공개 통계',
+      method: 'channels.list + videos.list',
+      confidence: 96,
+      freshness: '검색/갱신 시',
+      status: '정상',
+    }
+  }
+
+  if (platform === 'TikTok') {
+    if (/commercial content|adlib|business|ads/i.test(sourceText)) {
+      return {
+        rawId: CREATOR_RAW_SOURCE_IDS.tiktokCommercial,
+        source: 'TikTok Commercial Content API',
+        method: 'commercial_content.query 공개 광고/상업 콘텐츠 검색',
+        confidence: 88,
+        freshness: '레퍼런스 검색 시',
+        status: '정상',
+      }
+    }
+    if (/research api|research/i.test(sourceText)) {
+      return {
+        rawId: CREATOR_RAW_SOURCE_IDS.tiktokResearch,
+        source: 'TikTok Research API',
+        method: '승인 범위 내 공개 콘텐츠/계정 연구 데이터 조회',
+        confidence: 82,
+        freshness: '검색/갱신 시',
+        status: '검증 필요',
+      }
+    }
+    if (/snapshot|public|render|profile|brave|google|search|manual/i.test(sourceText)) {
+      return {
+        rawId: CREATOR_RAW_SOURCE_IDS.tiktokSnapshot,
+        source: 'TikTok 공개 화면 스냅샷',
+        method: '공개 프로필/영상 모음 화면 스냅샷 후 수치 정규화',
+        confidence: 68,
+        freshness: '스냅샷 저장 시',
+        status: '검증 필요',
+      }
+    }
+  }
+
+  if (platform === 'Instagram') {
+    if (/graph|business/i.test(sourceText)) {
+      return {
+        rawId: CREATOR_RAW_SOURCE_IDS.instagramBusiness,
+        source: 'Instagram Graph API / Business Discovery',
+        method: '비즈니스/크리에이터 공개 계정 및 미디어 지표 조회',
+        confidence: 86,
+        freshness: '검색/갱신 시',
+        status: '정상',
+      }
+    }
+    if (/oauth|auth|media kit|insight|creator authorized/i.test(sourceText)) {
+      return {
+        rawId: CREATOR_RAW_SOURCE_IDS.instagramCreatorAuth,
+        source: 'Instagram 크리에이터 인증 인사이트',
+        method: '크리에이터 동의 후 미디어킷/Insights 데이터 수집',
+        confidence: 90,
+        freshness: '크리에이터 승인 갱신 시',
+        status: '정상',
+      }
+    }
+    if (/snapshot|render|public|profile|reel|brave|google|search|manual/i.test(sourceText)) {
+      return {
+        rawId: CREATOR_RAW_SOURCE_IDS.instagramSnapshot,
+        source: 'Instagram 공개 프로필/릴스 스냅샷',
+        method: '공개 검색 결과와 프로필/릴스 화면 스냅샷 정규화',
+        confidence: 64,
+        freshness: '스냅샷 저장 시',
+        status: '검증 필요',
+      }
+    }
+  }
+
+  return {
+    rawId: CREATOR_RAW_SOURCE_IDS.searchInference,
+    source: '검색 결과 URL 추론 raw',
+    method: '검색 API 결과 URL, 스니펫, 썸네일 기반 후보 추론',
+    confidence: 58,
+    freshness: '검색 시',
+    status: '검증 필요',
+  }
+}
+
+function sourceOverride(creator, metric) {
+  return creator?.metricSources?.find((source) => source.metric === metric)
+}
+
+function buildEvidenceItem(creator, metric, fallback, confidenceOffset = 0, overrideDefaults = {}) {
+  const override = sourceOverride(creator, metric)
+  const confidence = override?.confidence ?? overrideDefaults.confidence ?? fallback.confidence + confidenceOffset
+  return {
+    metric,
+    source: override?.source ?? overrideDefaults.source ?? fallback.source,
+    method: override?.method ?? overrideDefaults.method ?? fallback.method,
+    confidence: clampConfidence(confidence),
+    freshness: override?.freshness ?? overrideDefaults.freshness ?? fallback.freshness,
+    rawId: override?.rawId ?? overrideDefaults.rawId ?? fallback.rawId,
+    status: override?.status ?? overrideDefaults.status ?? fallback.status,
+  }
+}
+
 export function buildCreatorSourceEvidence(creator) {
   if (!creator) return []
 
-  const isYouTube = creator.platform === 'YouTube'
-  const isConnectedPlatform = isYouTube
-  const publicSnapshotSource = `${creator.platform} 공개 프로필 스냅샷`
-  const sourceOverride = (metric) => creator.metricSources?.find((source) => source.metric === metric)
+  const fallback = resolveCreatorRawSource(creator)
 
   return [
-    {
-      metric: '팔로워',
-      source: sourceOverride('팔로워')?.source ?? (isConnectedPlatform ? 'YouTube Data API 검증 대상' : publicSnapshotSource),
-      method: sourceOverride('팔로워')?.method ?? (isConnectedPlatform ? 'channels.list statistics' : '공개 프로필/미디어킷 주기 수집'),
-      confidence: sourceOverride('팔로워')?.confidence ?? (isConnectedPlatform ? 96 : 72),
-      freshness: sourceOverride('팔로워')?.freshness ?? (isConnectedPlatform ? '일 1회 갱신' : '주 1회 스냅샷'),
-    },
-    {
-      metric: '평균 조회',
-      source: sourceOverride('평균 조회')?.source ?? (isConnectedPlatform ? 'YouTube videos.list 계산' : '최근 콘텐츠 공개 지표 계산'),
-      method: sourceOverride('평균 조회')?.method ?? '최근 N개 콘텐츠 중앙값/평균값 혼합',
-      confidence: sourceOverride('평균 조회')?.confidence ?? (isConnectedPlatform ? 92 : 70),
-      freshness: sourceOverride('평균 조회')?.freshness ?? '캠페인 후보 갱신 시',
-    },
-    {
-      metric: '참여율',
-      source: '공개 반응 데이터 계산',
-      method: '(좋아요 + 댓글 + 공유 추정) / 팔로워',
-      confidence: creator.platform === 'Instagram' ? 66 : 74,
-      freshness: '콘텐츠 스냅샷 기준',
-    },
-    {
-      metric: '오디언스/가짜 팔로워',
-      source: '공개 신호 + 인증 데이터 우선',
+    buildEvidenceItem(creator, '팔로워', fallback),
+    buildEvidenceItem(creator, '평균 조회', fallback, -4, {
+      method: '최근 콘텐츠 공개 조회수 평균 또는 API 통계',
+    }),
+    buildEvidenceItem(creator, '참여율', fallback, -10, {
+      source: `${fallback.source} + 반응지표 계산`,
+      method: '(좋아요 + 댓글 + 공유 + 저장) / 조회수 또는 팔로워',
+    }),
+    buildEvidenceItem(creator, '오디언스/가짜 팔로워', fallback, 0, {
+      source: '품질 검증/리스크 모델',
       method: '성장 급등, 반복 댓글, 카테고리 불일치, 인증 인사이트 교차검증',
-      confidence: 62,
-      freshness: '검증 단계에서 재계산',
-    },
-    {
-      metric: '예상 단가',
-      source: '우리 CPM 모델',
+      confidence: Math.min(fallback.confidence, 62),
+      status: fallback.status === '정상' ? '검증 필요' : fallback.status,
+    }),
+    buildEvidenceItem(creator, '예상 단가', fallback, 0, {
+      source: '자체 단가/CPV 추정 모델',
       method: '플랫폼/카테고리/평균 조회/참여율/브랜드 안정성 가중치',
       confidence: 58,
       freshness: '견적 응답 수집 후 보정',
-    },
+      status: '검증 필요',
+    }),
   ]
 }
 
 export function calculateDataCoverage(creators) {
-  const evidence = creators.flatMap((creator) => buildCreatorSourceEvidence(creator))
+  const creatorEvidence = creators.map((creator) => ({
+    creator,
+    evidence: buildCreatorSourceEvidence(creator),
+  }))
+  const evidence = creatorEvidence.flatMap((item) => item.evidence)
   const confidence =
     evidence.reduce((sum, item) => sum + item.confidence, 0) / Math.max(evidence.length, 1)
-  const officialReady = creators.filter((creator) => creator.platform === 'YouTube').length
-  const profileSnapshots = creators.length
+  const officialReady = creatorEvidence.filter((item) =>
+    item.evidence.some((source) => OFFICIAL_CREATOR_RAW_IDS.has(source.rawId)),
+  ).length
+  const profileSnapshots = creatorEvidence.filter((item) =>
+    item.evidence.some((source) => SNAPSHOT_CREATOR_RAW_IDS.has(source.rawId)),
+  ).length
   const estimatedFields = evidence.filter((item) => item.confidence < 70).length
 
   return {
