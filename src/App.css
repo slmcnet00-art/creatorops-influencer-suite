@@ -3097,19 +3097,54 @@
   font-size: 12px;
 }
 
-.recommendation-list {
+.recommendation-workspace {
   display: grid;
-  gap: 10px;
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.48fr);
+  gap: 14px;
+  align-items: start;
   padding: 4px 18px 18px;
 }
 
+.recommendation-list {
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
 .recommendation-detail-panel {
-  margin: 0 18px 18px;
+  position: sticky;
+  top: 14px;
+  max-height: calc(100vh - 120px);
+  overflow: auto;
+  margin: 0;
   padding: 16px;
   border: 1px solid rgba(var(--primary-rgb), 0.22);
   border-radius: 10px;
   background: linear-gradient(180deg, rgba(245, 250, 255, 0.98), #ffffff);
   box-shadow: 0 16px 32px rgba(var(--primary-rgb), 0.08);
+}
+
+.recommendation-detail-empty {
+  min-height: 260px;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  text-align: center;
+  color: var(--text-soft);
+}
+
+.recommendation-detail-empty strong {
+  color: var(--text-strong);
+  font-size: 15px;
+}
+
+.recommendation-detail-empty p {
+  max-width: 300px;
+  margin: 0;
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 .recommendation-detail-header {
@@ -3154,7 +3189,7 @@
 
 .recommendation-detail-stats {
   display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px;
   margin-top: 14px;
 }
@@ -3188,7 +3223,7 @@
 
 .recommendation-detail-body {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(240px, 0.9fr);
+  grid-template-columns: 1fr;
   gap: 10px;
   margin-top: 12px;
 }
@@ -3306,6 +3341,12 @@
   border-color: rgba(var(--primary-rgb), 0.36);
   background: rgba(245, 249, 255, 0.94);
   box-shadow: 0 12px 28px rgba(var(--primary-rgb), 0.08);
+}
+
+.recommendation-card.active {
+  border-color: rgba(var(--primary-rgb), 0.52);
+  background: rgba(239, 247, 255, 0.96);
+  box-shadow: inset 3px 0 0 rgba(var(--primary-rgb), 0.86), 0 12px 28px rgba(var(--primary-rgb), 0.08);
 }
 
 .recommendation-top,
@@ -12394,6 +12435,17 @@
 .tracking-modal-form > label:nth-of-type(3),
 .tracking-modal-form > label:nth-of-type(4) {
   grid-column: 1 / -1;
+}
+
+@media (max-width: 1100px) {
+  .recommendation-workspace {
+    grid-template-columns: 1fr;
+  }
+
+  .recommendation-detail-panel {
+    position: static;
+    max-height: none;
+  }
 }
 
 @media (max-width: 900px) {

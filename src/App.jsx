@@ -14462,140 +14462,151 @@ function App() {
                 </div>
               </div>
             )}
-            <div className="recommendation-list">
-              {selectedCampaignRecommendations.length === 0 ? (
-                <div className="empty-state compact-empty">
-                  <Target size={22} />
-                  <strong>아직 AI 추천 결과가 없습니다.</strong>
-                  <p>AI 추천은 저장된 검색 결과 풀을 기준으로 점수화합니다. 먼저 실제 웹 발굴로 후보를 모은 뒤 AI 매칭을 실행하세요.</p>
-                  <div className="empty-action-steps" aria-label="AI 추천 생성 순서">
-                    <span>1. 실제 웹 발굴</span>
-                    <span>2. AI 매칭 실행</span>
-                    <span>3. 후보 풀 저장</span>
-                  </div>
-                  <button
-                    className="secondary-button compact-button"
-                    type="button"
-                    onClick={() => document.getElementById('discovery')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
-                  >
-                    발굴 영역으로 이동
-                  </button>
-                </div>
-              ) : (
-                selectedCampaignRecommendations.map((recommendation) => {
-                  const creator = getCreatorWithPerformanceLearning(
-                    creators.find((item) => item.id === recommendation.creatorId),
-                  )
-
-                  return (
-                    <RecommendationCard
-                      key={recommendation.id}
-                      recommendation={recommendation}
-                      creator={creator}
-                      checked={selectedRecommendationIds.includes(recommendation.id)}
-                      onSelect={() => {
-                        setSelectedCreatorId(recommendation.creatorId)
-                        setSelectedRecommendationDetailId(recommendation.creatorId)
-                      }}
-                      onToggle={() => toggleRecommendationSelection(recommendation.id)}
-                      onQueue={() => queueRecommendation(recommendation)}
-                      onOpenMetric={openDataRoomMetric}
-                      onOpenRaw={openDataRoomRaw}
-                    />
-                  )
-                })
-              )}
-            </div>
-            {selectedRecommendationCreator && selectedRecommendationDetail && (
-              <aside className="recommendation-detail-panel" aria-label="AI 추천 후보 상세">
-                <div className="recommendation-detail-header">
-                  <div className="recommendation-detail-identity">
-                    <img src={selectedRecommendationCreator.avatar} alt="" />
-                    <div>
-                      <span className="mini-label">AI 추천 후보 상세</span>
-                      <h3>{selectedRecommendationCreator.name}</h3>
-                      <p>
-                        {[selectedRecommendationCreator.handle, selectedRecommendationCreator.platform, selectedRecommendationCreator.country]
-                          .filter(Boolean)
-                          .join(' · ')}
-                      </p>
+            <div className="recommendation-workspace">
+              <div className="recommendation-list">
+                {selectedCampaignRecommendations.length === 0 ? (
+                  <div className="empty-state compact-empty">
+                    <Target size={22} />
+                    <strong>아직 AI 추천 결과가 없습니다.</strong>
+                    <p>AI 추천은 저장된 검색 결과 풀을 기준으로 점수화합니다. 먼저 실제 웹 발굴로 후보를 모은 뒤 AI 매칭을 실행하세요.</p>
+                    <div className="empty-action-steps" aria-label="AI 추천 생성 순서">
+                      <span>1. 실제 웹 발굴</span>
+                      <span>2. AI 매칭 실행</span>
+                      <span>3. 후보 풀 저장</span>
                     </div>
-                  </div>
-                  <div className="recommendation-detail-actions">
-                    {(selectedRecommendationCreator.profileUrl || selectedRecommendationCreator.url) && (
-                      <a
-                        className="secondary-button compact-button"
-                        href={selectedRecommendationCreator.profileUrl || selectedRecommendationCreator.url}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        <ArrowUpRight size={15} />
-                        채널 보기
-                      </a>
-                    )}
                     <button
                       className="secondary-button compact-button"
                       type="button"
-                      onClick={() => queueRecommendation(selectedRecommendationDetail)}
+                      onClick={() => document.getElementById('discovery')?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                     >
-                      메시지 검토함
-                    </button>
-                    <button
-                      className="icon-button"
-                      type="button"
-                      aria-label="AI 추천 후보 상세 닫기"
-                      onClick={() => setSelectedRecommendationDetailId('')}
-                    >
-                      <X size={16} />
+                      발굴 영역으로 이동
                     </button>
                   </div>
-                </div>
+                ) : (
+                  selectedCampaignRecommendations.map((recommendation) => {
+                    const creator = getCreatorWithPerformanceLearning(
+                      creators.find((item) => item.id === recommendation.creatorId),
+                    )
 
-                <div className="recommendation-detail-stats">
-                  <Stat label="팔로워" value={displayMetric(selectedRecommendationCreator.followers)} />
-                  <Stat
-                    label="평균 조회"
-                    value={hasPendingMetrics(selectedRecommendationCreator) ? '수집 필요' : displayMetric(selectedRecommendationCreator.averageViews)}
-                  />
-                  <Stat
-                    label="참여율"
-                    value={hasPendingMetrics(selectedRecommendationCreator) ? '수집 필요' : percent(selectedRecommendationCreator.engagement)}
-                  />
-                  <Stat
-                    label="예상 단가"
-                    value={selectedRecommendationCreator.price ? won(selectedRecommendationCreator.price) : '산정 전'}
-                  />
-                  <Stat label="매칭 점수" value={`${selectedRecommendationDetail.score ?? selectedRecommendationCreator.fit ?? 0}점`} />
-                  <Stat label="데이터 신뢰도" value={`${selectedRecommendationQuality.score}%`} />
-                </div>
-
-                <div className="recommendation-detail-body">
-                  <div>
-                    <span>추천 근거</span>
-                    <p>{selectedRecommendationDetail.reasons?.[0] || '브랜드 조건과 후보 데이터를 기준으로 추천했습니다.'}</p>
-                  </div>
-                  <div>
-                    <span>제안 메시지 방향</span>
-                    <p>{selectedRecommendationDetail.outreachAngle || '제품 사용 맥락과 후보 채널 톤을 맞춰 제안 메시지에 반영합니다.'}</p>
-                  </div>
-                  <div>
-                    <span>데이터룸 근거</span>
-                    <div className="recommendation-detail-chips">
-                      {selectedRecommendationRawIds.map((rawId) => (
-                        <button type="button" key={rawId} onClick={() => openDataRoomRaw(rawId)}>
-                          {rawId}
+                    return (
+                      <RecommendationCard
+                        key={recommendation.id}
+                        recommendation={recommendation}
+                        creator={creator}
+                        checked={selectedRecommendationIds.includes(recommendation.id)}
+                        active={selectedRecommendationDetailId === recommendation.creatorId}
+                        onSelect={() => {
+                          setSelectedCreatorId(recommendation.creatorId)
+                          setSelectedRecommendationDetailId(recommendation.creatorId)
+                        }}
+                        onToggle={() => toggleRecommendationSelection(recommendation.id)}
+                        onQueue={() => queueRecommendation(recommendation)}
+                        onOpenMetric={openDataRoomMetric}
+                        onOpenRaw={openDataRoomRaw}
+                      />
+                    )
+                  })
+                )}
+              </div>
+              <aside className="recommendation-detail-panel" aria-label="AI 추천 후보 상세">
+                {selectedRecommendationCreator && selectedRecommendationDetail ? (
+                  <>
+                    <div className="recommendation-detail-header">
+                      <div className="recommendation-detail-identity">
+                        <img src={selectedRecommendationCreator.avatar} alt="" />
+                        <div>
+                          <span className="mini-label">AI 추천 후보 상세</span>
+                          <h3>{selectedRecommendationCreator.name}</h3>
+                          <p>
+                            {[selectedRecommendationCreator.handle, selectedRecommendationCreator.platform, selectedRecommendationCreator.country]
+                              .filter(Boolean)
+                              .join(' · ')}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="recommendation-detail-actions">
+                        {(selectedRecommendationCreator.profileUrl || selectedRecommendationCreator.url) && (
+                          <a
+                            className="secondary-button compact-button"
+                            href={selectedRecommendationCreator.profileUrl || selectedRecommendationCreator.url}
+                            target="_blank"
+                            rel="noreferrer"
+                          >
+                            <ArrowUpRight size={15} />
+                            채널 보기
+                          </a>
+                        )}
+                        <button
+                          className="secondary-button compact-button"
+                          type="button"
+                          onClick={() => queueRecommendation(selectedRecommendationDetail)}
+                        >
+                          메시지 검토함
                         </button>
-                      ))}
-                      {selectedRecommendationMetricIds.map((metricId) => (
-                        <button className="metric-chip" type="button" key={metricId} onClick={() => openDataRoomMetric(metricId)}>
-                          {metricId}
+                        <button
+                          className="icon-button"
+                          type="button"
+                          aria-label="AI 추천 후보 상세 닫기"
+                          onClick={() => setSelectedRecommendationDetailId('')}
+                        >
+                          <X size={16} />
                         </button>
-                      ))}
+                      </div>
                     </div>
+
+                    <div className="recommendation-detail-stats">
+                      <Stat label="팔로워" value={displayMetric(selectedRecommendationCreator.followers)} />
+                      <Stat
+                        label="평균 조회"
+                        value={hasPendingMetrics(selectedRecommendationCreator) ? '수집 필요' : displayMetric(selectedRecommendationCreator.averageViews)}
+                      />
+                      <Stat
+                        label="참여율"
+                        value={hasPendingMetrics(selectedRecommendationCreator) ? '수집 필요' : percent(selectedRecommendationCreator.engagement)}
+                      />
+                      <Stat
+                        label="예상 단가"
+                        value={selectedRecommendationCreator.price ? won(selectedRecommendationCreator.price) : '산정 전'}
+                      />
+                      <Stat label="매칭 점수" value={`${selectedRecommendationDetail.score ?? selectedRecommendationCreator.fit ?? 0}점`} />
+                      <Stat label="데이터 신뢰도" value={`${selectedRecommendationQuality.score}%`} />
+                    </div>
+
+                    <div className="recommendation-detail-body">
+                      <div>
+                        <span>추천 근거</span>
+                        <p>{selectedRecommendationDetail.reasons?.[0] || '브랜드 조건과 후보 데이터를 기준으로 추천했습니다.'}</p>
+                      </div>
+                      <div>
+                        <span>제안 메시지 방향</span>
+                        <p>{selectedRecommendationDetail.outreachAngle || '제품 사용 맥락과 후보 채널 톤을 맞춰 제안 메시지에 반영합니다.'}</p>
+                      </div>
+                      <div>
+                        <span>데이터룸 근거</span>
+                        <div className="recommendation-detail-chips">
+                          {selectedRecommendationRawIds.map((rawId) => (
+                            <button type="button" key={rawId} onClick={() => openDataRoomRaw(rawId)}>
+                              {rawId}
+                            </button>
+                          ))}
+                          {selectedRecommendationMetricIds.map((metricId) => (
+                            <button className="metric-chip" type="button" key={metricId} onClick={() => openDataRoomMetric(metricId)}>
+                              {metricId}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <div className="recommendation-detail-empty">
+                    <Target size={22} />
+                    <strong>추천 후보를 선택하세요.</strong>
+                    <p>왼쪽 AI 추천 리스트에서 후보를 누르면 이곳에서 팔로워, 평균 조회, 예상 단가, 추천 근거와 데이터룸 원천을 바로 확인합니다.</p>
                   </div>
-                </div>
+                )}
               </aside>
-            )}
+            </div>
           </section>
         </section>
 
