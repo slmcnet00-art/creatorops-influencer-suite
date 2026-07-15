@@ -1136,6 +1136,10 @@ const defaultWorkspace = {
   fulfillmentRecords: defaultFulfillmentRecords,
   trackedPosts: defaultTrackedPosts,
   externalReportRows: [],
+  utmTrackingLogs: [],
+  shortLinkClickLogs: [],
+  orderAttributionLogs: [],
+  couponRedemptionLogs: [],
   contentReferences: defaultContentReferences,
   creatorGroups: defaultCreatorGroups,
   savedProductionReferenceIds: [],
@@ -1722,6 +1726,14 @@ function normalizeWorkspace(saved) {
     fulfillmentRecords: saved?.fulfillmentRecords ?? defaultWorkspace.fulfillmentRecords,
     trackedPosts: saved?.trackedPosts ?? defaultWorkspace.trackedPosts,
     externalReportRows: dedupeExternalReportRows(saved?.externalReportRows ?? defaultWorkspace.externalReportRows),
+    utmTrackingLogs: Array.isArray(saved?.utmTrackingLogs) ? saved.utmTrackingLogs : defaultWorkspace.utmTrackingLogs,
+    shortLinkClickLogs: Array.isArray(saved?.shortLinkClickLogs) ? saved.shortLinkClickLogs : defaultWorkspace.shortLinkClickLogs,
+    orderAttributionLogs: Array.isArray(saved?.orderAttributionLogs)
+      ? saved.orderAttributionLogs
+      : defaultWorkspace.orderAttributionLogs,
+    couponRedemptionLogs: Array.isArray(saved?.couponRedemptionLogs)
+      ? saved.couponRedemptionLogs
+      : defaultWorkspace.couponRedemptionLogs,
     contentReferences: normalizeContentReferences(saved?.contentReferences ?? defaultWorkspace.contentReferences),
     creatorGroups: normalizeCreatorGroups(saved?.creatorGroups ?? defaultWorkspace.creatorGroups, normalizedCreators),
     savedProductionReferenceIds: saved?.savedProductionReferenceIds ?? defaultWorkspace.savedProductionReferenceIds,
@@ -2315,6 +2327,137 @@ function buildFriendlyProposalMessage(creator, brief, campaign) {
 가능한 콘텐츠 형식, 진행 가능 일정, 희망 단가를 알려주시면 그에 맞춰 제안서와 가이드를 바로 정리해드리겠습니다. 감사합니다.`
 }
 
+const SHORT_LINK_BASE_URL = 'https://go.creatorops.kr'
+const UTM_RAW_SOURCE_ID = 'RAW-INT-UTM-001'
+const UTM_CLICK_METRIC_ID = 'MET-UTM-001'
+const UTM_REVENUE_METRIC_ID = 'MET-UTM-002'
+
+function stableHash(value = '') {
+  const text = String(value || '')
+  let hash = 5381
+  for (let index = 0; index < text.length; index += 1) {
+    hash = (hash * 33) ^ text.charCodeAt(index)
+  }
+  return Math.abs(hash >>> 0).toString(36).toUpperCase()
+}
+
+function toTrackingSlug(value, fallback = 'item') {
+  const normalized = String(value || '')
+    .normalize('NFKD')
+    .replace(/[^\w\s-]/g, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[\s_]+/g, '-')
+    .replace(/-+/g, '-')
+    .slice(0, 48)
+
+  return normalized || `${fallback}-${stableHash(value || fallback).slice(0, 5).toLowerCase()}`
+}
+
+function appendUrlParams(url, params = {}) {
+  const base = url || 'https://brand.example/landing'
+
+  try {
+    const nextUrl = new URL(base.startsWith('http') ? base : `https://${base}`)
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && `${value}`.trim()) {
+        nextUrl.searchParams.set(key, `${value}`)
+      }
+    })
+    return nextUrl.toString()
+  } catch {
+    const query = new URLSearchParams()
+    Object.entries(params).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && `${value}`.trim()) {
+        query.set(key, `${value}`)
+      }
+    })
+    return `https://brand.example/landing?${query.toString()}`
+  }
+}
+
+function buildInfluencerTrackingAsset({ campaign = {}, creator = {}, brand = {}, index = 0 } = {}) {
+  const campaignSlug = toTrackingSlug(campaign?.name || campaign?.id || 'campaign', 'campaign')
+  const creatorSlug = toTrackingSlug(creator?.handle || creator?.name || creator?.id || `creator-${index + 1}`, 'creator')
+  const platformSlug = toTrackingSlug(creator?.platform || campaign?.guideChannel || 'creator', 'channel')
+  const destination =
+    campaign?.landingUrl ||
+    campaign?.productUrl ||
+    campaign?.trackingUrl ||
+    brand?.website ||
+    brand?.url ||
+    brand?.homepage ||
+    'https://brand.example/landing'
+  const params = {
+    utm_source: platformSlug,
+    utm_medium: 'influencer',
+    utm_campaign: campaignSlug,
+    utm_content: creatorSlug,
+    creator_id: creator?.id || creatorSlug,
+    campaign_id: campaign?.id || campaignSlug,
+  }
+  const originalUrl = appendUrlParams(destination, params)
+  const shortCode = stableHash(
+    `${brand?.id || brand?.name || 'brand'}:${campaign?.id || campaignSlug}:${creator?.id || creatorSlug}`,
+  ).slice(0, 7)
+  const brandPrefix = toTrackingSlug(brand?.name || 'CO', 'co').replace(/-/g, '').slice(0, 3).toUpperCase() || 'CO'
+
+  return {
+    rawId: UTM_RAW_SOURCE_ID,
+    metricIds: [UTM_CLICK_METRIC_ID, UTM_REVENUE_METRIC_ID],
+    campaignSlug,
+    creatorSlug,
+    platformSlug,
+    destination,
+    params,
+    originalUrl,
+    shortCode,
+    shortUrl: `${SHORT_LINK_BASE_URL}/${shortCode}`,
+    couponCode: `${brandPrefix}${shortCode.slice(0, 4)}`,
+  }
+}
+
+function buildUtmTrackingLog({ campaign = {}, creator = {}, brand = {}, trackingAsset = {}, generatedAt = '', index = 0 } = {}) {
+  const shortCode =
+    trackingAsset.shortCode ||
+    stableHash(`${brand?.id || 'brand'}:${campaign?.id || 'campaign'}:${creator?.id || index}`).slice(0, 7)
+
+  return {
+    id: `utm-${campaign?.id || 'campaign'}-${creator?.id || index}-${shortCode}`,
+    rawId: UTM_RAW_SOURCE_ID,
+    eventType: 'link_created',
+    source: 'individual_guide',
+    brandId: brand?.id ?? campaign?.brandId ?? '',
+    brandName: brand?.name ?? '',
+    campaignId: campaign?.id ?? '',
+    campaignName: campaign?.name ?? '',
+    creatorId: creator?.id ?? '',
+    creatorName: creator?.name ?? '',
+    creatorHandle: creator?.handle ?? '',
+    platform: creator?.platform ?? '',
+    shortCode,
+    shortUrl: trackingAsset.shortUrl ?? '',
+    originalUrl: trackingAsset.originalUrl ?? '',
+    destination: trackingAsset.destination ?? '',
+    couponCode: trackingAsset.couponCode ?? '',
+    utmParams: trackingAsset.params ?? {},
+    metricIds: trackingAsset.metricIds ?? [UTM_CLICK_METRIC_ID, UTM_REVENUE_METRIC_ID],
+    createdAt: generatedAt || new Date().toISOString(),
+  }
+}
+
+function mergeUtmTrackingLogs(existing = [], next = []) {
+  const merged = [...(Array.isArray(existing) ? existing : []), ...(Array.isArray(next) ? next : [])]
+  const seen = new Set()
+
+  return merged.filter((item) => {
+    const key = `${item.eventType || 'event'}:${item.campaignId || ''}:${item.creatorId || ''}:${item.shortCode || item.shortUrl || item.id}`
+    if (seen.has(key)) return false
+    seen.add(key)
+    return true
+  })
+}
+
 function buildInfluencerContentGuide({ brand, brief, campaign, creators = [] }) {
   const seedType = campaign.guideSeedType || '무가시딩'
   const channel = campaign.guideChannel || 'Instagram Reels'
@@ -2463,6 +2606,7 @@ ${learningContext ? `\n## 14. 브랜드 학습자료 반영 메모\n${learningCo
 function buildCreatorSpecificContentGuide({ brand, brief, campaign, creator, commonGuide = '' }) {
   const campaignName = campaign?.name || `${brief.product} 인플루언서 캠페인`
   const platform = creator?.platform || campaign?.guideChannel || 'Instagram Reels'
+  const trackingAsset = buildInfluencerTrackingAsset({ brand, campaign, creator })
   const oneMessage =
     campaign?.oneMessage ||
     `${brief.product}를 ${brief.persona || '핵심 타깃'}의 실제 사용 장면 안에서 자연스럽게 설득합니다.`
@@ -2525,6 +2669,12 @@ function buildCreatorSpecificContentGuide({ brand, brief, campaign, creator, com
 - 협업 유형: ${campaign?.guideSeedType || '무가시딩'}
 - 권장 채널: ${platform}
 - 업로드 일정: ${campaign?.uploadDueDate || campaign?.deadline || '협의'}
+
+## 1-1. 개인 추적 숏링크
+- 전달용 숏링크: ${trackingAsset.shortUrl}
+- 쿠폰 코드: ${trackingAsset.couponCode}
+- 운영 기준: 긴 UTM 원본은 데이터룸 \`${trackingAsset.rawId}\`에 저장하고, 크리에이터에게는 위 숏링크만 전달합니다.
+- 성과 연결: 클릭은 \`${UTM_CLICK_METRIC_ID}\`, 주문/쿠폰 전환은 \`${UTM_REVENUE_METRIC_ID}\`로 집계합니다.
 
 ## 2. 이 크리에이터에게 맡길 역할
 ${creatorAngle}
@@ -4918,6 +5068,10 @@ function buildAdminRawDataCatalog({
   fulfillmentRecords,
   trackedPosts,
   contentReferences,
+  utmTrackingLogs = [],
+  shortLinkClickLogs = [],
+  orderAttributionLogs = [],
+  couponRedemptionLogs = [],
   brands,
   backendConfig,
   activeBrand,
@@ -4926,6 +5080,10 @@ function buildAdminRawDataCatalog({
   const nextDaily = '매일 09:00'
   const storageBase = backendConfig?.hasSupabase ? '팀 공유 DB public schema' : 'localStorage creatorops.workspace.v2'
   const externalSnapshotStatus = trackedPosts.length ? '정상' : '지연'
+  const utmLinkCount = utmTrackingLogs.length
+  const utmRuntimeLogCount = shortLinkClickLogs.length + orderAttributionLogs.length + couponRedemptionLogs.length
+  const hasUtmGuides = campaigns.some((campaign) => Object.keys(campaign.individualContentGuides || {}).length)
+  const hasUtmRaw = utmLinkCount > 0 || utmRuntimeLogCount > 0 || hasUtmGuides
 
   return [
     {
@@ -4943,13 +5101,45 @@ function buildAdminRawDataCatalog({
       sourceLocation: '메시지 > 제안/응답 발송',
       storageLocation: `${storageBase} / outreach`,
       dashboardArea: '대시보드, 메시지, 캠페인 파이프라인',
-      metricIds: ['MET-CRM-001', 'MET-CRM-002', 'MET-CRM-003', 'MET-CRM-004', 'MET-CRM-005'],
+      metricIds: [
+        'MET-CRM-001',
+        'MET-CRM-002',
+        'MET-CRM-003',
+        'MET-CRM-004',
+        'MET-CRM-005',
+        UTM_CLICK_METRIC_ID,
+        UTM_REVENUE_METRIC_ID,
+      ],
       ownerDept: '운영팀',
       opsOwner: '운영 담당자',
       techOwner: 'Backend/Data',
       qualityIssue: outreach.length ? '중복 발송, 수신 거부, 채널 누락 점검 필요' : '발송 이력이 없어 지표 계산 불가',
       logLocation: 'browser local log / future: outreach_events',
       note: `${outreach.length}건 메시지 레코드`,
+      active: true,
+    },
+    {
+      id: UTM_RAW_SOURCE_ID,
+      name: 'UTM/숏링크 매핑 데이터',
+      scope: '내부',
+      category: 'CRM/전환 추적',
+      description: '크리에이터별 원본 UTM, 전달용 숏링크, 쿠폰 코드, 클릭/주문 매핑 로그',
+      purpose: '인플루언서별 링크 클릭, 주문, 매출 기여도를 캠페인 리포트로 연결',
+      method: 'DB 연동',
+      cycle: '개별 가이드 생성 시 생성 / 클릭·주문 이벤트 발생 시 갱신',
+      lastCollectedAt: hasUtmRaw ? nowText : '-',
+      nextCollectAt: '개별 가이드 생성 또는 숏링크 클릭 시',
+      status: utmRuntimeLogCount ? '정상' : hasUtmRaw ? '검증 필요' : '미수집',
+      sourceLocation: '캠페인 상세 > 개별 인플루언서 가이드, 숏링크 redirect log',
+      storageLocation: `${storageBase} / utmTrackingLogs, shortLinkClickLogs, orderAttributionLogs, couponRedemptionLogs, campaigns.individualContentGuides.trackingLinks`,
+      dashboardArea: '캠페인 상세, 메시지, 리포트',
+      metricIds: [UTM_CLICK_METRIC_ID, UTM_REVENUE_METRIC_ID, 'MET-CRM-003', 'MET-CRM-005'],
+      ownerDept: 'Marketing Ops/Data',
+      opsOwner: 'Campaign PM',
+      techOwner: 'Backend/Data',
+      qualityIssue: '숏도메인/리다이렉트 로그와 주문 DB가 연결되기 전에는 클릭·매출이 검증 필요',
+      logLocation: 'utmTrackingLogs + shortLinkClickLogs + orderAttributionLogs + couponRedemptionLogs',
+      note: `숏링크 발급 ${utmLinkCount}건 · 클릭 ${shortLinkClickLogs.length}건 · 주문 ${orderAttributionLogs.length}건 · 쿠폰 ${couponRedemptionLogs.length}건`,
       active: true,
     },
     {
@@ -5243,11 +5433,25 @@ function buildAdminRawDataCatalog({
   ]
 }
 
-function buildAdminMetricCatalog({ rawData, outreach, creators, campaigns, recruitedPool, fulfillmentRecords, trackedPosts, contentReferences }) {
+function buildAdminMetricCatalog({
+  rawData,
+  outreach,
+  creators,
+  campaigns,
+  recruitedPool,
+  fulfillmentRecords,
+  trackedPosts,
+  contentReferences,
+  utmTrackingLogs = [],
+  shortLinkClickLogs = [],
+  orderAttributionLogs = [],
+  couponRedemptionLogs = [],
+}) {
   const rawName = (id) => rawData.find((item) => item.id === id)?.name ?? id
   const nowText = new Date().toLocaleString('ko-KR')
   const rawRefs = {
     crm: ['RAW-INT-CRM-001'],
+    utm: [UTM_RAW_SOURCE_ID, 'RAW-INT-CRM-001'],
     pool: ['RAW-INT-INF-001', 'RAW-EXT-CHN-001', BULK_CREATOR_GROUP_RAW_SOURCE_ID],
     campaign: ['RAW-INT-CMP-001', 'RAW-INT-BRD-001'],
     finance: ['RAW-INT-FIN-001'],
@@ -5263,12 +5467,56 @@ function buildAdminMetricCatalog({ rawData, outreach, creators, campaigns, recru
     (sum, campaign) => sum + Object.keys(campaign.individualContentGuides || {}).length,
     0,
   )
+  const utmLinkCount = utmTrackingLogs.length
+  const clickLogCount = shortLinkClickLogs.length
+  const orderLogCount = orderAttributionLogs.length
+  const couponLogCount = couponRedemptionLogs.length
+  const utmClickMetricStatus = clickLogCount ? '정상' : utmLinkCount ? '검증 필요' : '지연'
+  const utmRevenueMetricStatus = orderLogCount || couponLogCount ? '정상' : utmLinkCount ? '검증 필요' : '지연'
   const rows = [
     ['MET-CRM-001', '발송 수', 'CRM 효율 번들', '내부', '발송 완료 상태의 메시지 수', 'count(outreach.status = 발송 완료 or 응답)', rawRefs.crm, '최근 30일', '실시간', '정상', '어드민 대시보드, 메시지', '증가 추세가 정상이나 중복 발송은 별도 경고', '동일 creator/campaign/channel 2회 이상', '높음', '운영팀', 'outreach_events / Gmail send logs', `${outreach.length}건`],
     ['MET-CRM-002', '오픈율', 'CRM 효율 번들', '내부', '이메일 오픈 수 / 발송 수', 'opened_count / sent_count * 100', rawRefs.crm, '최근 30일', '일 1회', '검증 필요', '내부 보고서', 'Gmail/메일 추적 픽셀 연동 전까지 검증 필요', '0% 또는 90% 이상', '중간', '운영/개발', 'mail_tracking_events', '이메일 추적 연동 후 활성'],
-    ['MET-CRM-003', '클릭률', 'CRM 효율 번들', '내부', '링크 클릭 수 / 발송 수', 'clicked_count / sent_count * 100', rawRefs.crm, '최근 30일', '일 1회', '검증 필요', '내부 보고서', '링크 리다이렉트/UTM 연동 필요', '0% 장기 지속', '중간', '마케팅Ops', 'link_click_events', 'UTM 링크 생성 기능 필요'],
+    ['MET-CRM-003', '클릭률', 'CRM 효율 번들', '내부', '숏링크 클릭 수 / 발송 수', 'short_link_click_count / sent_count * 100', rawRefs.utm, '최근 30일', '일 1회', '검증 필요', '내부 보고서', '숏링크 리다이렉트/UTM 연동 필요', '0% 장기 지속', '중간', '마케팅Ops', 'link_click_events + short_link_redirect_logs', '숏링크 리다이렉트 이벤트 연결 필요'],
     ['MET-CRM-004', '응답률', 'CRM 효율 번들', '내부', '응답 상태 메시지 수 / 발송 수', 'response_count / sent_count * 100', rawRefs.crm, '최근 30일', '실시간', '정상', '대시보드, 메시지', '채널별로 분리 해석', '평균 대비 50% 이하', '높음', '운영팀', 'outreach.status history', `${outreach.filter((item) => item.status === '응답').length}건 응답`],
-    ['MET-CRM-005', '전환율', 'CRM 효율 번들', '내부', '섭외 완료 수 / 제안 발송 수', 'recruited_count / sent_count * 100', ['RAW-INT-CRM-001', 'RAW-INT-INF-001'], '캠페인 기간', '실시간', '정상', '대시보드, 캠페인', '캠페인 난이도와 보상 조건에 따라 해석', '10% 미만', '높음', '운영팀', 'recruitedPool + outreach', `${recruitedPool.length}명 섭외 완료`],
+    ['MET-CRM-005', '전환율', 'CRM 효율 번들', '내부', '섭외 완료 수 / 제안 발송 수', 'recruited_count / sent_count * 100', ['RAW-INT-CRM-001', 'RAW-INT-INF-001', UTM_RAW_SOURCE_ID], '캠페인 기간', '실시간', '정상', '대시보드, 캠페인', '캠페인 난이도와 보상 조건에 따라 해석', '10% 미만', '높음', '운영팀', 'recruitedPool + outreach', `${recruitedPool.length}명 섭외 완료`],
+    [
+      UTM_CLICK_METRIC_ID,
+      '숏링크 클릭 수',
+      'UTM/숏링크 전환 번들',
+      '내부',
+      '크리에이터별 숏링크 리다이렉트 클릭 이벤트 수',
+      'count(shortLinkClickLogs where campaign_id and creator_id match)',
+      rawRefs.utm,
+      '캠페인 기간',
+      '실시간/일 1회',
+      utmClickMetricStatus,
+      '캠페인 상세, 메시지, 리포트',
+      '원본 UTM이 아니라 전달용 숏링크 기준으로 크리에이터별 관심도를 봅니다',
+      '클릭 0건 장기 지속 또는 비정상 급증',
+      '중간',
+      'Marketing Ops/Data',
+      'utmTrackingLogs + shortLinkClickLogs',
+      `${clickLogCount}건 클릭 · ${utmLinkCount}개 숏링크`,
+    ],
+    [
+      UTM_REVENUE_METRIC_ID,
+      '숏링크 매출/전환',
+      'UTM/숏링크 전환 번들',
+      '내부',
+      '숏링크 UTM 또는 쿠폰 코드로 매칭된 주문/문의/매출',
+      'sum(orderAttributionLogs.revenue) + count(couponRedemptionLogs)',
+      [UTM_RAW_SOURCE_ID, 'RAW-INT-CMP-001'],
+      '캠페인 기간',
+      '일 1회',
+      utmRevenueMetricStatus,
+      '리포트, 고객사 보고서',
+      '매출은 주문 DB/쿠폰 로그가 연결된 경우 확정값으로 사용합니다',
+      '클릭은 있는데 전환 0건 또는 쿠폰 매칭 누락',
+      '중간',
+      'Marketing Ops/Data',
+      'orderAttributionLogs + couponRedemptionLogs',
+      `${orderLogCount}건 주문 · ${couponLogCount}건 쿠폰`,
+    ],
     ['MET-POOL-001', '전체 인플루언서 수', '인플루언서 풀 관리 번들', '내부', '저장된 전체 크리에이터 수', 'count(creators)', rawRefs.pool, '전체', '실시간', '정상', '발굴, 데이터룸', '중복 제거 전후 수를 함께 확인', '전일 대비 -30% 이상', '높음', '데이터팀', 'creators table', `${creators.length}명`],
     ['MET-POOL-002', '활성 인플루언서 수', '인플루언서 풀 관리 번들', '내부', '상태가 활성/검증 가능인 크리에이터 수', 'count(creators where active and not blocked)', rawRefs.pool, '전체', '실시간', '정상', '발굴, 메시지', '프로필 링크 접근 가능 여부 포함', '활성 비율 50% 이하', '중간', '운영팀', 'creator status logs', '향후 active flag 분리'],
     ['MET-POOL-003', '카테고리별 인플루언서 수', '인플루언서 풀 관리 번들', '내부', '카테고리 그룹별 크리에이터 분포', 'groupBy(creators.category).count', rawRefs.pool, '전체', '실시간', '정상', '발굴, 전략', '브랜드 카테고리와 후보군 균형 확인', '기타 카테고리 40% 이상', '중간', '운영팀', 'creator category map', '카테고리 표준화 필요'],
@@ -5299,7 +5547,7 @@ function buildAdminMetricCatalog({ rawData, outreach, creators, campaigns, recru
     ['MET-BENCH-004', '경쟁 콘텐츠 대비 성과지수', '레퍼런스/벤치마크 번들', '외부', '우리 콘텐츠 조회/반응을 벤치마크 평균과 비교', '(campaign_score / benchmark_score) * 100', ['RAW-EXT-CONT-001', BULK_TRACKING_RAW_SOURCE_ID, 'RAW-EXT-ENG-001', 'RAW-EXT-BENCH-001'], '캠페인 기간', '일 1회', '검증 필요', '고객사 리포트', '100 이상이면 벤치마크 상회', '70 미만', '중간', 'PM/데이터', 'benchmark metric logs', '벤치마크 표본 수 표시 필요'],
     ['MET-AI-GEN-001', '캠페인 전략 생성률', 'AI 전략/가이드 번들', '내부', '전략 산출물이 생성된 캠페인 수 / 전체 캠페인 수', 'count(campaign.influencerStrategy) / count(campaigns) * 100', rawRefs.generation, '캠페인 기준', '전략 생성 시', campaigns.length ? (strategyGeneratedCount ? '정상' : '검증 필요') : '지연', '캠페인 상세, 데이터룸', '캠페인 생성 입력 raw가 있어야 전략 산출물을 신뢰 지표로 사용', '캠페인 1개 이상인데 전략 생성 0건', '중간', 'PM/전략팀', 'campaign.strategyInputRaw + ai_generation_runs', `${strategyGeneratedCount}/${campaigns.length}개 전략 생성`],
     ['MET-AI-GEN-002', '공통 인플루언서 가이드 생성률', 'AI 전략/가이드 번들', '내부', '캠페인 공통 전달 가이드가 생성된 캠페인 수 / 전체 캠페인 수', 'count(campaign.generatedContentGuide) / count(campaigns) * 100', rawRefs.generation, '캠페인 기준', '공통 가이드 생성 시', campaigns.length ? (guideGeneratedCount ? '정상' : '검증 필요') : '지연', '캠페인 상세, 데이터룸', '공통 가이드는 캠페인 입력 raw, 브랜드 학습자료, 저장 레퍼런스가 결합된 산출물로 해석', '전략은 있는데 공통 가이드가 없는 캠페인', '중간', '콘텐츠팀', 'campaign.generatedContentGuide + ai_generation_runs', `${guideGeneratedCount}/${campaigns.length}개 공통 가이드 생성`],
-    ['MET-AI-GEN-003', '개별 인플루언서 가이드 수', 'AI 전략/가이드 번들', '내부', '크리에이터별 개인화 전달 가이드 생성 건수', 'sum(count(campaign.individualContentGuides))', ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-001'], '캠페인/크리에이터 기준', '개별 가이드 생성 시', individualGuideCount ? '정상' : '검증 필요', '캠페인 상세, 데이터룸', '공통 가이드는 캠페인 기준, 개별 가이드는 크리에이터별 톤/컷/후킹 기준으로 해석', '섭외 완료 또는 배정 후보가 있는데 개별 가이드 0건', '중간', '콘텐츠팀', 'campaign.individualContentGuides + ai_generation_runs', `${individualGuideCount}건 개별 가이드 생성`],
+    ['MET-AI-GEN-003', '개별 인플루언서 가이드 수', 'AI 전략/가이드 번들', '내부', '크리에이터별 개인화 전달 가이드 생성 건수', 'sum(count(campaign.individualContentGuides))', ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-001', UTM_RAW_SOURCE_ID], '캠페인/크리에이터 기준', '개별 가이드 생성 시', individualGuideCount ? '정상' : '검증 필요', '캠페인 상세, 데이터룸', '공통 가이드는 캠페인 기준, 개별 가이드는 크리에이터별 톤/컷/후킹 기준으로 해석', '섭외 완료 또는 배정 후보가 있는데 개별 가이드 0건', '중간', '콘텐츠팀', 'campaign.individualContentGuides + ai_generation_runs', `${individualGuideCount}건 개별 가이드 생성`],
   ]
 
   return rows.map(([id, name, bundle, scope, description, formula, rawIds, period, refreshCycle, status, displayLocation, interpretation, outlierRule, reliability, ownerDept, errorLocation, note]) => ({
@@ -6100,10 +6348,10 @@ function buildDataRoomWorkflowCoverage({ rawData, metrics }) {
     ['WF-DISCOVERY', '크리에이터 발굴 검색', '발굴', ['RAW-EXT-SEARCH-001', 'RAW-EXT-CHN-001', 'RAW-INT-QUALITY-001'], ['MET-AI-002', 'MET-AI-003'], '검색 원본 결과를 수집하고 국가/플랫폼/최소 팔로워/평균 조회수 기준으로 품질 판정', '데이터룸에 검색 원천이 없으면 실제 발굴 결과로 쓰지 않음'],
     ['WF-AI-RECOMMEND', 'AI 추천 후보와 근거', '발굴', ['RAW-INT-BRD-001', 'RAW-INT-CMP-BRIEF-001', 'RAW-INT-INF-001', 'RAW-INT-AI-001', 'RAW-INT-AI-POLICY-001', 'RAW-INT-QUALITY-001', 'RAW-EXT-CONT-001', 'RAW-EXT-ENG-001'], ['MET-AI-001', 'MET-AI-002', 'MET-AI-003', 'MET-AI-004', 'MET-AI-005', 'MET-AI-006'], '브랜드 브리프와 캠페인 전략/가이드, 후보 성과/품질 점수를 조합해 추천 이유와 리스크 생성. 실제 업로드 성과 학습과 후보 풀 근거는 데이터가 쌓인 뒤 조건부로 반영', '추천 근거에는 사용 raw ID, 품질 점수, 성과 학습 여부, 전략 반영 여부가 남아야 함', { conditionalRawIds: ['RAW-EXT-MON-VIDEO-001', 'RAW-INT-POOL-EVIDENCE-001'], conditionalLabel: '성과 학습/후보 풀 저장 후 반영' }],
     ['WF-CANDIDATE-POOL', '메시지 전 후보 풀', '발굴/메시지', ['RAW-INT-INF-001', 'RAW-INT-QUALITY-001', 'RAW-INT-POOL-EVIDENCE-001'], ['MET-POOL-001', 'MET-AI-003'], '저장된 후보만 메시지 전 풀로 이동하고 삭제 시 메시지 대기 리스트와 함께 정리', '풀에 없는 후보는 메시지 일괄 생성 대상이 아니며, 후보 풀 근거 raw가 없으면 추천 사유를 확정값으로 표시하지 않음'],
-    ['WF-MESSAGE', '제안/응답 발송', '메시지', ['RAW-INT-CRM-001', 'RAW-INT-AI-001', 'RAW-INT-EXPORT-001'], ['MET-CRM-001', 'MET-CRM-004', 'MET-CRM-005'], '이메일 가능 후보는 발송 로그, DM 대상은 작업용 엑셀/복사 로그로 분리', 'DM 우회 자동화는 정책상 raw로 두지 않고 작업 로그만 관리'],
+    ['WF-MESSAGE', '제안/응답 발송', '메시지', ['RAW-INT-CRM-001', 'RAW-INT-AI-001', 'RAW-INT-EXPORT-001', UTM_RAW_SOURCE_ID], ['MET-CRM-001', 'MET-CRM-004', 'MET-CRM-005', UTM_CLICK_METRIC_ID, UTM_REVENUE_METRIC_ID], '이메일 가능 후보는 발송 로그, DM 대상은 작업용 엑셀/복사 로그로 분리', 'DM 우회 자동화는 정책상 raw로 두지 않고 작업 로그만 관리'],
     ['WF-REPORT', '콘텐츠 추적/리포트', '리포트', ['RAW-INT-CMP-001', 'RAW-EXT-CONT-001', BULK_TRACKING_RAW_SOURCE_ID, 'RAW-EXT-ENG-001', 'RAW-EXT-UNSUPPORTED-001'], ['MET-SNS-001', 'MET-SNS-006', 'MET-CONT-001', 'MET-CONT-004'], '업로드 URL 기준으로 공개 지표를 갱신하고 미지원 지표는 수집 필요로 표시', '데이터룸에 저장되지 않은 수치는 보고서에 확정값으로 표시하지 않음'],
     ['WF-REFERENCE', '콘텐츠 레퍼런스 검색/저장', '레퍼런스', ['RAW-EXT-SEARCH-001', 'RAW-EXT-REF-001', 'RAW-EXT-BENCH-001', 'RAW-INT-QUALITY-001'], ['MET-BENCH-001', 'MET-BENCH-002', 'MET-BENCH-003'], '50만 이상 또는 팔로워 대비 터진 콘텐츠를 우선 수집하고 품질 기준 미달은 제외', '검색 결과 원문이 없는 레퍼런스는 저장 링크 검증 대상으로 둠'],
-    ['WF-GUIDE', '전략/콘텐츠 가이드 생성', '캠페인 상세/레퍼런스', ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001', 'RAW-INT-INF-001', 'RAW-EXT-REF-001', 'RAW-INT-AI-001'], ['MET-AI-GEN-001', 'MET-AI-GEN-002', 'MET-AI-GEN-003', 'MET-GUIDE-001', 'MET-BENCH-002'], '캠페인 생성 입력 raw와 저장 레퍼런스를 원메시지/후킹/스크립트 구조로 변환하고, 섭외/배정 크리에이터 기준으로 개별 전달 가이드를 생성', '전략/공통 가이드/개별 가이드 산출물은 캠페인 raw와 AI 실행 로그에 남김'],
+    ['WF-GUIDE', '전략/콘텐츠 가이드 생성', '캠페인 상세/레퍼런스', ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001', 'RAW-INT-INF-001', 'RAW-EXT-REF-001', 'RAW-INT-AI-001', UTM_RAW_SOURCE_ID], ['MET-AI-GEN-001', 'MET-AI-GEN-002', 'MET-AI-GEN-003', 'MET-GUIDE-001', 'MET-BENCH-002', UTM_CLICK_METRIC_ID, UTM_REVENUE_METRIC_ID], '캠페인 생성 입력 raw와 저장 레퍼런스를 원메시지/후킹/스크립트 구조로 변환하고, 섭외/배정 크리에이터 기준으로 개별 전달 가이드를 생성', '전략/공통 가이드/개별 가이드 산출물은 캠페인 raw와 AI 실행 로그에 남김'],
     ['WF-EXPORT', '엑셀/시트/DOCX/PPT 내보내기', '발굴/리포트/캠페인', ['RAW-INT-EXPORT-001', 'RAW-INT-INF-001', 'RAW-INT-CMP-001'], ['MET-EXPORT-001'], '광고주 전달 산출물 생성 시 데이터 버전과 다운로드 종류를 기록', '내보내기 로그가 없으면 전달본 기준 추적 불가'],
     ['WF-AUTH', '팀/권한 설정', '설정/데이터룸', ['RAW-INT-AUTH-001', 'RAW-INT-OPS-001'], ['MET-AUTH-001'], '워크스페이스/브랜드/캠페인 단위 권한으로 같은 풀 접근 범위 제어', '권한 데이터룸 없는 화면은 내부 운영자 전용으로 제한'],
   ]
@@ -6364,6 +6612,7 @@ function App() {
     targetPersona: '',
     searchKeywords: '',
     exclusionKeywords: '',
+    landingUrl: '',
     minFollowers: '',
     maxCreatorFee: '',
     preferredPlatforms: '',
@@ -6528,6 +6777,10 @@ function App() {
     fulfillmentRecords,
     trackedPosts,
     externalReportRows,
+    utmTrackingLogs,
+    shortLinkClickLogs,
+    orderAttributionLogs,
+    couponRedemptionLogs,
     contentReferences,
     creatorGroups,
     savedProductionReferenceIds,
@@ -7747,8 +8000,48 @@ function App() {
         (item) =>
           (!item.creatorId || operationalCreatorIds.has(item.creatorId)) &&
           (!item.campaignId || operationalCampaignIds.has(item.campaignId)),
-      ),
+    ),
     [operationalCampaignIds, operationalCreatorIds, trackedPosts],
+  )
+  const operationalUtmTrackingLogs = useMemo(
+    () =>
+      toOperationalRecords(utmTrackingLogs, 'utmTrackingLog').filter(
+        (item) =>
+          (!item.creatorId || operationalCreatorIds.has(item.creatorId)) &&
+          (!item.campaignId || operationalCampaignIds.has(item.campaignId)) &&
+          (!item.brandId || operationalBrandIds.has(item.brandId)),
+      ),
+    [operationalBrandIds, operationalCampaignIds, operationalCreatorIds, utmTrackingLogs],
+  )
+  const operationalShortLinkClickLogs = useMemo(
+    () =>
+      toOperationalRecords(shortLinkClickLogs, 'shortLinkClickLog').filter(
+        (item) =>
+          (!item.creatorId || operationalCreatorIds.has(item.creatorId)) &&
+          (!item.campaignId || operationalCampaignIds.has(item.campaignId)) &&
+          (!item.brandId || operationalBrandIds.has(item.brandId)),
+      ),
+    [operationalBrandIds, operationalCampaignIds, operationalCreatorIds, shortLinkClickLogs],
+  )
+  const operationalOrderAttributionLogs = useMemo(
+    () =>
+      toOperationalRecords(orderAttributionLogs, 'orderAttributionLog').filter(
+        (item) =>
+          (!item.creatorId || operationalCreatorIds.has(item.creatorId)) &&
+          (!item.campaignId || operationalCampaignIds.has(item.campaignId)) &&
+          (!item.brandId || operationalBrandIds.has(item.brandId)),
+      ),
+    [operationalBrandIds, operationalCampaignIds, operationalCreatorIds, orderAttributionLogs],
+  )
+  const operationalCouponRedemptionLogs = useMemo(
+    () =>
+      toOperationalRecords(couponRedemptionLogs, 'couponRedemptionLog').filter(
+        (item) =>
+          (!item.creatorId || operationalCreatorIds.has(item.creatorId)) &&
+          (!item.campaignId || operationalCampaignIds.has(item.campaignId)) &&
+          (!item.brandId || operationalBrandIds.has(item.brandId)),
+      ),
+    [couponRedemptionLogs, operationalBrandIds, operationalCampaignIds, operationalCreatorIds],
   )
   const operationalContentReferences = useMemo(
     () => toOperationalRecords(contentReferences, 'contentReference'),
@@ -7795,6 +8088,10 @@ function App() {
           backendConfig,
           activeBrand: operationalActiveBrand,
           externalReportRows,
+          utmTrackingLogs: operationalUtmTrackingLogs,
+          shortLinkClickLogs: operationalShortLinkClickLogs,
+          orderAttributionLogs: operationalOrderAttributionLogs,
+          couponRedemptionLogs: operationalCouponRedemptionLogs,
         }),
         backendConfig,
         creators: operationalCreators,
@@ -7820,6 +8117,10 @@ function App() {
       operationalOutreach,
       operationalRecommendations,
       operationalRecruitedPool,
+      operationalUtmTrackingLogs,
+      operationalShortLinkClickLogs,
+      operationalOrderAttributionLogs,
+      operationalCouponRedemptionLogs,
       operationalTrackedPosts,
     ],
   )
@@ -7835,6 +8136,10 @@ function App() {
           fulfillmentRecords: operationalFulfillmentRecords,
           trackedPosts: operationalTrackedPosts,
           contentReferences: operationalContentReferences,
+          utmTrackingLogs: operationalUtmTrackingLogs,
+          shortLinkClickLogs: operationalShortLinkClickLogs,
+          orderAttributionLogs: operationalOrderAttributionLogs,
+          couponRedemptionLogs: operationalCouponRedemptionLogs,
         }),
         rawData: dataRoomRawData,
         creators: operationalCreators,
@@ -7857,6 +8162,10 @@ function App() {
       operationalOutreach,
       operationalRecommendations,
       operationalRecruitedPool,
+      operationalUtmTrackingLogs,
+      operationalShortLinkClickLogs,
+      operationalOrderAttributionLogs,
+      operationalCouponRedemptionLogs,
       operationalTrackedPosts,
     ],
   )
@@ -10079,6 +10388,7 @@ function App() {
     persona: draft.targetPersona || brandBrief.persona,
     keywords: draft.searchKeywords || brandBrief.keywords,
     exclusions: draft.exclusionKeywords || brandBrief.exclusions,
+    landingUrl: draft.landingUrl || brandBrief.landingUrl || '',
     minFollowers: draft.minFollowers || brandBrief.minFollowers,
     maxPrice: draft.maxCreatorFee || brandBrief.maxPrice,
     platforms: draft.preferredPlatforms ? keywordList(draft.preferredPlatforms) : brandBrief.platforms,
@@ -11559,6 +11869,10 @@ function App() {
           recruitedPool: current.recruitedPool.filter((item) => item.campaignId !== campaignId),
           fulfillmentRecords: current.fulfillmentRecords.filter((item) => item.campaignId !== campaignId),
           trackedPosts: current.trackedPosts.filter((item) => item.campaignId !== campaignId),
+          utmTrackingLogs: (current.utmTrackingLogs ?? []).filter((item) => item.campaignId !== campaignId),
+          shortLinkClickLogs: (current.shortLinkClickLogs ?? []).filter((item) => item.campaignId !== campaignId),
+          orderAttributionLogs: (current.orderAttributionLogs ?? []).filter((item) => item.campaignId !== campaignId),
+          couponRedemptionLogs: (current.couponRedemptionLogs ?? []).filter((item) => item.campaignId !== campaignId),
         },
         'campaign',
         `${target.name} 캠페인 삭제`,
@@ -11598,6 +11912,7 @@ function App() {
     reward: campaign.reward || '',
     approvalFlow: campaign.approvalFlow || '',
     commerceMetric: campaign.commerceMetric || '',
+    landingUrl: campaign.landingUrl || campaign.productUrl || campaign.trackingUrl || '',
   })
 
   const updateCampaignEditField = (field, value) => {
@@ -11643,6 +11958,7 @@ function App() {
       reward: campaignEditDraft.reward,
       approvalFlow: campaignEditDraft.approvalFlow,
       commerceMetric: campaignEditDraft.commerceMetric,
+      landingUrl: campaignEditDraft.landingUrl,
     }
     nextCampaign.strategyInputRaw = buildCampaignStrategyInputRaw(
       nextCampaign,
@@ -11708,6 +12024,19 @@ function App() {
     )
   }
 
+  const getCampaignCreatorTrackingAsset = (campaign, creator, index = 0) => {
+    if (!campaign || !creator) return null
+    return (
+      campaign.individualContentGuides?.[creator.id]?.trackingLinks ||
+      buildInfluencerTrackingAsset({
+        brand: activeBrand,
+        campaign,
+        creator,
+        index,
+      })
+    )
+  }
+
   const buildCampaignBriefFromCampaign = (campaign = {}) => buildCampaignDiscoveryBrief(brandBrief, campaign)
 
   const buildCampaignStrategyInputRaw = (campaign = {}, campaignBrief = buildCampaignBriefFromCampaign(campaign), budgetValue = campaign.budget) => ({
@@ -11763,6 +12092,7 @@ function App() {
     reward: campaign.reward || '',
     approvalFlow: campaign.approvalFlow || '',
     commerceMetric: campaign.commerceMetric || '',
+    landingUrl: campaign.landingUrl || campaign.productUrl || campaign.trackingUrl || '',
     guideSeedType: campaign.guideSeedType || '무가시딩',
     guideChannel: campaign.guideChannel || 'Instagram Reels',
     oneMessage: campaign.oneMessage || '',
@@ -11881,13 +12211,39 @@ function App() {
     const campaignBrief = buildCampaignBriefFromCampaign(campaign)
     const commonGuide = getCampaignContentGuide(campaign)
     const generatedAt = nowLabel()
-    const nextGuides = guideCreators.reduce((result, creator) => {
+    const nextUtmTrackingLogs = []
+    const nextGuides = guideCreators.reduce((result, creator, index) => {
+      const trackingAsset = buildInfluencerTrackingAsset({
+        brand: activeBrand,
+        campaign,
+        creator,
+        index,
+      })
+      nextUtmTrackingLogs.push(
+        buildUtmTrackingLog({
+          brand: activeBrand,
+          campaign,
+          creator,
+          trackingAsset,
+          generatedAt,
+          index,
+        }),
+      )
       result[creator.id] = {
         creatorId: creator.id,
         creatorName: creator.name,
         platform: creator.platform,
         handle: creator.handle,
         generatedAt,
+        trackingLink: trackingAsset.shortUrl,
+        trackingLinks: {
+          shortUrl: trackingAsset.shortUrl,
+          originalUrl: trackingAsset.originalUrl,
+          couponCode: trackingAsset.couponCode,
+          rawId: trackingAsset.rawId,
+          metricIds: trackingAsset.metricIds,
+          generatedAt,
+        },
         guide: buildCreatorSpecificContentGuide({
           brand: activeBrand,
           brief: campaignBrief,
@@ -11920,7 +12276,7 @@ function App() {
                     individualGuide: 'generated',
                     individualGuideCount: guideCreators.length,
                     individualGuidesGeneratedAt: generatedAt,
-                    sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-INF-001', 'RAW-INT-BRD-001'],
+                    sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-INF-001', 'RAW-INT-BRD-001', UTM_RAW_SOURCE_ID],
                     outputRawId: 'RAW-INT-AI-001',
                     packageVersion: 'strategy-director-v2.3-local',
                     engine: backendConfig?.apiBaseUrl ? 'api-ready-local-fallback' : 'local-strategy-director',
@@ -11928,6 +12284,7 @@ function App() {
                 }
               : item,
           ),
+          utmTrackingLogs: mergeUtmTrackingLogs(current.utmTrackingLogs, nextUtmTrackingLogs),
         },
         'campaign',
         `${campaign.name} 개별 인플루언서 가이드 ${guideCreators.length}건 생성`,
@@ -12064,6 +12421,7 @@ function App() {
       reward: campaignDraft.reward || '제품 제공 + 협의 리워드',
       approvalFlow: campaignDraft.approvalFlow || '브리프 전달 → 콘텐츠 검수 → 게시 확인 → 성과 리포트',
       commerceMetric: campaignDraft.commerceMetric || '조회/댓글/공유와 전환 링크',
+      landingUrl: campaignDraft.landingUrl?.trim() || '',
       kpiGoal: campaignDraft.kpiGoal || '조회수/전환 KPI 미정',
       targetViews: normalizeNumericTarget(campaignDraft.targetViews),
       targetConversions: normalizeNumericTarget(campaignDraft.targetConversions),
@@ -12104,6 +12462,7 @@ function App() {
           reward: campaignDraft.reward,
           approvalFlow: campaignDraft.approvalFlow,
           commerceMetric: campaignDraft.commerceMetric,
+          landingUrl: campaignDraft.landingUrl?.trim() || '',
           kpiGoal: campaignDraft.kpiGoal,
           targetViews: normalizeNumericTarget(campaignDraft.targetViews),
           targetConversions: normalizeNumericTarget(campaignDraft.targetConversions),
@@ -12178,10 +12537,11 @@ function App() {
       objective: '브랜드 인지도',
       campaignType: '제안형',
       targetPersona: '',
-      searchKeywords: '',
-      exclusionKeywords: '',
-      minFollowers: '',
-      maxCreatorFee: '',
+    searchKeywords: '',
+    exclusionKeywords: '',
+    landingUrl: '',
+    minFollowers: '',
+    maxCreatorFee: '',
       preferredPlatforms: '',
       mission: '',
       reward: '',
@@ -14582,6 +14942,14 @@ function App() {
                         <p>{selectedRecommendationDetail.outreachAngle || '제품 사용 맥락과 후보 채널 톤을 맞춰 제안 메시지에 반영합니다.'}</p>
                       </div>
                       <div>
+                        <span>연락 정보</span>
+                        <p>
+                          {getCreatorContactEmail(selectedRecommendationCreator)
+                            ? `이메일 ${getCreatorContactEmail(selectedRecommendationCreator)} · Gmail/Outlook 발송 대상`
+                            : `${buildContactPlan(selectedRecommendationCreator).label} · 상세 보기에서 채널 링크와 수동 연락 경로를 확인`}
+                        </p>
+                      </div>
+                      <div>
                         <span>데이터룸 근거</span>
                         <div className="recommendation-detail-chips">
                           {selectedRecommendationRawIds.map((rawId) => (
@@ -15448,6 +15816,14 @@ function App() {
                         <div>
                           <strong>{creator.name}</strong>
                           <span>{creator.handle} · {creator.category}</span>
+                          {(() => {
+                            const creatorPriceValue = getCreatorPriceValue(creator)
+                            return (
+                              <span className={`creator-group-member-price-chip ${creatorPriceValue ? '' : 'muted'}`}>
+                                예상 단가 {creatorPriceValue ? won(creatorPriceValue) : '산정 전'}
+                              </span>
+                            )
+                          })()}
                         </div>
                         <div>
                           <strong>{creator.platform}</strong>
@@ -16381,6 +16757,15 @@ function App() {
                         <input inputMode="numeric" value={campaignEditDraft.sellerRecruitTarget} onChange={(event) => updateCampaignEditField('sellerRecruitTarget', event.target.value)} />
                       </label>
                     </div>
+                    <label className="campaign-tracking-url-field">
+                      판매/랜딩 URL
+                      <input
+                        value={campaignEditDraft.landingUrl || ''}
+                        onChange={(event) => updateCampaignEditField('landingUrl', event.target.value)}
+                        placeholder="https://brand.com/product 또는 자사몰 상세페이지 URL"
+                      />
+                      <span>개별 인플루언서 가이드에는 이 링크에 UTM을 붙인 숏링크가 들어갑니다.</span>
+                    </label>
                     <label>
                       미션/가이드라인
                       <textarea value={campaignEditDraft.mission} onChange={(event) => updateCampaignEditField('mission', event.target.value)} />
@@ -16594,8 +16979,9 @@ function App() {
                   </div>
                   {campaignModalGuideCreators.length > 0 ? (
                     <div className="individual-guide-list">
-                      {campaignModalGuideCreators.slice(0, 8).map((creator) => {
+                      {campaignModalGuideCreators.slice(0, 8).map((creator, index) => {
                         const storedGuide = activeCampaignForModal.individualContentGuides?.[creator.id]
+                        const trackingAsset = getCampaignCreatorTrackingAsset(activeCampaignForModal, creator, index)
                         return (
                           <article key={creator.id}>
                             <div>
@@ -16604,6 +16990,12 @@ function App() {
                                 {creator.platform} · {creator.handle} · 평균 조회 {compactNumber(creator.averageViews)}
                               </p>
                               <small>{storedGuide?.generatedAt ? `생성 ${storedGuide.generatedAt}` : '생성 전 · 다운로드 시 초안 생성'}</small>
+                              {trackingAsset ? (
+                                <div className="creator-shortlink-row">
+                                  <span>숏링크 {trackingAsset.shortUrl}</span>
+                                  <span>쿠폰 {trackingAsset.couponCode}</span>
+                                </div>
+                              ) : null}
                             </div>
                             <div className="campaign-guide-actions compact-guide-actions">
                               <button
@@ -17317,6 +17709,15 @@ function App() {
                     />
                   </label>
                 </div>
+                <label className="campaign-tracking-url-field">
+                  판매/랜딩 URL
+                  <input
+                    value={campaignDraft.landingUrl}
+                    onChange={(event) => setCampaignDraft({ ...campaignDraft, landingUrl: event.target.value })}
+                    placeholder="https://brand.com/product 또는 자사몰 상세페이지 URL"
+                  />
+                  <span>개별 가이드 생성 시 인플루언서별 UTM이 붙은 숏링크로 자동 변환됩니다.</span>
+                </label>
                 <div className="modal-two-col">
                   <label>
                     후보 최소 팔로워
@@ -18130,6 +18531,15 @@ function App() {
                       <input value={campaignEditDraft.exclusionKeywords} onChange={(event) => updateCampaignEditField('exclusionKeywords', event.target.value)} />
                     </label>
                   </div>
+                  <label className="campaign-tracking-url-field">
+                    판매/랜딩 URL
+                    <input
+                      value={campaignEditDraft.landingUrl || ''}
+                      onChange={(event) => updateCampaignEditField('landingUrl', event.target.value)}
+                      placeholder="https://brand.com/product 또는 자사몰 상세페이지 URL"
+                    />
+                    <span>개별 인플루언서 가이드에는 이 링크에 UTM을 붙인 숏링크가 들어갑니다.</span>
+                  </label>
                   <div className="modal-two-col">
                     <label>
                       후보 최소 팔로워
@@ -18986,6 +19396,7 @@ function RecommendationCard({
   const performanceScore = getCreatorPerformanceScore(creator)
   const efficiencyScore = getCreatorEfficiencyScore(creator)
   const creatorPrice = getCreatorPriceValue(creator)
+  const estimatedPriceLabel = creatorPrice ? won(creatorPrice) : '산정 전'
   const performanceLearning = creator.performanceLearning
   const costPerView = Number(creator.averageViews || 0) && creatorPrice
     ? Math.round(creatorPrice / Number(creator.averageViews || 1))
@@ -19054,7 +19465,7 @@ function RecommendationCard({
     { label: '\uD314\uB85C\uC6CC', value: displayMetric(creator.followers) },
     { label: '\uD3C9\uADE0 \uC870\uD68C', value: pendingMetrics ? '\uC218\uC9D1 \uD544\uC694' : displayMetric(creator.averageViews) },
     { label: '\uCC38\uC5EC\uC728', value: pendingMetrics ? '\uC218\uC9D1 \uD544\uC694' : percent(creator.engagement), tone: 'primary' },
-    { label: '\uC608\uC0C1 \uB2E8\uAC00', value: creatorPrice ? won(creatorPrice) : '\uC0B0\uC815 \uC804', tone: creatorPrice ? 'primary' : undefined },
+    { label: '\uC608\uC0C1 \uB2E8\uAC00', value: estimatedPriceLabel, tone: creatorPrice ? 'primary' : undefined },
     { label: '\uC608\uC0C1 CPV', value: costPerView ? `${costPerView}\uC6D0` : '\uC0B0\uC815 \uC804' },
     { label: '\uC870\uD68C \uD3ED\uBC1C', value: viralityLabel },
   ]
@@ -19072,6 +19483,9 @@ function RecommendationCard({
             <strong>{creator.name}</strong>
             <span>
               {[creator.platform, creator.country, recommendation.persona].filter(Boolean).join(' · ')}
+            </span>
+            <span className={`recommendation-price-inline ${creatorPrice ? '' : 'muted'}`}>
+              예상 단가 {estimatedPriceLabel}
             </span>
           </div>
         </button>
