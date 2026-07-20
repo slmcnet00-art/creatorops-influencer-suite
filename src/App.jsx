@@ -2092,7 +2092,23 @@ function getCreatorsByIds(creators, ids) {
 }
 
 function getCreatorPriceValue(creator = {}) {
-  return Number(creator.price || creator.estimatedPrice || creator.unitPrice || 0)
+  const rawValue = creator.price ?? creator.estimatedPrice ?? creator.unitPrice ?? creator.cost ?? 0
+  if (typeof rawValue === 'number') return Number.isFinite(rawValue) ? rawValue : 0
+  const numericValue = Number(String(rawValue || '').replace(/[^\d.-]/g, ''))
+  return Number.isFinite(numericValue) ? numericValue : 0
+}
+
+function getPublishedContentUrl(record = {}) {
+  return String(
+    record.contentUrl ||
+      record.content_url ||
+      record.uploadUrl ||
+      record.postUrl ||
+      record.videoUrl ||
+      record.publishedUrl ||
+      record.published_url ||
+      '',
+  ).trim()
 }
 
 function getCreatorGroupPriceStats(groupCreators = []) {
@@ -2393,8 +2409,6 @@ function buildInfluencerTrackingAsset({ campaign = {}, creator = {}, brand = {},
     utm_medium: 'influencer',
     utm_campaign: campaignSlug,
     utm_content: creatorSlug,
-    creator_id: creator?.id || creatorSlug,
-    campaign_id: campaign?.id || campaignSlug,
   }
   const originalUrl = appendUrlParams(destination, params)
   const shortCode = stableHash(
@@ -2421,29 +2435,86 @@ function buildUtmTrackingLog({ campaign = {}, creator = {}, brand = {}, tracking
   const shortCode =
     trackingAsset.shortCode ||
     stableHash(`${brand?.id || 'brand'}:${campaign?.id || 'campaign'}:${creator?.id || index}`).slice(0, 7)
+  const utmParams = trackingAsset.params ?? {}
+  const contentUrl = getPublishedContentUrl(creator)
+  const creatorCost = getCreatorPriceValue(creator)
+  const shortUrl = trackingAsset.shortUrl ?? ''
+  const originalUrl = trackingAsset.originalUrl ?? ''
+  const destination = trackingAsset.destination ?? ''
 
   return {
     id: `utm-${campaign?.id || 'campaign'}-${creator?.id || index}-${shortCode}`,
     rawId: UTM_RAW_SOURCE_ID,
     eventType: 'link_created',
+    schemaVersion: 'utm-tracking-v1',
+    rowType: 'creator_utm_link',
+    status: contentUrl ? 'content_attached' : 'link_created',
     source: 'individual_guide',
     brandId: brand?.id ?? campaign?.brandId ?? '',
+    brand_id: brand?.id ?? campaign?.brandId ?? '',
     brandName: brand?.name ?? '',
+    brand_name: brand?.name ?? '',
     campaignId: campaign?.id ?? '',
+    campaign_id: campaign?.id ?? '',
     campaignName: campaign?.name ?? '',
+    campaign_name: campaign?.name ?? '',
     creatorId: creator?.id ?? '',
     creatorName: creator?.name ?? '',
     creatorHandle: creator?.handle ?? '',
+    creator_handle: creator?.handle ?? '',
     platform: creator?.platform ?? '',
+    platform_slug: trackingAsset.platformSlug ?? '',
     shortCode,
-    shortUrl: trackingAsset.shortUrl ?? '',
-    originalUrl: trackingAsset.originalUrl ?? '',
-    destination: trackingAsset.destination ?? '',
+    shortUrl,
+    short_url: shortUrl,
+    originalUrl,
+    original_utm_url: originalUrl,
+    destination,
+    destination_url: destination,
+    landing_url: destination,
     couponCode: trackingAsset.couponCode ?? '',
-    utmParams: trackingAsset.params ?? {},
+    coupon_code: trackingAsset.couponCode ?? '',
+    utmParams,
+    utm_source: utmParams.utm_source ?? '',
+    utm_medium: utmParams.utm_medium ?? 'influencer',
+    utm_campaign: utmParams.utm_campaign ?? '',
+    utm_content: utmParams.utm_content ?? '',
+    creator_id: creator?.id ?? '',
+    creator_name: creator?.name ?? '',
+    content_url: contentUrl,
+    contentUrl,
+    cost: creatorCost,
+    creator_cost: creatorCost,
     metricIds: trackingAsset.metricIds ?? [UTM_CLICK_METRIC_ID, UTM_REVENUE_METRIC_ID],
     createdAt: generatedAt || new Date().toISOString(),
   }
+}
+
+function attachContentUrlToUtmLogs(logs = [], { campaignId, creatorId, contentUrl, contentTitle = '', metricsSource = '', updatedAt = '' } = {}) {
+  const normalizedCampaignId = String(campaignId || '')
+  const normalizedCreatorId = String(creatorId || '')
+  const normalizedContentUrl = String(contentUrl || '').trim()
+  if (!normalizedCampaignId || !normalizedCreatorId || !normalizedContentUrl) return logs
+
+  return (Array.isArray(logs) ? logs : []).map((log) => {
+    const sameCampaign = String(log.campaignId || log.campaign_id || '') === normalizedCampaignId
+    const sameCreator = String(log.creatorId || log.creator_id || '') === normalizedCreatorId
+    if (!sameCampaign || !sameCreator) return log
+
+    return {
+      ...log,
+      status: 'content_attached',
+      contentStatus: 'registered',
+      content_status: 'registered',
+      contentUrl: normalizedContentUrl,
+      content_url: normalizedContentUrl,
+      contentTitle,
+      content_title: contentTitle,
+      contentMetricsSource: metricsSource,
+      content_metrics_source: metricsSource,
+      updatedAt: updatedAt || new Date().toISOString(),
+    }
+  })
 }
 
 function mergeUtmTrackingLogs(existing = [], next = []) {
@@ -5119,11 +5190,11 @@ function buildAdminRawDataCatalog({
       active: true,
     },
     {
-      id: UTM_RAW_SOURCE_ID,
+      id: 'RAW-INT-UTM-001',
       name: 'UTM/숏링크 매핑 데이터',
       scope: '내부',
       category: 'CRM/전환 추적',
-      description: '크리에이터별 원본 UTM, 전달용 숏링크, 쿠폰 코드, 클릭/주문 매핑 로그',
+      description: '크리에이터별 원본 UTM, 전달용 숏링크, 쿠폰 코드, creator_name/content_url/cost, 클릭/주문 매핑 로그',
       purpose: '인플루언서별 링크 클릭, 주문, 매출 기여도를 캠페인 리포트로 연결',
       method: 'DB 연동',
       cycle: '개별 가이드 생성 시 생성 / 클릭·주문 이벤트 발생 시 갱신',
@@ -5139,7 +5210,8 @@ function buildAdminRawDataCatalog({
       techOwner: 'Backend/Data',
       qualityIssue: '숏도메인/리다이렉트 로그와 주문 DB가 연결되기 전에는 클릭·매출이 검증 필요',
       logLocation: 'utmTrackingLogs + shortLinkClickLogs + orderAttributionLogs + couponRedemptionLogs',
-      note: `숏링크 발급 ${utmLinkCount}건 · 클릭 ${shortLinkClickLogs.length}건 · 주문 ${orderAttributionLogs.length}건 · 쿠폰 ${couponRedemptionLogs.length}건`,
+      schemaFields: ['utm_source', 'utm_medium', 'utm_campaign', 'utm_content', 'creator_name', 'content_url', 'cost', 'short_url', 'coupon_code'],
+      note: `숏링크 발급 ${utmLinkCount}건 · 클릭 ${shortLinkClickLogs.length}건 · 주문 ${orderAttributionLogs.length}건 · 쿠폰 ${couponRedemptionLogs.length}건 · row utm_source/utm_medium/utm_campaign/utm_content/creator_name/content_url/cost/short_url/coupon_code`,
       active: true,
     },
     {
@@ -5480,7 +5552,7 @@ function buildAdminMetricCatalog({
     ['MET-CRM-004', '응답률', 'CRM 효율 번들', '내부', '응답 상태 메시지 수 / 발송 수', 'response_count / sent_count * 100', rawRefs.crm, '최근 30일', '실시간', '정상', '대시보드, 메시지', '채널별로 분리 해석', '평균 대비 50% 이하', '높음', '운영팀', 'outreach.status history', `${outreach.filter((item) => item.status === '응답').length}건 응답`],
     ['MET-CRM-005', '전환율', 'CRM 효율 번들', '내부', '섭외 완료 수 / 제안 발송 수', 'recruited_count / sent_count * 100', ['RAW-INT-CRM-001', 'RAW-INT-INF-001', UTM_RAW_SOURCE_ID], '캠페인 기간', '실시간', '정상', '대시보드, 캠페인', '캠페인 난이도와 보상 조건에 따라 해석', '10% 미만', '높음', '운영팀', 'recruitedPool + outreach', `${recruitedPool.length}명 섭외 완료`],
     [
-      UTM_CLICK_METRIC_ID,
+      'MET-UTM-001',
       '숏링크 클릭 수',
       'UTM/숏링크 전환 번들',
       '내부',
@@ -5499,7 +5571,7 @@ function buildAdminMetricCatalog({
       `${clickLogCount}건 클릭 · ${utmLinkCount}개 숏링크`,
     ],
     [
-      UTM_REVENUE_METRIC_ID,
+      'MET-UTM-002',
       '숏링크 매출/전환',
       'UTM/숏링크 전환 번들',
       '내부',
@@ -6007,6 +6079,174 @@ function buildDataRoomExtendedRawCatalog({
       qualityIssue: '검색 API가 공개 페이지 요약만 제공하면 조회수/팔로워는 검증 필요로 표시',
       logLocation: 'Render API logs / future: brand_tracking_sources',
       note: `${contentReferences.filter((item) => (item.referenceKind || item.trackingType) === 'brand').length}개 경쟁/브랜드 추적 raw 저장`,
+      active: true,
+    },
+    {
+      id: 'RAW-EXT-SERP-001',
+      name: '검색/SERP API raw',
+      scope: '외부',
+      category: '검색 API',
+      description: '공식 플랫폼 API가 부족할 때 공개 검색 결과에서 후보 프로필/콘텐츠 URL과 스니펫을 수집한 원천 데이터',
+      purpose: '발굴, 레퍼런스, 브랜드 추적에서 후보 URL을 만들고 최종 지표는 검증 필요로 분리',
+      method: 'Search API / public SERP',
+      cycle: '검색 요청 또는 보강 작업 시',
+      lastCollectedAt: '-',
+      nextCollectAt: '다음 검색 요청 시',
+      status: '검증 필요',
+      sourceLocation: 'Brave Search API, Google Search/CX, public SERP URLs',
+      storageLocation: `${storageBase} / future: api_raw_events(source=serp_enrichment)`,
+      dashboardArea: '발굴, 레퍼런스, 데이터룸',
+      metricIds: ['MET-AI-002', 'MET-OPS-001', 'MET-BENCH-001'],
+      ownerDept: 'Data/Product',
+      opsOwner: 'Data QA',
+      techOwner: 'Backend/Data',
+      qualityIssue: '검색 스니펫은 오래됐거나 차단될 수 있어 팔로워/조회수 같은 플랫폼 지표는 최종 보고 전 검증 필요',
+      logLocation: 'Render API logs / future: api_raw_events',
+      note: '후보 탐색용 보조 raw. 최종 성과 지표 원천으로 단독 사용하지 않습니다.',
+      active: true,
+    },
+    {
+      id: 'RAW-EXT-TT-RESEARCH-001',
+      name: 'TikTok Research API raw',
+      scope: '외부',
+      category: 'TikTok API',
+      description: 'TikTok 공개 연구 API 응답으로 영상, 해시태그, 크리에이터, 트렌드/레퍼런스 후보를 수집',
+      purpose: 'TikTok 레퍼런스와 후보 발굴 원천을 URL, 공개 지표, 검색 맥락과 함께 저장',
+      method: 'TikTok Research API',
+      cycle: '레퍼런스/발굴 요청 시',
+      lastCollectedAt: '-',
+      nextCollectAt: 'TikTok 승인 후 다음 요청 시',
+      status: '검증 필요',
+      sourceLocation: 'TikTok Research API',
+      storageLocation: `${storageBase} / future: api_raw_events(source=tiktok_research)`,
+      dashboardArea: '발굴, 레퍼런스, 리포트, 데이터룸',
+      metricIds: ['MET-AI-002', 'MET-AI-003', 'MET-SNS-001', 'MET-SNS-006', 'MET-OPS-001'],
+      ownerDept: 'Data/Product',
+      opsOwner: 'Creator Ops',
+      techOwner: 'Backend/Data',
+      qualityIssue: '승인 범위와 허용 필드에 따라 팔로워/조회수 누락 가능. 누락값은 미검증으로 표시',
+      logLocation: 'Render API logs / future: api_raw_events',
+      note: 'TikTok 승인 후 기본 후보/레퍼런스 원천으로 사용',
+      active: true,
+    },
+    {
+      id: 'RAW-EXT-TT-COMMERCIAL-001',
+      name: 'TikTok Commercial Content API raw',
+      scope: '외부',
+      category: 'TikTok API',
+      description: '브랜디드/광고성/셀러형 TikTok 콘텐츠 검색 응답 원천 데이터',
+      purpose: '공동구매 셀러, 브랜드 협업, 광고성 콘텐츠 벤치마크를 일반 오가닉 검색과 분리',
+      method: 'TikTok Commercial Content API',
+      cycle: '레퍼런스/발굴 요청 시',
+      lastCollectedAt: '-',
+      nextCollectAt: 'TikTok 승인 후 다음 요청 시',
+      status: '검증 필요',
+      sourceLocation: 'TikTok Commercial Content API',
+      storageLocation: `${storageBase} / future: api_raw_events(source=tiktok_commercial_content)`,
+      dashboardArea: '레퍼런스, 브랜드 추적, 리포트, 데이터룸',
+      metricIds: ['MET-BENCH-001', 'MET-BENCH-002', 'MET-SNS-001', 'MET-SNS-006', 'MET-OPS-001'],
+      ownerDept: 'Data/Product',
+      opsOwner: 'Brand Analyst',
+      techOwner: 'Backend/Data',
+      qualityIssue: '상업 콘텐츠 커버리지는 오가닉 결과와 다르므로 별도 라벨링 필요',
+      logLocation: 'Render API logs / future: api_raw_events',
+      note: 'TikTok 셀러/브랜디드 콘텐츠 벤치마크용 raw',
+      active: true,
+    },
+    {
+      id: 'RAW-EXT-TT-SNAPSHOT-001',
+      name: 'TikTok 공개 스냅샷 raw',
+      scope: '외부',
+      category: 'TikTok fallback',
+      description: '공식 API 필드가 없을 때 공개 TikTok 프로필/영상 URL에서 저장한 스냅샷',
+      purpose: '수동 검증된 TikTok URL 증거를 보관하되 최종 API truth와 구분',
+      method: 'Public URL snapshot / manual verification',
+      cycle: 'URL 저장 또는 새로고침 시',
+      lastCollectedAt: '-',
+      nextCollectAt: '다음 URL 검증 시',
+      status: '검증 필요',
+      sourceLocation: 'TikTok public URL',
+      storageLocation: `${storageBase} / future: api_raw_events(source=tiktok_snapshot)`,
+      dashboardArea: '발굴, 레퍼런스, 리포트, 데이터룸',
+      metricIds: ['MET-AI-002', 'MET-SNS-001', 'MET-SNS-006'],
+      ownerDept: 'Creator Ops/Data',
+      opsOwner: 'Data QA',
+      techOwner: 'Backend/Data',
+      qualityIssue: '공개 스냅샷은 차단/변동 가능성이 있어 검증 시각과 신뢰도 표시 필요',
+      logLocation: 'Render API logs / future: api_raw_events',
+      note: 'TikTok 승인 API가 같은 필드를 제공하기 전까지 fallback raw로 사용',
+      active: true,
+    },
+    {
+      id: 'RAW-EXT-IG-BUSINESS-001',
+      name: 'Instagram Business Graph API raw',
+      scope: '외부',
+      category: 'Instagram API',
+      description: '연결된 비즈니스/크리에이터 계정의 Instagram Graph API 계정, 미디어, 인사이트 응답',
+      purpose: '권한 연결된 Instagram 계정의 검증 가능한 미디어/인사이트 지표 수집',
+      method: 'Instagram Graph API',
+      cycle: '계정 연결 동기화 시',
+      lastCollectedAt: '-',
+      nextCollectAt: 'Meta 앱 리뷰 및 계정 연결 후',
+      status: '검증 필요',
+      sourceLocation: 'Meta Instagram Graph API',
+      storageLocation: `${storageBase} / future: api_raw_events(source=instagram_business_graph)`,
+      dashboardArea: '발굴, 레퍼런스, 리포트, 데이터룸',
+      metricIds: ['MET-AI-002', 'MET-AI-003', 'MET-SNS-001', 'MET-SNS-006', 'MET-OPS-001'],
+      ownerDept: 'Data/Product',
+      opsOwner: 'Creator Ops',
+      techOwner: 'Backend/Data',
+      qualityIssue: '권한이 부여된 비즈니스/크리에이터 계정만 신뢰 가능한 인사이트 필드를 제공',
+      logLocation: 'Render API logs / future: api_raw_events',
+      note: '연결 계정 기준 Instagram 검증 raw',
+      active: true,
+    },
+    {
+      id: 'RAW-EXT-IG-CREATOR-AUTH-001',
+      name: 'Instagram 크리에이터 권한 raw',
+      scope: '외부',
+      category: 'Instagram API',
+      description: '크리에이터 OAuth 동의, 승인 scope, 연결 계정 ID, 토큰 갱신 상태',
+      purpose: 'Instagram 크리에이터가 권한 기반 지표와 미디어 인사이트를 제공할 수 있는지 추적',
+      method: 'Meta OAuth / creator authorization',
+      cycle: '크리에이터 연결 또는 토큰 갱신 시',
+      lastCollectedAt: '-',
+      nextCollectAt: '크리에이터 권한 연결 후',
+      status: '검증 필요',
+      sourceLocation: 'Meta OAuth / Instagram Login',
+      storageLocation: `${storageBase} / future: api_raw_events(source=instagram_creator_auth)`,
+      dashboardArea: '발굴, 메시지, 리포트, 데이터룸',
+      metricIds: ['MET-AI-002', 'MET-OPS-001'],
+      ownerDept: 'Creator Ops/Data',
+      opsOwner: 'Creator Manager',
+      techOwner: 'Backend/Data',
+      qualityIssue: '권한 누락, 토큰 만료, 계정 연결 실패 시 자동 인사이트 표기 차단 필요',
+      logLocation: 'Render API logs / future: api_raw_events',
+      note: '권한 기반 Instagram 데이터와 공개 fallback 데이터를 구분하는 원천',
+      active: true,
+    },
+    {
+      id: 'RAW-EXT-IG-SNAPSHOT-001',
+      name: 'Instagram 공개 스냅샷 raw',
+      scope: '외부',
+      category: 'Instagram fallback',
+      description: '권한 기반 API 데이터가 없을 때 공개 Instagram 프로필/릴스/게시물 URL에서 저장한 스냅샷',
+      purpose: '수동 검증된 공개 Instagram 증거를 보관하되 팔로워/조회수는 검증 필요로 표시',
+      method: 'Public URL snapshot / manual verification',
+      cycle: 'URL 저장 또는 새로고침 시',
+      lastCollectedAt: '-',
+      nextCollectAt: '다음 URL 검증 시',
+      status: '검증 필요',
+      sourceLocation: 'Instagram public URL',
+      storageLocation: `${storageBase} / future: api_raw_events(source=instagram_snapshot)`,
+      dashboardArea: '발굴, 레퍼런스, 리포트, 데이터룸',
+      metricIds: ['MET-AI-002', 'MET-SNS-001', 'MET-SNS-006'],
+      ownerDept: 'Creator Ops/Data',
+      opsOwner: 'Data QA',
+      techOwner: 'Backend/Data',
+      qualityIssue: '공개 스냅샷은 차단/변동 가능성이 있어 검증 시각과 신뢰도 표시 필요',
+      logLocation: 'Render API logs / future: api_raw_events',
+      note: '권한 API가 없을 때만 사용하는 Instagram fallback raw',
       active: true,
     },
     {
@@ -8778,6 +9018,7 @@ function App() {
         const currentCampaigns = current.campaigns ?? []
         const nextCreators = [...(current.creators ?? [])]
         const nextTrackedPosts = [...(current.trackedPosts ?? [])]
+        let nextUtmTrackingLogs = current.utmTrackingLogs ?? []
         const nextExternalReportRows = dedupeExternalReportRows([...(current.externalReportRows ?? []), ...rawRows]).slice(-12000)
         const seenUrls = new Set(nextTrackedPosts.map((post) => String(post.url || '').trim().toLowerCase()).filter(Boolean))
 
@@ -8859,7 +9100,7 @@ function App() {
             })
           }
 
-          nextTrackedPosts.unshift({
+          const nextPost = {
             id: createId(),
             campaignId: targetCampaign.id,
             creatorId,
@@ -8878,6 +9119,15 @@ function App() {
             rawRowId: rawRow?.id,
             metricsSource: '???? ???',
             lastChecked: nowLabel(),
+          }
+          nextTrackedPosts.unshift(nextPost)
+          nextUtmTrackingLogs = attachContentUrlToUtmLogs(nextUtmTrackingLogs, {
+            campaignId: targetCampaign.id,
+            creatorId,
+            contentUrl: url,
+            contentTitle: nextPost.title,
+            metricsSource: nextPost.metricsSource,
+            updatedAt: nextPost.lastChecked,
           })
           seenUrls.add(normalizedUrl)
           importedCount += 1
@@ -8894,6 +9144,7 @@ function App() {
             ...current,
             creators: nextCreators,
             trackedPosts: nextTrackedPosts,
+            utmTrackingLogs: nextUtmTrackingLogs,
             externalReportRows: nextExternalReportRows,
           },
           'tracking',
@@ -12889,12 +13140,21 @@ function App() {
         metricsSource: effectiveDraft.snapshotSource || (hasManualMetrics ? '\uC218\uB3D9 \uC785\uB825' : '\uC5C5\uB85C\uB4DC \uB9C1\uD06C \uB4F1\uB85D'),
         lastChecked: effectiveDraft.snapshotCheckedAt || (hasManualMetrics ? nowLabel() : '\uC790\uB3D9 \uAC31\uC2E0 \uB300\uAE30'),
       }
+      const nextUtmTrackingLogs = attachContentUrlToUtmLogs(current.utmTrackingLogs, {
+        campaignId,
+        creatorId,
+        contentUrl: uploadedUrl,
+        contentTitle: savedPostTitle,
+        metricsSource: nextPost.metricsSource,
+        updatedAt: nextPost.lastChecked,
+      })
 
       return appendActivity(
         {
           ...current,
           creators: nextCreators,
           trackedPosts: [nextPost, ...current.trackedPosts],
+          utmTrackingLogs: nextUtmTrackingLogs,
         },
         'tracking',
         savedPostTitle + ' 콘텐츠 추적 등록 - ' + savedCreatorName,

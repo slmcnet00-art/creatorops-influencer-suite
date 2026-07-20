@@ -219,6 +219,7 @@ function getDataRoomLogStatus() {
       'raw_data_sources',
       'metric_definitions',
       'external_search_events',
+      'utm_tracking_rows',
       'external_report_imports',
       'external_report_rows',
       'metric_snapshots',

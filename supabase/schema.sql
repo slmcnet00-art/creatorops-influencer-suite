@@ -265,6 +265,46 @@ create table if not exists public.external_search_events (
   created_at timestamptz not null default now()
 );
 
+create table if not exists public.utm_tracking_rows (
+  id text primary key,
+  workspace_id text not null references public.workspaces(id) on delete cascade,
+  raw_source_id text references public.raw_data_sources(id),
+  brand_id text,
+  brand_name text,
+  campaign_id text,
+  campaign_name text,
+  creator_id text,
+  creator_name text,
+  creator_handle text,
+  platform text,
+  platform_slug text,
+  short_code text,
+  short_url text,
+  original_utm_url text,
+  destination_url text,
+  landing_url text,
+  coupon_code text,
+  utm_source text,
+  utm_medium text,
+  utm_campaign text,
+  utm_content text,
+  content_url text,
+  content_title text,
+  content_status text,
+  content_metrics_source text,
+  cost numeric,
+  status text not null default 'link_created' check (status in ('link_created', 'content_attached', 'paused', 'archived')),
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists utm_tracking_rows_workspace_campaign_idx
+  on public.utm_tracking_rows(workspace_id, campaign_id);
+
+create index if not exists utm_tracking_rows_creator_idx
+  on public.utm_tracking_rows(workspace_id, creator_id);
+
 create table if not exists public.metric_snapshots (
   id bigserial primary key,
   workspace_id text not null references public.workspaces(id) on delete cascade,
@@ -361,6 +401,7 @@ alter table public.metric_definitions enable row level security;
 alter table public.external_report_imports enable row level security;
 alter table public.external_report_rows enable row level security;
 alter table public.external_search_events enable row level security;
+alter table public.utm_tracking_rows enable row level security;
 alter table public.metric_snapshots enable row level security;
 alter table public.data_quality_reviews enable row level security;
 alter table public.unsupported_metric_requests enable row level security;
@@ -402,6 +443,8 @@ drop policy if exists "Members can read external report rows" on public.external
 drop policy if exists "Members can write external report rows" on public.external_report_rows;
 drop policy if exists "Members can read external search events" on public.external_search_events;
 drop policy if exists "Members can write external search events" on public.external_search_events;
+drop policy if exists "Members can read UTM tracking rows" on public.utm_tracking_rows;
+drop policy if exists "Members can write UTM tracking rows" on public.utm_tracking_rows;
 drop policy if exists "Members can read metric snapshots" on public.metric_snapshots;
 drop policy if exists "Members can write metric snapshots" on public.metric_snapshots;
 drop policy if exists "Members can read data quality reviews" on public.data_quality_reviews;
@@ -552,6 +595,15 @@ create policy "Members can read external search events"
 create policy "Members can write external search events"
   on public.external_search_events for insert to authenticated
   with check (public.is_workspace_member(workspace_id));
+
+create policy "Members can read UTM tracking rows"
+  on public.utm_tracking_rows for select to authenticated
+  using (public.is_workspace_member(workspace_id));
+
+create policy "Members can write UTM tracking rows"
+  on public.utm_tracking_rows for all to authenticated
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']))
+  with check (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']));
 
 create policy "Members can read metric snapshots"
   on public.metric_snapshots for select to authenticated

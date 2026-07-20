@@ -4,6 +4,10 @@ import { config as loadDotenv } from 'dotenv'
 const envFile = process.env.RENDER_ENV_FILE || '.render-env.local'
 loadDotenv({ path: envFile, override: false })
 
+deriveEnv('SUPABASE_URL', ['VITE_SUPABASE_URL'])
+deriveEnv('WORKSPACE_ID', ['VITE_WORKSPACE_ID'])
+deriveEnv('SUPABASE_SERVICE_ROLE_KEY', ['SUPABASE_SERVICE_KEY'])
+
 const apiKey = process.env.RENDER_API_KEY
 const apiServiceName = process.env.RENDER_API_SERVICE_NAME || 'creatorops-suite-api'
 const staticServiceName = process.env.RENDER_STATIC_SERVICE_NAME || 'creatorops-influencer-suite'
@@ -50,6 +54,12 @@ const staticEnvKeys = [
   'VITE_CREATOROPS_API_BASE_URL',
 ]
 
+const requiredDataRoomApiEnvKeys = [
+  'SUPABASE_URL',
+  'SUPABASE_SERVICE_ROLE_KEY',
+  'WORKSPACE_ID',
+]
+
 const services = await listServices()
 const apiService = findServiceByName(services, apiServiceName)
 const staticService = findServiceByName(services, staticServiceName)
@@ -58,6 +68,12 @@ if (!apiService) {
   console.error(`Render service not found: ${apiServiceName}`)
   console.error(`Available services: ${services.map((service) => service.name).filter(Boolean).join(', ')}`)
   process.exit(1)
+}
+
+const missingDataRoomEnv = requiredDataRoomApiEnvKeys.filter((key) => !process.env[key])
+if (missingDataRoomEnv.length) {
+  console.warn(`Data room server persistence is not fully ready. Missing: ${missingDataRoomEnv.join(', ')}`)
+  console.warn(`Add missing values to ${envFile}, then run this sync again.`)
 }
 
 await syncServiceEnv(apiService, apiEnvKeys)
@@ -69,6 +85,14 @@ if (staticService) {
 }
 
 console.log('Render environment sync completed.')
+
+function deriveEnv(targetKey, sourceKeys) {
+  if (process.env[targetKey]) return
+  const sourceKey = sourceKeys.find((key) => process.env[key])
+  if (!sourceKey) return
+  process.env[targetKey] = process.env[sourceKey]
+  console.log(`${targetKey}: derived from ${sourceKey}`)
+}
 
 async function listServices() {
   const all = []

@@ -142,6 +142,86 @@ async function ensureWorkspaceMembership(supabase, workspace) {
   return { status: 'ready', user }
 }
 
+function toNumberOrNull(value) {
+  if (value === null || value === undefined || value === '') return null
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null
+  const parsed = Number(String(value).replace(/[^\d.-]/g, ''))
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function getUtmParam(log = {}, key) {
+  return log[key] || log.utmParams?.[key] || ''
+}
+
+function toIsoTimestamp(value) {
+  if (!value) return new Date().toISOString()
+  const parsed = new Date(value)
+  if (Number.isNaN(parsed.getTime())) return new Date().toISOString()
+  return parsed.toISOString()
+}
+
+function toUtmStatus(value, hasContentUrl = false) {
+  const allowedStatuses = new Set(['link_created', 'content_attached', 'paused', 'archived'])
+  if (allowedStatuses.has(value)) return value
+  return hasContentUrl ? 'content_attached' : 'link_created'
+}
+
+function normalizeUtmTrackingRow(log = {}, index = 0) {
+  const campaignId = log.campaignId || log.campaign_id || ''
+  const creatorId = log.creatorId || log.creator_id || ''
+  const shortCode = log.shortCode || log.short_code || ''
+  const id = log.id || `utm-${campaignId || 'campaign'}-${creatorId || index}-${shortCode || index}`
+  const createdAt = toIsoTimestamp(log.createdAt || log.created_at)
+  const updatedAt = toIsoTimestamp(log.updatedAt || log.updated_at || createdAt)
+  const contentUrl = log.contentUrl || log.content_url || ''
+
+  return {
+    id,
+    workspace_id: WORKSPACE_ID,
+    raw_source_id: log.rawId || log.raw_source_id || 'RAW-INT-UTM-001',
+    brand_id: log.brandId || log.brand_id || null,
+    brand_name: log.brandName || log.brand_name || null,
+    campaign_id: campaignId || null,
+    campaign_name: log.campaignName || log.campaign_name || null,
+    creator_id: creatorId || null,
+    creator_name: log.creatorName || log.creator_name || null,
+    creator_handle: log.creatorHandle || log.creator_handle || null,
+    platform: log.platform || null,
+    platform_slug: log.platformSlug || log.platform_slug || null,
+    short_code: shortCode || null,
+    short_url: log.shortUrl || log.short_url || null,
+    original_utm_url: log.originalUrl || log.original_utm_url || null,
+    destination_url: log.destination || log.destination_url || null,
+    landing_url: log.landingUrl || log.landing_url || log.destination || log.destination_url || null,
+    coupon_code: log.couponCode || log.coupon_code || null,
+    utm_source: getUtmParam(log, 'utm_source') || null,
+    utm_medium: getUtmParam(log, 'utm_medium') || 'influencer',
+    utm_campaign: getUtmParam(log, 'utm_campaign') || null,
+    utm_content: getUtmParam(log, 'utm_content') || null,
+    content_url: contentUrl || null,
+    content_title: log.contentTitle || log.content_title || null,
+    content_status: log.contentStatus || log.content_status || (contentUrl ? 'registered' : null),
+    content_metrics_source: log.contentMetricsSource || log.content_metrics_source || null,
+    cost: toNumberOrNull(log.cost ?? log.creator_cost),
+    status: toUtmStatus(log.status, Boolean(contentUrl)),
+    payload: log,
+    created_at: createdAt,
+    updated_at: updatedAt,
+  }
+}
+
+async function syncUtmTrackingRowsForWorkspace(supabase, workspace = {}) {
+  const logs = Array.isArray(workspace.utmTrackingLogs) ? workspace.utmTrackingLogs : []
+  const rows = logs.map(normalizeUtmTrackingRow)
+
+  for (let index = 0; index < rows.length; index += 500) {
+    const { error } = await supabase.from('utm_tracking_rows').upsert(rows.slice(index, index + 500), { onConflict: 'id' })
+    if (error) throw error
+  }
+
+  return { status: 'synced', rowCount: rows.length }
+}
+
 export async function loadCloudWorkspace() {
   const supabase = getSupabaseClient()
   if (!supabase) {
@@ -190,7 +270,19 @@ export async function saveCloudWorkspace(workspace) {
     )
 
   if (error) throw error
-  return { status: 'saved' }
+
+  let dataRoomRawSync = { status: 'skipped', rowCount: 0 }
+  try {
+    dataRoomRawSync = await syncUtmTrackingRowsForWorkspace(supabase, workspace)
+  } catch (syncError) {
+    dataRoomRawSync = {
+      status: 'failed',
+      rowCount: Array.isArray(workspace?.utmTrackingLogs) ? workspace.utmTrackingLogs.length : 0,
+      message: syncError.message || 'UTM raw sync failed.',
+    }
+  }
+
+  return { status: 'saved', dataRoomRawSync }
 }
 
 const RAW_STATUS_TO_DB = {
@@ -282,10 +374,11 @@ export async function syncDataRoomRegistry(rawData = [], metrics = []) {
     active: item.status !== '중단',
     metadata: {
       purpose: item.purpose || '',
-      nextCollectionAt: item.nextCollectionAt || '',
+      nextCollectionAt: item.nextCollectionAt || item.nextCollectAt || '',
       lastCollectedAt: item.lastCollectedAt || '',
       metricIds: item.metricIds || [],
-      notes: item.notes || item.memo || '',
+      schemaFields: item.schemaFields || [],
+      notes: item.notes || item.note || item.memo || '',
     },
     updated_at: now,
   }))

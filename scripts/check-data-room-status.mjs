@@ -1,7 +1,8 @@
 import 'dotenv/config'
 import { config as loadDotenv } from 'dotenv'
 
-loadDotenv({ path: '.render-env.local', override: false })
+const envFile = process.env.RENDER_ENV_FILE || '.render-env.local'
+loadDotenv({ path: envFile, override: false })
 
 const apiBaseUrl = (
   process.env.CREATOROPS_API_BASE_URL
@@ -37,6 +38,14 @@ try {
   if (Array.isArray(logging.nextActions) && logging.nextActions.length) {
     console.log('Next actions:')
     logging.nextActions.forEach((action, index) => console.log(`${index + 1}. ${action}`))
+  }
+
+  if (!logging.hasServiceRoleKey) {
+    console.log('')
+    console.log('Local setup hint:')
+    console.log(`- Add SUPABASE_SERVICE_ROLE_KEY to ${envFile}.`)
+    console.log('- Then run: npm run render:sync-env')
+    console.log('- Then run: npm run data-room:status')
   }
 
   if (!payload.ok) process.exitCode = 1
