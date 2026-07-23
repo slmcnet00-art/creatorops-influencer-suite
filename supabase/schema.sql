@@ -413,6 +413,8 @@ drop policy if exists "Authenticated users can upsert workspace snapshots" on pu
 drop policy if exists "Authenticated users can update workspace snapshots" on public.workspace_snapshots;
 drop policy if exists "Authenticated users can read audit logs" on public.audit_logs;
 drop policy if exists "Authenticated users can write audit logs" on public.audit_logs;
+drop policy if exists "Members can read audit logs" on public.audit_logs;
+drop policy if exists "Members can write audit logs" on public.audit_logs;
 drop policy if exists "Members can read workspaces" on public.workspaces;
 drop policy if exists "Owners can update workspaces" on public.workspaces;
 drop policy if exists "Authenticated users can create owned workspaces" on public.workspaces;
@@ -647,3 +649,24 @@ create policy "Members can read export events"
 create policy "Members can write export events"
   on public.export_events for insert to authenticated
   with check (public.is_workspace_member(workspace_id));
+
+grant usage on schema public to anon, authenticated, service_role;
+grant select, insert, update, delete on all tables in schema public to authenticated;
+grant usage, select on all sequences in schema public to authenticated;
+grant execute on all functions in schema public to authenticated;
+grant all privileges on all tables in schema public to service_role;
+grant all privileges on all sequences in schema public to service_role;
+grant execute on all functions in schema public to service_role;
+
+alter default privileges in schema public
+  grant select, insert, update, delete on tables to authenticated;
+alter default privileges in schema public
+  grant usage, select on sequences to authenticated;
+alter default privileges in schema public
+  grant execute on functions to authenticated;
+alter default privileges in schema public
+  grant all privileges on tables to service_role;
+alter default privileges in schema public
+  grant all privileges on sequences to service_role;
+alter default privileges in schema public
+  grant execute on functions to service_role;
