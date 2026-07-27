@@ -40,6 +40,7 @@ import {
 import { readSheet } from 'read-excel-file/browser'
 import './App.css'
 import AdminDataRoom from './AdminDataRoom'
+import AdminConsole from './AdminConsole'
 import {
   getBackendConfig,
   getAuthSession,
@@ -14691,6 +14692,76 @@ function App() {
   const campaignModalIndividualGuideCount = activeCampaignForModal
     ? Object.keys(activeCampaignForModal.individualContentGuides || {}).length
     : 0
+
+  if (window.location.pathname.startsWith('/admin')) {
+    return (
+      <AdminConsole
+        summary={dataRoomSummary}
+        dataRoom={(
+          <AdminDataRoom
+            summary={dataRoomSummary}
+            rawData={filteredDataRoomRawData}
+            allRawData={dataRoomRawData}
+            groupedMetrics={groupedDataRoomMetrics}
+            allMetrics={dataRoomMetrics}
+            workflowCoverage={dataRoomWorkflowCoverage}
+            pendingBundles={dataRoomPendingBundles}
+            rawTab={dataRoomRawTab}
+            setRawTab={setDataRoomRawTab}
+            rawStatus={dataRoomRawStatus}
+            setRawStatus={setDataRoomRawStatus}
+            rawCategory={dataRoomRawCategory}
+            setRawCategory={setDataRoomRawCategory}
+            rawMethod={dataRoomRawMethod}
+            setRawMethod={setDataRoomRawMethod}
+            rawOwner={dataRoomRawOwner}
+            setRawOwner={setDataRoomRawOwner}
+            rawQuery={dataRoomRawQuery}
+            setRawQuery={setDataRoomRawQuery}
+            metricTab={dataRoomMetricTab}
+            setMetricTab={setDataRoomMetricTab}
+            metricStatus={dataRoomMetricStatus}
+            setMetricStatus={setDataRoomMetricStatus}
+            metricBundle={dataRoomMetricBundle}
+            setMetricBundle={setDataRoomMetricBundle}
+            metricQuery={dataRoomMetricQuery}
+            setMetricQuery={setDataRoomMetricQuery}
+            rawCategories={dataRoomRawCategories}
+            rawMethods={dataRoomRawMethods}
+            rawOwners={dataRoomRawOwners}
+            selectedItem={selectedDataRoomItem}
+            setSelectedItem={setSelectedDataRoomItem}
+            activeDetail={activeDataRoomDetail}
+            rawStatuses={dataRoomRawStatuses}
+            metricStatuses={dataRoomMetricStatuses}
+            scopes={dataRoomScopes}
+            importStatus={dataRoomImportStatus}
+            onImportExternalReport={handleExternalReportImport}
+            onDownloadExternalReportTemplate={downloadExternalReportTemplate}
+            apiStatus={dataRoomApiStatus}
+            onRefreshApiStatus={refreshDataRoomApiStatus}
+            apiEvents={dataRoomApiEvents}
+            onRefreshApiEvents={refreshDataRoomApiEvents}
+            onLog={() => showToast('수집 로그를 확인했습니다.')}
+            onRefreshRaw={() => showToast('재수집 요청을 등록했습니다.')}
+            onMetricLog={() => showToast('계산 로그를 확인했습니다.')}
+            onRecalculate={() => showToast('재계산 요청을 등록했습니다.')}
+          />
+        )}
+        accounts={accounts}
+        brands={brands}
+        currentAccount={currentAccount}
+        canManagePermissions={canManagePermissions}
+        activities={activities}
+        apiEvents={dataRoomApiEvents}
+        backendConfig={backendConfig}
+        onUpdateAccountRole={updateAccountRole}
+        onToggleBrandAccess={toggleAccountBrandAccess}
+        onTestApis={testProductionApis}
+        apiTestStatus={apiTestStatus}
+      />
+    )
+  }
 
   void runDataSourceAudit
   void syncYouTubeChannel
