@@ -49,6 +49,8 @@ import {
   loadCloudWorkspace,
   onAuthStateChange,
   saveCloudWorkspace,
+  saveContentMetricRawSnapshot,
+  saveCreatorProfileRawSnapshot,
   signInWithEmail,
   signOut,
   syncDataRoomRegistry,
@@ -1559,9 +1561,17 @@ function normalizeCreator(creator) {
     preferredContactChannel: creator.preferredContactChannel ?? fallback?.preferredContactChannel,
     isDemo: creator.isDemo ?? fallback?.isDemo ?? false,
   }
+  const rate = getCreatorRateSummary(nextCreator)
 
   return {
     ...nextCreator,
+    estimatedPrice: rate.estimatedPrice,
+    actualPrice: rate.actualPrice || null,
+    price: rate.effectivePrice,
+    rateSource: rate.actualPrice ? nextCreator.rateSource || 'manual' : 'calculated',
+    rateCalculationVersion: nextCreator.rateCalculationVersion || rate.calculationVersion,
+    rateFormula: nextCreator.rateFormula || rate.formula,
+    rateFactors: nextCreator.rateFactors || rate.factors,
     preferredContactChannel: getRecommendedContactChannelId(nextCreator),
   }
 }
@@ -2092,10 +2102,67 @@ function getCreatorsByIds(creators, ids) {
 }
 
 function getCreatorPriceValue(creator = {}) {
-  const rawValue = creator.price ?? creator.estimatedPrice ?? creator.unitPrice ?? creator.cost ?? 0
-  if (typeof rawValue === 'number') return Number.isFinite(rawValue) ? rawValue : 0
-  const numericValue = Number(String(rawValue || '').replace(/[^\d.-]/g, ''))
+  return getCreatorRateSummary(creator).effectivePrice
+}
+
+function toCreatorRateNumber(value) {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
+  const numericValue = Number(String(value || '').replace(/[^\d.-]/g, ''))
   return Number.isFinite(numericValue) ? numericValue : 0
+}
+
+function calculateEstimatedCreatorRate(creator = {}) {
+  const platform = String(creator.platform || '').toLowerCase()
+  const followers = Math.max(0, toCreatorRateNumber(creator.followers))
+  const averageViews = Math.max(0, toCreatorRateNumber(creator.averageViews ?? creator.avgViews))
+  const engagement = Math.max(0, toCreatorRateNumber(creator.engagement))
+  const policy = platform.includes('youtube')
+    ? { floor: 300000, viewRate: 18, followerRate: 1.8 }
+    : platform.includes('instagram')
+      ? { floor: 180000, viewRate: 14, followerRate: 1.2 }
+      : { floor: 150000, viewRate: 10, followerRate: 0.8 }
+  const engagementMultiplier = Math.min(1.25, Math.max(0.85, 1 + (engagement - 4) * 0.04))
+  const rawEstimate =
+    (policy.floor + averageViews * policy.viewRate * 0.7 + followers * policy.followerRate * 0.3) *
+    engagementMultiplier
+  const estimatedPrice = Math.max(policy.floor, Math.round(rawEstimate / 10000) * 10000)
+
+  return {
+    estimatedPrice,
+    calculationVersion: 'creator-rate-v1',
+    formula: 'ROUND_10K((platform_floor + avg_views*view_rate*0.7 + followers*follower_rate*0.3) * engagement_multiplier)',
+    factors: {
+      platform: creator.platform || '기타',
+      followers,
+      averageViews,
+      engagement,
+      platformFloor: policy.floor,
+      viewRate: policy.viewRate,
+      followerRate: policy.followerRate,
+      engagementMultiplier: Number(engagementMultiplier.toFixed(2)),
+    },
+  }
+}
+
+function getCreatorRateSummary(creator = {}) {
+  const calculated = calculateEstimatedCreatorRate(creator)
+  const actualPrice = toCreatorRateNumber(
+    creator.actualPrice ?? creator.agreedAmount ?? creator.contractAmount,
+  )
+  const storedEstimate = toCreatorRateNumber(
+    creator.estimatedPrice ?? creator.estimatedCost ?? creator.unitPrice,
+  )
+  const legacyPrice = toCreatorRateNumber(creator.price ?? creator.cost)
+  const estimatedPrice =
+    storedEstimate || (!actualPrice && legacyPrice ? legacyPrice : calculated.estimatedPrice)
+
+  return {
+    ...calculated,
+    estimatedPrice,
+    actualPrice,
+    effectivePrice: actualPrice || estimatedPrice,
+    label: actualPrice ? '확정 단가' : '예상 단가',
+  }
 }
 
 function getPublishedContentUrl(record = {}) {
@@ -5651,6 +5718,7 @@ function buildDataRoomExtendedRawCatalog({
   creators,
   outreach,
   contentReferences,
+  references = [],
   creatorGroups = [],
   externalReportRows = [],
   campaigns = [],
@@ -6418,6 +6486,246 @@ function buildDataRoomExtendedRawCatalog({
       active: true,
     },
     {
+      id: 'RAW-EXT-CREATOR-PROFILE-SNAPSHOT-001',
+      name: '크리에이터 프로필 시점별 스냅샷',
+      scope: '외부',
+      category: '크리에이터 프로필',
+      description: '플랫폼별 팔로워, 구독자, 누적 조회수, 콘텐츠 수, 국가와 프로필 정보를 수집 시점별로 보존합니다.',
+      purpose: '현재값 덮어쓰기를 방지하고 팔로워 성장률, 프로필 최신성, 채널 규모 변화를 계산합니다.',
+      method: '공식 API / 권한 API / 공개 스냅샷 / 수동 업로드',
+      cycle: '일 1회 또는 프로필 갱신 시',
+      lastCollectedAt: creators.length ? nowText : '-',
+      nextCollectAt: creators.length ? '다음 프로필 갱신 시' : '최초 프로필 수집 시',
+      status: creators.length ? '검증 필요' : '미수집',
+      sourceLocation: 'YouTube Data API, Instagram/TikTok 권한 API, 검증된 공개 프로필 URL',
+      storageLocation: 'public.creator_profile_snapshots',
+      dashboardArea: '발굴, AI 추천, 후보 그룹, 데이터룸',
+      metricIds: ['MET-POOL-001', 'MET-POOL-002', 'MET-AI-002', 'MET-OPS-001'],
+      ownerDept: 'Creator Data',
+      opsOwner: 'Data QA',
+      techOwner: 'Backend/Data',
+      qualityIssue: '플랫폼별 공개 범위가 달라 동일 시점과 동일 정의로 정규화해야 합니다.',
+      logLocation: 'api_raw_events / creator_profile_snapshots',
+      note: '엑셀의 팔로워·구독자·총 조회수·영상 수 항목을 현재값이 아닌 이력형 raw로 보존',
+      active: true,
+    },
+    {
+      id: 'RAW-EXT-CONTENT-METRIC-SNAPSHOT-001',
+      name: '콘텐츠 성과 시점별 스냅샷',
+      scope: '외부',
+      category: '콘텐츠 성과',
+      description: '콘텐츠 URL별 조회수, 좋아요, 댓글, 공유, 저장, 전환, 매출을 측정 시점별로 적재합니다.',
+      purpose: '일별 증감, 성장률, 참여율, 콘텐츠 가치와 캠페인 성과를 재계산할 수 있게 합니다.',
+      method: '공식 API / 권한 API / 수동 업로드',
+      cycle: '일 1회, 새로고침 요청 시',
+      lastCollectedAt: rawData.some((item) => item.id === 'RAW-EXT-CONT-001') ? nowText : '-',
+      nextCollectAt: '다음 추적 작업 시',
+      status: rawData.some((item) => item.id === 'RAW-EXT-CONT-001') ? '검증 필요' : '미수집',
+      sourceLocation: '콘텐츠 추적 API, 업로드 링크, 보완 raw 엑셀',
+      storageLocation: 'public.content_metric_snapshots',
+      dashboardArea: '리포트, 레퍼런스, 캠페인 진행현황, 데이터룸',
+      metricIds: ['MET-SNS-001', 'MET-SNS-002', 'MET-SNS-003', 'MET-SNS-004', 'MET-SNS-005', 'MET-SNS-006'],
+      ownerDept: 'Performance Data',
+      opsOwner: 'Report Operator',
+      techOwner: 'Backend/Data',
+      qualityIssue: '공유·저장은 플랫폼 권한에 따라 제공되지 않으므로 미수집과 0을 구분해야 합니다.',
+      logLocation: 'api_raw_events / content_metric_snapshots',
+      note: '엑셀의 영상별 성과 및 일자별 변화 항목의 기준 raw',
+      active: true,
+    },
+    {
+      id: 'RAW-EXT-AUDIENCE-DEMOGRAPHIC-001',
+      name: '오디언스 인구통계 스냅샷',
+      scope: '외부',
+      category: '오디언스',
+      description: '성별, 연령, 국가, 언어, 도시 등 권한으로 확인 가능한 오디언스 분포를 시점별로 저장합니다.',
+      purpose: '타깃 적합도와 국가·언어별 오디언스 일치율을 검증합니다.',
+      method: '권한 API / 수동 리포트 업로드',
+      cycle: '월 1회 또는 권한 갱신 시',
+      lastCollectedAt: '-',
+      nextCollectAt: '크리에이터 권한 연결 또는 리포트 업로드 시',
+      status: '미수집',
+      sourceLocation: 'Instagram/TikTok/YouTube 권한 인사이트 또는 크리에이터 제공 리포트',
+      storageLocation: 'public.audience_demographic_snapshots',
+      dashboardArea: '발굴 상세, AI 추천 근거, 데이터룸',
+      metricIds: ['MET-AI-002', 'MET-OPS-002'],
+      ownerDept: 'Creator Data',
+      opsOwner: 'Creator Manager',
+      techOwner: 'Backend/Data',
+      qualityIssue: '임의 공개 계정의 오디언스 성별·연령은 공식 API로 제공되지 않습니다.',
+      logLocation: 'audience_demographic_snapshots',
+      note: '엑셀의 시청자 성별·연령·국가·언어 항목. 인종 항목은 원본 정의 재검토 필요',
+      active: true,
+    },
+    {
+      id: 'RAW-INT-CREATOR-CONTACT-001',
+      name: '크리에이터 연락처 및 검증 상태',
+      scope: '내부',
+      category: 'CRM/연락처',
+      description: '이메일, Instagram DM, TikTok DM, 프로필 링크와 검증·수신거부 상태를 관리합니다.',
+      purpose: '자동 이메일 대상과 DM 작업 대상을 명확히 구분하고 잘못된 자동발송을 방지합니다.',
+      method: '수동 입력 / 공개 연락처 검증 / CRM 연동',
+      cycle: '연락처 발견·검증·수신거부 시',
+      lastCollectedAt: creators.some((creator) => creator.email || creator.contactEmail) ? nowText : '-',
+      nextCollectAt: '다음 연락처 검증 시',
+      status: creators.some((creator) => creator.email || creator.contactEmail) ? '검증 필요' : '미수집',
+      sourceLocation: '크리에이터 프로필, 제안/응답 발송, 수동 입력',
+      storageLocation: 'public.creator_contact_points',
+      dashboardArea: '발굴 상세, 후보 그룹, 메시지, 데이터룸',
+      metricIds: ['MET-CRM-001', 'MET-CRM-004', 'MET-OPS-001'],
+      ownerDept: 'Creator Ops',
+      opsOwner: 'Outreach Manager',
+      techOwner: 'Backend/CRM',
+      qualityIssue: '이메일 존재 여부와 발송 가능 여부를 분리하고 수신거부를 우선 적용해야 합니다.',
+      logLocation: 'creator_contact_points / outreach_events',
+      note: '연락처 값, 출처 URL, 검증 상태, 검증 일시를 분리 보존',
+      active: true,
+    },
+    {
+      id: 'RAW-INT-CREATOR-RATE-001',
+      name: '크리에이터 단가 이력',
+      scope: '내부',
+      category: '단가/계약',
+      description: '플랫폼과 포맷별 예상 단가 범위, 실제 견적, 합의 금액과 산출 근거를 기간별로 저장합니다.',
+      purpose: '발굴·AI 추천·후보 그룹의 예상 단가와 계약 단가를 구분해 표시합니다.',
+      method: '계산 / 크리에이터 견적 / 계약 / 수동 입력',
+      cycle: '추천 계산, 견적 수신, 계약 확정 시',
+      lastCollectedAt: creators.some((creator) => creator.price || creator.estimatedPrice || creator.actualPrice || creator.estimatedCost) ? nowText : '-',
+      nextCollectAt: '다음 견적 또는 단가 재계산 시',
+      status: creators.some((creator) => creator.price || creator.estimatedPrice || creator.actualPrice || creator.estimatedCost) ? '검증 필요' : '미수집',
+      sourceLocation: '발굴 데이터, 견적 회신, 계약 자료',
+      storageLocation: 'public.creator_rates',
+      dashboardArea: '발굴, AI 추천, 후보 그룹, 캠페인, 데이터룸',
+      metricIds: ['MET-AI-004', 'MET-SETTLE-001'],
+      ownerDept: 'Creator Ops/Finance',
+      opsOwner: 'Creator Manager',
+      techOwner: 'Backend/Data',
+      qualityIssue: '예상 단가와 확정 단가, 통화, 포맷, 유효기간을 혼합하지 않아야 합니다.',
+      logLocation: 'creator_rates / audit_logs',
+      note: '팔로워·평균 조회수·참여율·플랫폼 기반 예상값과 실제 협의값, 수정 이력, 계산 버전을 분리 기록',
+      active: true,
+    },
+    {
+      id: 'RAW-EXT-BRAND-MENTION-001',
+      name: '브랜드 언급 근거',
+      scope: '외부',
+      category: '브랜드 모니터링',
+      description: '제목, 캡션, 해시태그, 자막, 화면, 수동 검수에서 발견한 브랜드 언급 근거를 보존합니다.',
+      purpose: '브랜드 관련 콘텐츠 판정과 언급량 지표가 어떤 증거에서 생성됐는지 추적합니다.',
+      method: 'API / AI 분석 / 수동 검수',
+      cycle: '콘텐츠 수집·분석 시',
+      lastCollectedAt: '-',
+      nextCollectAt: '다음 브랜드 콘텐츠 분석 시',
+      status: '미수집',
+      sourceLocation: '콘텐츠 메타데이터, 자막, 이미지 프레임, 수동 검수',
+      storageLocation: 'public.brand_mention_evidence',
+      dashboardArea: '브랜드 검색 및 추적, 리포트, 데이터룸',
+      metricIds: ['MET-BRAND-001', 'MET-BRAND-002'],
+      ownerDept: 'Brand Data',
+      opsOwner: 'Brand Analyst',
+      techOwner: 'Backend/AI',
+      qualityIssue: '동명이인·일반명사 브랜드는 오탐 방지를 위한 근거와 신뢰도 저장이 필요합니다.',
+      logLocation: 'brand_mention_evidence / ai_generation_runs',
+      note: '언급량 숫자만 저장하지 않고 판정 문구·위치·방법을 함께 보존',
+      active: true,
+    },
+    {
+      id: 'RAW-EXT-AD-DISCLOSURE-001',
+      name: '광고·협찬 표기 근거',
+      scope: '외부',
+      category: '컴플라이언스',
+      description: '광고, 협찬, 유료광고 포함 등 콘텐츠 내 공개 표기와 탐지 근거를 저장합니다.',
+      purpose: '협찬 콘텐츠 분류와 광고 표기 준수 여부를 검증합니다.',
+      method: 'API / AI 분석 / 수동 검수',
+      cycle: '콘텐츠 수집·분석 시',
+      lastCollectedAt: '-',
+      nextCollectAt: '다음 콘텐츠 분석 시',
+      status: '미수집',
+      sourceLocation: '제목, 설명, 해시태그, 자막, 화면 표시',
+      storageLocation: 'public.ad_disclosure_evidence',
+      dashboardArea: '브랜드 추적, 콘텐츠 추적, 데이터룸',
+      metricIds: ['MET-BRAND-001', 'MET-CONT-002'],
+      ownerDept: 'Content Compliance',
+      opsOwner: 'Content QA',
+      techOwner: 'Backend/AI',
+      qualityIssue: '표기 누락 판정은 자동 확정하지 않고 검증 필요 상태로 관리해야 합니다.',
+      logLocation: 'ad_disclosure_evidence',
+      note: '원문 근거와 탐지 방식, 신뢰도를 함께 저장',
+      active: true,
+    },
+    {
+      id: 'RAW-INT-CREATOR-QUALITY-001',
+      name: '크리에이터 품질·위험 신호',
+      scope: '내부',
+      category: '품질/위험',
+      description: '가짜 팔로워 위험, 브랜드 안전성, 조회 폭발, 댓글 품질 등 계산·검수 결과를 버전별로 저장합니다.',
+      purpose: 'AI 추천 점수와 보류 판단의 근거를 재현합니다.',
+      method: '계산 / AI 분석 / 수동 검수',
+      cycle: '프로필·콘텐츠 스냅샷 갱신 시',
+      lastCollectedAt: creators.some((creator) => creator.brandSafety || creator.fakeRisk || creator.riskScore) ? nowText : '-',
+      nextCollectAt: '다음 품질 계산 시',
+      status: creators.some((creator) => creator.brandSafety || creator.fakeRisk || creator.riskScore) ? '검증 필요' : '미수집',
+      sourceLocation: '프로필·콘텐츠 raw와 품질 계산 파이프라인',
+      storageLocation: 'public.creator_quality_signals',
+      dashboardArea: 'AI 추천, 발굴 상세, 후보 그룹, 데이터룸',
+      metricIds: ['MET-AI-002', 'MET-AI-003', 'MET-AI-004'],
+      ownerDept: 'Data/PM',
+      opsOwner: 'Data QA',
+      techOwner: 'Backend/AI',
+      qualityIssue: '계산식 버전과 사용 raw ID가 없으면 프론트에 확정값으로 표시하지 않습니다.',
+      logLocation: 'creator_quality_signals / metric_definition_versions',
+      note: '엑셀의 품질·위험·유사도 항목을 계산 결과와 원천 근거로 분리',
+      active: true,
+    },
+    {
+      id: 'RAW-INT-RELATED-CONTENT-001',
+      name: '콘텐츠 연관 관계 그래프',
+      scope: '내부',
+      category: '콘텐츠 분석',
+      description: '저장된 콘텐츠 사이의 유사 주제, 동일 크리에이터, 후킹 구조, 시리즈 관계를 근거와 함께 연결합니다.',
+      purpose: '레퍼런스 묶음, 유사 콘텐츠 탐색, 가이드 차용 시 어떤 콘텐츠 구조를 참고했는지 추적합니다.',
+      method: '계산 / AI 분석 / 수동 검수',
+      cycle: '콘텐츠 저장·분석 시',
+      lastCollectedAt: references.length ? nowText : '-',
+      nextCollectAt: references.length ? '다음 레퍼런스 분석 시' : '최초 레퍼런스 저장 시',
+      status: references.length ? '검증 필요' : '미수집',
+      sourceLocation: '저장 콘텐츠 raw, 레퍼런스 분석 결과',
+      storageLocation: 'public.related_content_edges',
+      dashboardArea: '레퍼런스, 캠페인 가이드, 데이터룸',
+      metricIds: ['MET-CONT-002', 'MET-REF-001'],
+      ownerDept: 'Content/Data',
+      opsOwner: 'Content Strategist',
+      techOwner: 'Backend/AI',
+      qualityIssue: 'AI 유사도만으로 확정하지 않고 관계 유형, 점수, 분석 버전과 검수 상태를 함께 저장해야 합니다.',
+      logLocation: 'related_content_edges / ai_generation_runs',
+      note: '엑셀의 연관 콘텐츠·유사 콘텐츠 항목을 재현 가능한 관계 raw로 보존',
+      active: true,
+    },
+    {
+      id: 'RAW-INT-METRIC-VERSION-001',
+      name: '계산지표 정의·버전',
+      scope: '내부',
+      category: '지표 거버넌스',
+      description: '지표별 계산식, 기간 정의, 사용 raw ID, 버전과 적용 기간을 관리합니다.',
+      purpose: '평균 조회수와 예상 단가처럼 정의가 달라질 수 있는 지표를 재현하고 변경 이력을 추적합니다.',
+      method: '내부 DB / 관리자 승인',
+      cycle: '계산식 변경 시',
+      lastCollectedAt: nowText,
+      nextCollectAt: '다음 지표 정의 변경 시',
+      status: '검증 필요',
+      sourceLocation: '데이터룸 계산지표 관리',
+      storageLocation: 'public.metric_definition_versions',
+      dashboardArea: '데이터룸, 모든 계산지표 표시 화면',
+      metricIds: ['MET-OPS-002'],
+      ownerDept: 'Data Governance',
+      opsOwner: 'Data PM',
+      techOwner: 'Backend/Data',
+      qualityIssue: '엑셀과 앱의 평균 조회수 모수가 다르면 같은 지표명으로 병합하지 않아야 합니다.',
+      logLocation: 'metric_definition_versions / audit_logs',
+      note: 'YouTube 평균 조회수 모수와 Nano 구간 임계값의 불일치를 버전 검토 대상으로 등록',
+      active: true,
+    },
+    {
       id: 'RAW-EXT-UNSUPPORTED-001',
       name: '미지원/부분지원 플랫폼 지표 보류 번들',
       scope: '외부',
@@ -6793,6 +7101,7 @@ function App() {
   const [activeDiscoveryPoolView, setActiveDiscoveryPoolView] = useState('search')
   const [selectedCreatorId, setSelectedCreatorId] = useState(workspace.creators[0]?.id)
   const [selectedRecommendationDetailId, setSelectedRecommendationDetailId] = useState('')
+  const [rateEditValue, setRateEditValue] = useState('')
   const [selectedCampaignId, setSelectedCampaignId] = useState(
     workspace.campaigns.find((campaign) => campaign.brandId === workspace.activeBrandId)?.id ?? workspace.campaigns[0]?.id,
   )
@@ -8337,6 +8646,7 @@ function App() {
         creators: operationalCreators,
         outreach: operationalOutreach,
         contentReferences: operationalContentReferences,
+        references: operationalContentReferences,
         creatorGroups: operationalCreatorGroups,
         externalReportRows,
         campaigns: operationalCampaigns,
@@ -9559,6 +9869,54 @@ function App() {
     setWorkspace((current) => mutator(current))
   }
 
+  const openCreatorRateEditor = (creator) => {
+    const rate = getCreatorRateSummary(creator)
+    setRateEditValue(rate.actualPrice ? String(rate.actualPrice) : '')
+    setModal({ type: 'creatorRate', creatorId: creator.id })
+  }
+
+  const saveCreatorActualRate = (event) => {
+    event.preventDefault()
+    const creatorId = modal?.creatorId
+    const actualPrice = Math.max(0, toCreatorRateNumber(rateEditValue))
+    const currentCreator = creators.find((creator) => creator.id === creatorId)
+    if (!currentCreator) return
+    const calculated = calculateEstimatedCreatorRate(currentCreator)
+    const previousRate = getCreatorRateSummary(currentCreator)
+    const changedAt = new Date().toISOString()
+
+    updateWorkspace((current) => ({
+      ...current,
+      creators: current.creators.map((creator) =>
+        creator.id === creatorId
+          ? {
+              ...creator,
+              estimatedPrice: calculated.estimatedPrice,
+              actualPrice: actualPrice || null,
+              price: actualPrice || calculated.estimatedPrice,
+              rateSource: actualPrice ? 'manual' : 'calculated',
+              rateCalculationVersion: calculated.calculationVersion,
+              rateFormula: calculated.formula,
+              rateFactors: calculated.factors,
+              rateUpdatedAt: changedAt,
+              rateHistory: [
+                ...(creator.rateHistory || []),
+                {
+                  changedAt,
+                  previousActualPrice: previousRate.actualPrice || null,
+                  actualPrice: actualPrice || null,
+                  estimatedPrice: calculated.estimatedPrice,
+                  source: actualPrice ? 'manual' : 'calculated',
+                },
+              ].slice(-20),
+            }
+          : creator,
+      ),
+    }))
+    setModal(null)
+    showToast(actualPrice ? '실제 협의 단가를 저장했어요.' : '실제 단가를 비우고 예상 단가를 다시 적용했어요.')
+  }
+
   const syncWorkspaceNow = async () => {
     if (!backendConfig.hasSupabase) {
       showToast('팀 공유 DB 환경변수를 설정하면 운영 데이터를 저장할 수 있어요.')
@@ -9934,6 +10292,14 @@ function App() {
           `${snapshot.name} YouTube 공식 지표 동기화 · 구독자 ${compactNumber(snapshot.followers)}`,
         )
       })
+      void saveCreatorProfileRawSnapshot({
+        ...nextCreator,
+        profileUrl: snapshot.channelUrl || snapshot.sourceUrl || '',
+        sourceType: 'api_direct',
+        sourceProvider: 'youtube_data_api',
+        collectedAt: new Date().toISOString(),
+        rawPayload: snapshot,
+      }).catch(() => {})
       setSelectedCreatorId(nextCreator.id)
       setYoutubeDraft((current) => ({ ...current, lookup: '' }))
       showToast(`${snapshot.name} 공식 YouTube 지표를 후보 DB에 반영했어요.`)
@@ -10035,6 +10401,13 @@ function App() {
         `${nextCreator.name} 공개 팔로워 수집 · ${compactNumber(followers)} · ${sourceUrl}`,
       )
     })
+    void saveCreatorProfileRawSnapshot({
+      ...nextCreator,
+      profileUrl: sourceUrl,
+      sourceType: 'manual',
+      sourceProvider: 'public_profile_entry',
+      collectedAt: new Date().toISOString(),
+    }).catch(() => {})
     setSelectedCreatorId(nextCreator.id)
     setPublicProfileDraft({
       profileUrl: '',
@@ -12826,7 +13199,14 @@ function App() {
     const followers = Number(creatorDraft.followers) || 10000
     const averageViews = Number(creatorDraft.averageViews) || Math.round(followers * 0.18)
     const engagement = Number(creatorDraft.engagement) || 4.5
-    const price = Number(creatorDraft.price) || Math.round(averageViews * 18)
+    const actualPrice = Math.max(0, Number(creatorDraft.price) || 0)
+    const rateCalculation = calculateEstimatedCreatorRate({
+      platform: creatorDraft.platform,
+      followers,
+      averageViews,
+      engagement,
+    })
+    const price = actualPrice || rateCalculation.estimatedPrice
     const nextCreator = {
       id: createId(),
       name: creatorDraft.name || '신규 크리에이터',
@@ -12848,6 +13228,13 @@ function App() {
       fakeRisk: 6,
       cpm: Math.max(3500, Math.round(price / Math.max(averageViews / 1000, 1))),
       price,
+      estimatedPrice: rateCalculation.estimatedPrice,
+      actualPrice: actualPrice || null,
+      rateSource: actualPrice ? 'manual' : 'calculated',
+      rateCalculationVersion: rateCalculation.calculationVersion,
+      rateFormula: rateCalculation.formula,
+      rateFactors: rateCalculation.factors,
+      rateUpdatedAt: new Date().toISOString(),
       audience: '혼합 오디언스 · 직접 입력',
       city: creatorDraft.city || '서울',
       lastPost: '직접 등록',
@@ -13058,6 +13445,7 @@ function App() {
     const savedPostTitle = effectiveDraft.title || '새 캠페인 콘텐츠'
     let savedCreatorName = creatorName
 
+    let createdPost = null
     updateWorkspace((current) => {
       let creatorId = requestedCreatorId
       let nextCreators = current.creators
@@ -13140,6 +13528,7 @@ function App() {
         metricsSource: effectiveDraft.snapshotSource || (hasManualMetrics ? '\uC218\uB3D9 \uC785\uB825' : '\uC5C5\uB85C\uB4DC \uB9C1\uD06C \uB4F1\uB85D'),
         lastChecked: effectiveDraft.snapshotCheckedAt || (hasManualMetrics ? nowLabel() : '\uC790\uB3D9 \uAC31\uC2E0 \uB300\uAE30'),
       }
+      createdPost = nextPost
       const nextUtmTrackingLogs = attachContentUrlToUtmLogs(current.utmTrackingLogs, {
         campaignId,
         creatorId,
@@ -13160,6 +13549,17 @@ function App() {
         savedPostTitle + ' 콘텐츠 추적 등록 - ' + savedCreatorName,
       )
     })
+
+    if (createdPost) {
+      void saveContentMetricRawSnapshot({
+        ...createdPost,
+        contentUrl: uploadedUrl,
+        sourceType: effectiveDraft.snapshotSource ? 'public_snapshot' : 'manual',
+        sourceProvider: effectiveDraft.snapshotSource || (hasManualMetrics ? 'manual_content_entry' : 'content_url_registration'),
+        sourceUrl: uploadedUrl,
+        collectedAt: new Date().toISOString(),
+      }).catch(() => {})
+    }
 
     setTrackingDraft({
       campaignId: '',
@@ -13279,6 +13679,22 @@ function App() {
         const payload = await refreshContentMetrics(targetPosts)
         const refreshed = Array.isArray(payload?.posts) ? payload.posts : []
         const refreshedById = new Map(refreshed.map((post) => [post.id, post]))
+        const refreshedAt = new Date().toISOString()
+
+        refreshed
+          .filter((post) => post && post.status !== 'manual_required' && post.status !== 'unsupported')
+          .forEach((post) => {
+            const original = targetPosts.find((item) => item.id === post.id) || {}
+            void saveContentMetricRawSnapshot({
+              ...original,
+              ...post,
+              contentUrl: post.contentUrl || post.url || original.contentUrl || original.url,
+              sourceType: 'api_direct',
+              sourceProvider: post.source || 'content_metrics_api',
+              sourceUrl: post.contentUrl || post.url || original.contentUrl || original.url,
+              collectedAt: refreshedAt,
+            }).catch(() => {})
+          })
 
         updateWorkspace((current) =>
           appendActivity(
@@ -15185,11 +15601,23 @@ function App() {
                         value={hasPendingMetrics(selectedRecommendationCreator) ? '수집 필요' : percent(selectedRecommendationCreator.engagement)}
                       />
                       <Stat
-                        label="예상 단가"
-                        value={selectedRecommendationCreator.price ? won(selectedRecommendationCreator.price) : '산정 전'}
+                        label={getCreatorRateSummary(selectedRecommendationCreator).label}
+                        value={won(getCreatorRateSummary(selectedRecommendationCreator).effectivePrice)}
                       />
                       <Stat label="매칭 점수" value={`${selectedRecommendationDetail.score ?? selectedRecommendationCreator.fit ?? 0}점`} />
                       <Stat label="데이터 신뢰도" value={`${selectedRecommendationQuality.score}%`} />
+                    </div>
+                    <div className="creator-rate-toolbar">
+                      <span>
+                        팔로워·평균 조회수·참여율·플랫폼 기준 예상 {won(getCreatorRateSummary(selectedRecommendationCreator).estimatedPrice)}
+                      </span>
+                      <button
+                        className="secondary-button compact-button"
+                        type="button"
+                        onClick={() => openCreatorRateEditor(selectedRecommendationCreator)}
+                      >
+                        실제 단가 입력
+                      </button>
                     </div>
 
                     <div className="recommendation-detail-body">
@@ -15627,9 +16055,24 @@ function App() {
                 <Stat label="팔로워" value={displayMetric(selectedCreator.followers)} />
                 <Stat label="평균 조회" value={displayMetric(selectedCreator.averageViews)} />
                 <Stat label="참여율" value={hasPendingMetrics(selectedCreator) ? '수집 필요' : percent(selectedCreator.engagement)} />
-                <Stat label="예상 단가" value={selectedCreator.price ? won(selectedCreator.price) : '산정 전'} />
+                <Stat
+                  label={getCreatorRateSummary(selectedCreator).label}
+                  value={won(getCreatorRateSummary(selectedCreator).effectivePrice)}
+                />
                 <Stat label="데이터 신뢰도" value={`${selectedCreatorQuality.score}%`} />
                 <Stat label="검증 상태" value={selectedCreatorQuality.level} />
+              </div>
+              <div className="creator-rate-toolbar">
+                <span>
+                  팔로워·평균 조회수·참여율·플랫폼 기준 예상 {won(getCreatorRateSummary(selectedCreator).estimatedPrice)}
+                </span>
+                <button
+                  className="secondary-button compact-button"
+                  type="button"
+                  onClick={() => openCreatorRateEditor(selectedCreator)}
+                >
+                  실제 단가 입력
+                </button>
               </div>
 
               <div className="audience-panel">
@@ -16080,7 +16523,7 @@ function App() {
                             const creatorPriceValue = getCreatorPriceValue(creator)
                             return (
                               <span className={`creator-group-member-price-chip ${creatorPriceValue ? '' : 'muted'}`}>
-                                예상 단가 {creatorPriceValue ? won(creatorPriceValue) : '산정 전'}
+                                {getCreatorRateSummary(creator).label} {creatorPriceValue ? won(creatorPriceValue) : '산정 전'}
                               </span>
                             )
                           })()}
@@ -17298,6 +17741,7 @@ function App() {
                   averageEngagement={campaignModalAverageEngagement}
                   kpi={campaignModalKpi}
                   onReport={() => jumpTo('report')}
+                  onEditCreatorRate={openCreatorRateEditor}
                 />
 
                 <section className="campaign-ops-detail">
@@ -18335,12 +18779,12 @@ function App() {
                   />
                 </label>
                 <label>
-                  예상 단가
+                  실제/협의 단가 (선택)
                   <input
                     inputMode="numeric"
                     value={creatorDraft.price}
                     onChange={(event) => setCreatorDraft({ ...creatorDraft, price: event.target.value })}
-                    placeholder="1800000"
+                    placeholder="비우면 조회수·팔로워 기준 자동 계산"
                   />
                 </label>
               </div>
@@ -18366,6 +18810,38 @@ function App() {
               </button>
             </form>
           )}
+
+          {modal.type === 'creatorRate' && (() => {
+            const rateCreator = creators.find((creator) => creator.id === modal.creatorId)
+            if (!rateCreator) return null
+            const rate = getCreatorRateSummary(rateCreator)
+            return (
+              <form className="modal-form creator-rate-form" onSubmit={saveCreatorActualRate}>
+                <div className="creator-rate-estimate">
+                  <span>자동 계산 예상 단가</span>
+                  <strong>{won(rate.estimatedPrice)}</strong>
+                  <small>
+                    {rateCreator.platform} · 팔로워 {displayMetric(rate.factors.followers)} · 평균 조회 {displayMetric(rate.factors.averageViews)} · 참여율 {percent(rate.factors.engagement)}
+                  </small>
+                </div>
+                <label>
+                  실제 협의 단가
+                  <input
+                    autoFocus
+                    inputMode="numeric"
+                    value={rateEditValue}
+                    onChange={(event) => setRateEditValue(event.target.value)}
+                    placeholder="예: 1800000"
+                  />
+                  <small>입력하면 모든 화면에서 실제 단가가 우선 표시됩니다. 비우면 예상 단가로 돌아갑니다.</small>
+                </label>
+                <div className="modal-actions">
+                  <button className="secondary-button" type="button" onClick={() => setModal(null)}>취소</button>
+                  <button className="primary-button" type="submit">단가 저장</button>
+                </div>
+              </form>
+            )
+          })()}
 
           {modal.type === 'proposal' && selectedCreator && selectedCampaign && (
             <form className="modal-form" onSubmit={sendProposal}>
@@ -19105,6 +19581,7 @@ function App() {
                 trackedTotals={campaignModalTrackedTotals}
                 averageEngagement={campaignModalAverageEngagement}
                 kpi={campaignModalKpi}
+                onEditCreatorRate={openCreatorRateEditor}
                 onReport={() => {
                   setModal(null)
                   jumpTo('report')
@@ -19382,6 +19859,7 @@ function modalTitle(type) {
     brand: '브랜드 추가',
     create: '캠페인 실행 조건 입력',
     creator: '크리에이터 등록',
+    creatorRate: '크리에이터 단가 수정',
     proposal: '제안 보내기',
     tracking: '콘텐츠 추적 등록',
     fulfillment: '배송/수동 정산 기록',
@@ -19656,6 +20134,7 @@ function RecommendationCard({
   const performanceScore = getCreatorPerformanceScore(creator)
   const efficiencyScore = getCreatorEfficiencyScore(creator)
   const creatorPrice = getCreatorPriceValue(creator)
+  const creatorRate = getCreatorRateSummary(creator)
   const estimatedPriceLabel = creatorPrice ? won(creatorPrice) : '산정 전'
   const performanceLearning = creator.performanceLearning
   const costPerView = Number(creator.averageViews || 0) && creatorPrice
@@ -19725,7 +20204,7 @@ function RecommendationCard({
     { label: '\uD314\uB85C\uC6CC', value: displayMetric(creator.followers) },
     { label: '\uD3C9\uADE0 \uC870\uD68C', value: pendingMetrics ? '\uC218\uC9D1 \uD544\uC694' : displayMetric(creator.averageViews) },
     { label: '\uCC38\uC5EC\uC728', value: pendingMetrics ? '\uC218\uC9D1 \uD544\uC694' : percent(creator.engagement), tone: 'primary' },
-    { label: '\uC608\uC0C1 \uB2E8\uAC00', value: estimatedPriceLabel, tone: creatorPrice ? 'primary' : undefined },
+    { label: creatorRate.label, value: estimatedPriceLabel, tone: creatorPrice ? 'primary' : undefined },
     { label: '\uC608\uC0C1 CPV', value: costPerView ? `${costPerView}\uC6D0` : '\uC0B0\uC815 \uC804' },
     { label: '\uC870\uD68C \uD3ED\uBC1C', value: viralityLabel },
   ]
@@ -19745,7 +20224,7 @@ function RecommendationCard({
               {[creator.platform, creator.country, recommendation.persona].filter(Boolean).join(' · ')}
             </span>
             <span className={`recommendation-price-inline ${creatorPrice ? '' : 'muted'}`}>
-              예상 단가 {estimatedPriceLabel}
+              {creatorRate.label} {estimatedPriceLabel}
             </span>
           </div>
         </button>
@@ -20139,11 +20618,12 @@ function PoolItem({ item, creator, campaign }) {
 
   const topics = creator.topics?.length ? creator.topics.join(', ') : '주요 토픽 미입력'
   const sourceTone = item.source === '자동' ? 'auto-source' : item.source === '대량 섭외' ? 'bulk-source' : 'manual-source'
+  const creatorRate = getCreatorRateSummary(creator)
   const confirmMetrics = [
     ['팔로워', compactNumber(creator.followers)],
     ['평균 조회', compactNumber(creator.averageViews)],
     ['참여율', percent(creator.engagement)],
-    ['예상 단가', won(creator.price)],
+    [creatorRate.label, creatorRate.effectivePrice ? won(creatorRate.effectivePrice) : '산정 전'],
   ]
 
   return (
@@ -20205,6 +20685,7 @@ function ClientApprovalBoard({
   averageEngagement,
   kpi,
   onReport,
+  onEditCreatorRate,
 }) {
   if (!campaign) return null
   const progressStats = [
@@ -20255,6 +20736,7 @@ function ClientApprovalBoard({
         {poolItems.map((poolItem) => {
           const creator = creators.find((item) => item.id === poolItem.creatorId)
           const quality = getCreatorDataQuality(creator)
+          const creatorRate = creator ? getCreatorRateSummary(creator) : null
           return (
             <article className="client-approval-card" key={poolItem.id}>
               <div className="client-creator-cell">
@@ -20270,11 +20752,23 @@ function ClientApprovalBoard({
               </div>
               <div className="client-approval-proof">
                 <div>
-                  <span>예상 비용 {creator ? won(creator.price) : '-'}</span>
+                  <span>
+                    {creatorRate?.label ?? '예상 단가'}{' '}
+                    {creatorRate?.effectivePrice ? won(creatorRate.effectivePrice) : '산정 전'}
+                  </span>
                   <span>브랜드 핏 {creator?.fit ?? '-'}점</span>
                   <span>가짜 팔로워 위험 {creator?.fakeRisk ?? '-'}%</span>
                 </div>
                 <p>{poolItem.note || creator?.sourceNote || '브랜드 적합도, 콘텐츠 톤, 최근 성과 기준으로 컨펌 검토가 필요합니다.'}</p>
+                {creator && onEditCreatorRate ? (
+                  <button
+                    className="secondary-button compact-button client-rate-edit-button"
+                    type="button"
+                    onClick={() => onEditCreatorRate(creator)}
+                  >
+                    실제 단가 수정
+                  </button>
+                ) : null}
               </div>
             </article>
           )

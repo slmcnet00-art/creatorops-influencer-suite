@@ -222,6 +222,234 @@ async function syncUtmTrackingRowsForWorkspace(supabase, workspace = {}) {
   return { status: 'synced', rowCount: rows.length }
 }
 
+function getWorkspaceCreators(workspace = {}) {
+  const creators = Array.isArray(workspace.creators) ? workspace.creators : []
+  const recommendations = Array.isArray(workspace.recommendations) ? workspace.recommendations : []
+  const merged = new Map()
+
+  ;[...creators, ...recommendations].forEach((creator, index) => {
+    if (!creator) return
+    const id = String(creator.id || creator.creatorId || creator.handle || creator.profileUrl || `creator-${index}`)
+    merged.set(id, { ...(merged.get(id) || {}), ...creator, id })
+  })
+
+  return [...merged.values()]
+}
+
+function normalizePlatform(value) {
+  const platform = String(value || '').trim()
+  return platform || null
+}
+
+function normalizeSnapshotSourceType(value) {
+  const allowed = new Set([
+    'api_direct',
+    'api_authorized',
+    'public_snapshot',
+    'manual',
+    'calculated',
+    'ai_derived',
+  ])
+  return allowed.has(value) ? value : 'manual'
+}
+
+async function replaceWorkspaceGeneratedRows(supabase, table, rows) {
+  const { error: deleteError } = await supabase
+    .from(table)
+    .delete()
+    .eq('workspace_id', WORKSPACE_ID)
+    .contains('metadata', { syncSource: 'workspace_snapshot' })
+  if (deleteError) throw deleteError
+
+  for (let index = 0; index < rows.length; index += 500) {
+    const { error } = await supabase.from(table).insert(rows.slice(index, index + 500))
+    if (error) throw error
+  }
+}
+
+async function syncCreatorOperationsForWorkspace(supabase, workspace = {}) {
+  const creators = getWorkspaceCreators(workspace)
+  const contactRows = []
+  const rateRows = []
+  const today = new Date().toISOString().slice(0, 10)
+
+  creators.forEach((creator) => {
+    const creatorId = String(creator.id)
+    const brandId = creator.brandId || workspace.activeBrandId || null
+    const profileUrl = creator.profileUrl || creator.sourceUrl || ''
+    const email = creator.contactEmail || creator.email || ''
+
+    if (email) {
+      contactRows.push({
+        workspace_id: WORKSPACE_ID,
+        brand_id: brandId,
+        creator_id: creatorId,
+        contact_type: 'email',
+        contact_value: email,
+        source_url: profileUrl || null,
+        verification_status: creator.emailVerified ? 'verified' : 'unverified',
+        verified_at: creator.emailVerified ? new Date().toISOString() : null,
+        metadata: {
+          syncSource: 'workspace_snapshot',
+          platform: creator.platform || null,
+          handle: creator.handle || null,
+        },
+      })
+    }
+
+    if (profileUrl) {
+      const platform = String(creator.platform || '').toLowerCase()
+      const contactType = platform.includes('instagram')
+        ? 'instagram_dm'
+        : platform.includes('tiktok')
+          ? 'tiktok_dm'
+          : platform.includes('youtube')
+            ? 'youtube_profile'
+            : 'other'
+      contactRows.push({
+        workspace_id: WORKSPACE_ID,
+        brand_id: brandId,
+        creator_id: creatorId,
+        contact_type: contactType,
+        contact_value: profileUrl,
+        source_url: profileUrl,
+        verification_status: 'unverified',
+        metadata: {
+          syncSource: 'workspace_snapshot',
+          platform: creator.platform || null,
+          handle: creator.handle || null,
+        },
+      })
+    }
+
+    const estimated = toNumberOrNull(
+      creator.estimatedPrice ?? creator.estimatedCost ?? creator.unitPrice ?? creator.price,
+    )
+    const agreed = toNumberOrNull(
+      creator.actualPrice ?? creator.agreedAmount ?? creator.contractAmount,
+    )
+    if (estimated !== null || agreed !== null) {
+      rateRows.push({
+        workspace_id: WORKSPACE_ID,
+        brand_id: brandId,
+        creator_id: creatorId,
+        platform: normalizePlatform(creator.platform),
+        content_format: creator.contentFormat || creator.format || null,
+        currency: creator.currency || 'KRW',
+        estimated_min: toNumberOrNull(creator.estimatedMin) ?? estimated,
+        estimated_max: toNumberOrNull(creator.estimatedMax) ?? estimated,
+        agreed_amount: agreed,
+        rate_source:
+          agreed !== null
+            ? creator.rateSource === 'contract' || creator.rateSource === 'creator_quote'
+              ? creator.rateSource
+              : 'manual'
+            : 'calculated',
+        effective_from: creator.rateEffectiveFrom || today,
+        effective_to: creator.rateEffectiveTo || null,
+        calculation_version: creator.rateCalculationVersion || 'workspace-v1',
+        source_raw_ids: Array.isArray(creator.rateSourceRawIds) ? creator.rateSourceRawIds : [],
+        metadata: {
+          syncSource: 'workspace_snapshot',
+          handle: creator.handle || null,
+          displayName: creator.name || null,
+          effectivePrice: agreed ?? estimated,
+          rateFormula: creator.rateFormula || null,
+          rateFactors: creator.rateFactors || null,
+          rateHistory: Array.isArray(creator.rateHistory) ? creator.rateHistory.slice(-20) : [],
+          rateUpdatedAt: creator.rateUpdatedAt || null,
+        },
+      })
+    }
+  })
+
+  await replaceWorkspaceGeneratedRows(supabase, 'creator_contact_points', contactRows)
+  await replaceWorkspaceGeneratedRows(supabase, 'creator_rates', rateRows)
+
+  return {
+    status: 'synced',
+    contactRowCount: contactRows.length,
+    rateRowCount: rateRows.length,
+  }
+}
+
+async function getRawWriteContext() {
+  const supabase = getSupabaseClient()
+  if (!supabase) return { status: 'local', supabase: null }
+
+  const membership = await ensureWorkspaceMembership(supabase)
+  if (membership.status === 'anonymous') {
+    return { status: 'auth_required', supabase: null }
+  }
+
+  return { status: 'ready', supabase }
+}
+
+export async function saveCreatorProfileRawSnapshot(snapshot = {}) {
+  const context = await getRawWriteContext()
+  if (context.status !== 'ready') return { status: context.status }
+
+  const { error } = await context.supabase.from('creator_profile_snapshots').insert({
+    workspace_id: WORKSPACE_ID,
+    brand_id: snapshot.brandId || null,
+    creator_id: String(snapshot.creatorId || snapshot.id || ''),
+    platform: normalizePlatform(snapshot.platform) || 'unknown',
+    handle: snapshot.handle || null,
+    profile_url: snapshot.profileUrl || snapshot.sourceUrl || null,
+    display_name: snapshot.name || snapshot.displayName || null,
+    bio: snapshot.bio || null,
+    profile_image_url: snapshot.avatar || snapshot.profileImageUrl || null,
+    followers_count: toNumberOrNull(snapshot.followers),
+    subscribers_count: toNumberOrNull(snapshot.subscribers),
+    content_count: toNumberOrNull(snapshot.contentCount),
+    total_views: toNumberOrNull(snapshot.totalViews),
+    country_code: snapshot.country || null,
+    source_type: normalizeSnapshotSourceType(snapshot.sourceType),
+    source_provider: snapshot.sourceProvider || null,
+    source_url: snapshot.sourceUrl || snapshot.profileUrl || null,
+    confidence_score: toNumberOrNull(snapshot.confidence),
+    collected_at: snapshot.collectedAt || new Date().toISOString(),
+    raw_payload: snapshot.rawPayload || snapshot,
+  })
+
+  if (error) throw error
+  return { status: 'saved' }
+}
+
+export async function saveContentMetricRawSnapshot(snapshot = {}) {
+  const context = await getRawWriteContext()
+  if (context.status !== 'ready') return { status: context.status }
+  const contentUrl = snapshot.contentUrl || snapshot.url
+  if (!contentUrl) return { status: 'invalid', message: 'A content URL is required.' }
+
+  const { error } = await context.supabase.from('content_metric_snapshots').insert({
+    workspace_id: WORKSPACE_ID,
+    brand_id: snapshot.brandId || null,
+    campaign_id: snapshot.campaignId || null,
+    creator_id: snapshot.creatorId ? String(snapshot.creatorId) : null,
+    content_id: String(snapshot.contentId || snapshot.id || contentUrl),
+    platform: normalizePlatform(snapshot.platform) || 'unknown',
+    content_url: contentUrl,
+    published_at: snapshot.publishedAt || null,
+    measured_at: snapshot.collectedAt || snapshot.measuredAt || new Date().toISOString(),
+    views: toNumberOrNull(snapshot.views),
+    likes: toNumberOrNull(snapshot.likes),
+    comments: toNumberOrNull(snapshot.comments),
+    shares: toNumberOrNull(snapshot.shares),
+    saves: toNumberOrNull(snapshot.saves),
+    conversions: toNumberOrNull(snapshot.conversions),
+    revenue: toNumberOrNull(snapshot.revenue),
+    source_type: normalizeSnapshotSourceType(snapshot.sourceType),
+    source_provider: snapshot.sourceProvider || null,
+    source_url: snapshot.sourceUrl || contentUrl,
+    confidence_score: toNumberOrNull(snapshot.confidence),
+    raw_payload: snapshot.rawPayload || snapshot,
+  })
+
+  if (error) throw error
+  return { status: 'saved' }
+}
+
 export async function loadCloudWorkspace() {
   const supabase = getSupabaseClient()
   if (!supabase) {
@@ -271,7 +499,8 @@ export async function saveCloudWorkspace(workspace) {
 
   if (error) throw error
 
-  let dataRoomRawSync = { status: 'skipped', rowCount: 0 }
+  let dataRoomRawSync
+  let creatorOperationsSync
   try {
     dataRoomRawSync = await syncUtmTrackingRowsForWorkspace(supabase, workspace)
   } catch (syncError) {
@@ -282,7 +511,18 @@ export async function saveCloudWorkspace(workspace) {
     }
   }
 
-  return { status: 'saved', dataRoomRawSync }
+  try {
+    creatorOperationsSync = await syncCreatorOperationsForWorkspace(supabase, workspace)
+  } catch (syncError) {
+    creatorOperationsSync = {
+      status: 'failed',
+      contactRowCount: 0,
+      rateRowCount: 0,
+      message: syncError.message || 'Creator operations raw sync failed.',
+    }
+  }
+
+  return { status: 'saved', dataRoomRawSync, creatorOperationsSync }
 }
 
 const RAW_STATUS_TO_DB = {
@@ -291,7 +531,7 @@ const RAW_STATUS_TO_DB = {
   오류: 'error',
   중단: 'paused',
   미수집: 'not_collected',
-  부분지원: 'partial',
+  부분수집: 'partial',
   '검증 필요': 'needs_review',
 }
 
