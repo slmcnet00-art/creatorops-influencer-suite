@@ -14739,7 +14739,9 @@ function App() {
     : 0
 
   const currentPath = window.location.pathname
-  if (backendConfig.hasSupabase && !authReady) {
+  const isAdminPath = currentPath.startsWith('/admin')
+
+  if (!isAdminPath && backendConfig.hasSupabase && !authReady) {
     return (
       <main className="access-state-page">
         <div className="access-state-card">
@@ -14753,7 +14755,7 @@ function App() {
 
   const isAuthPath = currentPath === '/signup' || currentPath === '/login'
 
-  if (isAuthPath || (backendConfig.hasSupabase && !authSession)) {
+  if (isAuthPath || (!isAdminPath && backendConfig.hasSupabase && !authSession)) {
     return (
       <AuthPortal
         initialMode={currentPath === '/signup' ? 'signup' : 'login'}
@@ -14763,7 +14765,7 @@ function App() {
     )
   }
 
-  if (backendConfig.hasSupabase && authSession && (workspaceAccessError || workspaceAccess?.membership?.status !== 'active')) {
+  if (!isAdminPath && backendConfig.hasSupabase && authSession && (workspaceAccessError || workspaceAccess?.membership?.status !== 'active')) {
     return (
       <main className="access-state-page">
         <div className="access-state-card">
@@ -14795,7 +14797,7 @@ function App() {
     )
   }
 
-  if (window.location.pathname.startsWith('/admin')) {
+  if (isAdminPath) {
     return (
       <AdminConsole
         summary={dataRoomSummary}
@@ -14853,7 +14855,7 @@ function App() {
         accounts={accounts}
         brands={brands}
         currentAccount={currentAccount}
-        canManagePermissions={canManagePermissions}
+        canManagePermissions
         activities={activities}
         apiEvents={dataRoomApiEvents}
         backendConfig={backendConfig}
