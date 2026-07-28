@@ -1,0 +1,2244 @@
+{
+  "source": "미핑기획 솔루션 1차.xlsx / 01. 미디어_데이터 정의",
+  "generatedAt": "2026-07-27T18:01:03.522Z",
+  "summary": {
+    "total": 117,
+    "byType": {
+      "원천": 44,
+      "파생": 27,
+      "계산": 42,
+      "미분류": 4
+    },
+    "byPlatform": {
+      "YouTube": 117
+    },
+    "byState": {
+      "implemented": 117
+    }
+  },
+  "definitions": [
+    {
+      "definitionId": "MDF-YOUTUBE-001",
+      "sourceRow": 1,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "계정명",
+      "fieldKey": "youtube-계정명",
+      "sourceLocation": "계정 홈",
+      "dataType": "원천",
+      "description": "계정 접속시 설정 이름",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-002",
+      "sourceRow": 2,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "계정 ID",
+      "fieldKey": "youtube-계정-id",
+      "sourceLocation": "계정 홈 및 URL @텍스트",
+      "dataType": "원천",
+      "description": "계정 접속시 설정 ID",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-003",
+      "sourceRow": 3,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "계정 고유 ID",
+      "fieldKey": "youtube-계정-고유-id",
+      "sourceLocation": "",
+      "dataType": "원천",
+      "description": "계정 고유 ID",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-004",
+      "sourceRow": 4,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "계정 URL",
+      "fieldKey": "youtube-계정-url",
+      "sourceLocation": "계정 홈",
+      "dataType": "원천",
+      "description": "계정 홈 URL",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-005",
+      "sourceRow": 5,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "프로필 bio",
+      "fieldKey": "youtube-프로필-bio",
+      "sourceLocation": "계정 홈",
+      "dataType": "원천",
+      "description": "계정 접속시 프로필 소개",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-006",
+      "sourceRow": 6,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "멀티채널",
+      "fieldKey": "youtube-멀티채널",
+      "sourceLocation": "계정 홈 연결 링크",
+      "dataType": "원천",
+      "description": "계정 접속시 인스타그램, 틱톡, 웹 등 연결 링크",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-007",
+      "sourceRow": 7,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "구독자",
+      "fieldKey": "youtube-구독자",
+      "sourceLocation": "계정 홈",
+      "dataType": "원천",
+      "description": "구독자 수",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-008",
+      "sourceRow": 8,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "가입일",
+      "fieldKey": "youtube-가입일",
+      "sourceLocation": "계정 홈 계정 더보기",
+      "dataType": "원천",
+      "description": "채널 가입 일자",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-009",
+      "sourceRow": 9,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "국가",
+      "fieldKey": "youtube-국가",
+      "sourceLocation": "계정 홈 계정 더보기",
+      "dataType": "원천",
+      "description": "채널 국가 설정",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-010",
+      "sourceRow": 10,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "이메일 주소",
+      "fieldKey": "youtube-이메일-주소",
+      "sourceLocation": "계정 홈 계정 더보기",
+      "dataType": "원천",
+      "description": "채널 이메일 주소 설정 (미공개 시 불가)",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-011",
+      "sourceRow": 11,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "프로필 이미지",
+      "fieldKey": "youtube-프로필-이미지",
+      "sourceLocation": "계정 홈",
+      "dataType": "원천",
+      "description": "계정 홈 프로필 이미지",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-012",
+      "sourceRow": 12,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "성별",
+      "fieldKey": "youtube-성별",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "채널 성별 (남/여/기타)",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-013",
+      "sourceRow": 13,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "산업/카테고리",
+      "fieldKey": "youtube-산업-카테고리",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "채널 주요 카테고리 (뷰티, 푸드, 리빙 등)",
+      "feasibility": "",
+      "note": "콘텐츠 데이터 연결 및 카테고리 정의 필요 예상 (E.G. 여행, 뷰티, 패션, 게임, 요리, 교육, 건강/피트니스, 기술/IT, 댄스, 아트, 일상)",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-014",
+      "sourceRow": 14,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "주요 콘텐츠",
+      "fieldKey": "youtube-주요-콘텐츠",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "채널 주요 콘텐츠 (리뷰어, 제품/서비스 추천, 먹방 등)",
+      "feasibility": "",
+      "note": "콘텐츠 데이터 연결 및 주요 콘텐츠 정의 필요 예상 (E.G. 추천, 리뷰, 정보형, TIP, OOTD, LOOKBOOK, VLOG, 밈, 챌린지, ASMR, 먹방, 썰)",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-015",
+      "sourceRow": 15,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "주요 콘텐츠 형식",
+      "fieldKey": "youtube-주요-콘텐츠-형식",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "롱폼, 숏폼 비율",
+      "feasibility": "",
+      "note": "콘텐츠 데이터 연결 필요 예상",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-016",
+      "sourceRow": 16,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "브랜드 언급",
+      "fieldKey": "youtube-브랜드-언급",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "브랜드 및 상품 언급 여부",
+      "feasibility": "",
+      "note": "커머스 연결 데이터 연결 및 브랜드 정의 필요 예상",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-017",
+      "sourceRow": 17,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "시청자 성별",
+      "fieldKey": "youtube-시청자-성별",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "계정 시청자 성별 분포",
+      "feasibility": "",
+      "note": "타사 진행 중 추정 방법 연구 필요",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-018",
+      "sourceRow": 18,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "시청자 연령",
+      "fieldKey": "youtube-시청자-연령",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "계정 시청자 연령 분포",
+      "feasibility": "",
+      "note": "타사 진행 중 추정 방법 연구 필요",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-019",
+      "sourceRow": 19,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "시청자 국가(지역)",
+      "fieldKey": "youtube-시청자-국가-지역",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "계정 시청자 국가 분포",
+      "feasibility": "",
+      "note": "타사 진행 중 추정 방법 연구 필요",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-020",
+      "sourceRow": 20,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "시청자 인종",
+      "fieldKey": "youtube-시청자-인종",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "계정 시청자 인종 분포",
+      "feasibility": "",
+      "note": "타사 진행 중 추정 방법 연구 필요",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-021",
+      "sourceRow": 21,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "시청자 인종",
+      "fieldKey": "youtube-시청자-인종",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "계정 시청자 언어 분포",
+      "feasibility": "",
+      "note": "타사 진행 중 추정 방법 연구 필요",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-022",
+      "sourceRow": 22,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "시청자 주요 관심사",
+      "fieldKey": "youtube-시청자-주요-관심사",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "계정 시청자 주요 관심사 콘텐츠 및 주제 분포",
+      "feasibility": "",
+      "note": "타사 진행 중 추정 방법 연구 필요",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-023",
+      "sourceRow": 23,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "구독자 분석",
+      "fieldKey": "youtube-구독자-분석",
+      "sourceLocation": "?",
+      "dataType": "미분류",
+      "description": "구독자 일반계정, 허수, 인플루언서 계정 분포 분석",
+      "feasibility": "",
+      "note": "타사 진행 중 추정 방법 연구 필요",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-024",
+      "sourceRow": 24,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "평균 조회수(기간)",
+      "fieldKey": "youtube-평균-조회수-기간",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "조회수/일자",
+      "feasibility": "",
+      "note": "콘텐츠 형식별(롱폼, 숏폼) 제공 예정",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-025",
+      "sourceRow": 25,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "평균 조회수(콘텐츠)",
+      "fieldKey": "youtube-평균-조회수-콘텐츠",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "조회수/콘텐츠수",
+      "feasibility": "",
+      "note": "콘텐츠 형식별(롱폼, 숏폼) 제공 예정",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-026",
+      "sourceRow": 26,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "평균 좋아요수 (기간)",
+      "fieldKey": "youtube-평균-좋아요수-기간",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "좋아요수/일자",
+      "feasibility": "",
+      "note": "콘텐츠 형식별(롱폼, 숏폼) 제공 예정",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-027",
+      "sourceRow": 27,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "평균 좋아요수 (콘텐츠)",
+      "fieldKey": "youtube-평균-좋아요수-콘텐츠",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "좋아요수/콘텐츠수",
+      "feasibility": "",
+      "note": "콘텐츠 형식별(롱폼, 숏폼) 제공 예정",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-028",
+      "sourceRow": 28,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "평균 댓글수 (기간)",
+      "fieldKey": "youtube-평균-댓글수-기간",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "댓글수/일자",
+      "feasibility": "",
+      "note": "콘텐츠 형식별(롱폼, 숏폼) 제공 예정",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-029",
+      "sourceRow": 29,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "평균 댓글수 (콘텐츠)",
+      "fieldKey": "youtube-평균-댓글수-콘텐츠",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "댓글수/콘텐츠수",
+      "feasibility": "",
+      "note": "콘텐츠 형식별(롱폼, 숏폼) 제공 예정",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-030",
+      "sourceRow": 30,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "평균 공유수 (기간)",
+      "fieldKey": "youtube-평균-공유수-기간",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "공유수/일자",
+      "feasibility": "",
+      "note": "콘텐츠 형식별(롱폼, 숏폼) 제공 예정",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-031",
+      "sourceRow": 31,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "평균 공유수 (콘텐츠)",
+      "fieldKey": "youtube-평균-공유수-콘텐츠",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "공유수/콘텐츠수",
+      "feasibility": "",
+      "note": "콘텐츠 형식별(롱폼, 숏폼) 제공 예정",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-032",
+      "sourceRow": 32,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "평균 참여수 (기간)",
+      "fieldKey": "youtube-평균-참여수-기간",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "참여수/일자,",
+      "feasibility": "",
+      "note": "콘텐츠 형식별(롱폼, 숏폼) 제공 예정",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-033",
+      "sourceRow": 33,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "평균 참여수 (콘텐츠)",
+      "fieldKey": "youtube-평균-참여수-콘텐츠",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "참여수/콘텐츠수",
+      "feasibility": "",
+      "note": "콘텐츠 형식별(롱폼, 숏폼) 제공 예정",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-034",
+      "sourceRow": 34,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "업로드 주기",
+      "fieldKey": "youtube-업로드-주기",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "업로드수/일자",
+      "feasibility": "",
+      "note": "주간, 월간 업로드 평균",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-035",
+      "sourceRow": 35,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "업로드 일시",
+      "fieldKey": "youtube-업로드-일시",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "업로드 시간표",
+      "feasibility": "",
+      "note": "주요 업로드 요일별, 시간별 분포",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-036",
+      "sourceRow": 36,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "월 성장율",
+      "fieldKey": "youtube-월-성장율",
+      "sourceLocation": "항목 계산",
+      "dataType": "계산",
+      "description": "이번달 구독자-지난달 구독자/지난달 구독자*100%",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-037",
+      "sourceRow": 37,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "광고 밀도",
+      "fieldKey": "youtube-광고-밀도",
+      "sourceLocation": "항목 계산",
+      "dataType": "계산",
+      "description": "유료 광고 콘텐츠수/전체 콘텐츠 수",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-038",
+      "sourceRow": 38,
+      "platform": "YouTube",
+      "group": "계정 (항목)",
+      "fieldName": "참여수",
+      "fieldKey": "youtube-참여수",
+      "sourceLocation": "항목 계산",
+      "dataType": "계산",
+      "description": "좋아요수/100+댓글수+공유수",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-039",
+      "sourceRow": 39,
+      "platform": "YouTube",
+      "group": "계정 (항목)",
+      "fieldName": "계정 그룹",
+      "fieldKey": "youtube-계정-그룹",
+      "sourceLocation": "항목 계산",
+      "dataType": "계산",
+      "description": "구독자수 별 그룹핑(나노, 마이크로, 미드, 매크로, 메가)",
+      "feasibility": "",
+      "note": "콘텐츠 주요 형식별 가이드 제공 sheet '01. 계산 지표 내부 가이드'",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-040",
+      "sourceRow": 40,
+      "platform": "YouTube",
+      "group": "계정 (항목)",
+      "fieldName": "계정 참여도",
+      "fieldKey": "youtube-계정-참여도",
+      "sourceLocation": "항목 계산",
+      "dataType": "계산",
+      "description": "계정 그룹별 가이드 제공 (최우수, 우수, 일반, 평균이하)",
+      "feasibility": "",
+      "note": "콘텐츠 주요 형식별 가이드 제공 sheet '01. 계산 지표 내부 가이드'",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-041",
+      "sourceRow": 41,
+      "platform": "YouTube",
+      "group": "계정 (항목)",
+      "fieldName": "영상 참여도",
+      "fieldKey": "youtube-영상-참여도",
+      "sourceLocation": "항목 계산",
+      "dataType": "계산",
+      "description": "참여수/조회수",
+      "feasibility": "",
+      "note": "일자, 수량별 제공, 콘텐츠 형식별(롱폼, 숏폼) 제공",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-042",
+      "sourceRow": 42,
+      "platform": "YouTube",
+      "group": "계정 (항목)",
+      "fieldName": "구독자 대비 조회수",
+      "fieldKey": "youtube-구독자-대비-조회수",
+      "sourceLocation": "항목 계산",
+      "dataType": "계산",
+      "description": "조회수/구독자수",
+      "feasibility": "",
+      "note": "일자, 수량별 제공, 콘텐츠 형식별(롱폼, 숏폼) 제공",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-043",
+      "sourceRow": 43,
+      "platform": "YouTube",
+      "group": "계정 (항목)",
+      "fieldName": "다른 채널 보유 여부",
+      "fieldKey": "youtube-다른-채널-보유-여부",
+      "sourceLocation": "항목 계산",
+      "dataType": "계산",
+      "description": "멀티채널 1개 이상 보유",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-044",
+      "sourceRow": 44,
+      "platform": "YouTube",
+      "group": "계정 (항목)",
+      "fieldName": "광고 밀도",
+      "fieldKey": "youtube-광고-밀도",
+      "sourceLocation": "항목 계산",
+      "dataType": "계산",
+      "description": "최근 콘텐츠 내 광고 콘텐츠 분포",
+      "feasibility": "",
+      "note": "데이터 확인 후 가이드 제작 필요 (낮음, 보통, 높음 등)",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-045",
+      "sourceRow": 45,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "콘텐츠 형식",
+      "fieldKey": "youtube-콘텐츠-형식",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "롱폼, 숏폼 콘텐츠 형식",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-046",
+      "sourceRow": 46,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "콘텐츠 URL",
+      "fieldKey": "youtube-콘텐츠-url",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "콘텐츠 접속 URL",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-047",
+      "sourceRow": 47,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "썸네일",
+      "fieldKey": "youtube-썸네일",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "콘텐츠 썸네일",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-048",
+      "sourceRow": 48,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "영상 길이",
+      "fieldKey": "youtube-영상-길이",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "콘텐츠 총 시간",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-049",
+      "sourceRow": 49,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "업로드일시",
+      "fieldKey": "youtube-업로드일시",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "콘텐츠 업로드 일자 및 시간",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-050",
+      "sourceRow": 50,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "타이틀",
+      "fieldKey": "youtube-타이틀",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "콘텐츠 제목",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-051",
+      "sourceRow": 51,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "설명",
+      "fieldKey": "youtube-설명",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "콘텐츠 설명",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-052",
+      "sourceRow": 52,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "조회수",
+      "fieldKey": "youtube-조회수",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "콘텐츠 동영상 조회수",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-053",
+      "sourceRow": 53,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "좋아요수",
+      "fieldKey": "youtube-좋아요수",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "콘텐츠 좋아요수",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-054",
+      "sourceRow": 54,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "댓글수",
+      "fieldKey": "youtube-댓글수",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "콘텐츠 댓글수",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-055",
+      "sourceRow": 55,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "공유수",
+      "fieldKey": "youtube-공유수",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "콘텐츠 공유수",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-056",
+      "sourceRow": 56,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "콘텐츠 내용",
+      "fieldKey": "youtube-콘텐츠-내용",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "콘텐츠 주요 키워드, 내용 및 장면 분석 필요",
+      "feasibility": "",
+      "note": "cc 기반 분석 / 이미지 분석 가능 여부 등 연구 필요",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-057",
+      "sourceRow": 57,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "브랜드 언급",
+      "fieldKey": "youtube-브랜드-언급",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "콘텐츠 브랜드 언급 여부",
+      "feasibility": "",
+      "note": "커머스 연결 데이터 연결 및 브랜드 정의 필요 예상",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-058",
+      "sourceRow": 58,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "광고 여부",
+      "fieldKey": "youtube-광고-여부",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "콘텐츠 유료 광고 포함 여부",
+      "feasibility": "",
+      "note": "타사 진행 중 추정 방법 연구 필요",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-059",
+      "sourceRow": 59,
+      "platform": "YouTube",
+      "group": "?",
+      "fieldName": "?",
+      "fieldKey": "youtube",
+      "sourceLocation": "?",
+      "dataType": "미분류",
+      "description": "유사 콘텐츠, 유사 채널",
+      "feasibility": "",
+      "note": "타사 진행 중 추정 방법 연구 필요",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-060",
+      "sourceRow": 1,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "계정명",
+      "fieldKey": "youtube-계정명",
+      "sourceLocation": "계정 홈",
+      "dataType": "원천",
+      "description": "계정 접속시 설정 이름",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-061",
+      "sourceRow": 2,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "계정 ID",
+      "fieldKey": "youtube-계정-id",
+      "sourceLocation": "계정 홈 및 URL @텍스트",
+      "dataType": "원천",
+      "description": "계정 접속시 설정 ID",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-062",
+      "sourceRow": 3,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "계정 고유 ID",
+      "fieldKey": "youtube-계정-고유-id",
+      "sourceLocation": "",
+      "dataType": "원천",
+      "description": "계정 고유 ID",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-063",
+      "sourceRow": 4,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "계정 URL",
+      "fieldKey": "youtube-계정-url",
+      "sourceLocation": "계정 홈",
+      "dataType": "원천",
+      "description": "계정 홈 URL",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-064",
+      "sourceRow": 5,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "프로필 bio",
+      "fieldKey": "youtube-프로필-bio",
+      "sourceLocation": "계정 홈",
+      "dataType": "원천",
+      "description": "계정 접속시 프로필 소개",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-065",
+      "sourceRow": 6,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "멀티채널",
+      "fieldKey": "youtube-멀티채널",
+      "sourceLocation": "계정 홈 연결 링크",
+      "dataType": "원천",
+      "description": "계정 접속시 유튜브, 틱톡, 웹 등 연결 링크",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-066",
+      "sourceRow": 7,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "팔로워수",
+      "fieldKey": "youtube-팔로워수",
+      "sourceLocation": "계정 홈",
+      "dataType": "원천",
+      "description": "팔로워 수",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-067",
+      "sourceRow": 8,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "가입일",
+      "fieldKey": "youtube-가입일",
+      "sourceLocation": "계정 홈 계정 더보기",
+      "dataType": "원천",
+      "description": "계정 가입 일자",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-068",
+      "sourceRow": 9,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "국가",
+      "fieldKey": "youtube-국가",
+      "sourceLocation": "계정 홈 계정 더보기",
+      "dataType": "원천",
+      "description": "계정 기본 위치",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-069",
+      "sourceRow": 10,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "이메일 주소",
+      "fieldKey": "youtube-이메일-주소",
+      "sourceLocation": "프로필 bio",
+      "dataType": "원천",
+      "description": "계정 bio 내 이메일 주소 기입 분류 (미기입 시 불가)",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-070",
+      "sourceRow": 11,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "프로필 이미지",
+      "fieldKey": "youtube-프로필-이미지",
+      "sourceLocation": "계정 홈",
+      "dataType": "원천",
+      "description": "계정 홈 프로필 이미지",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-071",
+      "sourceRow": 12,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "성별",
+      "fieldKey": "youtube-성별",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "채널 성별 (남/여/기타)",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-072",
+      "sourceRow": 13,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "산업/카테고리",
+      "fieldKey": "youtube-산업-카테고리",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "채널 주요 카테고리 (뷰티, 푸드, 리빙 등)",
+      "feasibility": "",
+      "note": "콘텐츠 데이터 연결 및 카테고리 정의 필요 예상 (E.G. 여행, 뷰티, 패션, 게임, 요리, 교육, 건강/피트니스, 기술/IT, 댄스, 아트, 일상)",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-073",
+      "sourceRow": 14,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "주요 콘텐츠",
+      "fieldKey": "youtube-주요-콘텐츠",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "채널 주요 콘텐츠 (리뷰어, 제품/서비스 추천, 먹방 등)",
+      "feasibility": "",
+      "note": "콘텐츠 데이터 연결 및 주요 콘텐츠 정의 필요 예상 (E.G. 추천, 리뷰, 정보형, TIP, OOTD, LOOKBOOK, VLOG, 밈, 챌린지, ASMR, 먹방, 썰)",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-074",
+      "sourceRow": 15,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "주요 콘텐츠 형식",
+      "fieldKey": "youtube-주요-콘텐츠-형식",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "피드, 릴스, 이미지/ 동영상 비율",
+      "feasibility": "",
+      "note": "콘텐츠 데이터 연결 필요 예상",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-075",
+      "sourceRow": 16,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "브랜드 언급",
+      "fieldKey": "youtube-브랜드-언급",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "브랜드 및 상품 언급 여부",
+      "feasibility": "",
+      "note": "커머스 연결 데이터 연결 및 브랜드 정의 필요 예상",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-076",
+      "sourceRow": 17,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "시청자 성별",
+      "fieldKey": "youtube-시청자-성별",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "계정 시청자 성별 분포",
+      "feasibility": "",
+      "note": "타사 진행 중 추정 방법 연구 필요",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-077",
+      "sourceRow": 18,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "시청자 연령",
+      "fieldKey": "youtube-시청자-연령",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "계정 시청자 연령 분포",
+      "feasibility": "",
+      "note": "타사 진행 중 추정 방법 연구 필요",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-078",
+      "sourceRow": 19,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "시청자 국가(지역)",
+      "fieldKey": "youtube-시청자-국가-지역",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "계정 시청자 국가 분포",
+      "feasibility": "",
+      "note": "타사 진행 중 추정 방법 연구 필요",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-079",
+      "sourceRow": 20,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "시청자 인종",
+      "fieldKey": "youtube-시청자-인종",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "계정 시청자 인종 분포",
+      "feasibility": "",
+      "note": "타사 진행 중 추정 방법 연구 필요",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-080",
+      "sourceRow": 21,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "시청자 인종",
+      "fieldKey": "youtube-시청자-인종",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "계정 시청자 언어 분포",
+      "feasibility": "",
+      "note": "타사 진행 중 추정 방법 연구 필요",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-081",
+      "sourceRow": 22,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "시청자 주요 관심사",
+      "fieldKey": "youtube-시청자-주요-관심사",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "계정 시청자 주요 관심사 콘텐츠 및 주제 분포",
+      "feasibility": "",
+      "note": "타사 진행 중 추정 방법 연구 필요",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-082",
+      "sourceRow": 23,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "팔로워 분석",
+      "fieldKey": "youtube-팔로워-분석",
+      "sourceLocation": "?",
+      "dataType": "미분류",
+      "description": "구독자 일반계정, 허수, 인플루언서 계정 분포 분석",
+      "feasibility": "",
+      "note": "타사 진행 중 추정 방법 연구 필요",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-083",
+      "sourceRow": 24,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "평균 조회수(기간)",
+      "fieldKey": "youtube-평균-조회수-기간",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "조회수/일자",
+      "feasibility": "",
+      "note": "콘텐츠 형식별(피드, 릴스 / 이미지, 동영상) 제공",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-084",
+      "sourceRow": 25,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "평균 조회수(콘텐츠)",
+      "fieldKey": "youtube-평균-조회수-콘텐츠",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "조회수/콘텐츠수",
+      "feasibility": "",
+      "note": "콘텐츠 형식별(피드, 릴스 / 이미지, 동영상) 제공",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-085",
+      "sourceRow": 26,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "평균 좋아요수 (기간)",
+      "fieldKey": "youtube-평균-좋아요수-기간",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "좋아요수/일자",
+      "feasibility": "",
+      "note": "콘텐츠 형식별(피드, 릴스 / 이미지, 동영상) 제공",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-086",
+      "sourceRow": 27,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "평균 좋아요수 (콘텐츠)",
+      "fieldKey": "youtube-평균-좋아요수-콘텐츠",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "좋아요수/콘텐츠수",
+      "feasibility": "",
+      "note": "콘텐츠 형식별(피드, 릴스 / 이미지, 동영상) 제공",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-087",
+      "sourceRow": 28,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "평균 댓글수 (기간)",
+      "fieldKey": "youtube-평균-댓글수-기간",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "댓글수/일자",
+      "feasibility": "",
+      "note": "콘텐츠 형식별(피드, 릴스 / 이미지, 동영상) 제공",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-088",
+      "sourceRow": 29,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "평균 댓글수 (콘텐츠)",
+      "fieldKey": "youtube-평균-댓글수-콘텐츠",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "댓글수/콘텐츠수",
+      "feasibility": "",
+      "note": "콘텐츠 형식별(피드, 릴스 / 이미지, 동영상) 제공",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-089",
+      "sourceRow": 30,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "평균 공유수 (기간)",
+      "fieldKey": "youtube-평균-공유수-기간",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "공유수/일자",
+      "feasibility": "",
+      "note": "콘텐츠 형식별(피드, 릴스 / 이미지, 동영상) 제공",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-090",
+      "sourceRow": 31,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "평균 공유수 (콘텐츠)",
+      "fieldKey": "youtube-평균-공유수-콘텐츠",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "공유수/콘텐츠수",
+      "feasibility": "",
+      "note": "콘텐츠 형식별(피드, 릴스 / 이미지, 동영상) 제공",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-091",
+      "sourceRow": 32,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "평균 참여수 (기간)",
+      "fieldKey": "youtube-평균-참여수-기간",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "참여수/일자,",
+      "feasibility": "",
+      "note": "콘텐츠 형식별(피드, 릴스 / 이미지, 동영상) 제공",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-092",
+      "sourceRow": 33,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "평균 참여수 (콘텐츠)",
+      "fieldKey": "youtube-평균-참여수-콘텐츠",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "참여수/콘텐츠수",
+      "feasibility": "",
+      "note": "콘텐츠 형식별(피드, 릴스 / 이미지, 동영상) 제공",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-093",
+      "sourceRow": 34,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "업로드 주기",
+      "fieldKey": "youtube-업로드-주기",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "업로드수/일자",
+      "feasibility": "",
+      "note": "주간, 월간 업로드 평균",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-094",
+      "sourceRow": 35,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "업로드 일시",
+      "fieldKey": "youtube-업로드-일시",
+      "sourceLocation": "콘텐츠",
+      "dataType": "계산",
+      "description": "업로드 시간표",
+      "feasibility": "",
+      "note": "주요 업로드 요일별, 시간별 분포",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-095",
+      "sourceRow": 36,
+      "platform": "YouTube",
+      "group": "계정",
+      "fieldName": "월 성장율",
+      "fieldKey": "youtube-월-성장율",
+      "sourceLocation": "항목 계산",
+      "dataType": "계산",
+      "description": "이번달 팔로워-지난달 팔로워/지난달 팔로워*100%",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-096",
+      "sourceRow": 37,
+      "platform": "YouTube",
+      "group": "계정 (항목)",
+      "fieldName": "참여수",
+      "fieldKey": "youtube-참여수",
+      "sourceLocation": "항목 계산",
+      "dataType": "계산",
+      "description": "좋아요수/100+댓글수+공유수",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-097",
+      "sourceRow": 38,
+      "platform": "YouTube",
+      "group": "계정 (항목)",
+      "fieldName": "계정 그룹",
+      "fieldKey": "youtube-계정-그룹",
+      "sourceLocation": "항목 계산",
+      "dataType": "계산",
+      "description": "구독자수 별 그룹핑(나노, 마이크로, 미드, 매크로, 메가)",
+      "feasibility": "",
+      "note": "콘텐츠 주요 형식별 가이드 제공 sheet '01. 계산 지표 내부 가이드'",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-098",
+      "sourceRow": 39,
+      "platform": "YouTube",
+      "group": "계정 (항목)",
+      "fieldName": "계정 참여도",
+      "fieldKey": "youtube-계정-참여도",
+      "sourceLocation": "항목 계산",
+      "dataType": "계산",
+      "description": "계정 그룹별 가이드 제공 (최우수, 우수, 일반, 평균이하)",
+      "feasibility": "",
+      "note": "콘텐츠 주요 형식별 가이드 제공 sheet '01. 계산 지표 내부 가이드'",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-099",
+      "sourceRow": 40,
+      "platform": "YouTube",
+      "group": "계정 (항목)",
+      "fieldName": "영상 참여도",
+      "fieldKey": "youtube-영상-참여도",
+      "sourceLocation": "항목 계산",
+      "dataType": "계산",
+      "description": "참여수/조회수",
+      "feasibility": "",
+      "note": "일자, 수량별 제공, 콘텐츠 형식별(롱폼, 숏폼) 제공",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-100",
+      "sourceRow": 41,
+      "platform": "YouTube",
+      "group": "계정 (항목)",
+      "fieldName": "구독자 대비 조회수",
+      "fieldKey": "youtube-구독자-대비-조회수",
+      "sourceLocation": "항목 계산",
+      "dataType": "계산",
+      "description": "조회수/구독자수",
+      "feasibility": "",
+      "note": "일자, 수량별 제공, 콘텐츠 형식별(롱폼, 숏폼) 제공",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-101",
+      "sourceRow": 42,
+      "platform": "YouTube",
+      "group": "계정 (항목)",
+      "fieldName": "다른 채널 보유 여부",
+      "fieldKey": "youtube-다른-채널-보유-여부",
+      "sourceLocation": "항목 계산",
+      "dataType": "계산",
+      "description": "멀티채널 1개 이상 보유",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-102",
+      "sourceRow": 43,
+      "platform": "YouTube",
+      "group": "계정 (항목)",
+      "fieldName": "광고 밀도",
+      "fieldKey": "youtube-광고-밀도",
+      "sourceLocation": "항목 계산",
+      "dataType": "계산",
+      "description": "최근 콘텐츠 내 광고 콘텐츠 분포",
+      "feasibility": "",
+      "note": "데이터 확인 후 가이드 제작 필요 (낮음, 보통, 높음 등)",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-103",
+      "sourceRow": 44,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "콘텐츠 형식",
+      "fieldKey": "youtube-콘텐츠-형식",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "피드, 릴스, 이미지/ 동영상 콘텐츠 형식",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-104",
+      "sourceRow": 45,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "콘텐츠 URL",
+      "fieldKey": "youtube-콘텐츠-url",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "콘텐츠 접속 URL",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-105",
+      "sourceRow": 46,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "썸네일",
+      "fieldKey": "youtube-썸네일",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "콘텐츠 썸네일",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-106",
+      "sourceRow": 47,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "영상 길이",
+      "fieldKey": "youtube-영상-길이",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "콘텐츠 총 시간",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-107",
+      "sourceRow": 48,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "업로드일시",
+      "fieldKey": "youtube-업로드일시",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "콘텐츠 업로드 일자 및 시간",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-108",
+      "sourceRow": 49,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "타이틀",
+      "fieldKey": "youtube-타이틀",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "콘텐츠 제목",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-109",
+      "sourceRow": 50,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "설명",
+      "fieldKey": "youtube-설명",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "콘텐츠 설명 (캡션)",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-110",
+      "sourceRow": 51,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "조회수",
+      "fieldKey": "youtube-조회수",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "콘텐츠 동영상 조회수",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-111",
+      "sourceRow": 52,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "좋아요수",
+      "fieldKey": "youtube-좋아요수",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "콘텐츠 좋아요수",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-112",
+      "sourceRow": 53,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "댓글수",
+      "fieldKey": "youtube-댓글수",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "콘텐츠 댓글수",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-113",
+      "sourceRow": 54,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "공유수",
+      "fieldKey": "youtube-공유수",
+      "sourceLocation": "콘텐츠",
+      "dataType": "원천",
+      "description": "콘텐츠 공유수",
+      "feasibility": "",
+      "note": "",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-114",
+      "sourceRow": 55,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "콘텐츠 내용",
+      "fieldKey": "youtube-콘텐츠-내용",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "콘텐츠 주요 키워드, 내용 및 장면 분석 필요",
+      "feasibility": "",
+      "note": "cc 기반 분석 / 이미지 분석 가능 여부 등 연구 필요",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-115",
+      "sourceRow": 56,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "브랜드 언급",
+      "fieldKey": "youtube-브랜드-언급",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "콘텐츠 브랜드 언급 여부",
+      "feasibility": "",
+      "note": "커머스 연결 데이터 연결 및 브랜드 정의 필요 예상",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-116",
+      "sourceRow": 57,
+      "platform": "YouTube",
+      "group": "콘텐츠",
+      "fieldName": "광고 여부",
+      "fieldKey": "youtube-광고-여부",
+      "sourceLocation": "콘텐츠",
+      "dataType": "파생",
+      "description": "콘텐츠 유료 광고 포함 여부",
+      "feasibility": "",
+      "note": "타사 진행 중 추정 방법 연구 필요",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    },
+    {
+      "definitionId": "MDF-YOUTUBE-117",
+      "sourceRow": 58,
+      "platform": "YouTube",
+      "group": "?",
+      "fieldName": "?",
+      "fieldKey": "youtube",
+      "sourceLocation": "?",
+      "dataType": "미분류",
+      "description": "유사 콘텐츠, 유사 채널",
+      "feasibility": "",
+      "note": "타사 진행 중 추정 방법 연구 필요",
+      "developmentComment": "",
+      "connectedRawDataIds": [
+        "RAW-EXT-CHN-001",
+        "RAW-EXT-CONT-001"
+      ],
+      "implementationState": "implemented"
+    }
+  ]
+}

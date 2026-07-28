@@ -18,6 +18,44 @@ create table if not exists public.workspace_members (
   unique (workspace_id, user_id)
 );
 
+insert into public.workspaces (id, name, settings)
+values ('miping-main', '미핑기획 CreatorOps', '{}'::jsonb)
+on conflict (id) do nothing;
+
+create or replace function public.handle_creatorops_signup()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  insert into public.workspace_members (
+    workspace_id,
+    user_id,
+    role,
+    invited_email,
+    status
+  )
+  select
+    workspace.id,
+    new.id,
+    'Client',
+    new.email,
+    'invited'
+  from public.workspaces workspace
+  where workspace.id = 'miping-main'
+  on conflict (workspace_id, user_id)
+  do update set invited_email = excluded.invited_email;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists creatorops_auth_signup on auth.users;
+create trigger creatorops_auth_signup
+  after insert on auth.users
+  for each row execute function public.handle_creatorops_signup();
+
 alter table public.workspace_members drop constraint if exists workspace_members_role_check;
 alter table public.workspace_members
   add constraint workspace_members_role_check

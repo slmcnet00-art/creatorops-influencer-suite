@@ -11,6 +11,8 @@
     "preview": "vite preview",
     "data-room:status": "node scripts/check-data-room-status.mjs",
     "verify:data-lineage": "node scripts/verify-data-lineage.mjs",
+    "data-room:build-media-manifest": "node scripts/build-media-definition-manifest.mjs",
+    "verify:media-definition": "node scripts/verify-media-definition.mjs",
     "production:check": "node scripts/check-production.mjs",
     "render:create-api": "node scripts/render-create-api.mjs",
     "render:sync-env": "node scripts/render-sync-env.mjs"

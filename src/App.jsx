@@ -41,9 +41,11 @@ import { readSheet } from 'read-excel-file/browser'
 import './App.css'
 import AdminDataRoom from './AdminDataRoom'
 import AdminConsole from './AdminConsole'
+import AuthPortal from './AuthPortal'
 import {
   getBackendConfig,
   getAuthSession,
+  getCurrentWorkspaceAccess,
   importExternalReport,
   loadDataRoomApiStatus,
   loadExternalSearchEvents,
@@ -5685,6 +5687,8 @@ function buildAdminMetricCatalog({
     ['MET-BENCH-002', '벤치마크 평균 조회수', '레퍼런스/벤치마크 번들', '외부', '벤치마크 콘텐츠 조회수 평균', 'avg(reference.views)', rawRefs.reference, '최근 30일', '검색/저장 시', contentReferences.length ? '정상' : '지연', '전략, 리포트', '50만 이상 터진 콘텐츠 중심', '평균 5만 미만', '중간', '전략/데이터', 'references/search logs', '검색 품질에 따라 변동'],
     ['MET-BENCH-003', '카테고리별 평균 반응률', '레퍼런스/벤치마크 번들', '외부', '카테고리별 레퍼런스 참여율 평균', 'groupBy(category).avg(engagementRate)', rawRefs.reference, '최근 30일', '주 1회', '검증 필요', '전략, 가이드 생성', '카테고리 태깅 정확도 확인', '태깅 없음 30% 이상', '중간', '전략/데이터', 'benchmark tag logs', '카테고리 태깅 자동화 필요'],
     ['MET-BENCH-004', '경쟁 콘텐츠 대비 성과지수', '레퍼런스/벤치마크 번들', '외부', '우리 콘텐츠 조회/반응을 벤치마크 평균과 비교', '(campaign_score / benchmark_score) * 100', ['RAW-EXT-CONT-001', BULK_TRACKING_RAW_SOURCE_ID, 'RAW-EXT-ENG-001', 'RAW-EXT-BENCH-001'], '캠페인 기간', '일 1회', '검증 필요', '고객사 리포트', '100 이상이면 벤치마크 상회', '70 미만', '중간', 'PM/데이터', 'benchmark metric logs', '벤치마크 표본 수 표시 필요'],
+    ['MET-REF-001', '저장 레퍼런스 활용 수', '레퍼런스/벤치마크 번들', '내부', '캠페인 가이드 학습자료로 선택된 저장 레퍼런스 수', 'count(reference where guideUsage = true)', ['RAW-EXT-REF-001'], '전체', '실시간', contentReferences.length ? '정상' : '지연', '레퍼런스, 캠페인 가이드', '저장 후 가이드 활용을 선택한 콘텐츠만 집계', '0건 장기 지속', '높음', '콘텐츠팀', 'contentReferences.guideUsage', `${contentReferences.length}개 저장`],
+    ['MET-SETTLE-001', '수동 정산 진행 건수', '계약/정산 번들', '내부', '배송/수동 정산에서 관리 중인 지급 대상 건수', 'count(fulfillmentRecords)', ['RAW-INT-FIN-001'], '캠페인 기간', '실시간', '정상', '캠페인 진행현황', '자동 송금은 제외하고 수동 운영 건만 집계', '캠페인 완료 후 미정산 존재', '높음', '재무/운영', 'fulfillmentRecords', `${fulfillmentRecords.length}건`],
     ['MET-AI-GEN-001', '캠페인 전략 생성률', 'AI 전략/가이드 번들', '내부', '전략 산출물이 생성된 캠페인 수 / 전체 캠페인 수', 'count(campaign.influencerStrategy) / count(campaigns) * 100', rawRefs.generation, '캠페인 기준', '전략 생성 시', campaigns.length ? (strategyGeneratedCount ? '정상' : '검증 필요') : '지연', '캠페인 상세, 데이터룸', '캠페인 생성 입력 raw가 있어야 전략 산출물을 신뢰 지표로 사용', '캠페인 1개 이상인데 전략 생성 0건', '중간', 'PM/전략팀', 'campaign.strategyInputRaw + ai_generation_runs', `${strategyGeneratedCount}/${campaigns.length}개 전략 생성`],
     ['MET-AI-GEN-002', '공통 인플루언서 가이드 생성률', 'AI 전략/가이드 번들', '내부', '캠페인 공통 전달 가이드가 생성된 캠페인 수 / 전체 캠페인 수', 'count(campaign.generatedContentGuide) / count(campaigns) * 100', rawRefs.generation, '캠페인 기준', '공통 가이드 생성 시', campaigns.length ? (guideGeneratedCount ? '정상' : '검증 필요') : '지연', '캠페인 상세, 데이터룸', '공통 가이드는 캠페인 입력 raw, 브랜드 학습자료, 저장 레퍼런스가 결합된 산출물로 해석', '전략은 있는데 공통 가이드가 없는 캠페인', '중간', '콘텐츠팀', 'campaign.generatedContentGuide + ai_generation_runs', `${guideGeneratedCount}/${campaigns.length}개 공통 가이드 생성`],
     ['MET-AI-GEN-003', '개별 인플루언서 가이드 수', 'AI 전략/가이드 번들', '내부', '크리에이터별 개인화 전달 가이드 생성 건수', 'sum(count(campaign.individualContentGuides))', ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-001', UTM_RAW_SOURCE_ID], '캠페인/크리에이터 기준', '개별 가이드 생성 시', individualGuideCount ? '정상' : '검증 필요', '캠페인 상세, 데이터룸', '공통 가이드는 캠페인 기준, 개별 가이드는 크리에이터별 톤/컷/후킹 기준으로 해석', '섭외 완료 또는 배정 후보가 있는데 개별 가이드 0건', '중간', '콘텐츠팀', 'campaign.individualContentGuides + ai_generation_runs', `${individualGuideCount}건 개별 가이드 생성`],
@@ -7093,6 +7097,9 @@ function App() {
     results: [],
   })
   const [authSession, setAuthSession] = useState(null)
+  const [authReady, setAuthReady] = useState(!backendConfig.hasSupabase)
+  const [workspaceAccess, setWorkspaceAccess] = useState(null)
+  const [workspaceAccessError, setWorkspaceAccessError] = useState('')
   const [authEmail, setAuthEmail] = useState('')
   const [cloudWorkspaceLoaded, setCloudWorkspaceLoaded] = useState(!backendConfig.hasSupabase)
   const [query, setQuery] = useState('')
@@ -7340,7 +7347,26 @@ function App() {
     activeAccountId,
   } = workspace
 
-  const currentAccount = accounts.find((account) => account.id === activeAccountId) ?? accounts[0] ?? defaultWorkspace.accounts[0]
+  const localCurrentAccount =
+    accounts.find((account) => account.id === activeAccountId) ?? accounts[0] ?? defaultWorkspace.accounts[0]
+  const currentAccount = useMemo(() => {
+    if (!backendConfig.hasSupabase || !workspaceAccess?.membership) return localCurrentAccount
+    const cloudBrandIds =
+      workspaceAccess.brands?.[0] === '*'
+        ? brands.map((brand) => brand.id)
+        : workspaceAccess.brands || []
+    return {
+      ...localCurrentAccount,
+      id: workspaceAccess.user?.id || localCurrentAccount.id,
+      name:
+        workspaceAccess.user?.user_metadata?.full_name ||
+        workspaceAccess.user?.email ||
+        localCurrentAccount.name,
+      email: workspaceAccess.user?.email || localCurrentAccount.email,
+      role: workspaceAccess.membership.role,
+      brandIds: cloudBrandIds,
+    }
+  }, [backendConfig.hasSupabase, brands, localCurrentAccount, workspaceAccess])
   const canManagePermissions = currentAccount?.role === 'Owner' || currentAccount?.role === 'Admin'
   const accessibleSectionIds = useMemo(() => {
     if (currentAccount?.role === 'Client') return ['dashboard', 'campaigns', 'groups', 'report', 'references', 'settings']
@@ -7942,16 +7968,35 @@ function App() {
     if (!backendConfig.hasSupabase) return undefined
 
     let cancelled = false
+    const resolveSessionAccess = async (session) => {
+      if (cancelled) return
+      if (session) setAuthReady(false)
+      setAuthSession(session)
+      setWorkspaceAccessError('')
+      if (!session) {
+        setWorkspaceAccess(null)
+        setAuthReady(true)
+        return
+      }
+      try {
+        const access = await getCurrentWorkspaceAccess()
+        if (!cancelled) setWorkspaceAccess(access)
+      } catch (accessError) {
+        if (!cancelled) {
+          setWorkspaceAccess(null)
+          setWorkspaceAccessError(accessError.message || '워크스페이스 권한을 확인하지 못했습니다.')
+        }
+      } finally {
+        if (!cancelled) setAuthReady(true)
+      }
+    }
+
     getAuthSession()
-      .then((session) => {
-        if (!cancelled) setAuthSession(session)
-      })
-      .catch(() => {
-        if (!cancelled) setAuthSession(null)
-      })
+      .then(resolveSessionAccess)
+      .catch(() => resolveSessionAccess(null))
 
     const unsubscribe = onAuthStateChange((event, session) => {
-      setAuthSession(session)
+      resolveSessionAccess(session)
       if (event === 'SIGNED_IN') setToast('팀 공유 DB 로그인 세션이 연결됐어요.')
       if (event === 'SIGNED_OUT') setToast('팀 공유 DB에서 로그아웃했어요.')
     })
@@ -14692,6 +14737,63 @@ function App() {
   const campaignModalIndividualGuideCount = activeCampaignForModal
     ? Object.keys(activeCampaignForModal.individualContentGuides || {}).length
     : 0
+
+  const currentPath = window.location.pathname
+  if (backendConfig.hasSupabase && !authReady) {
+    return (
+      <main className="access-state-page">
+        <div className="access-state-card">
+          <RefreshCw className="access-state-spinner" size={24} />
+          <h1>계정 정보를 확인하고 있습니다</h1>
+          <p>팀과 브랜드 접근 권한을 불러오는 중입니다.</p>
+        </div>
+      </main>
+    )
+  }
+
+  const isAuthPath = currentPath === '/signup' || currentPath === '/login'
+
+  if (isAuthPath || (backendConfig.hasSupabase && !authSession)) {
+    return (
+      <AuthPortal
+        initialMode={currentPath === '/signup' ? 'signup' : 'login'}
+        configured={backendConfig.hasSupabase}
+        onAuthenticated={setAuthSession}
+      />
+    )
+  }
+
+  if (backendConfig.hasSupabase && authSession && (workspaceAccessError || workspaceAccess?.membership?.status !== 'active')) {
+    return (
+      <main className="access-state-page">
+        <div className="access-state-card">
+          <span className="access-state-icon"><ShieldCheck size={25} /></span>
+          <p className="mini-label">TEAM ACCESS</p>
+          <h1>{workspaceAccessError ? '권한 정보를 확인하지 못했습니다' : '팀 승인을 기다리고 있습니다'}</h1>
+          <p>
+            {workspaceAccessError ||
+              '이메일 인증은 완료되었습니다. Owner 또는 Admin이 팀 역할과 접근 브랜드를 지정하면 같은 워크스페이스를 볼 수 있습니다.'}
+          </p>
+          <strong>{authSession.user?.email}</strong>
+          <div className="access-state-actions">
+            <button type="button" className="primary-button" onClick={() => window.location.reload()}>
+              <RefreshCw size={16} /> 권한 다시 확인
+            </button>
+            <button
+              type="button"
+              className="secondary-button"
+              onClick={async () => {
+                await signOut()
+                window.location.assign('/login')
+              }}
+            >
+              다른 계정으로 로그인
+            </button>
+          </div>
+        </div>
+      </main>
+    )
+  }
 
   if (window.location.pathname.startsWith('/admin')) {
     return (

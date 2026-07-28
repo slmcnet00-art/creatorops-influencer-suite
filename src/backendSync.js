@@ -90,6 +90,89 @@ export async function signInWithEmail(email) {
   return { status: 'sent' }
 }
 
+export async function signUpWithPassword({ email, password, fullName, companyName }) {
+  const supabase = getSupabaseClient()
+  if (!supabase) throw new Error('Supabase 환경변수가 설정되지 않았습니다.')
+
+  const { data, error } = await supabase.auth.signUp({
+    email,
+    password,
+    options: {
+      emailRedirectTo: getAuthRedirectUrl(),
+      data: {
+        full_name: fullName,
+        company_name: companyName,
+      },
+    },
+  })
+  if (error) throw error
+  return {
+    session: data.session,
+    user: data.user,
+    needsEmailConfirmation: !data.session,
+  }
+}
+
+export async function signInWithPassword({ email, password }) {
+  const supabase = getSupabaseClient()
+  if (!supabase) throw new Error('Supabase 환경변수가 설정되지 않았습니다.')
+  const { data, error } = await supabase.auth.signInWithPassword({ email, password })
+  if (error) throw error
+  return data
+}
+
+export async function requestPasswordReset(email) {
+  const supabase = getSupabaseClient()
+  if (!supabase) throw new Error('Supabase 환경변수가 설정되지 않았습니다.')
+  const { error } = await supabase.auth.resetPasswordForEmail(email, {
+    redirectTo: `${getAuthRedirectUrl().replace(/\/$/, '')}/login`,
+  })
+  if (error) throw error
+  return { status: 'sent' }
+}
+
+export async function getCurrentWorkspaceAccess() {
+  const supabase = getSupabaseClient()
+  if (!supabase) return { configured: false, membership: null, brands: [] }
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
+  if (sessionError) throw sessionError
+  const user = sessionData.session?.user
+  if (!user) return { configured: true, membership: null, brands: [] }
+
+  const { data: memberships, error: membershipError } = await supabase
+    .from('workspace_members')
+    .select('workspace_id, user_id, role, status, invited_email')
+    .eq('workspace_id', WORKSPACE_ID)
+    .eq('user_id', user.id)
+    .limit(1)
+  if (membershipError) throw membershipError
+
+  const membership = memberships?.[0] || null
+  if (!membership || membership.status !== 'active') {
+    return { configured: true, membership, brands: [], user }
+  }
+
+  if (membership.role === 'Owner' || membership.role === 'Admin') {
+    return { configured: true, membership, brands: ['*'], user }
+  }
+
+  const { data: brandRows, error: brandError } = await supabase
+    .from('brand_memberships')
+    .select('brand_id, role, status')
+    .eq('workspace_id', WORKSPACE_ID)
+    .eq('user_id', user.id)
+    .eq('status', 'active')
+  if (brandError) throw brandError
+
+  return {
+    configured: true,
+    membership,
+    brands: (brandRows || []).map((row) => row.brand_id),
+    user,
+  }
+}
+
 export async function signOut() {
   const supabase = getSupabaseClient()
   if (!supabase) return { status: 'local' }
