@@ -15200,59 +15200,15 @@ function App() {
   const currentPath = window.location.pathname
   const isAdminPath = currentPath.startsWith('/admin')
 
-  if (!isAdminPath && backendConfig.hasSupabase && !authReady) {
-    return (
-      <main className="access-state-page">
-        <div className="access-state-card">
-          <RefreshCw className="access-state-spinner" size={24} />
-          <h1>계정 정보를 확인하고 있습니다</h1>
-          <p>팀과 브랜드 접근 권한을 불러오는 중입니다.</p>
-        </div>
-      </main>
-    )
-  }
-
   const isAuthPath = currentPath === '/signup' || currentPath === '/login'
 
-  if (isAuthPath || (!isAdminPath && backendConfig.hasSupabase && !authSession)) {
+  if (isAuthPath) {
     return (
       <AuthPortal
         initialMode={currentPath === '/signup' ? 'signup' : 'login'}
         configured={backendConfig.hasSupabase}
         onAuthenticated={setAuthSession}
       />
-    )
-  }
-
-  if (!isAdminPath && backendConfig.hasSupabase && authSession && (workspaceAccessError || workspaceAccess?.membership?.status !== 'active')) {
-    return (
-      <main className="access-state-page">
-        <div className="access-state-card">
-          <span className="access-state-icon"><ShieldCheck size={25} /></span>
-          <p className="mini-label">TEAM ACCESS</p>
-          <h1>{workspaceAccessError ? '권한 정보를 확인하지 못했습니다' : '팀 승인을 기다리고 있습니다'}</h1>
-          <p>
-            {workspaceAccessError ||
-              '이메일 인증은 완료되었습니다. Owner 또는 Admin이 팀 역할과 접근 브랜드를 지정하면 같은 워크스페이스를 볼 수 있습니다.'}
-          </p>
-          <strong>{authSession.user?.email}</strong>
-          <div className="access-state-actions">
-            <button type="button" className="primary-button" onClick={() => window.location.reload()}>
-              <RefreshCw size={16} /> 권한 다시 확인
-            </button>
-            <button
-              type="button"
-              className="secondary-button"
-              onClick={async () => {
-                await signOut()
-                window.location.assign('/login')
-              }}
-            >
-              다른 계정으로 로그인
-            </button>
-          </div>
-        </div>
-      </main>
     )
   }
 
