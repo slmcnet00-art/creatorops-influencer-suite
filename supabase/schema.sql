@@ -542,6 +542,105 @@ create index if not exists utm_tracking_rows_workspace_campaign_idx
 create index if not exists utm_tracking_rows_creator_idx
   on public.utm_tracking_rows(workspace_id, creator_id);
 
+create table if not exists public.content_experiments (
+  id text primary key,
+  workspace_id text not null references public.workspaces(id) on delete cascade,
+  campaign_id text,
+  creator_id text,
+  content_id text,
+  format_id text,
+  guide_version text,
+  hook_version text,
+  cta_version text,
+  variant_label text,
+  status text not null default 'draft' check (status in ('draft', 'running', 'winner', 'loser', 'archived')),
+  started_at timestamptz,
+  ended_at timestamptz,
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists content_experiments_workspace_campaign_idx
+  on public.content_experiments(workspace_id, campaign_id);
+
+create table if not exists public.conversion_events (
+  id bigserial primary key,
+  workspace_id text not null references public.workspaces(id) on delete cascade,
+  campaign_id text,
+  creator_id text,
+  content_id text,
+  tracking_row_id text references public.utm_tracking_rows(id) on delete set null,
+  event_type text not null check (event_type in ('click', 'view_cart', 'add_to_cart', 'checkout', 'purchase', 'refund')),
+  event_value numeric not null default 0,
+  order_id text,
+  occurred_at timestamptz not null default now(),
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now()
+);
+
+create index if not exists conversion_events_workspace_campaign_idx
+  on public.conversion_events(workspace_id, campaign_id, occurred_at desc);
+
+create index if not exists conversion_events_creator_idx
+  on public.conversion_events(workspace_id, creator_id, event_type);
+
+create table if not exists public.creator_operations (
+  id text primary key,
+  workspace_id text not null references public.workspaces(id) on delete cascade,
+  campaign_id text,
+  creator_id text not null,
+  stage text not null default 'new' check (stage in ('new', 'verifying', 'performance', 'core', 'paused')),
+  training_status text not null default 'not_started' check (training_status in ('not_started', 'in_progress', 'completed')),
+  next_action text,
+  next_action_at timestamptz,
+  assigned_to text,
+  replacement_reason text,
+  actual_cost numeric not null default 0,
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create unique index if not exists creator_operations_workspace_campaign_creator_idx
+  on public.creator_operations(workspace_id, campaign_id, creator_id);
+
+create table if not exists public.content_templates (
+  id text primary key,
+  workspace_id text not null references public.workspaces(id) on delete cascade,
+  source_content_id text,
+  campaign_id text,
+  name text not null,
+  structure_json jsonb not null default '{}'::jsonb,
+  approved boolean not null default false,
+  status text not null default 'draft' check (status in ('draft', 'approved', 'archived')),
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists content_templates_workspace_status_idx
+  on public.content_templates(workspace_id, status);
+
+create table if not exists public.operational_alerts (
+  id text primary key,
+  workspace_id text not null references public.workspaces(id) on delete cascade,
+  campaign_id text,
+  creator_id text,
+  content_id text,
+  alert_type text not null check (alert_type in ('no_response', 'late_upload', 'breakout', 'rehire', 'replacement', 'data_quality')),
+  severity text not null default 'medium' check (severity in ('low', 'medium', 'high', 'critical')),
+  status text not null default 'open' check (status in ('open', 'ack', 'resolved')),
+  message text not null,
+  due_at timestamptz,
+  payload jsonb not null default '{}'::jsonb,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists operational_alerts_workspace_status_idx
+  on public.operational_alerts(workspace_id, status, severity);
+
 create table if not exists public.metric_snapshots (
   id bigserial primary key,
   workspace_id text not null references public.workspaces(id) on delete cascade,
@@ -639,6 +738,11 @@ alter table public.external_report_imports enable row level security;
 alter table public.external_report_rows enable row level security;
 alter table public.external_search_events enable row level security;
 alter table public.utm_tracking_rows enable row level security;
+alter table public.content_experiments enable row level security;
+alter table public.conversion_events enable row level security;
+alter table public.creator_operations enable row level security;
+alter table public.content_templates enable row level security;
+alter table public.operational_alerts enable row level security;
 alter table public.metric_snapshots enable row level security;
 alter table public.data_quality_reviews enable row level security;
 alter table public.unsupported_metric_requests enable row level security;
@@ -684,6 +788,16 @@ drop policy if exists "Members can read external search events" on public.extern
 drop policy if exists "Members can write external search events" on public.external_search_events;
 drop policy if exists "Members can read UTM tracking rows" on public.utm_tracking_rows;
 drop policy if exists "Members can write UTM tracking rows" on public.utm_tracking_rows;
+drop policy if exists "Members can read content experiments" on public.content_experiments;
+drop policy if exists "Members can write content experiments" on public.content_experiments;
+drop policy if exists "Members can read conversion events" on public.conversion_events;
+drop policy if exists "Members can write conversion events" on public.conversion_events;
+drop policy if exists "Members can read creator operations" on public.creator_operations;
+drop policy if exists "Members can write creator operations" on public.creator_operations;
+drop policy if exists "Members can read content templates" on public.content_templates;
+drop policy if exists "Members can write content templates" on public.content_templates;
+drop policy if exists "Members can read operational alerts" on public.operational_alerts;
+drop policy if exists "Members can write operational alerts" on public.operational_alerts;
 drop policy if exists "Members can read metric snapshots" on public.metric_snapshots;
 drop policy if exists "Members can write metric snapshots" on public.metric_snapshots;
 drop policy if exists "Members can read data quality reviews" on public.data_quality_reviews;
@@ -917,6 +1031,51 @@ create policy "Members can read UTM tracking rows"
 
 create policy "Members can write UTM tracking rows"
   on public.utm_tracking_rows for all to authenticated
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']))
+  with check (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']));
+
+create policy "Members can read content experiments"
+  on public.content_experiments for select to authenticated
+  using (public.is_workspace_member(workspace_id));
+
+create policy "Members can write content experiments"
+  on public.content_experiments for all to authenticated
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']))
+  with check (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']));
+
+create policy "Members can read conversion events"
+  on public.conversion_events for select to authenticated
+  using (public.is_workspace_member(workspace_id));
+
+create policy "Members can write conversion events"
+  on public.conversion_events for all to authenticated
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']))
+  with check (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']));
+
+create policy "Members can read creator operations"
+  on public.creator_operations for select to authenticated
+  using (public.is_workspace_member(workspace_id));
+
+create policy "Members can write creator operations"
+  on public.creator_operations for all to authenticated
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']))
+  with check (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']));
+
+create policy "Members can read content templates"
+  on public.content_templates for select to authenticated
+  using (public.is_workspace_member(workspace_id));
+
+create policy "Members can write content templates"
+  on public.content_templates for all to authenticated
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']))
+  with check (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']));
+
+create policy "Members can read operational alerts"
+  on public.operational_alerts for select to authenticated
+  using (public.is_workspace_member(workspace_id));
+
+create policy "Members can write operational alerts"
+  on public.operational_alerts for all to authenticated
   using (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']))
   with check (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst']));
 

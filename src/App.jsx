@@ -1148,6 +1148,11 @@ const defaultWorkspace = {
   contentReferences: defaultContentReferences,
   creatorGroups: defaultCreatorGroups,
   savedProductionReferenceIds: [],
+  contentExperiments: [],
+  conversionEvents: [],
+  creatorOperations: [],
+  contentTemplates: [],
+  operationalAlerts: [],
   activities: [
     {
       id: 9001,
@@ -1750,6 +1755,11 @@ function normalizeWorkspace(saved) {
     contentReferences: normalizeContentReferences(saved?.contentReferences ?? defaultWorkspace.contentReferences),
     creatorGroups: normalizeCreatorGroups(saved?.creatorGroups ?? defaultWorkspace.creatorGroups, normalizedCreators),
     savedProductionReferenceIds: saved?.savedProductionReferenceIds ?? defaultWorkspace.savedProductionReferenceIds,
+    contentExperiments: Array.isArray(saved?.contentExperiments) ? saved.contentExperiments : defaultWorkspace.contentExperiments,
+    conversionEvents: Array.isArray(saved?.conversionEvents) ? saved.conversionEvents : defaultWorkspace.conversionEvents,
+    creatorOperations: Array.isArray(saved?.creatorOperations) ? saved.creatorOperations : defaultWorkspace.creatorOperations,
+    contentTemplates: Array.isArray(saved?.contentTemplates) ? saved.contentTemplates : defaultWorkspace.contentTemplates,
+    operationalAlerts: Array.isArray(saved?.operationalAlerts) ? saved.operationalAlerts : defaultWorkspace.operationalAlerts,
     activities: normalizedActivities,
   }
 }
@@ -1817,6 +1827,60 @@ function contentEngagementRate(post) {
     Number(post.shares || 0) +
     Number(post.saves || 0)
   return (interactions / views) * 100
+}
+
+function buildOwnedContentStructureAnalysis(content = {}) {
+  const title = String(content.title || '').toLowerCase()
+  const conversions = Number(content.conversions || 0)
+  const engagementRate = Number(content.engagementRate || 0)
+  const viralRatio = Number(content.viralRatio || 0)
+
+  let pattern = '제품 경험 설득형'
+  let hook = '첫 장면에서 결과 또는 제품 사용 상황을 먼저 보여 관심을 확보'
+  let flow = '사용 맥락 제시 → 제품 사용 → 체감 포인트 설명 → 결과 정리'
+  let proof = '실사용 장면과 구체적인 제품 특징을 근거로 제시'
+
+  if (/(전후|비교|before|after)/.test(title)) {
+    pattern = '전후 비교형'
+    hook = '첫 3초에 사용 전·후 결과를 동시에 제시'
+    flow = '문제 상태 → 제품 사용 과정 → 변화 결과 → 핵심 차이 요약'
+    proof = '동일 조건의 전후 화면과 수치·기간을 함께 제시'
+  } else if (/(문제|해결|고민|solution)/.test(title)) {
+    pattern = '문제 해결형'
+    hook = '타깃이 즉시 공감할 문제 상황을 질문이나 장면으로 제시'
+    flow = '문제 공감 → 기존 방식의 한계 → 제품 사용 → 해결 결과'
+    proof = '사용 과정과 문제 해소 장면을 끊김 없이 연결'
+  } else if (/(일상|루틴|브이로그|daily|routine)/.test(title)) {
+    pattern = '일상 밀착형'
+    hook = '자연스러운 일상 장면 안에서 제품이 필요한 순간으로 시작'
+    flow = '생활 맥락 → 자연스러운 제품 등장 → 사용 반응 → 추천 이유'
+    proof = '광고 연출보다 실제 사용 환경과 크리에이터의 언어를 유지'
+  } else if (/(특징|설명|기능|포인트|feature)/.test(title)) {
+    pattern = '특징 설명형'
+    hook = '가장 차별적인 제품 특징 하나를 첫 문장으로 선언'
+    flow = '핵심 특징 → 사용법 → 장점 2~3개 → 적합한 사용자 정리'
+    proof = '기능 시연, 사양, 비교 가능한 근거를 화면에 함께 표기'
+  }
+
+  const cta = conversions > 0
+    ? '성과가 확인된 구매·랜딩 유도 문구와 링크 노출 타이밍을 유지'
+    : '댓글 질문 또는 저장·프로필 링크 확인 중 하나의 행동만 요청'
+  const signal = [
+    viralRatio >= 3 ? `조회 폭발 ${viralRatio.toFixed(1)}x` : '',
+    engagementRate >= 5 ? `참여율 ${engagementRate.toFixed(1)}%` : '',
+    conversions > 0 ? `전환 ${compactNumber(conversions)}건` : '',
+  ].filter(Boolean).join(' · ')
+
+  return {
+    pattern,
+    hook,
+    flow,
+    proof,
+    cta,
+    adaptation: '제품명·핵심 효익·사용 장면·CTA만 새 캠페인에 맞게 바꾸고 원본 문장과 화면은 복제하지 않음',
+    signal: signal || '제목·플랫폼·성과 메타데이터 기반 추정',
+    basis: content.transcript || content.script ? '원문·성과 데이터 분석' : '제목·성과 데이터 기반 추정 분석',
+  }
 }
 
 function normalizeCreatorMatchKey(value) {
@@ -5729,6 +5793,11 @@ function buildDataRoomExtendedRawCatalog({
   campaigns = [],
   recommendations = [],
   candidatePoolEvidence = [],
+  contentExperiments = [],
+  conversionEvents = [],
+  creatorOperations = [],
+  contentTemplates = [],
+  operationalAlerts = [],
 }) {
   const nowText = new Date().toLocaleString('ko-KR')
   const storageBase = backendConfig?.hasSupabase ? '팀 공유 DB public schema' : 'localStorage creatorops.workspace.v2'
@@ -5768,6 +5837,126 @@ function buildDataRoomExtendedRawCatalog({
   const append = (items) => [...rawData, ...items.filter((item) => !baseIds.has(item.id))]
 
   return append([
+    {
+      id: 'RAW-INT-EXP-001',
+      name: '콘텐츠 실험 버전 데이터',
+      scope: '내부',
+      category: '콘텐츠 실험',
+      description: '훅, CTA, 가이드, 포맷 버전별 집행 상태와 승자 판정을 저장합니다.',
+      purpose: '성과가 난 콘텐츠 구조를 다음 캠페인 전략과 가이드에 재사용',
+      method: 'DB 연동',
+      cycle: '이벤트 발생 시',
+      lastCollectedAt: contentExperiments.length ? nowText : '-',
+      nextCollectAt: '다음 실험 생성/상태 변경 시',
+      status: contentExperiments.length ? '정상' : '미수집',
+      sourceLocation: '캠페인 상세 > 콘텐츠 실험',
+      storageLocation: `${storageBase} / content_experiments`,
+      dashboardArea: '캠페인, 리포트, 데이터룸',
+      metricIds: ['MET-EXP-001', 'MET-TEMPLATE-001'],
+      ownerDept: 'Campaign Ops',
+      opsOwner: 'Campaign Manager',
+      techOwner: 'Backend/Data',
+      qualityIssue: contentExperiments.length ? '' : '실험 버전 미등록',
+      logLocation: 'audit_logs / content_experiments',
+      note: `${contentExperiments.length}개 실험 기록`,
+      active: true,
+    },
+    {
+      id: 'RAW-INT-CONV-001',
+      name: '전환 이벤트 원천 데이터',
+      scope: '내부',
+      category: '성과/전환',
+      description: '숏링크 클릭, 장바구니, 구매, 환불 이벤트를 크리에이터와 콘텐츠 단위로 저장합니다.',
+      purpose: '크리에이터별 매출, ROAS, CPA 및 콘텐츠 전환 성과 계산',
+      method: 'API / DB 연동',
+      cycle: '실시간 또는 일 1회',
+      lastCollectedAt: conversionEvents.length ? nowText : '-',
+      nextCollectAt: conversionEvents.length ? '다음 전환 이벤트 발생 시' : '스토어/분석 API 연결 후',
+      status: conversionEvents.length ? '정상' : '미수집',
+      sourceLocation: '숏링크 리다이렉트 / 스토어 주문 API / 수동 업로드',
+      storageLocation: `${storageBase} / conversion_events`,
+      dashboardArea: '리포트, 캠페인 진행현황, 데이터룸',
+      metricIds: ['MET-CONV-001', 'MET-CONV-002', 'MET-CONV-003'],
+      ownerDept: 'Performance Ops',
+      opsOwner: 'Performance Manager',
+      techOwner: 'Backend/Data',
+      qualityIssue: conversionEvents.length ? '' : '전환 이벤트 미연결',
+      logLocation: 'audit_logs / conversion_events',
+      note: `${conversionEvents.length}개 전환 이벤트`,
+      active: true,
+    },
+    {
+      id: 'RAW-INT-CREATOR-OPS-001',
+      name: '크리에이터 운영 단계 데이터',
+      scope: '내부',
+      category: '크리에이터 운영',
+      description: '신규, 검증, 성과형, 핵심 단계와 교육, 담당자, 다음 액션을 저장합니다.',
+      purpose: '대량 섭외 우선순위, 재섭외, 교체 및 육성 대상 관리',
+      method: 'DB 연동',
+      cycle: '상태 변경 시',
+      lastCollectedAt: creatorOperations.length ? nowText : '-',
+      nextCollectAt: '다음 후보/협업 상태 변경 시',
+      status: creatorOperations.length ? '정상' : '미수집',
+      sourceLocation: '발굴 / 후보 그룹 / 메시지 / 캠페인',
+      storageLocation: `${storageBase} / creator_operations`,
+      dashboardArea: '발굴, 후보 그룹, 메시지, 캠페인',
+      metricIds: ['MET-CREATOR-010', 'MET-OPS-010'],
+      ownerDept: 'Creator Ops',
+      opsOwner: 'Creator Manager',
+      techOwner: 'Backend/Data',
+      qualityIssue: creatorOperations.length ? '' : '운영 단계 미분류',
+      logLocation: 'audit_logs / creator_operations',
+      note: `${creatorOperations.length}명 운영 단계 기록`,
+      active: true,
+    },
+    {
+      id: 'RAW-INT-TEMPLATE-001',
+      name: '재사용 콘텐츠 템플릿 데이터',
+      scope: '내부',
+      category: '콘텐츠 자산',
+      description: '검증된 훅, 컷 구성, CTA, 채널별 가이드 구조를 승인 템플릿으로 저장합니다.',
+      purpose: '성과 콘텐츠를 브랜드와 크리에이터에 맞게 반복 제작',
+      method: 'DB 연동',
+      cycle: '승인/수정 시',
+      lastCollectedAt: contentTemplates.length ? nowText : '-',
+      nextCollectAt: '레퍼런스 차용 또는 실험 승자 승인 시',
+      status: contentTemplates.length ? '정상' : '미수집',
+      sourceLocation: '레퍼런스 분석 / 캠페인 가이드',
+      storageLocation: `${storageBase} / content_templates`,
+      dashboardArea: '레퍼런스, 캠페인 가이드',
+      metricIds: ['MET-TEMPLATE-001'],
+      ownerDept: 'Content Strategy',
+      opsOwner: 'Content Manager',
+      techOwner: 'Backend/Data',
+      qualityIssue: contentTemplates.length ? '' : '승인 템플릿 미등록',
+      logLocation: 'audit_logs / content_templates',
+      note: `${contentTemplates.length}개 템플릿`,
+      active: true,
+    },
+    {
+      id: 'RAW-INT-ALERT-001',
+      name: '운영 알림 및 병목 데이터',
+      scope: '내부',
+      category: '운영 자동화',
+      description: '무응답, 업로드 지연, 성과 급등, 재섭외, 교체 필요 이벤트를 저장합니다.',
+      purpose: '운영자가 오늘 처리할 일과 병목을 우선순위로 확인',
+      method: 'DB 연동',
+      cycle: '이벤트 발생 시',
+      lastCollectedAt: operationalAlerts.length ? nowText : '-',
+      nextCollectAt: '다음 SLA 점검 시',
+      status: operationalAlerts.some((item) => item.status === 'open') ? '지연' : operationalAlerts.length ? '정상' : '미수집',
+      sourceLocation: '메시지 / 캠페인 일정 / 콘텐츠 성과',
+      storageLocation: `${storageBase} / operational_alerts`,
+      dashboardArea: '대시보드 오늘 할 일, 메시지, 캠페인',
+      metricIds: ['MET-OPS-010'],
+      ownerDept: 'Operations',
+      opsOwner: 'Operations Manager',
+      techOwner: 'Backend/Data',
+      qualityIssue: '',
+      logLocation: 'audit_logs / operational_alerts',
+      note: `${operationalAlerts.filter((item) => item.status === 'open').length}개 미해결 알림`,
+      active: true,
+    },
     {
       id: 'RAW-EXT-SEARCH-001',
       name: '외부 검색 원본 결과',
@@ -6766,6 +6955,11 @@ function buildDataRoomExtendedMetricCatalog({
   campaigns = [],
   recommendations = [],
   candidatePoolEvidence = [],
+  contentExperiments = [],
+  conversionEvents = [],
+  creatorOperations = [],
+  contentTemplates = [],
+  operationalAlerts = [],
 }) {
   const rawName = (id) => rawData.find((item) => item.id === id)?.name ?? id
   const nowText = new Date().toLocaleString('ko-KR')
@@ -6796,7 +6990,26 @@ function buildDataRoomExtendedMetricCatalog({
   ).length
   const efficiencyMetricStatus = efficiencyRecommendationCount ? '정상' : '검증 필요'
   const learningMetricStatus = learningRecommendationCount ? '정상' : '검증 필요'
+  const purchaseEvents = conversionEvents.filter((event) => event.eventType === 'purchase')
+  const refundEvents = conversionEvents.filter((event) => event.eventType === 'refund')
+  const attributedSales =
+    purchaseEvents.reduce((sum, event) => sum + Number(event.eventValue || 0), 0) -
+    refundEvents.reduce((sum, event) => sum + Number(event.eventValue || 0), 0)
+  const trackedCost = creatorOperations.reduce((sum, item) => sum + Number(item.actualCost || 0), 0)
+  const openAlerts = operationalAlerts.filter((alert) => alert.status === 'open')
+  const winnerExperiments = contentExperiments.filter((experiment) => experiment.status === 'winner')
+  const approvedTemplates = contentTemplates.filter(
+    (template) => template.approved || template.status === 'approved',
+  )
+  const coreCreators = creatorOperations.filter((item) => item.stage === 'core')
   const rows = [
+    ['MET-EXP-001', '콘텐츠 실험 승자율', '콘텐츠 실험 번들', '내부', '훅, CTA, 가이드, 포맷 버전 중 승자로 확정된 실험 비율', 'count(status=winner) / count(completed experiments) * 100', ['RAW-INT-EXP-001', 'RAW-EXT-CONT-001'], '캠페인/실험 기준', '실험 상태 변경 시', contentExperiments.length ? '정상' : '검증 필요', '캠페인 상세, 리포트, 데이터룸', '승자 버전은 다음 전략과 가이드의 학습 원천으로만 사용', '완료 실험 3건 이상인데 승자 0건', '중간', '캠페인/데이터팀', 'content_experiments / audit_logs', `${contentExperiments.length}개 실험 · ${winnerExperiments.length}개 승자`],
+    ['MET-CONV-001', '기여 매출', '전환/매출 귀속 번들', '외부', '크리에이터 숏링크와 UTM에 귀속된 구매 금액에서 환불 금액을 차감한 매출', 'sum(purchase.event_value) - sum(refund.event_value)', ['RAW-INT-CONV-001', 'RAW-INT-UTM-001'], '캠페인/크리에이터 기준', '전환 이벤트 수신 시', conversionEvents.length ? '정상' : '검증 필요', '리포트, 캠페인 진행현황, 데이터룸', '콘텐츠 및 크리에이터별 실매출 기여도를 판단', '주문 ID 중복 또는 환불 금액이 구매 금액 초과', '높음', 'Growth/Data', 'conversion_events / order_attribution_logs', `${purchaseEvents.length}건 구매 · ${refundEvents.length}건 환불 · 귀속 매출 ${Math.max(attributedSales, 0).toLocaleString('ko-KR')}원`],
+    ['MET-CONV-002', '크리에이터 ROAS', '전환/매출 귀속 번들', '외부', '크리에이터별 기여 매출을 실제 협의/집행 비용으로 나눈 효율', 'attributed_sales / actual_cost * 100', ['RAW-INT-CONV-001', 'RAW-INT-CREATOR-OPS-001', 'RAW-INT-UTM-001'], '캠페인/크리에이터 기준', '전환 또는 비용 변경 시', attributedSales > 0 && trackedCost > 0 ? '정상' : '검증 필요', '리포트, 후보 그룹, 캠페인 진행현황', '재섭외 및 예산 재배분 판단에 사용', 'actual_cost=0 또는 ROAS 급변', '높음', 'Growth/Finance', 'conversion_events / creator_operations', trackedCost > 0 ? `귀속 매출 ${Math.max(attributedSales, 0).toLocaleString('ko-KR')}원 · 실제 비용 ${trackedCost.toLocaleString('ko-KR')}원` : '실제 비용 입력 필요'],
+    ['MET-CONV-003', '크리에이터 CPA', '전환/매출 귀속 번들', '외부', '크리에이터별 실제 비용을 환불 제외 구매 건수로 나눈 획득 비용', 'actual_cost / max(purchase_count - refunded_order_count, 1)', ['RAW-INT-CONV-001', 'RAW-INT-CREATOR-OPS-001'], '캠페인/크리에이터 기준', '전환 또는 비용 변경 시', purchaseEvents.length && trackedCost > 0 ? '정상' : '검증 필요', '리포트, 후보 그룹', '목표 CPA 이하의 크리에이터를 재사용 후보로 승격', '구매 0건 또는 주문 ID 누락', '높음', 'Growth/Finance', 'conversion_events / creator_operations', `${purchaseEvents.length}건 구매 기준`],
+    ['MET-OPS-010', '운영 SLA 및 병목 건수', '캠페인 운영 번들', '내부', '미응답, 업로드 지연, 교체 필요, 데이터 품질 이슈 중 아직 해결되지 않은 운영 알림 수', 'count(operational_alerts where status=open) grouped by alert_type and severity', ['RAW-INT-ALERT-001', 'RAW-INT-CREATOR-OPS-001'], '실시간', '알림/상태 변경 시', operationalAlerts.length ? (openAlerts.length ? '지연' : '정상') : '검증 필요', '대시보드 오늘 할 일, 캠페인, 메시지', '오픈 알림은 담당자와 기한 기준으로 처리', 'critical 미해결 또는 due_at 경과', '높음', 'Campaign Ops', 'operational_alerts / audit_logs', `${openAlerts.length}건 미해결`],
+    ['MET-CREATOR-010', '크리에이터 운영 단계 분포', '인플루언서 풀 관리 번들', '내부', '신규, 검증 중, 성과 확인, 핵심, 중단 단계별 크리에이터 수와 교육 완료 상태', 'count(creator_operations) grouped by stage and training_status', ['RAW-INT-CREATOR-OPS-001', 'RAW-INT-INF-001'], '전체', '운영 단계 변경 시', creatorOperations.length ? '정상' : '검증 필요', '발굴, 후보 그룹, 캠페인 진행현황', '성과와 교육을 통과한 후보만 핵심/재사용 풀로 승격', '단계 누락 또는 핵심인데 성과 이력 없음', '중간', 'Creator Ops', 'creator_operations / creator_performance_learning_map', `${creatorOperations.length}명 관리 · ${coreCreators.length}명 핵심`],
+    ['MET-TEMPLATE-001', '재사용 콘텐츠 템플릿 성과', '콘텐츠 가이드 번들', '내부', '외부 조사 레퍼런스와 자사 캠페인 성과 중 검증 후 승인된 콘텐츠 구조의 재사용 수와 후속 성과', 'approved(template) + count(reuse) + linked_owned_content_performance_snapshot', ['RAW-INT-TEMPLATE-001', 'RAW-INT-EXP-001', 'RAW-EXT-CONT-001', 'RAW-EXT-ENG-001'], '템플릿/캠페인 기준', '템플릿 승인 또는 콘텐츠 갱신 시', contentTemplates.length ? '정상' : '검증 필요', '캠페인 가이드, 리포트, 레퍼런스, 데이터룸', '타사 레퍼런스와 자사 성공 사례를 구분하고 승인된 구조만 브랜드/채널/크리에이터에 맞게 재작성', '성과 스냅샷이나 승인 사유가 없는 재사용 템플릿', '중간', 'Content/Data', 'content_templates / content_experiments / tracked_posts', `${contentTemplates.length}개 템플릿 · ${approvedTemplates.length}개 승인`],
     ['MET-AI-001', '브랜드-크리에이터 적합도', 'AI 매칭/가치생성 번들', '내부', '브랜드 브리프와 후보 프로필/성과를 조합하되 조회수, 광고 효율, 실제 업로드 성과 학습은 데이터가 있을 때만 반영하는 매칭 점수', 'base + platform_fit + category_fit + keyword_fit + performance_fit + efficiency_fit + conditional(actual_performance_learning) + safety_fit - risk_penalty', ['RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-POLICY-001', 'RAW-EXT-CHN-001', 'RAW-INT-QUALITY-001', 'RAW-EXT-CONT-001', BULK_TRACKING_RAW_SOURCE_ID, 'RAW-EXT-ENG-001'], '캠페인 기준', '후보 갱신 시', aiRecommendationStatus, '발굴, AI 추천', '80점 이상 우선 제안, 60점 미만 보류. 실제 성과 학습과 후보 풀 저장 근거는 쌓인 경우에만 가산/보정', '데이터 품질 50점 미만 또는 평균 조회수 1만 미만', '중간', 'PM/데이터', 'ai_generation_runs + data_quality_reviews + conditional: creator_performance_learning_map/candidatePoolEvidence', `${creators.length}명 후보 · 추천 ${recommendations.length}건 · 후보 풀 근거 ${candidatePoolEvidence.length}건 기준`, { conditionalRawIds: ['RAW-EXT-MON-VIDEO-001', 'RAW-INT-POOL-EVIDENCE-001'], conditionalLabel: '성과 학습/후보 저장 후 반영 raw' }],
     ['MET-AI-002', '데이터 품질 점수', 'AI 매칭/가치생성 번들', '내부', '공식 API 여부, 최신성, 국가/플랫폼 일치, 팔로워/조회수 확인 여부', 'official_source*35 + freshness*20 + metric_completeness*25 + country_match*20', ['RAW-INT-QUALITY-001', 'RAW-EXT-SEARCH-001', 'RAW-EXT-UNSUPPORTED-001'], '검색/저장 시', '실시간', '검증 필요', '발굴, 레퍼런스, 데이터룸', '80점 이상 운영 가능, 60점 이하는 보류 권장', '팔로워 미수집+국가 불일치', '중간', '데이터팀', 'data_quality_reviews', '키워드별 수동 검수 대체 지표'],
     ['MET-AI-003', '후보 우선순위 점수', 'AI 매칭/가치생성 번들', '내부', '평균 조회수, 팔로워 대비 조회 폭발계수, 참여율, 예상 CPV, 브랜드 적합도, 연락 가능성을 결합하고 실제 업로드 성과는 있는 후보만 보정', `campaign_country_match + performance_score*0.32 + efficiency_score*0.16 + conditional(actual_performance_learning_score) + brand_fit + keyword_fit + safety_fit - exclusion_penalty, then decision_gate(${recommendationPolicy.decisions.priority} > ${recommendationPolicy.decisions.keep} > ${recommendationPolicy.decisions.verify} > ${recommendationPolicy.decisions.hold})`, ['RAW-INT-INF-001', 'RAW-EXT-SEARCH-001', 'RAW-EXT-CHN-001', 'RAW-INT-AI-001', 'RAW-INT-AI-POLICY-001', 'RAW-EXT-CONT-001', BULK_TRACKING_RAW_SOURCE_ID, 'RAW-EXT-ENG-001'], '캠페인 기준', '후보 매칭/저장 시', aiRecommendationStatus, 'AI 추천, 메시지 전 후보 풀', `${recommendationPolicy.decisions.hold} 후보는 AI 추천 실행 결과에서 제외하고, ${recommendationPolicy.decisions.priority}/${recommendationPolicy.decisions.keep}/${recommendationPolicy.decisions.verify} 순으로 메시지 전 후보 풀에 전환`, `팔로워 ${compactNumber(recommendationPolicy.minimumFollowers)} 미만, 평균 조회수 ${compactNumber(recommendationPolicy.minimumAverageViews)} 미만+팔로워 대비 조회 ${recommendationPolicy.minimumVirality}x 미만, 국가 불일치. 단 실제 추적 성과가 강한 후보는 성과 학습 점수로 보정`, '중간', 'PM/데이터', 'creator scoring logs + conditional: report_metric_snapshots/candidate_pool_evidence_events', `추천 ${recommendations.length}건 · 후보 풀 근거 ${candidatePoolEvidence.length}건 · 광고 효율 후보를 먼저 추천하도록 팔로워 규모보다 평균 조회/폭발계수/CPV/실제 성과를 우선 반영`, { conditionalRawIds: ['RAW-EXT-MON-VIDEO-001', 'RAW-INT-POOL-EVIDENCE-001'], conditionalLabel: '성과 학습/후보 저장 후 반영 raw' }],
@@ -6896,14 +7109,14 @@ function buildDataRoomWorkflowCoverage({ rawData, metrics }) {
   const rawIds = new Set(rawData.map((item) => item.id))
   const metricIds = new Set(metrics.map((item) => item.id))
   const coverage = [
-    ['WF-DASHBOARD', '대시보드 운영 현황', '대시보드', ['RAW-INT-CRM-001', 'RAW-INT-INF-001', 'RAW-INT-CMP-001', 'RAW-EXT-CHN-001', 'RAW-EXT-SNS-001', 'RAW-EXT-CONT-001'], ['MET-CRM-004', 'MET-CMP-001', 'MET-CONT-005', 'MET-SNS-001'], '캠페인/메시지/콘텐츠 성과를 현재 워크스페이스 기준으로 집계', '프론트 카드 수치는 데이터룸 계산지표 기준으로 표시'],
-    ['WF-CAMPAIGN', '캠페인 파이프라인', '캠페인', ['RAW-INT-CMP-001', 'RAW-INT-BRD-001', 'RAW-INT-FIN-001'], ['MET-CMP-001', 'MET-CMP-002', 'MET-CMP-004'], '캠페인 브리프, 일정, 섭외 완료, 배송/정산 레코드를 캠페인 ID로 묶음', '캠페인 없는 배송/정산/후보 풀은 노출하지 않음'],
+    ['WF-DASHBOARD', '대시보드 운영 현황', '대시보드', ['RAW-INT-CRM-001', 'RAW-INT-INF-001', 'RAW-INT-CMP-001', 'RAW-EXT-CHN-001', 'RAW-EXT-SNS-001', 'RAW-EXT-CONT-001', 'RAW-INT-ALERT-001'], ['MET-CRM-004', 'MET-CMP-001', 'MET-CONT-005', 'MET-SNS-001', 'MET-OPS-010'], '캠페인/메시지/콘텐츠 성과와 처리할 운영 알림을 현재 워크스페이스 기준으로 집계', '프론트 카드 수치는 데이터룸 계산지표 기준으로 표시'],
+    ['WF-CAMPAIGN', '캠페인 파이프라인', '캠페인', ['RAW-INT-CMP-001', 'RAW-INT-BRD-001', 'RAW-INT-FIN-001', 'RAW-INT-EXP-001', 'RAW-INT-CREATOR-OPS-001', 'RAW-INT-ALERT-001'], ['MET-CMP-001', 'MET-CMP-002', 'MET-CMP-004', 'MET-EXP-001', 'MET-OPS-010', 'MET-CREATOR-010'], '캠페인 브리프, 일정, 섭외 완료, 실험 버전, 크리에이터 단계, 배송/정산 레코드를 캠페인 ID로 묶음', '캠페인 없는 배송/정산/후보 풀은 노출하지 않음'],
     ['WF-DISCOVERY', '크리에이터 발굴 검색', '발굴', ['RAW-EXT-SEARCH-001', 'RAW-EXT-CHN-001', 'RAW-INT-QUALITY-001'], ['MET-AI-002', 'MET-AI-003'], '검색 원본 결과를 수집하고 국가/플랫폼/최소 팔로워/평균 조회수 기준으로 품질 판정', '데이터룸에 검색 원천이 없으면 실제 발굴 결과로 쓰지 않음'],
     ['WF-AI-RECOMMEND', 'AI 추천 후보와 근거', '발굴', ['RAW-INT-BRD-001', 'RAW-INT-CMP-BRIEF-001', 'RAW-INT-INF-001', 'RAW-INT-AI-001', 'RAW-INT-AI-POLICY-001', 'RAW-INT-QUALITY-001', 'RAW-EXT-CONT-001', 'RAW-EXT-ENG-001'], ['MET-AI-001', 'MET-AI-002', 'MET-AI-003', 'MET-AI-004', 'MET-AI-005', 'MET-AI-006'], '브랜드 브리프와 캠페인 전략/가이드, 후보 성과/품질 점수를 조합해 추천 이유와 리스크 생성. 실제 업로드 성과 학습과 후보 풀 근거는 데이터가 쌓인 뒤 조건부로 반영', '추천 근거에는 사용 raw ID, 품질 점수, 성과 학습 여부, 전략 반영 여부가 남아야 함', { conditionalRawIds: ['RAW-EXT-MON-VIDEO-001', 'RAW-INT-POOL-EVIDENCE-001'], conditionalLabel: '성과 학습/후보 풀 저장 후 반영' }],
     ['WF-CANDIDATE-POOL', '메시지 전 후보 풀', '발굴/메시지', ['RAW-INT-INF-001', 'RAW-INT-QUALITY-001', 'RAW-INT-POOL-EVIDENCE-001'], ['MET-POOL-001', 'MET-AI-003'], '저장된 후보만 메시지 전 풀로 이동하고 삭제 시 메시지 대기 리스트와 함께 정리', '풀에 없는 후보는 메시지 일괄 생성 대상이 아니며, 후보 풀 근거 raw가 없으면 추천 사유를 확정값으로 표시하지 않음'],
     ['WF-MESSAGE', '제안/응답 발송', '메시지', ['RAW-INT-CRM-001', 'RAW-INT-AI-001', 'RAW-INT-EXPORT-001', UTM_RAW_SOURCE_ID], ['MET-CRM-001', 'MET-CRM-004', 'MET-CRM-005', UTM_CLICK_METRIC_ID, UTM_REVENUE_METRIC_ID], '이메일 가능 후보는 발송 로그, DM 대상은 작업용 엑셀/복사 로그로 분리', 'DM 우회 자동화는 정책상 raw로 두지 않고 작업 로그만 관리'],
-    ['WF-REPORT', '콘텐츠 추적/리포트', '리포트', ['RAW-INT-CMP-001', 'RAW-EXT-CONT-001', BULK_TRACKING_RAW_SOURCE_ID, 'RAW-EXT-ENG-001', 'RAW-EXT-UNSUPPORTED-001'], ['MET-SNS-001', 'MET-SNS-006', 'MET-CONT-001', 'MET-CONT-004'], '업로드 URL 기준으로 공개 지표를 갱신하고 미지원 지표는 수집 필요로 표시', '데이터룸에 저장되지 않은 수치는 보고서에 확정값으로 표시하지 않음'],
-    ['WF-REFERENCE', '콘텐츠 레퍼런스 검색/저장', '레퍼런스', ['RAW-EXT-SEARCH-001', 'RAW-EXT-REF-001', 'RAW-EXT-BENCH-001', 'RAW-INT-QUALITY-001'], ['MET-BENCH-001', 'MET-BENCH-002', 'MET-BENCH-003'], '50만 이상 또는 팔로워 대비 터진 콘텐츠를 우선 수집하고 품질 기준 미달은 제외', '검색 결과 원문이 없는 레퍼런스는 저장 링크 검증 대상으로 둠'],
+    ['WF-REPORT', '콘텐츠 추적/리포트', '리포트', ['RAW-INT-CMP-001', 'RAW-EXT-CONT-001', BULK_TRACKING_RAW_SOURCE_ID, 'RAW-EXT-ENG-001', 'RAW-EXT-UNSUPPORTED-001', 'RAW-INT-CONV-001', 'RAW-INT-TEMPLATE-001'], ['MET-SNS-001', 'MET-SNS-006', 'MET-CONT-001', 'MET-CONT-004', 'MET-CONV-001', 'MET-CONV-002', 'MET-CONV-003', 'MET-TEMPLATE-001'], '업로드 URL 기준 공개 성과와 UTM 전환 이벤트를 갱신하고 콘텐츠 템플릿별 매출 기여를 연결', '데이터룸에 저장되지 않은 수치는 보고서에 확정값으로 표시하지 않음'],
+    ['WF-REFERENCE', '콘텐츠 레퍼런스 검색/저장', '레퍼런스', ['RAW-EXT-SEARCH-001', 'RAW-EXT-REF-001', 'RAW-EXT-BENCH-001', 'RAW-INT-QUALITY-001', 'RAW-INT-TEMPLATE-001'], ['MET-BENCH-001', 'MET-BENCH-002', 'MET-BENCH-003', 'MET-TEMPLATE-001'], '50만 이상 또는 팔로워 대비 터진 콘텐츠를 우선 수집하고 검토 승인된 구조만 재사용 템플릿으로 저장', '검색 결과 원문이 없거나 승인되지 않은 레퍼런스는 가이드 자동 반영에서 제외'],
     ['WF-GUIDE', '전략/콘텐츠 가이드 생성', '캠페인 상세/레퍼런스', ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001', 'RAW-INT-INF-001', 'RAW-EXT-REF-001', 'RAW-INT-AI-001', UTM_RAW_SOURCE_ID], ['MET-AI-GEN-001', 'MET-AI-GEN-002', 'MET-AI-GEN-003', 'MET-GUIDE-001', 'MET-BENCH-002', UTM_CLICK_METRIC_ID, UTM_REVENUE_METRIC_ID], '캠페인 생성 입력 raw와 저장 레퍼런스를 원메시지/후킹/스크립트 구조로 변환하고, 섭외/배정 크리에이터 기준으로 개별 전달 가이드를 생성', '전략/공통 가이드/개별 가이드 산출물은 캠페인 raw와 AI 실행 로그에 남김'],
     ['WF-EXPORT', '엑셀/시트/DOCX/PPT 내보내기', '발굴/리포트/캠페인', ['RAW-INT-EXPORT-001', 'RAW-INT-INF-001', 'RAW-INT-CMP-001'], ['MET-EXPORT-001'], '광고주 전달 산출물 생성 시 데이터 버전과 다운로드 종류를 기록', '내보내기 로그가 없으면 전달본 기준 추적 불가'],
     ['WF-AUTH', '팀/권한 설정', '설정/데이터룸', ['RAW-INT-AUTH-001', 'RAW-INT-OPS-001'], ['MET-AUTH-001'], '워크스페이스/브랜드/캠페인 단위 권한으로 같은 풀 접근 범위 제어', '권한 데이터룸 없는 화면은 내부 운영자 전용으로 제한'],
@@ -6911,7 +7124,7 @@ function buildDataRoomWorkflowCoverage({ rawData, metrics }) {
 
   coverage.push(
     ['WF-BRAND-TRACKING', '브랜드/경쟁사 검색 및 추적', '레퍼런스/브랜드 인사이트', ['RAW-EXT-SEARCH-001', 'RAW-EXT-BRAND-001', 'RAW-EXT-BENCH-001', 'RAW-INT-QUALITY-001'], ['MET-BRAND-001', 'MET-BRAND-002', 'MET-BENCH-001'], '경쟁사 저장 raw를 기반으로 브랜드 비교/벤치마크 지표를 생성', '브랜드 추적 raw가 없으면 브랜드 인사이트 경쟁 지표는 비활성 또는 샘플로 표시'],
-    ['WF-GROUPS', '후보 그룹/세그먼트 관리', '후보 그룹/메시지', ['RAW-INT-GROUP-001', BULK_CREATOR_GROUP_RAW_SOURCE_ID, 'RAW-INT-INF-001'], ['MET-POOL-006', 'MET-POOL-001'], '후보 그룹 raw의 creatorIds를 후보 풀과 캠페인 배정으로 연결', '후보 그룹에 없는 후보는 메시지 대량 발송 대상으로 자동 포함하지 않음'],
+    ['WF-GROUPS', '후보 그룹/세그먼트 관리', '후보 그룹/메시지', ['RAW-INT-GROUP-001', BULK_CREATOR_GROUP_RAW_SOURCE_ID, 'RAW-INT-INF-001', 'RAW-INT-CREATOR-OPS-001'], ['MET-POOL-006', 'MET-POOL-001', 'MET-CREATOR-010', 'MET-CONV-002', 'MET-CONV-003'], '후보 그룹 raw의 creatorIds를 캠페인 배정, 운영 단계, 실제 단가, 재섭외 판단으로 연결', '후보 그룹에 없는 후보는 메시지 대량 발송 대상으로 자동 포함하지 않음'],
   )
 
   const workflowRawAugments = {
@@ -7338,6 +7551,11 @@ function App() {
     shortLinkClickLogs,
     orderAttributionLogs,
     couponRedemptionLogs,
+    contentExperiments,
+    conversionEvents,
+    creatorOperations,
+    contentTemplates,
+    operationalAlerts,
     contentReferences,
     creatorGroups,
     savedProductionReferenceIds,
@@ -8698,6 +8916,11 @@ function App() {
         campaigns: operationalCampaigns,
         recommendations: operationalRecommendations,
         candidatePoolEvidence: operationalCandidatePoolEvidence,
+        contentExperiments,
+        conversionEvents,
+        creatorOperations,
+        contentTemplates,
+        operationalAlerts,
       }),
     [
       backendConfig,
@@ -8718,6 +8941,11 @@ function App() {
       operationalOrderAttributionLogs,
       operationalCouponRedemptionLogs,
       operationalTrackedPosts,
+      contentExperiments,
+      conversionEvents,
+      creatorOperations,
+      contentTemplates,
+      operationalAlerts,
     ],
   )
   const dataRoomMetrics = useMemo(
@@ -8745,6 +8973,11 @@ function App() {
         campaigns: operationalCampaigns,
         recommendations: operationalRecommendations,
         candidatePoolEvidence: operationalCandidatePoolEvidence,
+        contentExperiments,
+        conversionEvents,
+        creatorOperations,
+        contentTemplates,
+        operationalAlerts,
       }),
     [
       dataRoomRawData,
@@ -8763,6 +8996,11 @@ function App() {
       operationalOrderAttributionLogs,
       operationalCouponRedemptionLogs,
       operationalTrackedPosts,
+      contentExperiments,
+      conversionEvents,
+      creatorOperations,
+      contentTemplates,
+      operationalAlerts,
     ],
   )
   const dataRoomDisplayGate = useMemo(
@@ -8806,6 +9044,65 @@ function App() {
       topEntries: entries.slice(0, 3),
     }
   }, [creatorPerformanceLearningMap, creators, dataRoomDisplayGate])
+  const ownedCampaignLearningRows = useMemo(() => {
+    const rows = selectedCampaignTrackedPosts
+      .map((post) => {
+        const creator = creators.find((item) => item.id === post.creatorId)
+        const views = Number(post.views || 0)
+        const followers = Number(creator?.followers || 0)
+        const engagementRate = contentEngagementRate(post)
+        const conversions = Number(post.conversions || 0)
+        return {
+          ...post,
+          creatorName: creator?.name || '크리에이터 미확인',
+          handle: creator?.handle || '',
+          followers,
+          views,
+          engagementRate,
+          conversions,
+          viralRatio: followers ? views / followers : 0,
+        }
+      })
+      .filter((row) => row.views || row.engagementRate || row.conversions)
+    const averageViews = rows.length
+      ? rows.reduce((sum, row) => sum + row.views, 0) / rows.length
+      : 0
+
+    return rows
+      .map((row) => {
+        const reasons = []
+        if (row.viralRatio >= 3) reasons.push(`팔로워 대비 조회 ${row.viralRatio.toFixed(1)}배`)
+        if (row.engagementRate >= 5) reasons.push(`참여율 ${row.engagementRate.toFixed(1)}%`)
+        if (averageViews > 0 && row.views >= averageViews * 1.5) {
+          reasons.push(`캠페인 평균 조회 대비 ${(row.views / averageViews).toFixed(1)}배`)
+        }
+        if (row.conversions > 0) reasons.push(`전환 ${compactNumber(row.conversions)}건`)
+        const approvedTemplate = contentTemplates.find(
+          (template) =>
+            template.sourceType === 'owned_campaign' &&
+            String(template.sourceContentId) === String(row.id) &&
+            String(template.campaignId) === String(selectedCampaign?.id ?? ''),
+        )
+        return {
+          ...row,
+          reasons,
+          isBreakout: reasons.length > 0,
+          approvedTemplate,
+          structureAnalysis: buildOwnedContentStructureAnalysis(row),
+        }
+      })
+      .sort(
+        (a, b) =>
+          Number(b.isBreakout) - Number(a.isBreakout) ||
+          b.conversions - a.conversions ||
+          b.viralRatio - a.viralRatio ||
+          b.views - a.views,
+      )
+  }, [contentTemplates, creators, selectedCampaign?.id, selectedCampaignTrackedPosts])
+  const externalReferenceTemplates = useMemo(
+    () => contentTemplates.filter((template) => template.sourceType !== 'owned_campaign'),
+    [contentTemplates],
+  )
   const visibleWorkflowSignals = useMemo(
     () =>
       workflowSignals
@@ -14679,6 +14976,21 @@ function App() {
       id: createId(),
       createdAt: nowLabel(),
     }
+    const template = {
+      id: `template-${createId()}`,
+      workspaceId: workspace.id,
+      brandId: activeBrand.id,
+      campaignId: selectedCampaign?.id ?? '',
+      referenceId: referenceGuideUsage.referenceId,
+      name: referenceGuideUsage.referenceTitle,
+      platform: referenceGuideUsage.material?.platform ?? '',
+      status: 'approved',
+      structure: referenceGuideUsage.material?.doSay ?? '',
+      scopes: ['첫 3초 후킹', '컷 흐름', '제품 등장 타이밍', '근거 제시', 'CTA'],
+      reuseCount: 0,
+      createdAt: nowLabel(),
+      updatedAt: nowLabel(),
+    }
     updateWorkspace((current) =>
       appendActivity(
         {
@@ -14694,12 +15006,159 @@ function App() {
                 }
               : brand,
           ),
+          contentTemplates: [
+            template,
+            ...(current.contentTemplates ?? []).filter(
+              (item) =>
+                !(
+                  item.referenceId === referenceGuideUsage.referenceId &&
+                  item.campaignId === (selectedCampaign?.id ?? '')
+                ),
+            ),
+          ],
         },
         'reference',
-        `${referenceGuideUsage.referenceTitle} 제작 레퍼런스를 AI 가이드 참고자료로 저장`,
+        `${referenceGuideUsage.referenceTitle} 제작 레퍼런스를 승인된 재사용 템플릿으로 저장`,
       ),
     )
-    showToast('AI 가이드 생성 참고자료로 저장했어요. 다음 가이드 생성부터 반영됩니다.')
+    showToast('재사용 템플릿으로 승인했어요. 다음 전략·가이드 생성부터 반영됩니다.')
+  }
+
+  const approveOwnedCampaignTemplate = (content) => {
+    if (!content || !selectedCampaign) return
+    if (!content.reasons?.length) {
+      showToast('재사용 근거가 아직 부족합니다. 조회수·참여율·전환 raw를 먼저 갱신하세요.')
+      return
+    }
+
+    const template = {
+      id: content.approvedTemplate?.id || `template-${createId()}`,
+      workspaceId: workspace.id,
+      brandId: activeBrand.id,
+      campaignId: selectedCampaign.id,
+      sourceType: 'owned_campaign',
+      sourceContentId: content.id,
+      name: content.title || `${content.creatorName} 성과 콘텐츠`,
+      platform: content.platform || '',
+      status: 'approved',
+      structure: [
+        content.structureAnalysis?.hook,
+        content.structureAnalysis?.flow,
+        content.structureAnalysis?.proof,
+        content.structureAnalysis?.cta,
+      ].filter(Boolean).join(' → '),
+      scopes: [
+        content.structureAnalysis?.pattern || '첫 3초 후킹',
+        '전개 순서',
+        '증거 장치',
+        'CTA',
+        '캠페인별 변형 원칙',
+      ],
+      structureAnalysis: content.structureAnalysis,
+      performanceReason: content.reasons.join(' · '),
+      performanceSnapshot: {
+        views: content.views,
+        followers: content.followers,
+        viralRatio: Number(content.viralRatio.toFixed(2)),
+        engagementRate: Number(content.engagementRate.toFixed(2)),
+        conversions: content.conversions,
+        contentUrl: content.url || '',
+        measuredAt: content.lastChecked || nowLabel(),
+      },
+      reuseCount: Number(content.approvedTemplate?.reuseCount || 0),
+      createdAt: content.approvedTemplate?.createdAt || nowLabel(),
+      updatedAt: nowLabel(),
+    }
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          contentTemplates: [
+            template,
+            ...(current.contentTemplates ?? []).filter(
+              (item) =>
+                !(
+                  item.sourceType === 'owned_campaign' &&
+                  String(item.sourceContentId) === String(content.id) &&
+                  String(item.campaignId) === String(selectedCampaign.id)
+                ),
+            ),
+          ],
+        },
+        'report',
+        `${template.name} 성과 근거 확인 · 재사용 템플릿 승인`,
+      ),
+    )
+    showToast('우리 캠페인 성과 템플릿으로 승인했어요. 다음 전략·가이드 생성부터 반영됩니다.')
+  }
+
+  const seedReportDemoData = () => {
+    if (!selectedCampaign) {
+      showToast('먼저 캠페인을 선택해주세요.')
+      return
+    }
+
+    const assignedCreatorIds = new Set(
+      [
+        ...(selectedCampaign.creatorIds ?? []),
+        ...activeRecruitedPool
+          .filter((item) => String(item.campaignId) === String(selectedCampaign.id))
+          .map((item) => item.creatorId),
+      ].map(String),
+    )
+    const demoCreators = [
+      ...creators.filter((creator) => assignedCreatorIds.has(String(creator.id))),
+      ...creators.filter((creator) => !assignedCreatorIds.has(String(creator.id))),
+    ].slice(0, 4)
+
+    if (!demoCreators.length) {
+      showToast('데모 성과를 연결할 크리에이터가 없습니다.')
+      return
+    }
+
+    const demoMetrics = [
+      { title: '3초 전후 비교형 제품 리뷰', views: 1320000, likes: 86400, comments: 3420, shares: 12800, saves: 19700, conversions: 438 },
+      { title: '사용 장면 문제 해결형 숏폼', views: 486000, likes: 39100, comments: 1870, shares: 6200, saves: 8400, conversions: 176 },
+      { title: '크리에이터 일상 밀착형 리뷰', views: 214000, likes: 9800, comments: 520, shares: 1100, saves: 2400, conversions: 62 },
+      { title: '제품 특징 설명형 콘텐츠', views: 78000, likes: 2100, comments: 94, shares: 160, saves: 410, conversions: 11 },
+    ]
+    const checkedAt = nowLabel()
+    const demoPosts = demoCreators.map((creator, index) => ({
+      id: `demo-report-${selectedCampaign.id}-${creator.id}`,
+      campaignId: selectedCampaign.id,
+      creatorId: creator.id,
+      platform: creator.platform || ['YouTube', 'Instagram', 'TikTok'][index % 3],
+      title: demoMetrics[index].title,
+      url: creator.channelUrl || creator.url || '',
+      status: '추적 중',
+      publishedAt: index === 0 ? '오늘 09:20' : `${index + 1}일 전`,
+      ...demoMetrics[index],
+      lastChecked: checkedAt,
+      sourceType: 'demo',
+      sourceRawId: 'RAW-EXT-CONT-001',
+    }))
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          trackedPosts: [
+            ...demoPosts,
+            ...(current.trackedPosts ?? []).filter(
+              (post) =>
+                !(
+                  String(post.campaignId) === String(selectedCampaign.id) &&
+                  String(post.id).startsWith(`demo-report-${selectedCampaign.id}-`)
+                ),
+            ),
+          ],
+        },
+        'report',
+        `${selectedCampaign.name} 리포트 데모 성과 ${demoPosts.length}건 적재`,
+      ),
+    )
+    showToast(`데모 콘텐츠 ${demoPosts.length}건을 적재했습니다. 재사용 승인 버튼까지 확인할 수 있습니다.`)
   }
 
   const activeCampaignForModal =
@@ -17498,6 +17957,39 @@ function App() {
                 </div>
               </div>
             )}
+            <div className="production-reference-templates">
+              <div className="production-reference-head">
+                <div>
+                  <span className="mini-label">승인 자산</span>
+                  <strong>재사용 콘텐츠 템플릿</strong>
+                  <p>분석 후 가이드 차용을 승인한 구조입니다. 다음 캠페인의 전략·공통 가이드·개별 가이드 생성 시 AI 참고자료로 사용됩니다.</p>
+                </div>
+                <span>{externalReferenceTemplates.length}개</span>
+              </div>
+              {externalReferenceTemplates.length === 0 ? (
+                <div className="empty-state compact-empty">
+                  <BookmarkCheck size={22} />
+                  <strong>아직 승인된 재사용 템플릿이 없습니다.</strong>
+                  <p>저장 레퍼런스를 분석한 뒤 가이드 차용을 누르면 여기에 등록됩니다.</p>
+                </div>
+              ) : (
+                <div className="production-reference-list">
+                  {externalReferenceTemplates.map((template) => (
+                    <article key={template.id}>
+                      <div>
+                        <strong>{template.name}</strong>
+                        <span>
+                          {template.platform || '플랫폼 미확인'} · 승인됨 · {template.reuseCount ?? 0}회 사용
+                        </span>
+                      </div>
+                      <div className="production-reference-actions">
+                        <span className="status-badge success">승인</span>
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
           )}
 
@@ -18112,6 +18604,126 @@ function App() {
                 </button>
               </div>
             </div>
+
+            <section className="owned-campaign-learning">
+              <div className="owned-learning-head">
+                <div>
+                  <span className="mini-label">우리 캠페인 성과 학습</span>
+                  <strong>터진 콘텐츠와 재사용 근거</strong>
+                  <p>
+                    타사 레퍼런스가 아니라 선택 캠페인에서 실제 업로드하고 추적한 콘텐츠만 비교합니다.
+                    조회수 폭발, 참여율, 캠페인 평균 대비 성과와 전환을 근거로 다음 캠페인에 재사용할 구조를 승인합니다.
+                  </p>
+                </div>
+                <div className="owned-learning-summary">
+                  <span>추적 <strong>{ownedCampaignLearningRows.length}건</strong></span>
+                  <span>성과 확인 <strong>{ownedCampaignLearningRows.filter((row) => row.isBreakout).length}건</strong></span>
+                  <span>재사용 승인 <strong>{ownedCampaignLearningRows.filter((row) => row.approvedTemplate).length}건</strong></span>
+                </div>
+              </div>
+
+              <div className="owned-learning-lineage">
+                <button className="secondary-button compact-button" type="button" onClick={seedReportDemoData}>
+                  데모 성과 채우기
+                </button>
+                {['RAW-EXT-CONT-001', 'RAW-EXT-ENG-001', 'RAW-INT-TEMPLATE-001'].map((rawId) => (
+                  <button className="lineage-chip" type="button" key={rawId} onClick={() => openDataRoomRaw(rawId)}>
+                    {rawId}
+                  </button>
+                ))}
+                <button className="lineage-chip metric-chip" type="button" onClick={() => openDataRoomMetric('MET-TEMPLATE-001')}>
+                  MET-TEMPLATE-001
+                </button>
+              </div>
+
+              {ownedCampaignLearningRows.length ? (
+                <div className="owned-learning-list">
+                  {ownedCampaignLearningRows.map((content) => (
+                    <article key={content.id} className={content.isBreakout ? 'is-breakout' : undefined}>
+                      <div className="owned-learning-content">
+                        <div className="owned-learning-title">
+                          <span className={`status-badge ${content.isBreakout ? 'success' : 'warning'}`}>
+                            {content.isBreakout ? '성과 확인' : '검증 대기'}
+                          </span>
+                          <strong>{content.title || '제목 미입력 콘텐츠'}</strong>
+                        </div>
+                        <p>
+                          {content.creatorName} · {content.platform || '플랫폼 미확인'}
+                          {content.handle ? ` · ${content.handle}` : ''}
+                        </p>
+                        <div className="owned-learning-metrics">
+                          <span>조회 <strong>{compactNumber(content.views)}</strong></span>
+                          <span>팔로워 대비 <strong>{content.followers ? `${content.viralRatio.toFixed(1)}x` : '-'}</strong></span>
+                          <span>참여율 <strong>{percent(content.engagementRate)}</strong></span>
+                          <span>전환 <strong>{compactNumber(content.conversions)}</strong></span>
+                        </div>
+                      </div>
+                      <div className="owned-learning-reason">
+                        <span>성과 사유</span>
+                        <strong>{content.reasons.length ? content.reasons.join(' · ') : '비교 가능한 성과 근거가 아직 부족합니다.'}</strong>
+                        <small>승인 시 이 사유와 현재 성과 스냅샷이 데이터룸 재사용 템플릿 raw에 저장됩니다.</small>
+                      </div>
+                      <div className="owned-learning-actions">
+                        {content.url ? (
+                          <a className="secondary-button compact-button" href={content.url} target="_blank" rel="noreferrer">
+                            콘텐츠 보기
+                          </a>
+                        ) : null}
+                        <button
+                          className={content.approvedTemplate ? 'secondary-button compact-button' : 'primary-button compact-button'}
+                          type="button"
+                          disabled={!content.isBreakout || Boolean(content.approvedTemplate)}
+                          onClick={() => approveOwnedCampaignTemplate(content)}
+                        >
+                          {content.approvedTemplate ? '재사용 승인됨' : '재사용 템플릿 승인'}
+                        </button>
+                      </div>
+                      <details className="owned-structure-analysis">
+                        <summary>
+                          <span>재사용 구조 분석</span>
+                          <small>{content.structureAnalysis.basis}</small>
+                        </summary>
+                        <div className="owned-structure-grid">
+                          <div>
+                            <span>구조 유형</span>
+                            <strong>{content.structureAnalysis.pattern}</strong>
+                          </div>
+                          <div>
+                            <span>후킹</span>
+                            <strong>{content.structureAnalysis.hook}</strong>
+                          </div>
+                          <div>
+                            <span>전개 순서</span>
+                            <strong>{content.structureAnalysis.flow}</strong>
+                          </div>
+                          <div>
+                            <span>증거 장치</span>
+                            <strong>{content.structureAnalysis.proof}</strong>
+                          </div>
+                          <div>
+                            <span>CTA</span>
+                            <strong>{content.structureAnalysis.cta}</strong>
+                          </div>
+                          <div>
+                            <span>재사용 원칙</span>
+                            <strong>{content.structureAnalysis.adaptation}</strong>
+                          </div>
+                        </div>
+                        <p className="owned-structure-signal">
+                          선택 근거: {content.structureAnalysis.signal}
+                        </p>
+                      </details>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state compact-empty">
+                  <BarChart3 size={22} />
+                  <strong>이 캠페인에서 비교할 콘텐츠 성과가 아직 없습니다.</strong>
+                  <p>리포트의 콘텐츠 추적에 업로드 URL을 등록하면 갱신된 raw를 기준으로 성과 사유를 계산합니다.</p>
+                </div>
+              )}
+            </section>
 
             {recommendationLearningSummary.canShow && (recommendationLearningSummary.creatorCount > 0 || reportVideoRows.length > 0) && (
               <div className="report-learning-loop">
