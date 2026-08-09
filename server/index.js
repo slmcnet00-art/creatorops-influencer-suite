@@ -794,11 +794,40 @@ app.post('/ai/outreach-message', async (request, response, next) => {
 
 app.post('/ai/content-guide', async (request, response, next) => {
   try {
-    const { brand, campaign, seedingType, channel, references } = request.body || {}
+    const { brand, campaign, seedingType, channel, references, draftGuide } = request.body || {}
     const config = await getActiveAiFeatureConfig('content-guide')
-    const prompt = applyAdminKnowledge(buildContentGuidePrompt({ brand, campaign, seedingType, channel, references }), config)
+    const prompt = applyAdminKnowledge(buildContentGuidePrompt({ brand, campaign, seedingType, channel, references, draftGuide }), config)
     const guide = await callOpenAIText(prompt)
-    response.json({ data: { guide, policyVersion: config?.version || null, policyFeatureKey: config?.featureKey || null } })
+    response.json({
+      data: {
+        guide,
+        policyVersion: config?.version || null,
+        policyFeatureKey: config?.featureKey || null,
+        sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-AI-POLICY-001', ...(config ? ['RAW-INT-AI-KNOWLEDGE-001'] : [])],
+      },
+    })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/ai/campaign-strategy', async (request, response, next) => {
+  try {
+    const { brand, campaign, brief, creators, recommendations, draftStrategy } = request.body || {}
+    const config = await getActiveAiFeatureConfig('campaign-strategy')
+    const prompt = applyAdminKnowledge(
+      buildCampaignStrategyPrompt({ brand, campaign, brief, creators, recommendations, draftStrategy }),
+      config,
+    )
+    const strategy = await callOpenAIText(prompt)
+    response.json({
+      data: {
+        strategy,
+        policyVersion: config?.version || null,
+        policyFeatureKey: config?.featureKey || null,
+        sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-POLICY-001', ...(config ? ['RAW-INT-AI-KNOWLEDGE-001'] : [])],
+      },
+    })
   } catch (error) {
     next(error)
   }
@@ -3387,7 +3416,32 @@ function buildOutreachMessagePrompt(creator = {}, brand = {}, campaign = {}) {
   ].join('\\n')
 }
 
-function buildContentGuidePrompt({ brand = {}, campaign = {}, seedingType = '', channel = '', references = [] } = {}) {
+function buildCampaignStrategyPrompt({
+  brand = {}, campaign = {}, brief = {}, creators = [], recommendations = [], draftStrategy = '',
+} = {}) {
+  return [
+    'Create an execution-ready influencer campaign strategy in Korean.',
+    'Improve the supplied deterministic draft without deleting useful details. Use only supplied facts and administrator knowledge.',
+    'Required sections:',
+    '1. Objective, target audience, and measurable KPI interpretation',
+    '2. Big idea and one-message',
+    '3. Creator portfolio by platform, scale, persona, and role',
+    '4. Content architecture: hook, proof, use scene, CTA, and channel adaptation',
+    '5. Recruitment and outreach sequence',
+    '6. Timeline, budget allocation, and operating checkpoints',
+    '7. Measurement plan including UTM/content tracking',
+    '8. Risks, compliance, and optimization rules',
+    'Do not promise performance or invent market data, creator metrics, costs, or conversion figures.',
+    `Brand: ${JSON.stringify(sanitizeAiPromptValue(brand) || {})}`,
+    `Campaign: ${JSON.stringify(sanitizeAiPromptValue(campaign) || {})}`,
+    `Brief: ${JSON.stringify(sanitizeAiPromptValue(brief) || {})}`,
+    `Creators: ${JSON.stringify(sanitizeAiPromptValue(Array.isArray(creators) ? creators.slice(0, 30) : []) || [])}`,
+    `Recommendations: ${JSON.stringify(sanitizeAiPromptValue(Array.isArray(recommendations) ? recommendations.slice(0, 30) : []) || [])}`,
+    `Deterministic draft to improve: ${sanitizeAiPromptValue(draftStrategy) || ''}`,
+  ].join('\\n')
+}
+
+function buildContentGuidePrompt({ brand = {}, campaign = {}, seedingType = '', channel = '', references = [], draftGuide = '' } = {}) {
   const cleanBrand = sanitizeAiPromptValue(brand)
   const cleanCampaign = sanitizeAiPromptValue(campaign)
   const cleanReferences = sanitizeAiPromptValue(references)
@@ -3409,6 +3463,7 @@ function buildContentGuidePrompt({ brand = {}, campaign = {}, seedingType = '', 
     `Seeding type: ${sanitizeAiPromptValue(seedingType) || ''}`,
     `Channel: ${sanitizeAiPromptValue(channel) || ''}`,
     `References: ${JSON.stringify(cleanReferences || [])}`,
+    `Existing deterministic guide to improve: ${sanitizeAiPromptValue(draftGuide) || ''}`,
   ].join('\\n')
 }
 

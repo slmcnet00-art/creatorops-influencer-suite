@@ -13113,10 +13113,10 @@ function App() {
     collectedAt: nowLabel(),
   })
 
-  const generateCampaignStrategyForDetail = (campaign) => {
+  const generateCampaignStrategyForDetail = async (campaign) => {
     if (!campaign) return
     const campaignBrief = buildCampaignBriefFromCampaign(campaign)
-    const strategy = buildInfluencerStrategy({
+    const localStrategy = buildInfluencerStrategy({
       brand: activeBrand,
       brief: campaignBrief,
       campaign,
@@ -13124,6 +13124,40 @@ function App() {
       recommendations: activeRecommendations,
       learningMaterials: campaignBrief.learningMaterials,
     })
+    let strategy = localStrategy
+    let policyVersion = null
+    let policyFeatureKey = null
+    let engine = 'local-strategy-director'
+    let sourceRawIds = ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001']
+    let usedFallback = false
+    const apiBaseUrl = String(backendConfig?.apiBaseUrl || '').replace(/\/$/, '')
+
+    if (apiBaseUrl) {
+      try {
+        const response = await fetch(`${apiBaseUrl}/ai/campaign-strategy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            brand: activeBrand,
+            campaign,
+            brief: campaignBrief,
+            creators: (Array.isArray(creators) ? creators : []).slice(0, 30),
+            recommendations: (Array.isArray(activeRecommendations) ? activeRecommendations : []).slice(0, 30),
+            draftStrategy: localStrategy,
+          }),
+        })
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(payload?.message || '캠페인 전략 API 요청에 실패했습니다.')
+        strategy = payload?.data?.strategy || localStrategy
+        policyVersion = payload?.data?.policyVersion || null
+        policyFeatureKey = payload?.data?.policyFeatureKey || null
+        sourceRawIds = payload?.data?.sourceRawIds || sourceRawIds
+        engine = 'admin-policy-api'
+      } catch (error) {
+        usedFallback = true
+        console.warn('Campaign strategy API fallback:', error)
+      }
+    }
     const generatedAt = nowLabel()
     const strategyInputRaw = campaign.strategyInputRaw || buildCampaignStrategyInputRaw(campaign, campaignBrief)
 
@@ -13146,10 +13180,11 @@ function App() {
                       : item.generationState?.guide || campaign.generationState?.guide || 'not_started',
                     generatedAt,
                     strategyGeneratedAt: generatedAt,
-                    sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001'],
+                    sourceRawIds,
                     outputRawId: 'RAW-INT-AI-001',
-                    packageVersion: 'strategy-director-v2.3-local',
-                    engine: backendConfig?.apiBaseUrl ? 'api-ready-local-fallback' : 'local-strategy-director',
+                    packageVersion: policyVersion || 'strategy-director-v2.3-local',
+                    policyFeatureKey,
+                    engine,
                   },
                 }
               : item,
@@ -13159,18 +13194,54 @@ function App() {
         `${campaign.name} 인플루언서 전략 생성`,
       ),
     )
-    showToast(`${campaign.name} 인플루언서 전략을 생성했어요.`)
+    showToast(usedFallback
+      ? `${campaign.name} 전략을 로컬 초안으로 생성했어요. 관리자 AI 연결 상태를 확인해 주세요.`
+      : `${campaign.name} 인플루언서 전략을 생성했어요.`)
   }
 
-  const generateCampaignGuideForDetail = (campaign) => {
+  const generateCampaignGuideForDetail = async (campaign) => {
     if (!campaign) return
     const campaignBrief = buildCampaignBriefFromCampaign(campaign)
-    const guide = buildInfluencerContentGuide({
+    const localGuide = buildInfluencerContentGuide({
       brand: activeBrand,
       brief: campaignBrief,
       campaign,
       creators: getCreatorsByIds(creators, campaign.creatorIds ?? []),
     })
+    let guide = localGuide
+    let policyVersion = null
+    let policyFeatureKey = null
+    let engine = 'local-strategy-director'
+    let sourceRawIds = ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001', 'RAW-EXT-REF-001']
+    let usedFallback = false
+    const apiBaseUrl = String(backendConfig?.apiBaseUrl || '').replace(/\/$/, '')
+
+    if (apiBaseUrl) {
+      try {
+        const response = await fetch(`${apiBaseUrl}/ai/content-guide`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            brand: activeBrand,
+            campaign,
+            seedingType: campaign.guideSeedType || '무가시딩',
+            channel: campaign.guideChannel || 'Instagram Reels',
+            references: Array.isArray(campaign.guideReferences) ? campaign.guideReferences : [],
+            draftGuide: localGuide,
+          }),
+        })
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(payload?.message || '콘텐츠 가이드 API 요청에 실패했습니다.')
+        guide = payload?.data?.guide || localGuide
+        policyVersion = payload?.data?.policyVersion || null
+        policyFeatureKey = payload?.data?.policyFeatureKey || null
+        sourceRawIds = payload?.data?.sourceRawIds || sourceRawIds
+        engine = 'admin-policy-api'
+      } catch (error) {
+        usedFallback = true
+        console.warn('Campaign guide API fallback:', error)
+      }
+    }
     const generatedAt = nowLabel()
     const strategyInputRaw = campaign.strategyInputRaw || buildCampaignStrategyInputRaw(campaign, campaignBrief)
 
@@ -13189,10 +13260,11 @@ function App() {
                     ...(item.generationState || {}),
                     guide: 'generated',
                     generatedAt,
-                    sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001', 'RAW-EXT-REF-001'],
+                    sourceRawIds,
                     outputRawId: 'RAW-INT-AI-001',
-                    packageVersion: 'strategy-director-v2.3-local',
-                    engine: backendConfig?.apiBaseUrl ? 'api-ready-local-fallback' : 'local-strategy-director',
+                    packageVersion: policyVersion || 'strategy-director-v2.3-local',
+                    policyFeatureKey,
+                    engine,
                   },
                 }
               : item,
@@ -13202,7 +13274,9 @@ function App() {
         `${campaign.name} 인플루언서 가이드 생성`,
       ),
     )
-    showToast(`${campaign.name} 인플루언서 가이드를 생성했어요.`)
+    showToast(usedFallback
+      ? `${campaign.name} 가이드를 로컬 초안으로 생성했어요. 관리자 AI 연결 상태를 확인해 주세요.`
+      : `${campaign.name} 인플루언서 가이드를 생성했어요.`)
   }
 
   const generateCampaignIndividualGuidesForDetail = (campaign) => {
