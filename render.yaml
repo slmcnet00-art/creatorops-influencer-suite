@@ -18,6 +18,12 @@ services:
           envVarKey: RENDER_EXTERNAL_URL
       - key: VITE_APP_URL
         value: https://creatorops-influencer-suite.onrender.com
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: VITE_WORKSPACE_ID
+        value: miping-main
   - type: web
     name: creatorops-suite-api
     runtime: node

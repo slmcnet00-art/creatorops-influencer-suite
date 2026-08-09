@@ -420,6 +420,61 @@
 .admin-access-denied p { margin: 0; }
 .admin-access-denied a { margin-top: 8px; color: #1765dc; }
 
+.admin-policy-help {
+  margin: 0 0 14px;
+  padding: 11px 12px;
+  border: 1px solid #cfe0f7;
+  background: #f5f9ff;
+  color: #4f6279;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.admin-knowledge-block {
+  padding: 14px;
+  border: 1px solid #e1e6ec;
+  background: #fafbfc;
+}
+
+.admin-knowledge-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.admin-knowledge-heading > div { display: grid; gap: 3px; }
+.admin-knowledge-heading small { color: #7b8490; }
+.admin-knowledge-heading button,
+.admin-attachment-list button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.admin-attachment-list {
+  display: grid;
+  gap: 7px;
+  margin-top: 12px;
+}
+
+.admin-attachment-list > div {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) 32px;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 10px;
+  border: 1px solid #e3e7ec;
+  background: #fff;
+}
+
+.admin-attachment-list span { display: grid; gap: 2px; min-width: 0; }
+.admin-attachment-list strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admin-attachment-list small { color: #858d98; }
+.admin-attachment-list button { justify-content: center; padding: 6px; }
+.admin-empty-knowledge { margin-top: 12px; padding: 18px; text-align: center; color: #8a929d; border: 1px dashed #d8dde4; }
+.admin-save-state { margin: 0; color: #526275; font-size: 12px; }
+
 @media (max-width: 980px) {
   .admin-shell { grid-template-columns: 72px minmax(0, 1fr); }
   .admin-brand div,

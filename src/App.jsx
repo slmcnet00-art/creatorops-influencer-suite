@@ -1149,6 +1149,11 @@ const defaultWorkspace = {
   creatorGroups: defaultCreatorGroups,
   savedProductionReferenceIds: [],
   contentExperiments: [],
+  adminConfig: {
+    policies: [],
+    automations: [],
+    updatedAt: null,
+  },
   conversionEvents: [],
   creatorOperations: [],
   contentTemplates: [],
@@ -1760,6 +1765,11 @@ function normalizeWorkspace(saved) {
     creatorOperations: Array.isArray(saved?.creatorOperations) ? saved.creatorOperations : defaultWorkspace.creatorOperations,
     contentTemplates: Array.isArray(saved?.contentTemplates) ? saved.contentTemplates : defaultWorkspace.contentTemplates,
     operationalAlerts: Array.isArray(saved?.operationalAlerts) ? saved.operationalAlerts : defaultWorkspace.operationalAlerts,
+    adminConfig: {
+      policies: Array.isArray(saved?.adminConfig?.policies) ? saved.adminConfig.policies : [],
+      automations: Array.isArray(saved?.adminConfig?.automations) ? saved.adminConfig.automations : [],
+      updatedAt: saved?.adminConfig?.updatedAt ?? null,
+    },
     activities: normalizedActivities,
   }
 }
@@ -6198,6 +6208,30 @@ function buildDataRoomExtendedRawCatalog({
       active: true,
     },
     {
+      id: 'RAW-INT-AI-KNOWLEDGE-001',
+      name: '관리자 AI 학습자료/프롬프트 버전',
+      scope: '내부',
+      category: 'AI 학습 설정',
+      description: '기능별 관리자 프롬프트, 운영 규칙, 첨부 학습자료, 활성 상태와 버전 정보',
+      purpose: '관리 콘솔에서 승인한 지침과 자료만 다음 AI 실행에 반영하고 결과의 적용 버전을 추적',
+      method: '관리자 입력 / 파일 업로드 / DB 연동',
+      cycle: '관리자 저장 시',
+      lastCollectedAt: nowText,
+      nextCollectAt: '프롬프트 또는 학습자료 변경 시',
+      status: '정상',
+      sourceLocation: '관리자 콘솔 > AI 학습·정책',
+      storageLocation: 'Supabase workspaces.settings.aiFeatureConfigs / 서버 메모리 fallback',
+      dashboardArea: 'AI 추천, 캠페인 전략, 콘텐츠 가이드, 제안 메시지, 레퍼런스 분석, 데이터룸',
+      metricIds: ['MET-AI-001', 'MET-AI-003', 'MET-AI-006', 'MET-AI-GEN-001', 'MET-AI-GEN-002', 'MET-GUIDE-001'],
+      ownerDept: 'PM/운영',
+      opsOwner: 'AI 운영 관리자',
+      techOwner: 'AI/Backend',
+      qualityIssue: '초안은 실행에 반영하지 않으며 활성 버전 변경 시 이전 실행 결과와 버전을 함께 보존해야 함',
+      logLocation: 'ai_generation_runs.sourceRawIds / API response policyVersion',
+      note: '활성 상태로 저장한 설정만 다음 AI 호출에 적용',
+      active: true,
+    },
+    {
       id: 'RAW-INT-POOL-EVIDENCE-001',
       name: '메시지 전 후보 추천 근거 이력',
       scope: '내부',
@@ -7310,9 +7344,9 @@ function App() {
     results: [],
   })
   const [authSession, setAuthSession] = useState(null)
-  const [authReady, setAuthReady] = useState(!backendConfig.hasSupabase)
+  const [, setAuthReady] = useState(!backendConfig.hasSupabase)
   const [workspaceAccess, setWorkspaceAccess] = useState(null)
-  const [workspaceAccessError, setWorkspaceAccessError] = useState('')
+  const [, setWorkspaceAccessError] = useState('')
   const [authEmail, setAuthEmail] = useState('')
   const [cloudWorkspaceLoaded, setCloudWorkspaceLoaded] = useState(!backendConfig.hasSupabase)
   const [query, setQuery] = useState('')
@@ -9391,7 +9425,9 @@ function App() {
   )
 
   useEffect(() => {
-    if (!backendConfig.hasSupabase || visibleSection !== 'dataRoom') return undefined
+    const isDataRoomRoute =
+      visibleSection === 'dataRoom' || window.location.pathname.toLowerCase().startsWith('/admin')
+    if (!backendConfig.hasSupabase || !isDataRoomRoute) return undefined
     let cancelled = false
 
     async function syncRegistry() {
@@ -9444,7 +9480,9 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (visibleSection !== 'dataRoom') return
+    const isDataRoomRoute =
+      visibleSection === 'dataRoom' || window.location.pathname.toLowerCase().startsWith('/admin')
+    if (!isDataRoomRoute) return
     let cancelled = false
 
     async function loadRecentApiEvents() {
@@ -15270,10 +15308,17 @@ function App() {
         accounts={accounts}
         brands={brands}
         currentAccount={currentAccount}
-        canManagePermissions
+        canManagePermissions={canManagePermissions}
         activities={activities}
         apiEvents={dataRoomApiEvents}
         backendConfig={backendConfig}
+        adminConfig={workspace.adminConfig}
+        onUpdateAdminConfig={(nextAdminConfig) =>
+          setWorkspace((current) => ({
+            ...current,
+            adminConfig: nextAdminConfig,
+          }))
+        }
         onUpdateAccountRole={updateAccountRole}
         onToggleBrandAccess={toggleAccountBrandAccess}
         onTestApis={testProductionApis}

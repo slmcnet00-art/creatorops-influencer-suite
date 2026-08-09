@@ -21,6 +21,14 @@ const SEARCH_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 const SEARCH_CACHE_STALE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const WORKSPACE_ID = process.env.WORKSPACE_ID || process.env.VITE_WORKSPACE_ID || 'miping-main'
 const searchCache = new Map()
+const aiFeatureConfigMemory = new Map()
+const AI_FEATURE_KEYS = new Set([
+  'creator-recommendation',
+  'campaign-strategy',
+  'content-guide',
+  'outreach-message',
+  'reference-analysis',
+])
 let tiktokCommercialTokenCache = { token: '', expiresAt: 0 }
 let supabaseAdminClient
 const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://127.0.0.1:5173')
@@ -59,7 +67,7 @@ app.use(cors({
     callback(new Error(`Origin not allowed: ${origin}`))
   },
 }))
-app.use(express.json({ limit: '1mb' }))
+app.use(express.json({ limit: '5mb' }))
 
 const DISCOVERY_STOP_WORDS = new Set([
   'creator', 'creators', 'influencer', 'influencers', 'review', 'reviews', 'campaign', 'product', 'service', 'brand', 'official', 'profile', 'video', 'content', 'channel', 'shorts', 'reels', 'tiktok', 'instagram', 'youtube',
@@ -417,6 +425,99 @@ async function ensureDataRoomWorkspace(supabase) {
   if (error) throw error
 }
 
+function normalizeAiFeatureConfig(featureKey, value = {}) {
+  const attachments = Array.isArray(value.attachments)
+    ? value.attachments.slice(0, 20).map((item, index) => ({
+      id: String(item?.id || `${featureKey}-${index}`),
+      name: String(item?.name || `knowledge-${index + 1}`),
+      type: String(item?.type || 'text'),
+      size: Number(item?.size || 0),
+      text: String(item?.text || '').slice(0, 120_000),
+      uploadedAt: item?.uploadedAt || new Date().toISOString(),
+    }))
+    : []
+  return {
+    featureKey,
+    name: String(value.name || featureKey).slice(0, 120),
+    description: String(value.description || '').slice(0, 4_000),
+    systemPrompt: String(value.systemPrompt || '').slice(0, 30_000),
+    rules: String(value.rules || '').slice(0, 30_000),
+    version: String(value.version || 'v1.0').slice(0, 40),
+    status: value.status === 'active' ? 'active' : 'draft',
+    attachments,
+    updatedAt: value.updatedAt || new Date().toISOString(),
+  }
+}
+
+async function getAiFeatureConfigs() {
+  const supabase = getSupabaseAdminClient()
+  if (supabase) {
+    const { data, error } = await supabase
+      .from('workspaces')
+      .select('settings')
+      .eq('id', WORKSPACE_ID)
+      .maybeSingle()
+    if (!error) {
+      const stored = data?.settings?.aiFeatureConfigs || {}
+      Object.entries(stored).forEach(([key, value]) => {
+        if (AI_FEATURE_KEYS.has(key)) aiFeatureConfigMemory.set(key, normalizeAiFeatureConfig(key, value))
+      })
+    }
+  }
+  return [...aiFeatureConfigMemory.values()]
+}
+
+async function saveAiFeatureConfig(featureKey, value) {
+  const config = normalizeAiFeatureConfig(featureKey, value)
+  aiFeatureConfigMemory.set(featureKey, config)
+  const supabase = getSupabaseAdminClient()
+  if (!supabase) return config
+
+  await ensureDataRoomWorkspace(supabase)
+  const { data, error: readError } = await supabase
+    .from('workspaces')
+    .select('settings')
+    .eq('id', WORKSPACE_ID)
+    .maybeSingle()
+  if (readError) throw readError
+  const settings = data?.settings && typeof data.settings === 'object' ? data.settings : {}
+  const aiFeatureConfigs = settings.aiFeatureConfigs && typeof settings.aiFeatureConfigs === 'object'
+    ? settings.aiFeatureConfigs
+    : {}
+  const { error } = await supabase
+    .from('workspaces')
+    .update({
+      settings: { ...settings, aiFeatureConfigs: { ...aiFeatureConfigs, [featureKey]: config } },
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', WORKSPACE_ID)
+  if (error) throw error
+  return config
+}
+
+async function getActiveAiFeatureConfig(featureKey) {
+  await getAiFeatureConfigs()
+  const config = aiFeatureConfigMemory.get(featureKey)
+  return config?.status === 'active' ? config : null
+}
+
+function applyAdminKnowledge(prompt, config) {
+  if (!config) return prompt
+  const knowledge = (config.attachments || [])
+    .filter((item) => item.text)
+    .map((item) => `### ${item.name}\n${item.text}`)
+    .join('\n\n')
+  return [
+    prompt,
+    '\n\n## Administrator policy (must follow)',
+    config.systemPrompt || '',
+    '\n## Operating rules',
+    config.rules || '',
+    knowledge ? `\n## Attached workspace knowledge\n${knowledge}` : '',
+    '\nUse the attached knowledge as reference. Never invent facts that are absent from source data.',
+  ].filter(Boolean).join('\n')
+}
+
 async function ensureDataRoomRawSource(supabase, rawSourceId) {
   if (!rawSourceId) return
   const meta = DATA_ROOM_RAW_SOURCE_META[rawSourceId] || {
@@ -682,9 +783,10 @@ app.post('/references/search', async (request, response, next) => {
 app.post('/ai/outreach-message', async (request, response, next) => {
   try {
     const { creator, brand, campaign } = request.body || {}
-    const prompt = buildOutreachMessagePrompt(creator, brand, campaign)
+    const config = await getActiveAiFeatureConfig('outreach-message')
+    const prompt = applyAdminKnowledge(buildOutreachMessagePrompt(creator, brand, campaign), config)
     const message = await callOpenAIText(prompt)
-    response.json({ data: { message } })
+    response.json({ data: { message, policyVersion: config?.version || null, policyFeatureKey: config?.featureKey || null } })
   } catch (error) {
     next(error)
   }
@@ -693,9 +795,10 @@ app.post('/ai/outreach-message', async (request, response, next) => {
 app.post('/ai/content-guide', async (request, response, next) => {
   try {
     const { brand, campaign, seedingType, channel, references } = request.body || {}
-    const prompt = buildContentGuidePrompt({ brand, campaign, seedingType, channel, references })
+    const config = await getActiveAiFeatureConfig('content-guide')
+    const prompt = applyAdminKnowledge(buildContentGuidePrompt({ brand, campaign, seedingType, channel, references }), config)
     const guide = await callOpenAIText(prompt)
-    response.json({ data: { guide } })
+    response.json({ data: { guide, policyVersion: config?.version || null, policyFeatureKey: config?.featureKey || null } })
   } catch (error) {
     next(error)
   }
@@ -707,7 +810,11 @@ app.post('/ai/recommendations/enrich', async (request, response, next) => {
     const safeCandidates = Array.isArray(candidates) ? candidates.slice(0, 50) : []
     if (!safeCandidates.length) throw httpError(400, 'candidates are required.')
 
-    const prompt = buildRecommendationEnrichmentPrompt({ brand, campaign, candidates: safeCandidates })
+    const config = await getActiveAiFeatureConfig('creator-recommendation')
+    const prompt = applyAdminKnowledge(
+      buildRecommendationEnrichmentPrompt({ brand, campaign, candidates: safeCandidates }),
+      config,
+    )
     const rawText = await callOpenAIText(prompt)
     const parsed = parseAiJsonObject(rawText)
     const items = Array.isArray(parsed.items)
@@ -718,11 +825,31 @@ app.post('/ai/recommendations/enrich', async (request, response, next) => {
       data: {
         items,
         model: process.env.OPENAI_MODEL || 'gpt-4.1-mini',
-        promptVersion: 'recommendation-enrichment-v1',
-        sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-POLICY-001'],
+        promptVersion: config?.version || 'recommendation-enrichment-v1',
+        policyFeatureKey: config?.featureKey || null,
+        sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-POLICY-001', ...(config ? ['RAW-INT-AI-KNOWLEDGE-001'] : [])],
         metricIds: ['MET-AI-001', 'MET-AI-003', 'MET-AI-004', 'MET-AI-006', 'MET-LLM-001', 'MET-LLM-002'],
       },
     })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/admin/ai-configs', async (_request, response, next) => {
+  try {
+    response.json({ data: { workspaceId: WORKSPACE_ID, configs: await getAiFeatureConfigs() } })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.put('/admin/ai-configs/:featureKey', async (request, response, next) => {
+  try {
+    const featureKey = String(request.params.featureKey || '')
+    if (!AI_FEATURE_KEYS.has(featureKey)) throw httpError(400, 'Unsupported AI feature key.')
+    const config = await saveAiFeatureConfig(featureKey, request.body || {})
+    response.json({ data: { workspaceId: WORKSPACE_ID, config } })
   } catch (error) {
     next(error)
   }
