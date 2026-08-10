@@ -188,41 +188,23 @@ export function onAuthStateChange(callback) {
   return () => data.subscription.unsubscribe()
 }
 
-async function ensureWorkspaceMembership(supabase, workspace) {
+async function ensureWorkspaceMembership(supabase) {
   const { data: sessionData, error: sessionError } = await supabase.auth.getSession()
   if (sessionError) throw sessionError
   const user = sessionData.session?.user
   if (!user) return { status: 'anonymous' }
 
-  const workspaceName = workspace?.team?.name || workspace?.brands?.[0]?.name || WORKSPACE_ID
-  const { error: workspaceError } = await supabase
-    .from('workspaces')
-    .upsert(
-      {
-        id: WORKSPACE_ID,
-        name: workspaceName,
-        owner_id: user.id,
-        updated_at: new Date().toISOString(),
-      },
-      { onConflict: 'id' },
-    )
-  if (workspaceError) throw workspaceError
-
-  const { error: memberError } = await supabase
+  const { data: member, error: memberError } = await supabase
     .from('workspace_members')
-    .upsert(
-      {
-        workspace_id: WORKSPACE_ID,
-        user_id: user.id,
-        role: 'Owner',
-        invited_email: user.email,
-        status: 'active',
-      },
-      { onConflict: 'workspace_id,user_id' },
-    )
+    .select('workspace_id,user_id,role,status')
+    .eq('workspace_id', WORKSPACE_ID)
+    .eq('user_id', user.id)
+    .eq('status', 'active')
+    .maybeSingle()
   if (memberError) throw memberError
+  if (!member) return { status: 'forbidden', user }
 
-  return { status: 'ready', user }
+  return { status: 'ready', user, member }
 }
 
 function toNumberOrNull(value) {
@@ -464,6 +446,9 @@ async function getRawWriteContext() {
   if (membership.status === 'anonymous') {
     return { status: 'auth_required', supabase: null }
   }
+  if (membership.status === 'forbidden') {
+    return { status: 'forbidden', supabase: null }
+  }
 
   return { status: 'ready', supabase }
 }
@@ -543,6 +528,9 @@ export async function loadCloudWorkspace() {
   if (membership.status === 'anonymous') {
     return { status: 'auth_required', workspace: null, message: 'Sign in to load the shared workspace.' }
   }
+  if (membership.status === 'forbidden') {
+    return { status: 'forbidden', workspace: null, message: 'This account has not been granted access to the workspace.' }
+  }
 
   const { data, error } = await supabase
     .from('workspace_snapshots')
@@ -558,27 +546,51 @@ export async function loadCloudWorkspace() {
   }
 }
 
-export async function saveCloudWorkspace(workspace) {
+export async function saveCloudWorkspace(workspace, options = {}) {
   const supabase = getSupabaseClient()
   if (!supabase) {
     return { status: 'local', message: 'Supabase env is not configured.' }
   }
 
-  const membership = await ensureWorkspaceMembership(supabase, workspace)
+  const membership = await ensureWorkspaceMembership(supabase)
   if (membership.status === 'anonymous') {
     return { status: 'auth_required', message: 'Sign in to save the shared workspace.' }
   }
+  if (membership.status === 'forbidden') {
+    return { status: 'forbidden', message: 'This account cannot save this workspace.' }
+  }
 
-  const { error } = await supabase
+  const { data: current, error: currentError } = await supabase
+    .from('workspace_snapshots')
+    .select('payload,updated_at')
+    .eq('workspace_id', WORKSPACE_ID)
+    .maybeSingle()
+  if (currentError) throw currentError
+
+  const expectedUpdatedAt = options.expectedUpdatedAt || null
+  if (expectedUpdatedAt && current?.updated_at && current.updated_at !== expectedUpdatedAt) {
+    return {
+      status: 'conflict',
+      workspace: current.payload || null,
+      updatedAt: current.updated_at,
+      message: 'A newer workspace version was saved from another device.',
+    }
+  }
+
+  const updatedAt = new Date().toISOString()
+
+  const { data: saved, error } = await supabase
     .from('workspace_snapshots')
     .upsert(
       {
         workspace_id: WORKSPACE_ID,
         payload: workspace,
-        updated_at: new Date().toISOString(),
+        updated_at: updatedAt,
       },
       { onConflict: 'workspace_id' },
     )
+    .select('updated_at')
+    .single()
 
   if (error) throw error
 
@@ -605,7 +617,143 @@ export async function saveCloudWorkspace(workspace) {
     }
   }
 
-  return { status: 'saved', dataRoomRawSync, creatorOperationsSync }
+  return { status: 'saved', updatedAt: saved?.updated_at || updatedAt, dataRoomRawSync, creatorOperationsSync }
+}
+
+export function watchCloudWorkspace(callback, options = {}) {
+  const supabase = getSupabaseClient()
+  if (!supabase) return () => {}
+
+  let stopped = false
+  let lastUpdatedAt = options.after || ''
+  const intervalMs = Math.max(5000, Number(options.intervalMs) || 10000)
+
+  async function poll() {
+    if (stopped) return
+    const { data, error } = await supabase
+      .from('workspace_snapshots')
+      .select('payload,updated_at')
+      .eq('workspace_id', WORKSPACE_ID)
+      .maybeSingle()
+    if (stopped) return
+    if (error) {
+      callback({ status: 'error', error })
+      return
+    }
+    if (data?.updated_at && data.updated_at !== lastUpdatedAt) {
+      lastUpdatedAt = data.updated_at
+      callback({ status: 'updated', workspace: data.payload, updatedAt: data.updated_at })
+    }
+  }
+
+  const timer = window.setInterval(poll, intervalMs)
+  return () => {
+    stopped = true
+    window.clearInterval(timer)
+  }
+}
+
+export async function loadBrandCloudWorkspaces() {
+  const supabase = getSupabaseClient()
+  if (!supabase) return { status: 'local', snapshots: [], message: 'Supabase env is not configured.' }
+
+  const membership = await ensureWorkspaceMembership(supabase)
+  if (membership.status === 'anonymous') {
+    return { status: 'auth_required', snapshots: [], message: 'Sign in to load shared brand data.' }
+  }
+  if (membership.status === 'forbidden') {
+    return { status: 'forbidden', snapshots: [], message: 'This account has no workspace access.' }
+  }
+
+  const { data, error } = await supabase
+    .from('brand_scoped_snapshots')
+    .select('brand_id,payload,updated_at')
+    .eq('workspace_id', WORKSPACE_ID)
+    .order('brand_id')
+  if (error) throw error
+
+  return { status: data?.length ? 'loaded' : 'empty', snapshots: data || [] }
+}
+
+export async function saveBrandCloudWorkspace(brandId, payload, options = {}) {
+  const supabase = getSupabaseClient()
+  if (!supabase) return { status: 'local', message: 'Supabase env is not configured.' }
+  if (!brandId) return { status: 'invalid', message: 'A brand ID is required.' }
+
+  const membership = await ensureWorkspaceMembership(supabase)
+  if (membership.status === 'anonymous') {
+    return { status: 'auth_required', message: 'Sign in to save shared brand data.' }
+  }
+  if (membership.status === 'forbidden') {
+    return { status: 'forbidden', message: 'This account cannot save this workspace.' }
+  }
+
+  const { data: current, error: currentError } = await supabase
+    .from('brand_scoped_snapshots')
+    .select('payload,updated_at')
+    .eq('workspace_id', WORKSPACE_ID)
+    .eq('brand_id', brandId)
+    .maybeSingle()
+  if (currentError) throw currentError
+
+  const expectedUpdatedAt = options.expectedUpdatedAt || null
+  if (expectedUpdatedAt && current?.updated_at && current.updated_at !== expectedUpdatedAt) {
+    return {
+      status: 'conflict',
+      payload: current.payload || null,
+      updatedAt: current.updated_at,
+      message: 'A newer brand version was saved from another device.',
+    }
+  }
+
+  const updatedAt = new Date().toISOString()
+  const { data: saved, error } = await supabase
+    .from('brand_scoped_snapshots')
+    .upsert(
+      { workspace_id: WORKSPACE_ID, brand_id: brandId, payload, updated_at: updatedAt },
+      { onConflict: 'workspace_id,brand_id' },
+    )
+    .select('updated_at')
+    .single()
+  if (error) throw error
+
+  return { status: 'saved', brandId, updatedAt: saved?.updated_at || updatedAt }
+}
+
+export function watchBrandCloudWorkspaces(callback, options = {}) {
+  const supabase = getSupabaseClient()
+  if (!supabase) return () => {}
+
+  let stopped = false
+  let lastVersion = options.after || ''
+  const intervalMs = Math.max(5000, Number(options.intervalMs) || 10000)
+
+  async function poll() {
+    if (stopped) return
+    const { data, error } = await supabase
+      .from('brand_scoped_snapshots')
+      .select('brand_id,payload,updated_at')
+      .eq('workspace_id', WORKSPACE_ID)
+      .order('brand_id')
+    if (stopped) return
+    if (error) {
+      callback({ status: 'error', error })
+      return
+    }
+
+    const snapshots = data || []
+    const version = snapshots.map((item) => `${item.brand_id}:${item.updated_at}`).join('|')
+    if (version && version !== lastVersion) {
+      lastVersion = version
+      callback({ status: 'updated', snapshots, version })
+    }
+  }
+
+  const timer = window.setInterval(poll, intervalMs)
+  return () => {
+    stopped = true
+    window.clearInterval(timer)
+  }
 }
 
 const RAW_STATUS_TO_DB = {

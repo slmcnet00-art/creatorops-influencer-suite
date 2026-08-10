@@ -47,16 +47,20 @@ import {
   getAuthSession,
   getCurrentWorkspaceAccess,
   importExternalReport,
+  loadBrandCloudWorkspaces,
   loadDataRoomApiStatus,
   loadExternalSearchEvents,
   loadCloudWorkspace,
   onAuthStateChange,
   saveCloudWorkspace,
+  saveBrandCloudWorkspace,
   saveContentMetricRawSnapshot,
   saveCreatorProfileRawSnapshot,
   signInWithEmail,
   signOut,
   syncDataRoomRegistry,
+  watchCloudWorkspace,
+  watchBrandCloudWorkspaces,
 } from './backendSync'
 import {
   buildCreatorSourceEvidence,
@@ -1772,6 +1776,114 @@ function normalizeWorkspace(saved) {
     },
     activities: normalizedActivities,
   }
+}
+
+const BRAND_SCOPED_ARRAY_KEYS = [
+  'candidatePoolEvidence',
+  'recommendations',
+  'outreach',
+  'recruitedPool',
+  'quotes',
+  'fulfillmentRecords',
+  'trackedPosts',
+  'utmTrackingLogs',
+  'shortLinkClickLogs',
+  'orderAttributionLogs',
+  'couponRedemptionLogs',
+  'contentReferences',
+  'creatorGroups',
+  'contentExperiments',
+  'conversionEvents',
+  'creatorOperations',
+  'contentTemplates',
+  'operationalAlerts',
+]
+
+function recordIdentity(item, index) {
+  if (item == null || typeof item !== 'object') return `${typeof item}:${String(item)}`
+  return String(item.id ?? item.creatorId ?? item.creator_id ?? item.url ?? item.contentUrl ?? `row-${index}`)
+}
+
+function dedupeRecords(items = []) {
+  const seen = new Set()
+  return items.filter((item, index) => {
+    const identity = recordIdentity(item, index)
+    if (seen.has(identity)) return false
+    seen.add(identity)
+    return true
+  })
+}
+
+function buildBrandScopedWorkspace(workspace, brandId) {
+  const brandKey = String(brandId)
+  const campaigns = (workspace.campaigns ?? []).filter((campaign) => String(campaign.brandId) === brandKey)
+  const campaignIds = new Set(campaigns.map((campaign) => String(campaign.id)))
+  const belongsToBrand = (item) => {
+    if (!item || typeof item !== 'object') return true
+    const explicitBrandId = item.brandId ?? item.brand_id
+    if (explicitBrandId != null) return String(explicitBrandId) === brandKey
+    const campaignId = item.campaignId ?? item.campaign_id
+    return campaignId == null || campaignIds.has(String(campaignId))
+  }
+  const scoped = (key) =>
+    (workspace[key] ?? []).filter(belongsToBrand).map((item) =>
+      item && typeof item === 'object' && item.brandId == null && item.brand_id == null ? { ...item, brandId } : item,
+    )
+  const creatorIds = new Set((workspace.shortlist ?? []).map(String))
+  BRAND_SCOPED_ARRAY_KEYS.forEach((key) => {
+    scoped(key).forEach((item) => {
+      const creatorId = item?.creatorId ?? item?.creator_id
+      if (creatorId != null) creatorIds.add(String(creatorId))
+      ;(item?.memberIds ?? []).forEach((id) => creatorIds.add(String(id)))
+    })
+  })
+
+  return {
+    schemaVersion: 1,
+    brandId,
+    brand: (workspace.brands ?? []).find((brand) => String(brand.id) === brandKey) ?? null,
+    campaigns,
+    creators: (workspace.creators ?? []).filter((creator) => creatorIds.has(String(creator.id))),
+    shortlist: workspace.shortlist ?? [],
+    savedProductionReferenceIds: workspace.savedProductionReferenceIds ?? [],
+    ...Object.fromEntries(BRAND_SCOPED_ARRAY_KEYS.map((key) => [key, scoped(key)])),
+  }
+}
+
+function mergeBrandCloudWorkspaces(workspace, snapshots = []) {
+  const next = { ...workspace }
+  const brandMap = new Map((next.brands ?? []).map((brand) => [String(brand.id), brand]))
+  const creatorMap = new Map((next.creators ?? []).map((creator) => [String(creator.id), creator]))
+
+  snapshots.forEach((snapshot) => {
+    const payload = snapshot?.payload ?? snapshot
+    const brandId = String(snapshot?.brand_id ?? payload?.brandId ?? '')
+    if (!brandId) return
+    if (payload.brand) brandMap.set(brandId, payload.brand)
+    ;(payload.creators ?? []).forEach((creator) => creatorMap.set(String(creator.id), creator))
+    next.campaigns = [
+      ...(next.campaigns ?? []).filter((campaign) => String(campaign.brandId) !== brandId),
+      ...(payload.campaigns ?? []),
+    ]
+    const campaignIds = new Set((payload.campaigns ?? []).map((campaign) => String(campaign.id)))
+    BRAND_SCOPED_ARRAY_KEYS.forEach((key) => {
+      const retained = (next[key] ?? []).filter((item) => {
+        if (!item || typeof item !== 'object') return brandId !== String(next.activeBrandId)
+        const itemBrandId = item.brandId ?? item.brand_id
+        const campaignId = item.campaignId ?? item.campaign_id
+        return String(itemBrandId ?? '') !== brandId && !campaignIds.has(String(campaignId ?? ''))
+      })
+      next[key] = dedupeRecords([...retained, ...(payload[key] ?? [])])
+    })
+    if (brandId === String(next.activeBrandId)) {
+      next.shortlist = payload.shortlist ?? next.shortlist
+      next.savedProductionReferenceIds = payload.savedProductionReferenceIds ?? next.savedProductionReferenceIds
+    }
+  })
+
+  next.brands = [...brandMap.values()]
+  next.creators = [...creatorMap.values()]
+  return normalizeWorkspace(next)
 }
 
 function usePersistentState(key, fallback) {
@@ -7349,6 +7461,12 @@ function App() {
   const [, setWorkspaceAccessError] = useState('')
   const [authEmail, setAuthEmail] = useState('')
   const [cloudWorkspaceLoaded, setCloudWorkspaceLoaded] = useState(!backendConfig.hasSupabase)
+  const cloudVersionRef = useRef('')
+  const skipNextCloudSaveRef = useRef(false)
+  const brandCloudVersionsRef = useRef({})
+  const brandCloudSignatureRef = useRef('')
+  const skipNextBrandCloudSaveRef = useRef(false)
+  const [brandCloudHydratedScope, setBrandCloudHydratedScope] = useState('')
   const [query, setQuery] = useState('')
   const [platform, setPlatform] = useState('전체')
   const [category, setCategory] = useState('전체')
@@ -10114,14 +10232,16 @@ function App() {
         const result = await loadCloudWorkspace()
         if (cancelled) return
 
-        if (result.status === 'auth_required') {
+        if (result.status === 'auth_required' || result.status === 'forbidden') {
           setCloudSyncStatus({
-            mode: 'auth',
+            mode: result.status === 'forbidden' ? 'error' : 'auth',
             label: '팀 공유 DB 로그인 필요',
             detail: result.message || '공유 워크스페이스를 사용하려면 먼저 로그인하세요.',
             updatedAt: '',
           })
         } else if (result.workspace) {
+          cloudVersionRef.current = result.updatedAt || ''
+          skipNextCloudSaveRef.current = true
           setWorkspace(normalizeWorkspace(result.workspace))
           setCloudSyncStatus({
             mode: 'cloud',
@@ -10157,20 +10277,60 @@ function App() {
   }, [backendConfig.hasSupabase, backendConfig.workspaceId, setWorkspace])
 
   useEffect(() => {
-    if (!backendConfig.hasSupabase || !cloudWorkspaceLoaded) return undefined
+    if (!backendConfig.hasSupabase || !cloudWorkspaceLoaded || !authSession || !canManagePermissions) return undefined
+
+    return watchCloudWorkspace(
+      (event) => {
+        if (event.status !== 'updated' || !event.workspace) return
+        if (event.updatedAt === cloudVersionRef.current) return
+
+        cloudVersionRef.current = event.updatedAt || ''
+        skipNextCloudSaveRef.current = true
+        setWorkspace(normalizeWorkspace(event.workspace))
+        setCloudSyncStatus((current) => ({
+          ...current,
+          mode: 'cloud',
+          label: '다른 기기의 변경사항을 반영했습니다',
+          detail: '공유 워크스페이스의 최신 데이터를 불러왔습니다.',
+          updatedAt: event.updatedAt || '',
+        }))
+      },
+      { after: cloudVersionRef.current, intervalMs: 10000 },
+    )
+  }, [authSession, backendConfig.hasSupabase, canManagePermissions, cloudWorkspaceLoaded, setWorkspace])
+
+  useEffect(() => {
+    if (!backendConfig.hasSupabase || !cloudWorkspaceLoaded || !authSession || !canManagePermissions) return undefined
+    if (skipNextCloudSaveRef.current) {
+      skipNextCloudSaveRef.current = false
+      return undefined
+    }
 
     const timeout = window.setTimeout(async () => {
       try {
-        const result = await saveCloudWorkspace(workspace)
-        if (result.status === 'auth_required') {
+        const result = await saveCloudWorkspace(workspace, { expectedUpdatedAt: cloudVersionRef.current })
+        if (result.status === 'auth_required' || result.status === 'forbidden') {
           setCloudSyncStatus({
-            mode: 'auth',
+            mode: result.status === 'forbidden' ? 'error' : 'auth',
             label: '팀 공유 DB 로그인 필요',
             detail: result.message || '공유 워크스페이스에 저장하려면 먼저 로그인하세요.',
             updatedAt: '',
           })
           return
         }
+        if (result.status === 'conflict' && result.workspace) {
+          cloudVersionRef.current = result.updatedAt || ''
+          skipNextCloudSaveRef.current = true
+          setWorkspace(normalizeWorkspace(result.workspace))
+          setCloudSyncStatus({
+            mode: 'cloud',
+            label: '다른 기기의 최신 변경사항을 반영했습니다',
+            detail: '동시에 저장된 이전 화면의 변경은 덮어쓰지 않았습니다.',
+            updatedAt: result.updatedAt || '',
+          })
+          return
+        }
+        cloudVersionRef.current = result.updatedAt || cloudVersionRef.current
         setCloudSyncStatus((current) => ({
           ...current,
           mode: 'cloud',
@@ -10189,7 +10349,111 @@ function App() {
     }, 900)
 
     return () => window.clearTimeout(timeout)
-  }, [backendConfig.hasSupabase, backendConfig.workspaceId, cloudWorkspaceLoaded, workspace])
+  }, [authSession, backendConfig.hasSupabase, backendConfig.workspaceId, canManagePermissions, cloudWorkspaceLoaded, setWorkspace, workspace])
+
+  useEffect(() => {
+    if (!backendConfig.hasSupabase || !cloudWorkspaceLoaded || !authSession || !workspaceAccess) return undefined
+    let cancelled = false
+    const hydrationScope = `${authSession.user?.id || authSession.user?.email || 'member'}:${backendConfig.workspaceId}`
+
+    async function hydrateBrandCloudWorkspaces() {
+      const result = await loadBrandCloudWorkspaces()
+      if (cancelled) return
+      if (!Array.isArray(result.snapshots) || result.snapshots.length === 0) {
+        setBrandCloudHydratedScope(hydrationScope)
+        return
+      }
+      brandCloudVersionsRef.current = Object.fromEntries(
+        result.snapshots.map((snapshot) => [String(snapshot.brand_id), snapshot.updated_at || '']),
+      )
+      brandCloudSignatureRef.current = result.snapshots
+        .map((snapshot) => `${snapshot.brand_id}:${snapshot.updated_at || ''}`)
+        .sort()
+        .join('|')
+      skipNextBrandCloudSaveRef.current = true
+      setWorkspace((current) => mergeBrandCloudWorkspaces(current, result.snapshots))
+      setBrandCloudHydratedScope(hydrationScope)
+      setCloudSyncStatus((current) => ({
+        ...current,
+        mode: 'cloud',
+        label: '브랜드 공유 DB 연결됨',
+        detail: `권한이 있는 브랜드 ${result.snapshots.length}개의 저장 목록을 불러왔습니다.`,
+        updatedAt: new Date().toISOString(),
+      }))
+    }
+
+    hydrateBrandCloudWorkspaces().catch((error) => {
+      if (!cancelled) {
+        setCloudSyncStatus((current) => ({
+          ...current,
+          mode: 'error',
+          label: '브랜드 공유 데이터 불러오기 실패',
+          detail: error instanceof Error ? error.message : '브랜드별 저장 목록을 확인하지 못했습니다.',
+        }))
+      }
+    })
+
+    const stopWatching = watchBrandCloudWorkspaces(
+      (event) => {
+        if (event.status !== 'updated' || !Array.isArray(event.snapshots)) return
+        if (event.version === brandCloudSignatureRef.current) return
+        brandCloudSignatureRef.current = event.version || ''
+        brandCloudVersionsRef.current = Object.fromEntries(
+          event.snapshots.map((snapshot) => [String(snapshot.brand_id), snapshot.updated_at || '']),
+        )
+        skipNextBrandCloudSaveRef.current = true
+        setWorkspace((current) => mergeBrandCloudWorkspaces(current, event.snapshots))
+      },
+      { after: brandCloudSignatureRef.current, intervalMs: 10000 },
+    )
+
+    return () => {
+      cancelled = true
+      stopWatching()
+    }
+  }, [authSession, backendConfig.hasSupabase, backendConfig.workspaceId, cloudWorkspaceLoaded, setWorkspace, workspaceAccess])
+
+  useEffect(() => {
+    if (!backendConfig.hasSupabase || !cloudWorkspaceLoaded || !authSession || !workspaceAccess) return undefined
+    const hydrationScope = `${authSession.user?.id || authSession.user?.email || 'member'}:${backendConfig.workspaceId}`
+    if (brandCloudHydratedScope !== hydrationScope) return undefined
+    const brandId = workspace.activeBrandId
+    if (!brandId) return undefined
+    const allowedBrands = workspaceAccess.brands ?? []
+    if (!allowedBrands.includes('*') && !allowedBrands.map(String).includes(String(brandId))) return undefined
+    if (skipNextBrandCloudSaveRef.current) {
+      skipNextBrandCloudSaveRef.current = false
+      return undefined
+    }
+
+    const timeout = window.setTimeout(async () => {
+      const payload = buildBrandScopedWorkspace(workspace, brandId)
+      const result = await saveBrandCloudWorkspace(brandId, payload, {
+        expectedUpdatedAt: brandCloudVersionsRef.current[String(brandId)] || '',
+      })
+      if (result.status === 'conflict' && result.payload) {
+        brandCloudVersionsRef.current[String(brandId)] = result.updatedAt || ''
+        skipNextBrandCloudSaveRef.current = true
+        setWorkspace((current) =>
+          mergeBrandCloudWorkspaces(current, [{ brand_id: brandId, payload: result.payload, updated_at: result.updatedAt }]),
+        )
+        showToast('다른 컴퓨터의 최신 브랜드 데이터를 반영했습니다.')
+        return
+      }
+      if (result.status === 'saved') {
+        brandCloudVersionsRef.current[String(brandId)] = result.updatedAt || ''
+        setCloudSyncStatus((current) => ({
+          ...current,
+          mode: 'cloud',
+          label: '브랜드 저장 목록 공유됨',
+          detail: '후보, 그룹, 메시지, 섭외 및 콘텐츠 추적 데이터가 팀 DB에 저장되었습니다.',
+          updatedAt: result.updatedAt || new Date().toISOString(),
+        }))
+      }
+    }, 1000)
+
+    return () => window.clearTimeout(timeout)
+  }, [authSession, backendConfig.hasSupabase, backendConfig.workspaceId, brandCloudHydratedScope, cloudWorkspaceLoaded, setWorkspace, workspace, workspaceAccess])
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
