@@ -231,6 +231,12 @@ function getDataRoomLogStatus() {
       'external_report_imports',
       'external_report_rows',
       'metric_snapshots',
+      'creator_profile_snapshots',
+      'creator_contact_points',
+      'creator_rates',
+      'content_metric_snapshots',
+      'creator_operations',
+      'content_templates',
     ],
     nextActions: missingEnv.length
       ? [
@@ -803,7 +809,7 @@ app.post('/ai/content-guide', async (request, response, next) => {
         guide,
         policyVersion: config?.version || null,
         policyFeatureKey: config?.featureKey || null,
-        sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-AI-POLICY-001', ...(config ? ['RAW-INT-AI-KNOWLEDGE-001'] : [])],
+        sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-CMP-LOC-001', 'RAW-INT-BRD-001', 'RAW-INT-AI-POLICY-001', ...(config ? ['RAW-INT-AI-KNOWLEDGE-001'] : [])],
       },
     })
   } catch (error) {
@@ -825,7 +831,7 @@ app.post('/ai/campaign-strategy', async (request, response, next) => {
         strategy,
         policyVersion: config?.version || null,
         policyFeatureKey: config?.featureKey || null,
-        sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-POLICY-001', ...(config ? ['RAW-INT-AI-KNOWLEDGE-001'] : [])],
+        sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-CMP-LOC-001', 'RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-POLICY-001', ...(config ? ['RAW-INT-AI-KNOWLEDGE-001'] : [])],
       },
     })
   } catch (error) {
@@ -856,7 +862,7 @@ app.post('/ai/recommendations/enrich', async (request, response, next) => {
         model: process.env.OPENAI_MODEL || 'gpt-4.1-mini',
         promptVersion: config?.version || 'recommendation-enrichment-v1',
         policyFeatureKey: config?.featureKey || null,
-        sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-POLICY-001', ...(config ? ['RAW-INT-AI-KNOWLEDGE-001'] : [])],
+        sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-CMP-LOC-001', 'RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-POLICY-001', ...(config ? ['RAW-INT-AI-KNOWLEDGE-001'] : [])],
         metricIds: ['MET-AI-001', 'MET-AI-003', 'MET-AI-004', 'MET-AI-006', 'MET-LLM-001', 'MET-LLM-002'],
       },
     })
@@ -3394,12 +3400,32 @@ function mergeProfileSnapshot(profile, snapshot) {
   }
 }
 
+function resolveCampaignLanguage(campaign = {}) {
+  const marketLanguage = {
+    KR: 'ko',
+    US: 'en',
+    JP: 'ja',
+    CN: 'zh',
+    SEA: 'en',
+    EU: 'en',
+  }
+  const code = campaign.outputLanguage || marketLanguage[campaign.targetCountry] || 'ko'
+  const labels = {
+    ko: 'Korean',
+    en: 'English',
+    ja: 'Japanese',
+    zh: 'Simplified Chinese',
+  }
+  return { code, label: labels[code] || 'Korean' }
+}
+
 function buildOutreachMessagePrompt(creator = {}, brand = {}, campaign = {}) {
   const cleanCreator = sanitizeAiPromptValue(creator)
   const cleanBrand = sanitizeAiPromptValue(brand)
   const cleanCampaign = sanitizeAiPromptValue(campaign)
+  const language = resolveCampaignLanguage(campaign)
   return [
-    'Write a warm, sincere influencer collaboration proposal message in Korean.',
+    `Write a warm, sincere influencer collaboration proposal message in ${language.label}.`,
     'The goal is to receive a reply. Make it sound like a real brand manager wrote a polite first DM or email, not a stiff sales script.',
     'Include:',
     '- one specific compliment that suggests the creator content was actually reviewed',
@@ -3408,8 +3434,8 @@ function buildOutreachMessagePrompt(creator = {}, brand = {}, campaign = {}) {
     '- a friendly question asking whether they are interested and what conditions they prefer',
     '- a short note about ad/sponsorship disclosure and guide compliance',
     'Avoid exaggerated performance guarantees, fake review requests, coercive wording, and overly long brand introductions.',
-    'If any input field looks garbled, mojibake, question-mark placeholders, or empty, do not quote it. Use a neutral natural Korean phrase instead.',
-    'Never output question-mark placeholders or broken Korean. Keep the whole message in clean Korean.',
+    `If any input field looks garbled, mojibake, question-mark placeholders, or empty, do not quote it. Use a neutral natural phrase in ${language.label} instead.`,
+    `Never output placeholders or mixed-language fragments. Keep the whole message in natural ${language.label}.`,
     `Creator: ${JSON.stringify(cleanCreator || {})}`,
     `Brand: ${JSON.stringify(cleanBrand || {})}`,
     `Campaign: ${JSON.stringify(cleanCampaign || {})}`,
@@ -3419,8 +3445,10 @@ function buildOutreachMessagePrompt(creator = {}, brand = {}, campaign = {}) {
 function buildCampaignStrategyPrompt({
   brand = {}, campaign = {}, brief = {}, creators = [], recommendations = [], draftStrategy = '',
 } = {}) {
+  const language = resolveCampaignLanguage(campaign)
   return [
     'Create an execution-ready influencer campaign strategy in Korean.',
+    `The target market is ${campaign.targetCountry || 'KR'}. Keep internal strategy explanations in Korean, but write every creator-facing message, hook, caption, and example in ${language.label}.`,
     'Improve the supplied deterministic draft without deleting useful details. Use only supplied facts and administrator knowledge.',
     'Required sections:',
     '1. Objective, target audience, and measurable KPI interpretation',
@@ -3445,8 +3473,9 @@ function buildContentGuidePrompt({ brand = {}, campaign = {}, seedingType = '', 
   const cleanBrand = sanitizeAiPromptValue(brand)
   const cleanCampaign = sanitizeAiPromptValue(campaign)
   const cleanReferences = sanitizeAiPromptValue(references)
+  const language = resolveCampaignLanguage(campaign)
   return [
-    'Write an influencer content guide in Korean for direct delivery to creators.',
+    `Write an influencer content guide in ${language.label} for direct delivery to creators.`,
     'Use a document structure that a brand manager can share immediately, while making the shooting direction concrete and creator-friendly.',
     'Required sections:',
     '1. Campaign goal and one-message',
@@ -3457,7 +3486,7 @@ function buildContentGuidePrompt({ brand = {}, campaign = {}, seedingType = '', 
     '6. Prohibited expressions and ad/sponsorship disclosure guidance',
     '7. Deliverable checklist and post-upload performance tracking items',
     'Adjust reward, CTA, and conversion tracking guidance based on whether the campaign is unpaid seeding, paid seeding, group-buying, or seller recruitment.',
-    'If source data contains garbled characters or placeholders, rewrite that part naturally instead of copying it.',
+    `If source data contains garbled characters or placeholders, rewrite that part naturally in ${language.label} instead of copying it.`,
     `Brand: ${JSON.stringify(cleanBrand || {})}`,
     `Campaign: ${JSON.stringify(cleanCampaign || {})}`,
     `Seeding type: ${sanitizeAiPromptValue(seedingType) || ''}`,

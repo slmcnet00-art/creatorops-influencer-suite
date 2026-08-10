@@ -43,6 +43,14 @@ import AdminDataRoom from './AdminDataRoom'
 import AdminConsole from './AdminConsole'
 import AuthPortal from './AuthPortal'
 import {
+  LANGUAGE_OPTIONS,
+  MARKET_OPTIONS,
+  formatDualCurrency,
+  getLanguageInstruction,
+  getMarketConfig,
+  normalizeCampaignMarket,
+} from './marketLocalization'
+import {
   getBackendConfig,
   getAuthSession,
   getCurrentWorkspaceAccess,
@@ -2584,6 +2592,50 @@ function buildFriendlyProposalMessage(creator, brief, campaign) {
   const learningText = learningContext
     ? `\n\n브랜드 학습자료 기준으로는 아래 포인트를 특히 지키겠습니다.\n${learningContext}`
     : ''
+
+  const market = normalizeCampaignMarket(campaign)
+  if (market.language === 'en') {
+    return `Hi ${creator.name}, I hope you're doing well. I'm reaching out from ${brief.brandName} about a potential collaboration for our ${campaignName}.
+
+We enjoyed your recent content around ${topicText}, and believe your voice would be a natural fit for ${brief.product}. ${creator.needsVerification ? `Your audience and ${creator.platform} content direction align well with the persona we are looking for.` : `Your audience, average views of ${compactNumber(creator.averageViews)}, and ${percent(creator.engagement)} engagement stood out to us.`}
+
+We would love to build the content around ${keywordText} while giving you room to keep it authentic to your channel. ${deadlineText}
+
+You can simply reply with a number:
+1. Interested
+2. I'd like to review the schedule and fee first
+3. Not this time, but open to future opportunities
+
+Please share your preferred format, available dates, and rate. We'll tailor the proposal and guide accordingly. Thank you!`
+  }
+  if (market.language === 'ja') {
+    return `${creator.name}様、こんにちは。${brief.brandName}の「${campaignName}」について、ご協業をご相談したくご連絡しました。
+
+最近の${topicText}に関する投稿を拝見し、${brief.product}を自然で信頼感のある形でご紹介いただけると感じました。
+
+今回は${keywordText}を軸に、フォロワーの方が実際に知りたい使用シーンを一緒に作れたら嬉しいです。
+
+よろしければ、以下の番号だけでもご返信ください。
+1. 興味があります
+2. 日程と費用を先に確認したいです
+3. 今回は難しいですが、今後の提案は希望します
+
+ご希望の形式・日程・費用をお知らせください。どうぞよろしくお願いいたします。`
+  }
+  if (market.language === 'zh-CN') {
+    return `${creator.name}您好，我们是${brief.brandName}团队，想邀请您参与「${campaignName}」合作。
+
+我们关注了您近期关于${topicText}的内容，认为您能以自然且有信任感的方式介绍${brief.product}。
+
+本次希望围绕${keywordText}，一起创作符合您账号风格的真实使用内容。
+
+如果方便，可以直接回复数字：
+1. 有兴趣
+2. 想先了解时间和费用
+3. 这次不方便，但愿意接收以后的合作邀请
+
+请告诉我们您适合的内容形式、时间和报价，我们会进一步整理方案和指南。谢谢！`
+  }
 
   return `${creator.name}님 안녕하세요. ${brief.brandName}의 ${campaignName} 협업을 제안드리고 싶어 연락드립니다.
 
@@ -5817,7 +5869,7 @@ function buildAdminMetricCatalog({
     sns: ['RAW-EXT-CONT-001', BULK_TRACKING_RAW_SOURCE_ID, 'RAW-EXT-ENG-001'],
     expectedViews: ['RAW-INT-INF-001', 'RAW-INT-CMP-001', 'RAW-EXT-CHN-001', 'RAW-EXT-SNS-001'],
     reference: ['RAW-EXT-REF-001', 'RAW-EXT-BENCH-001'],
-    generation: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001', 'RAW-INT-AI-001'],
+    generation: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-CMP-LOC-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001', 'RAW-INT-AI-001'],
   }
   const expectedViewsTotal = creators.reduce((sum, creator) => sum + Number(creator.averageViews || 0), 0)
   const strategyGeneratedCount = campaigns.filter((campaign) => Boolean(campaign.influencerStrategy)).length
@@ -5838,6 +5890,7 @@ function buildAdminMetricCatalog({
     ['MET-CRM-003', '클릭률', 'CRM 효율 번들', '내부', '숏링크 클릭 수 / 발송 수', 'short_link_click_count / sent_count * 100', rawRefs.utm, '최근 30일', '일 1회', '검증 필요', '내부 보고서', '숏링크 리다이렉트/UTM 연동 필요', '0% 장기 지속', '중간', '마케팅Ops', 'link_click_events + short_link_redirect_logs', '숏링크 리다이렉트 이벤트 연결 필요'],
     ['MET-CRM-004', '응답률', 'CRM 효율 번들', '내부', '응답 상태 메시지 수 / 발송 수', 'response_count / sent_count * 100', rawRefs.crm, '최근 30일', '실시간', '정상', '대시보드, 메시지', '채널별로 분리 해석', '평균 대비 50% 이하', '높음', '운영팀', 'outreach.status history', `${outreach.filter((item) => item.status === '응답').length}건 응답`],
     ['MET-CRM-005', '전환율', 'CRM 효율 번들', '내부', '섭외 완료 수 / 제안 발송 수', 'recruited_count / sent_count * 100', ['RAW-INT-CRM-001', 'RAW-INT-INF-001', UTM_RAW_SOURCE_ID], '캠페인 기간', '실시간', '정상', '대시보드, 캠페인', '캠페인 난이도와 보상 조건에 따라 해석', '10% 미만', '높음', '운영팀', 'recruitedPool + outreach', `${recruitedPool.length}명 섭외 완료`],
+    ['MET-FX-001', '원화·현지 통화 환산', '통화 환산 번들', '내부', '원화 예상/확정 단가를 캠페인 기준환율로 현지 통화에 병기', 'amount_local = amount_krw / exchange_rate_krw', ['RAW-INT-CMP-LOC-001', 'RAW-INT-INF-001'], '캠페인 기준', '캠페인/단가 변경 시', campaigns.some((campaign) => Number(campaign.exchangeRateKrw) > 0) ? '정상' : '검증 필요', '발굴, AI 추천, 후보 그룹, 캠페인 상세', '원화가 기준 금액이며 현지 통화는 운영 기준환율 환산값', '환율 0/누락 또는 갱신일 30일 초과', '중간', 'PM/데이터', 'campaign.exchangeRateUpdatedAt / future: exchange_rate_change_logs', '실제 계약금액은 확정 단가를 우선 사용'],
     [
       'MET-UTM-001',
       '숏링크 클릭 수',
@@ -6348,6 +6401,30 @@ function buildDataRoomExtendedRawCatalog({
       qualityIssue: '정책값 변경 시 기존 추천 근거와 버전 차이를 기록해야 함',
       logLocation: 'git history / future: recommendation_policy_versions',
       note: `팔로워 최소 ${compactNumber(recommendationPolicy.minimumFollowers)} · 평균 조회 ${compactNumber(recommendationPolicy.minimumAverageViews)} · 폭발계수 ${recommendationPolicy.minimumVirality}x · 우선 제안 ${recommendationPolicy.priorityScore}점`,
+      active: true,
+    },
+    {
+      id: 'RAW-INT-CMP-LOC-001',
+      name: '캠페인 국가·언어·통화 설정 raw',
+      scope: '내부',
+      category: '캠페인 전략',
+      description: '운영 국가, 산출물 언어, 현지 통화, 원화 기준 환율과 갱신 시각',
+      purpose: '현지어 메시지·가이드 생성과 원화·현지 통화 동시 표기',
+      method: 'DB 연동',
+      cycle: '캠페인 생성/수정 시',
+      lastCollectedAt: campaigns.some((campaign) => campaign.targetCountry && campaign.outputLanguage && Number(campaign.exchangeRateKrw) > 0) ? nowText : '-',
+      nextCollectAt: '캠페인 생성/수정 시',
+      status: campaigns.some((campaign) => campaign.targetCountry && campaign.outputLanguage && Number(campaign.exchangeRateKrw) > 0) ? '정상' : campaigns.length ? '검증 필요' : '미수집',
+      sourceLocation: '캠페인 생성/수정 > 운영 국가·산출물 언어·기준환율',
+      storageLocation: `${storageBase} / campaigns.targetCountry, outputLanguage, localCurrency, exchangeRateKrw`,
+      dashboardArea: '캠페인 상세, 발굴 단가, 메시지, 콘텐츠 가이드',
+      metricIds: ['MET-FX-001'],
+      ownerDept: 'PM/운영팀',
+      opsOwner: 'Campaign PM',
+      techOwner: 'Frontend/Data',
+      qualityIssue: '운영 기준환율은 수동 입력값이므로 갱신 시각 확인 필요',
+      logLocation: 'campaign.exchangeRateUpdatedAt / future: exchange_rate_change_logs',
+      note: '한국어 UI를 유지하고 크리에이터 전달 산출물에 현지어를 적용',
       active: true,
     },
     {
@@ -7566,6 +7643,12 @@ function App() {
     searchKeywords: '',
     exclusionKeywords: '',
     landingUrl: '',
+    targetCountry: 'KR',
+    outputLanguage: 'ko',
+    localCurrency: 'KRW',
+    exchangeRateKrw: '1',
+    exchangeRateSource: '운영 기준환율(수동)',
+    exchangeRateUpdatedAt: '',
     minFollowers: '',
     maxCreatorFee: '',
     preferredPlatforms: '',
@@ -13214,6 +13297,12 @@ function App() {
     approvalFlow: campaign.approvalFlow || '',
     commerceMetric: campaign.commerceMetric || '',
     landingUrl: campaign.landingUrl || campaign.productUrl || campaign.trackingUrl || '',
+    targetCountry: normalizeCampaignMarket(campaign).country,
+    outputLanguage: normalizeCampaignMarket(campaign).language,
+    localCurrency: normalizeCampaignMarket(campaign).currency,
+    exchangeRateKrw: String(normalizeCampaignMarket(campaign).exchangeRateKrw),
+    exchangeRateSource: normalizeCampaignMarket(campaign).exchangeRateSource,
+    exchangeRateUpdatedAt: normalizeCampaignMarket(campaign).exchangeRateUpdatedAt,
   })
 
   const updateCampaignEditField = (field, value) => {
@@ -13260,6 +13349,12 @@ function App() {
       approvalFlow: campaignEditDraft.approvalFlow,
       commerceMetric: campaignEditDraft.commerceMetric,
       landingUrl: campaignEditDraft.landingUrl,
+      targetCountry: campaignEditDraft.targetCountry,
+      outputLanguage: campaignEditDraft.outputLanguage,
+      localCurrency: campaignEditDraft.localCurrency,
+      exchangeRateKrw: Number(campaignEditDraft.exchangeRateKrw) || 1,
+      exchangeRateSource: campaignEditDraft.exchangeRateSource || '운영 기준환율(수동)',
+      exchangeRateUpdatedAt: campaignEditDraft.exchangeRateUpdatedAt || nowLabel(),
     }
     nextCampaign.strategyInputRaw = buildCampaignStrategyInputRaw(
       nextCampaign,
@@ -13347,6 +13442,8 @@ function App() {
     brandOwner: activeBrand.owner || activeBrand.name,
     campaignId: campaign.id,
     campaignName: campaign.name || '신규 인플루언서 캠페인',
+    market: normalizeCampaignMarket(campaign),
+    localizationInstruction: getLanguageInstruction(campaign),
     product: campaign.product || campaignBrief.product || '',
     objective: campaign.objective || campaignBrief.goal || '',
     campaignType: campaign.campaignType || '제안형',
@@ -13943,6 +14040,12 @@ function App() {
       approvalFlow: campaignDraft.approvalFlow || '브리프 전달 → 콘텐츠 검수 → 게시 확인 → 성과 리포트',
       commerceMetric: campaignDraft.commerceMetric || '조회/댓글/공유와 전환 링크',
       landingUrl: campaignDraft.landingUrl?.trim() || '',
+      targetCountry: campaignDraft.targetCountry || 'KR',
+      outputLanguage: campaignDraft.outputLanguage || 'ko',
+      localCurrency: campaignDraft.localCurrency || 'KRW',
+      exchangeRateKrw: Number(campaignDraft.exchangeRateKrw) || 1,
+      exchangeRateSource: '운영 기준환율(수동)',
+      exchangeRateUpdatedAt: nowLabel(),
       kpiGoal: campaignDraft.kpiGoal || '조회수/전환 KPI 미정',
       targetViews: normalizeNumericTarget(campaignDraft.targetViews),
       targetConversions: normalizeNumericTarget(campaignDraft.targetConversions),
@@ -13984,6 +14087,10 @@ function App() {
           approvalFlow: campaignDraft.approvalFlow,
           commerceMetric: campaignDraft.commerceMetric,
           landingUrl: campaignDraft.landingUrl?.trim() || '',
+          targetCountry: campaignDraft.targetCountry || 'KR',
+          outputLanguage: campaignDraft.outputLanguage || 'ko',
+          localCurrency: campaignDraft.localCurrency || 'KRW',
+          exchangeRateKrw: Number(campaignDraft.exchangeRateKrw) || 1,
           kpiGoal: campaignDraft.kpiGoal,
           targetViews: normalizeNumericTarget(campaignDraft.targetViews),
           targetConversions: normalizeNumericTarget(campaignDraft.targetConversions),
@@ -14006,7 +14113,7 @@ function App() {
       generationState: {
         strategy: campaignDraft.influencerStrategy ? 'generated' : 'not_started',
         guide: campaignDraft.generatedContentGuide ? 'generated' : 'not_started',
-        sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001'],
+        sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-CMP-LOC-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001'],
         outputRawId: 'RAW-INT-AI-001',
         packageVersion: 'strategy-director-v2.3-local',
       },
@@ -14057,6 +14164,10 @@ function App() {
       product: '',
       objective: '브랜드 인지도',
       campaignType: '제안형',
+      targetCountry: 'KR',
+      outputLanguage: 'ko',
+      localCurrency: 'KRW',
+      exchangeRateKrw: '1',
       targetPersona: '',
     searchKeywords: '',
     exclusionKeywords: '',
@@ -16680,6 +16791,7 @@ function App() {
                         key={recommendation.id}
                         recommendation={recommendation}
                         creator={creator}
+                        campaign={selectedCampaign}
                         checked={selectedRecommendationIds.includes(recommendation.id)}
                         active={selectedRecommendationDetailId === recommendation.creatorId}
                         onSelect={() => {
@@ -16753,14 +16865,14 @@ function App() {
                       />
                       <Stat
                         label={getCreatorRateSummary(selectedRecommendationCreator).label}
-                        value={won(getCreatorRateSummary(selectedRecommendationCreator).effectivePrice)}
+                        value={formatDualCurrency(getCreatorRateSummary(selectedRecommendationCreator).effectivePrice, selectedCampaign)}
                       />
                       <Stat label="매칭 점수" value={`${selectedRecommendationDetail.score ?? selectedRecommendationCreator.fit ?? 0}점`} />
                       <Stat label="데이터 신뢰도" value={`${selectedRecommendationQuality.score}%`} />
                     </div>
                     <div className="creator-rate-toolbar">
                       <span>
-                        팔로워·평균 조회수·참여율·플랫폼 기준 예상 {won(getCreatorRateSummary(selectedRecommendationCreator).estimatedPrice)}
+                        팔로워·평균 조회수·참여율·플랫폼 기준 예상 {formatDualCurrency(getCreatorRateSummary(selectedRecommendationCreator).estimatedPrice, selectedCampaign)}
                       </span>
                       <button
                         className="secondary-button compact-button"
@@ -17142,6 +17254,7 @@ function App() {
                       key={creator.id}
                       recommendation={recommendation}
                       creator={learnedCreator}
+                      campaign={selectedCampaign}
                       active={selectedCreator?.id === creator.id}
                       checked={selectedDiscoveryCreatorIds.includes(creator.id)}
                       profileUrl={getCreatorProfileUrl(creator, getRecommendedContactChannelId(creator))}
@@ -17208,14 +17321,14 @@ function App() {
                 <Stat label="참여율" value={hasPendingMetrics(selectedCreator) ? '수집 필요' : percent(selectedCreator.engagement)} />
                 <Stat
                   label={getCreatorRateSummary(selectedCreator).label}
-                  value={won(getCreatorRateSummary(selectedCreator).effectivePrice)}
+                  value={formatDualCurrency(getCreatorRateSummary(selectedCreator).effectivePrice, selectedCampaign)}
                 />
                 <Stat label="데이터 신뢰도" value={`${selectedCreatorQuality.score}%`} />
                 <Stat label="검증 상태" value={selectedCreatorQuality.level} />
               </div>
               <div className="creator-rate-toolbar">
                 <span>
-                  팔로워·평균 조회수·참여율·플랫폼 기준 예상 {won(getCreatorRateSummary(selectedCreator).estimatedPrice)}
+                  팔로워·평균 조회수·참여율·플랫폼 기준 예상 {formatDualCurrency(getCreatorRateSummary(selectedCreator).estimatedPrice, selectedCampaign)}
                 </span>
                 <button
                   className="secondary-button compact-button"
@@ -17430,6 +17543,7 @@ function App() {
                     key={creator.id}
                     recommendation={recommendation}
                     creator={learnedCreator}
+                    campaign={selectedCampaign}
                     active={selectedCreator?.id === creator.id}
                     checked={selectedCandidatePoolIds.includes(creator.id)}
                     profileUrl={profileUrl}
@@ -17674,7 +17788,7 @@ function App() {
                             const creatorPriceValue = getCreatorPriceValue(creator)
                             return (
                               <span className={`creator-group-member-price-chip ${creatorPriceValue ? '' : 'muted'}`}>
-                                {getCreatorRateSummary(creator).label} {creatorPriceValue ? won(creatorPriceValue) : '산정 전'}
+                                {getCreatorRateSummary(creator).label} {creatorPriceValue ? formatDualCurrency(creatorPriceValue, selectedCampaign) : '산정 전'}
                               </span>
                             )
                           })()}
@@ -18606,6 +18720,34 @@ function App() {
                       <label>
                         검색 키워드
                         <input value={campaignEditDraft.searchKeywords} onChange={(event) => updateCampaignEditField('searchKeywords', event.target.value)} />
+                      </label>
+                    </div>
+                    <div className="campaign-edit-schedule-grid">
+                      <label>
+                        운영 국가
+                        <select
+                          value={campaignEditDraft.targetCountry}
+                          onChange={(event) => {
+                            const market = getMarketConfig(event.target.value)
+                            setCampaignEditDraft((current) => ({ ...current, targetCountry: market.country, outputLanguage: market.language, localCurrency: market.currency, exchangeRateKrw: String(market.exchangeRateKrw) }))
+                          }}
+                        >
+                          {MARKET_OPTIONS.map((market) => <option key={market.country} value={market.country}>{market.label}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        산출물 언어
+                        <select value={campaignEditDraft.outputLanguage} onChange={(event) => updateCampaignEditField('outputLanguage', event.target.value)}>
+                          {LANGUAGE_OPTIONS.map((language) => <option key={language.value} value={language.value}>{language.label}</option>)}
+                        </select>
+                      </label>
+                      <label>
+                        현지 통화
+                        <input value={campaignEditDraft.localCurrency} readOnly />
+                      </label>
+                      <label>
+                        1 {campaignEditDraft.localCurrency}당 원화
+                        <input inputMode="decimal" value={campaignEditDraft.exchangeRateKrw} onChange={(event) => updateCampaignEditField('exchangeRateKrw', event.target.value)} />
                       </label>
                     </div>
                     <div className="campaign-edit-schedule-grid">
@@ -19791,6 +19933,37 @@ function App() {
                     </select>
                   </label>
                 </div>
+                <div className="modal-two-col">
+                  <label>
+                    운영 국가
+                    <select
+                      value={campaignDraft.targetCountry}
+                      onChange={(event) => {
+                        const market = getMarketConfig(event.target.value)
+                        setCampaignDraft({ ...campaignDraft, targetCountry: market.country, outputLanguage: market.language, localCurrency: market.currency, exchangeRateKrw: String(market.exchangeRateKrw) })
+                      }}
+                    >
+                      {MARKET_OPTIONS.map((market) => <option key={market.country} value={market.country}>{market.label}</option>)}
+                    </select>
+                  </label>
+                  <label>
+                    산출물 언어
+                    <select value={campaignDraft.outputLanguage} onChange={(event) => setCampaignDraft({ ...campaignDraft, outputLanguage: event.target.value })}>
+                      {LANGUAGE_OPTIONS.map((language) => <option key={language.value} value={language.value}>{language.label}</option>)}
+                    </select>
+                  </label>
+                </div>
+                <div className="modal-two-col">
+                  <label>
+                    현지 통화
+                    <input value={campaignDraft.localCurrency} readOnly />
+                  </label>
+                  <label>
+                    기준환율 · 1 {campaignDraft.localCurrency}당 원화
+                    <input inputMode="decimal" value={campaignDraft.exchangeRateKrw} onChange={(event) => setCampaignDraft({ ...campaignDraft, exchangeRateKrw: event.target.value })} />
+                    <span>운영 기준환율입니다. 캠페인 시작 전 최신값으로 수정하세요.</span>
+                  </label>
+                </div>
               </div>
               <div className="campaign-guide-panel campaign-condition-panel">
                 <div>
@@ -20240,7 +20413,7 @@ function App() {
               <form className="modal-form creator-rate-form" onSubmit={saveCreatorActualRate}>
                 <div className="creator-rate-estimate">
                   <span>자동 계산 예상 단가</span>
-                  <strong>{won(rate.estimatedPrice)}</strong>
+                  <strong>{formatDualCurrency(rate.estimatedPrice, selectedCampaign)}</strong>
                   <small>
                     {rateCreator.platform} · 팔로워 {displayMetric(rate.factors.followers)} · 평균 조회 {displayMetric(rate.factors.averageViews)} · 참여율 {percent(rate.factors.engagement)}
                   </small>
@@ -21531,6 +21704,7 @@ function PaginationControls({ page, totalPages, totalItems, pageSize, onPageChan
 function RecommendationCard({
   recommendation,
   creator,
+  campaign,
   checked,
   active = false,
   onSelect,
@@ -21556,7 +21730,7 @@ function RecommendationCard({
   const efficiencyScore = getCreatorEfficiencyScore(creator)
   const creatorPrice = getCreatorPriceValue(creator)
   const creatorRate = getCreatorRateSummary(creator)
-  const estimatedPriceLabel = creatorPrice ? won(creatorPrice) : '산정 전'
+  const estimatedPriceLabel = creatorPrice ? formatDualCurrency(creatorPrice, campaign) : '산정 전'
   const performanceLearning = creator.performanceLearning
   const costPerView = Number(creator.averageViews || 0) && creatorPrice
     ? Math.round(creatorPrice / Number(creator.averageViews || 1))
@@ -22175,7 +22349,7 @@ function ClientApprovalBoard({
                 <div>
                   <span>
                     {creatorRate?.label ?? '예상 단가'}{' '}
-                    {creatorRate?.effectivePrice ? won(creatorRate.effectivePrice) : '산정 전'}
+                    {creatorRate?.effectivePrice ? formatDualCurrency(creatorRate.effectivePrice, campaign) : '산정 전'}
                   </span>
                   <span>브랜드 핏 {creator?.fit ?? '-'}점</span>
                   <span>가짜 팔로워 위험 {creator?.fakeRisk ?? '-'}%</span>
