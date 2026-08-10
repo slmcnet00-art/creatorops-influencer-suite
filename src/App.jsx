@@ -2785,6 +2785,37 @@ function mergeUtmTrackingLogs(existing = [], next = []) {
   })
 }
 
+function getLatestCreatorUtmLog(logs = [], campaignId = '', creatorId = '') {
+  return (Array.isArray(logs) ? logs : [])
+    .filter(
+      (item) =>
+        String(item.campaignId || item.campaign_id || '') === String(campaignId || '') &&
+        String(item.creatorId || item.creator_id || '') === String(creatorId || ''),
+    )
+    .sort((left, right) => new Date(right.updatedAt || right.createdAt || 0) - new Date(left.updatedAt || left.createdAt || 0))[0]
+}
+
+function trackingAssetFromLog(log = {}, fallback = {}) {
+  if (!log?.shortUrl && !log?.short_url) return fallback
+  return {
+    ...fallback,
+    rawId: log.rawId || fallback.rawId || UTM_RAW_SOURCE_ID,
+    metricIds: log.metricIds || fallback.metricIds || [UTM_CLICK_METRIC_ID, UTM_REVENUE_METRIC_ID],
+    destination: log.destination || log.destination_url || log.landing_url || fallback.destination || '',
+    params: {
+      utm_source: log.utm_source || fallback.params?.utm_source || '',
+      utm_medium: log.utm_medium || fallback.params?.utm_medium || 'influencer',
+      utm_campaign: log.utm_campaign || fallback.params?.utm_campaign || '',
+      utm_content: log.utm_content || fallback.params?.utm_content || '',
+    },
+    originalUrl: log.originalUrl || log.original_utm_url || fallback.originalUrl || '',
+    shortCode: log.shortCode || fallback.shortCode || '',
+    shortUrl: log.shortUrl || log.short_url || fallback.shortUrl || '',
+    couponCode: log.couponCode || log.coupon_code || fallback.couponCode || '',
+    status: log.status || fallback.status || 'active',
+  }
+}
+
 function buildInfluencerContentGuide({ brand, brief, campaign, creators = [] }) {
   const seedType = campaign.guideSeedType || '무가시딩'
   const channel = campaign.guideChannel || 'Instagram Reels'
@@ -7561,6 +7592,7 @@ function App() {
     individualContentGuides: {},
   })
   const [campaignEditDraft, setCampaignEditDraft] = useState(null)
+  const [utmEditorDraft, setUtmEditorDraft] = useState(null)
   const [brandDraft, setBrandDraft] = useState({
     name: '',
     owner: '',
@@ -13556,12 +13588,17 @@ function App() {
     const generatedAt = nowLabel()
     const nextUtmTrackingLogs = []
     const nextGuides = guideCreators.reduce((result, creator, index) => {
-      const trackingAsset = buildInfluencerTrackingAsset({
+      const generatedTrackingAsset = buildInfluencerTrackingAsset({
         brand: activeBrand,
         campaign,
         creator,
         index,
       })
+      const storedTrackingAsset = campaign.individualContentGuides?.[creator.id]?.trackingLinks
+      const latestTrackingLog = getLatestCreatorUtmLog(utmTrackingLogs, campaign.id, creator.id)
+      const trackingAsset = storedTrackingAsset?.shortUrl
+        ? { ...generatedTrackingAsset, ...storedTrackingAsset, params: storedTrackingAsset.params || generatedTrackingAsset.params }
+        : trackingAssetFromLog(latestTrackingLog, generatedTrackingAsset)
       nextUtmTrackingLogs.push(
         buildUtmTrackingLog({
           brand: activeBrand,
@@ -13580,6 +13617,7 @@ function App() {
         generatedAt,
         trackingLink: trackingAsset.shortUrl,
         trackingLinks: {
+          ...trackingAsset,
           shortUrl: trackingAsset.shortUrl,
           originalUrl: trackingAsset.originalUrl,
           couponCode: trackingAsset.couponCode,
@@ -13634,6 +13672,146 @@ function App() {
       ),
     )
     showToast(`${campaign.name} 개별 가이드 ${guideCreators.length}건을 생성했어요.`)
+  }
+
+  const openCampaignUtmEditor = (campaign, creator, index = 0) => {
+    if (!campaign || !creator) return
+    const fallback = buildInfluencerTrackingAsset({ brand: activeBrand, campaign, creator, index })
+    const stored = campaign.individualContentGuides?.[creator.id]?.trackingLinks
+    const latestLog = getLatestCreatorUtmLog(utmTrackingLogs, campaign.id, creator.id)
+    const asset = stored?.shortUrl
+      ? { ...fallback, ...stored, params: stored.params || fallback.params }
+      : trackingAssetFromLog(latestLog, fallback)
+
+    setUtmEditorDraft({
+      campaignId: campaign.id,
+      creatorId: creator.id,
+      creatorName: creator.name,
+      destination: asset.destination || campaign.landingUrl || '',
+      utmSource: asset.params?.utm_source || toTrackingSlug(creator.platform || 'creator', 'channel'),
+      utmMedium: asset.params?.utm_medium || 'influencer',
+      utmCampaign: asset.params?.utm_campaign || toTrackingSlug(campaign.name || campaign.id, 'campaign'),
+      utmContent: asset.params?.utm_content || toTrackingSlug(creator.handle || creator.name, 'creator'),
+      shortCode: asset.shortCode || '',
+      shortUrl: asset.shortUrl || '',
+      couponCode: asset.couponCode || '',
+      existing: Boolean(stored?.shortUrl || latestLog?.shortUrl || latestLog?.short_url),
+    })
+  }
+
+  const saveCampaignUtmLink = ({ reissue = false } = {}) => {
+    if (!utmEditorDraft) return
+    const campaign = brandCampaigns.find((item) => item.id === utmEditorDraft.campaignId)
+    const creator = creators.find((item) => item.id === utmEditorDraft.creatorId)
+    const destination = String(utmEditorDraft.destination || '').trim()
+    if (!campaign || !creator || !destination) {
+      showToast('판매/랜딩 URL을 입력해 주세요.')
+      return
+    }
+
+    const params = {
+      utm_source: String(utmEditorDraft.utmSource || '').trim(),
+      utm_medium: String(utmEditorDraft.utmMedium || 'influencer').trim(),
+      utm_campaign: String(utmEditorDraft.utmCampaign || '').trim(),
+      utm_content: String(utmEditorDraft.utmContent || '').trim(),
+    }
+    const generatedAt = new Date().toISOString()
+    const eventTimestamp = new Date(generatedAt).getTime()
+    const baseAsset = buildInfluencerTrackingAsset({ brand: activeBrand, campaign, creator })
+    const shortCode = reissue || !utmEditorDraft.shortCode
+      ? stableHash(`${activeBrand.id}:${campaign.id}:${creator.id}:${eventTimestamp}`).slice(0, 7)
+      : utmEditorDraft.shortCode
+    const trackingAsset = {
+      ...baseAsset,
+      destination,
+      params,
+      originalUrl: appendUrlParams(destination, params),
+      shortCode,
+      shortUrl: `${SHORT_LINK_BASE_URL}/${shortCode}`,
+      couponCode: String(utmEditorDraft.couponCode || '').trim() || `${baseAsset.couponCode.slice(0, 3)}${shortCode.slice(0, 4)}`,
+      status: 'active',
+      generatedAt,
+    }
+    const eventType = reissue ? 'link_reissued' : utmEditorDraft.existing ? 'link_updated' : 'link_created'
+    const log = {
+      ...buildUtmTrackingLog({ brand: activeBrand, campaign, creator, trackingAsset, generatedAt }),
+      id: `utm-${campaign.id}-${creator.id}-${shortCode}-${eventTimestamp}`,
+      linkId: `utm-${campaign.id}-${creator.id}`,
+      eventType,
+      source: 'campaign_utm_manager',
+      status: 'active',
+      updatedAt: generatedAt,
+    }
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          campaigns: current.campaigns.map((item) =>
+            item.id === campaign.id
+              ? {
+                  ...item,
+                  individualContentGuides: {
+                    ...(item.individualContentGuides || {}),
+                    [creator.id]: {
+                      ...(item.individualContentGuides?.[creator.id] || {}),
+                      creatorId: creator.id,
+                      creatorName: creator.name,
+                      platform: creator.platform,
+                      handle: creator.handle,
+                      trackingLink: trackingAsset.shortUrl,
+                      trackingLinks: trackingAsset,
+                    },
+                  },
+                }
+              : item,
+          ),
+          utmTrackingLogs: [...(current.utmTrackingLogs || []), log],
+        },
+        'tracking',
+        `${campaign.name} · ${creator.name} UTM ${reissue ? '재발급' : utmEditorDraft.existing ? '수정' : '발급'}`,
+      ),
+    )
+    setUtmEditorDraft(null)
+    showToast(`${creator.name} 전용 숏링크를 ${reissue ? '재발급' : '저장'}했습니다.`)
+  }
+
+  const deactivateCampaignUtmLink = (campaign, creator, index = 0) => {
+    const fallback = buildInfluencerTrackingAsset({ brand: activeBrand, campaign, creator, index })
+    const latest = getLatestCreatorUtmLog(utmTrackingLogs, campaign.id, creator.id)
+    const asset = trackingAssetFromLog(latest, campaign.individualContentGuides?.[creator.id]?.trackingLinks || fallback)
+    if (!asset?.shortUrl) return
+    const generatedAt = new Date().toISOString()
+    const eventTimestamp = new Date(generatedAt).getTime()
+    const log = {
+      ...buildUtmTrackingLog({ brand: activeBrand, campaign, creator, trackingAsset: asset, generatedAt }),
+      id: `utm-${campaign.id}-${creator.id}-${asset.shortCode || 'link'}-${eventTimestamp}`,
+      linkId: `utm-${campaign.id}-${creator.id}`,
+      eventType: 'link_deactivated',
+      source: 'campaign_utm_manager',
+      status: 'inactive',
+      updatedAt: generatedAt,
+    }
+    updateWorkspace((current) => ({
+      ...current,
+      campaigns: current.campaigns.map((item) =>
+        item.id === campaign.id
+          ? {
+              ...item,
+              individualContentGuides: {
+                ...(item.individualContentGuides || {}),
+                [creator.id]: {
+                  ...(item.individualContentGuides?.[creator.id] || {}),
+                  trackingLinks: { ...(item.individualContentGuides?.[creator.id]?.trackingLinks || asset), status: 'inactive', disabledAt: generatedAt },
+                },
+              },
+            }
+          : item,
+      ),
+      utmTrackingLogs: [...(current.utmTrackingLogs || []), log],
+    }))
+    if (utmEditorDraft?.creatorId === creator.id) setUtmEditorDraft(null)
+    showToast(`${creator.name} 숏링크를 비활성화했습니다.`)
   }
 
   const downloadCampaignContentGuide = async (campaign, format = 'docx') => {
@@ -18737,6 +18915,123 @@ function App() {
                     <p className="muted-note">섭외 완료 또는 배정된 크리에이터가 생기면 개별 가이드를 생성할 수 있습니다.</p>
                   )}
                 </div>
+
+                <section className="campaign-utm-manager">
+                  <div className="campaign-utm-head">
+                    <div>
+                      <span className="mini-label">UTM · 숏링크</span>
+                      <strong>크리에이터별 판매 링크 관리</strong>
+                      <p>캠페인 랜딩 URL로 개인별 UTM과 숏링크를 발급합니다. 저장된 활성 링크는 다음 개별 가이드 생성부터 그대로 사용됩니다.</p>
+                    </div>
+                    <div className="campaign-utm-meta">
+                      <span>{activeCampaignForModal.landingUrl ? '랜딩 URL 연결됨' : '랜딩 URL 필요'}</span>
+                      <code>{UTM_RAW_SOURCE_ID}</code>
+                    </div>
+                  </div>
+                  {campaignModalGuideCreators.length > 0 ? (
+                    <div className="campaign-utm-list">
+                      {campaignModalGuideCreators.map((creator, index) => {
+                        const fallbackAsset = buildInfluencerTrackingAsset({
+                          brand: activeBrand,
+                          campaign: activeCampaignForModal,
+                          creator,
+                          index,
+                        })
+                        const storedAsset = activeCampaignForModal.individualContentGuides?.[creator.id]?.trackingLinks
+                        const latestLog = getLatestCreatorUtmLog(utmTrackingLogs, activeCampaignForModal.id, creator.id)
+                        const hasIssuedLink = Boolean(storedAsset?.shortUrl || latestLog?.shortUrl || latestLog?.short_url)
+                        const trackingAsset = storedAsset?.shortUrl
+                          ? { ...fallbackAsset, ...storedAsset, params: storedAsset.params || fallbackAsset.params }
+                          : trackingAssetFromLog(latestLog, fallbackAsset)
+                        const linkStatus = latestLog?.status || storedAsset?.status || (hasIssuedLink ? 'active' : 'not_issued')
+                        const isEditing = utmEditorDraft?.campaignId === activeCampaignForModal.id && utmEditorDraft?.creatorId === creator.id
+                        return (
+                          <article className="campaign-utm-row" key={`utm-${creator.id}`}>
+                            <div className="campaign-utm-creator">
+                              <strong>{creator.name}</strong>
+                              <span>{creator.platform} · {creator.handle}</span>
+                            </div>
+                            <span className={`utm-status ${linkStatus}`}>
+                              {linkStatus === 'inactive' ? '비활성' : hasIssuedLink ? '활성' : '미발급'}
+                            </span>
+                            <div className="utm-short-link">
+                              <span>숏링크</span>
+                              <code>{hasIssuedLink ? trackingAsset.shortUrl : '발급 전'}</code>
+                            </div>
+                            <div className="utm-short-link">
+                              <span>UTM content</span>
+                              <code>{hasIssuedLink ? trackingAsset.params?.utm_content : '-'}</code>
+                            </div>
+                            <div className="campaign-utm-actions">
+                              <button type="button" className="secondary-button compact-button" onClick={() => openCampaignUtmEditor(activeCampaignForModal, creator, index)}>
+                                {hasIssuedLink ? '수정' : '발급'}
+                              </button>
+                              {hasIssuedLink && (
+                                <>
+                                  <button type="button" className="secondary-button compact-button" onClick={() => {
+                                    openCampaignUtmEditor(activeCampaignForModal, creator, index)
+                                  }}>
+                                    재발급
+                                  </button>
+                                  <button type="button" className="secondary-button compact-button" onClick={async () => {
+                                    await navigator.clipboard?.writeText(trackingAsset.shortUrl)
+                                    showToast(`${creator.name} 숏링크를 복사했습니다.`)
+                                  }}>
+                                    복사
+                                  </button>
+                                  <button type="button" className="text-button danger-text" onClick={() => deactivateCampaignUtmLink(activeCampaignForModal, creator, index)} disabled={linkStatus === 'inactive'}>
+                                    비활성
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                            {isEditing && (
+                              <div className="utm-inline-editor">
+                                <label>
+                                  판매/랜딩 URL
+                                  <input value={utmEditorDraft.destination} onChange={(event) => setUtmEditorDraft((current) => ({ ...current, destination: event.target.value }))} />
+                                </label>
+                                <label>
+                                  utm_source
+                                  <input value={utmEditorDraft.utmSource} onChange={(event) => setUtmEditorDraft((current) => ({ ...current, utmSource: event.target.value }))} />
+                                </label>
+                                <label>
+                                  utm_medium
+                                  <input value={utmEditorDraft.utmMedium} onChange={(event) => setUtmEditorDraft((current) => ({ ...current, utmMedium: event.target.value }))} />
+                                </label>
+                                <label>
+                                  utm_campaign
+                                  <input value={utmEditorDraft.utmCampaign} onChange={(event) => setUtmEditorDraft((current) => ({ ...current, utmCampaign: event.target.value }))} />
+                                </label>
+                                <label>
+                                  utm_content
+                                  <input value={utmEditorDraft.utmContent} onChange={(event) => setUtmEditorDraft((current) => ({ ...current, utmContent: event.target.value }))} />
+                                </label>
+                                <label>
+                                  쿠폰 코드
+                                  <input
+                                    value={utmEditorDraft.couponCode}
+                                    onChange={(event) => setUtmEditorDraft((current) => ({ ...current, couponCode: event.target.value.toUpperCase() }))}
+                                    placeholder="예: D2CPNY9"
+                                  />
+                                </label>
+                                <div className="utm-editor-actions">
+                                  <button type="button" className="secondary-button compact-button" onClick={() => setUtmEditorDraft(null)}>취소</button>
+                                  {utmEditorDraft.existing && (
+                                    <button type="button" className="secondary-button compact-button" onClick={() => saveCampaignUtmLink({ reissue: true })}>새 숏링크 발급</button>
+                                  )}
+                                  <button type="button" className="primary-button compact-button" onClick={() => saveCampaignUtmLink()}>저장</button>
+                                </div>
+                              </div>
+                            )}
+                          </article>
+                        )
+                      })}
+                    </div>
+                  ) : (
+                    <p className="muted-note">캠페인에 크리에이터를 배정하면 개인별 UTM을 발급할 수 있습니다.</p>
+                  )}
+                </section>
 
                 <ClientApprovalBoard
                   campaign={activeCampaignForModal}

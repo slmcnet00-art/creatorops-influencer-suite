@@ -10,6 +10,7 @@
     "lint": "eslint .",
     "preview": "vite preview",
     "data-room:status": "node scripts/check-data-room-status.mjs",
+    "test:full-cycle": "node scripts/run-full-cycle.mjs",
     "verify:data-lineage": "node scripts/verify-data-lineage.mjs",
     "data-room:build-media-manifest": "node scripts/build-media-definition-manifest.mjs",
     "verify:media-definition": "node scripts/verify-media-definition.mjs",
