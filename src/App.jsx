@@ -6039,8 +6039,16 @@ function buildDataRoomExtendedRawCatalog({
     .filter(Boolean)
     .sort()
     .at(-1)
-  const baseIds = new Set(rawData.map((item) => item.id))
-  const append = (items) => [...rawData, ...items.filter((item) => !baseIds.has(item.id))]
+  const append = (items) => {
+    const catalogById = new Map()
+
+    ;[...rawData, ...items].forEach((item) => {
+      if (!item?.id || catalogById.has(item.id)) return
+      catalogById.set(item.id, item)
+    })
+
+    return [...catalogById.values()]
+  }
 
   return append([
     {
