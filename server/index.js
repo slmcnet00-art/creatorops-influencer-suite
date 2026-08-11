@@ -3409,7 +3409,8 @@ function resolveCampaignLanguage(campaign = {}) {
     SEA: 'en',
     EU: 'en',
   }
-  const code = campaign.outputLanguage || marketLanguage[campaign.targetCountry] || 'ko'
+  const rawCode = campaign.outputLanguage || marketLanguage[campaign.targetCountry] || 'ko'
+  const code = rawCode === 'zh-CN' ? 'zh' : rawCode
   const labels = {
     ko: 'Korean',
     en: 'English',

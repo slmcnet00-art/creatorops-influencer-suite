@@ -2580,7 +2580,9 @@ async function buildLearningMaterialsFromZipFile(file) {
   return materials
 }
 
-function buildFriendlyProposalMessage(creator, brief, campaign) {
+// Kept temporarily for migration comparison while existing saved drafts are upgraded.
+// eslint-disable-next-line no-unused-vars
+function buildFriendlyProposalMessageLegacy(creator, brief, campaign) {
   const topicText = creator.topics.slice(0, 3).join(', ')
   const campaignName = campaign?.name ?? `${brief.product} 캠페인`
   const deadlineText = campaign?.deadline ? `일정은 ${campaign.deadline} 전후로 보고 있습니다.` : '일정은 편하신 시점에 맞춰 조율하고 싶습니다.'
@@ -2649,6 +2651,67 @@ Please share your preferred format, available dates, and rate. We'll tailor the 
 3. 이번에는 어렵지만 다음 제안은 받고 싶어요
 
 가능한 콘텐츠 형식, 진행 가능 일정, 희망 단가를 알려주시면 그에 맞춰 제안서와 가이드를 바로 정리해드리겠습니다. 감사합니다.`
+}
+
+function buildFriendlyProposalMessage(creator, brief, campaign) {
+  const market = normalizeCampaignMarket(campaign)
+  const topics = Array.isArray(creator?.topics) ? creator.topics.slice(0, 3).join(', ') : ''
+  const campaignName = campaign?.name || `${brief?.product || brief?.brandName || 'brand'} campaign`
+  const product = brief?.product || campaign?.product || 'the product'
+  const brand = brief?.brandName || campaign?.brandName || 'our brand'
+  const keywords = keywordList(brief?.keywords).slice(0, 3).join(', ') || topics || product
+  const creatorName = creator?.name || creator?.handle || 'Creator'
+  const deadline = campaign?.deadline || campaign?.recruitmentDeadline || ''
+
+  if (market.language === 'en') {
+    return `Hi ${creatorName}, I hope you're doing well. I'm reaching out from ${brand} about a potential collaboration for ${campaignName}.
+
+We enjoyed your content about ${topics || product}, and we think your voice would be a natural fit for ${product}. We'd love to shape the content around ${keywords} while leaving room for your own style.${deadline ? ` The proposed schedule is around ${deadline}.` : ''}
+
+You can simply reply with a number:
+1. Interested
+2. I'd like to review the schedule and fee first
+3. Not this time, but open to future opportunities
+
+Please share your preferred format, available dates, and rate. We'll tailor the proposal and guide accordingly. Thank you!`
+  }
+
+  if (market.language === 'ja') {
+    return `${creatorName}様、こんにちは。${brand}より「${campaignName}」のコラボレーションについてご連絡いたしました。
+
+${topics || product}に関する投稿を拝見し、${product}の魅力を自然に伝えていただけると感じています。${keywords}を軸にしながら、普段の投稿スタイルを活かした内容をご相談できれば幸いです。${deadline ? `希望時期は${deadline}頃です。` : ''}
+
+ご都合に近い番号だけでもご返信ください。
+1. 興味があります
+2. 日程と費用を先に確認したいです
+3. 今回は難しいですが、今後の提案は受け取りたいです
+
+ご希望の形式、対応可能な日程、ご希望費用をお知らせいただけましたら、詳細をご案内いたします。よろしくお願いいたします。`
+  }
+
+  if (market.language === 'zh-CN') {
+    return `${creatorName}，您好！我们是${brand}，想邀请您参与“${campaignName}”合作。
+
+我们看过您关于${topics || product}的内容，认为您的表达方式很适合介绍${product}。希望以${keywords}为核心，同时保留您原有的内容风格。${deadline ? `预计合作时间为${deadline}前后。` : ''}
+
+您可以直接回复数字：
+1. 感兴趣
+2. 想先了解时间和费用
+3. 这次不方便，但愿意接收后续合作邀请
+
+也请告知您偏好的内容形式、可合作时间和报价，我们会据此发送详细方案。谢谢！`
+  }
+
+  return `${creatorName}님, 안녕하세요. ${brand}의 ${campaignName} 협업을 제안드리고 싶어 연락드렸습니다.
+
+최근 ${topics || product} 관련 콘텐츠를 인상 깊게 보았고, ${product}의 매력을 자연스럽게 전달해 주실 수 있다고 생각했습니다. ${keywords}를 중심으로 하되 평소 채널의 분위기와 표현 방식을 충분히 살려 함께 만들고 싶습니다.${deadline ? ` 희망 일정은 ${deadline} 전후입니다.` : ''}
+
+편하게 번호로만 답해주셔도 괜찮습니다.
+1. 관심 있어요
+2. 일정과 비용을 먼저 보고 싶어요
+3. 이번에는 어렵지만 다음 제안은 받고 싶어요
+
+가능한 콘텐츠 형식, 일정, 희망 단가를 알려주시면 맞춤 제안서와 가이드를 정리해드리겠습니다. 감사합니다!`
 }
 
 const SHORT_LINK_BASE_URL = 'https://go.creatorops.kr'
