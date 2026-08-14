@@ -75,8 +75,20 @@ export default function AdminConsole({
     if (!apiBaseUrl) return
     fetch(`${apiBaseUrl}/admin/ai-configs`)
       .then((response) => response.ok ? response.json() : Promise.reject(new Error('설정을 불러오지 못했습니다.')))
-      .then((result) => setPolicies((current) => mergePolicies(current, result.data?.configs || [])))
+      .then((result) => {
+        const nextPolicies = mergePolicies(policies, result.data?.configs || [])
+        setPolicies(nextPolicies)
+        onUpdateAdminConfig?.({
+          ...(adminConfig || {}),
+          policies: nextPolicies,
+          automations,
+          source: 'server',
+          syncedAt: new Date().toISOString(),
+        })
+      })
       .catch(() => setSaveState('서버 설정을 불러오지 못해 로컬 설정을 표시합니다.'))
+    // Initial server hydration only. Later changes are persisted explicitly.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [apiBaseUrl])
 
   const auditRows = useMemo(() => [
@@ -96,8 +108,8 @@ export default function AdminConsole({
 
   const savePolicyToServer = async (status = selectedPolicy.status) => {
     const nextPolicy = { ...selectedPolicy, status, updatedAt: new Date().toISOString() }
-    updatePolicy(nextPolicy)
     if (!apiBaseUrl) {
+      updatePolicy(nextPolicy)
       setSaveState('브라우저에 저장했습니다. API 서버 연결 후 서버에도 동기화됩니다.')
       return
     }
@@ -108,10 +120,12 @@ export default function AdminConsole({
       })
       if (!response.ok) throw new Error('저장 실패')
       const result = await response.json()
-      setPolicies((current) => mergePolicies(current, [result.data?.config]))
+      const nextPolicies = mergePolicies(policies, [result.data?.config || nextPolicy])
+      setPolicies(nextPolicies)
+      persistLocal(nextPolicies, automations)
       setSaveState(status === 'active' ? '활성 정책으로 저장했습니다. 다음 AI 실행부터 반영됩니다.' : '초안으로 저장했습니다. AI 실행에는 반영되지 않습니다.')
     } catch {
-      setSaveState('서버 저장에 실패했습니다. 브라우저에는 저장되어 있습니다.')
+      setSaveState('서버 저장에 실패해 기존 활성 설정을 유지합니다. 연결 상태를 확인한 뒤 다시 저장하세요.')
     }
   }
 

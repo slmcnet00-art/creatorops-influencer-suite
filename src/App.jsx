@@ -1165,6 +1165,8 @@ const defaultWorkspace = {
     policies: [],
     automations: [],
     updatedAt: null,
+    source: 'local',
+    syncedAt: null,
   },
   conversionEvents: [],
   creatorOperations: [],
@@ -1781,9 +1783,16 @@ function normalizeWorkspace(saved) {
       policies: Array.isArray(saved?.adminConfig?.policies) ? saved.adminConfig.policies : [],
       automations: Array.isArray(saved?.adminConfig?.automations) ? saved.adminConfig.automations : [],
       updatedAt: saved?.adminConfig?.updatedAt ?? null,
+      source: saved?.adminConfig?.source ?? 'local',
+      syncedAt: saved?.adminConfig?.syncedAt ?? null,
     },
     activities: normalizedActivities,
   }
+}
+
+function getActiveAdminPolicy(adminConfig, featureKey) {
+  const policies = Array.isArray(adminConfig?.policies) ? adminConfig.policies : []
+  return policies.find((policy) => policy?.featureKey === featureKey && policy?.status === 'active') ?? null
 }
 
 const BRAND_SCOPED_ARRAY_KEYS = [
@@ -10700,6 +10709,58 @@ function App() {
     setWorkspace((current) => mutator(current))
   }
 
+  useEffect(() => {
+    const apiBaseUrl = String(backendConfig.apiBaseUrl || '').replace(/\/$/, '')
+    if (!apiBaseUrl) return
+    let cancelled = false
+
+    const syncAdminPolicies = async () => {
+      try {
+        const response = await fetch(`${apiBaseUrl}/admin/ai-configs`, { cache: 'no-store' })
+        if (!response.ok) throw new Error('admin policy sync failed')
+        const result = await response.json()
+        if (cancelled) return
+        const serverPolicies = Array.isArray(result.data?.configs) ? result.data.configs : []
+        if (!serverPolicies.length) return
+        setWorkspace((current) => {
+          const currentPolicies = Array.isArray(current.adminConfig?.policies) ? current.adminConfig.policies : []
+          const currentSignature = currentPolicies.map(({ id, version, status, updatedAt }) => ({ id, version, status, updatedAt }))
+          const serverSignature = serverPolicies.map(({ id, version, status, updatedAt }) => ({ id, version, status, updatedAt }))
+          if (JSON.stringify(currentSignature) === JSON.stringify(serverSignature) && current.adminConfig?.source === 'server') {
+            return current
+          }
+          return {
+            ...current,
+            adminConfig: {
+              ...(current.adminConfig || {}),
+              policies: serverPolicies,
+              source: 'server',
+              syncedAt: new Date().toISOString(),
+            },
+          }
+        })
+      } catch {
+        // Keep the last verified policy when the server is temporarily unavailable.
+      }
+    }
+
+    const syncOnVisible = () => {
+      if (document.visibilityState === 'visible') syncAdminPolicies()
+    }
+
+    syncAdminPolicies()
+    const intervalId = window.setInterval(syncAdminPolicies, 30000)
+    window.addEventListener('focus', syncAdminPolicies)
+    document.addEventListener('visibilitychange', syncOnVisible)
+
+    return () => {
+      cancelled = true
+      window.clearInterval(intervalId)
+      window.removeEventListener('focus', syncAdminPolicies)
+      document.removeEventListener('visibilitychange', syncOnVisible)
+    }
+  }, [backendConfig.apiBaseUrl, setWorkspace])
+
   const openCreatorRateEditor = (creator) => {
     const rate = getCreatorRateSummary(creator)
     setRateEditValue(rate.actualPrice ? String(rate.actualPrice) : '')
@@ -12232,6 +12293,7 @@ function App() {
         provider: 'OpenAI',
         model: payload?.data?.model || 'gpt-4.1-mini',
         promptVersion: payload?.data?.promptVersion || 'recommendation-enrichment-v1',
+        policyFeatureKey: payload?.data?.policyFeatureKey || 'creator-recommendation',
         sourceRawIds: payload?.data?.sourceRawIds || ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-INF-001', 'RAW-INT-AI-POLICY-001'],
         metricIds: payload?.data?.metricIds || ['MET-AI-001', 'MET-AI-003', 'MET-AI-004', 'MET-AI-006', 'MET-LLM-001', 'MET-LLM-002'],
         generatedAt: nowLabel(),
@@ -16012,7 +16074,7 @@ function App() {
         backendConfig={backendConfig}
         adminConfig={workspace.adminConfig}
         onUpdateAdminConfig={(nextAdminConfig) =>
-          setWorkspace((current) => ({
+          updateWorkspace((current) => ({
             ...current,
             adminConfig: nextAdminConfig,
           }))
@@ -16747,6 +16809,12 @@ function App() {
                 <span>정책 {getRecommendationPolicyExportSummary().version}</span>
                 <span>담당 {getRecommendationPolicyExportSummary().owner}</span>
                 <span>점검 {getRecommendationPolicyExportSummary().lastUpdated}</span>
+                {getActiveAdminPolicy(workspace.adminConfig, 'creator-recommendation') && (
+                  <span>
+                    관리자 학습 {getActiveAdminPolicy(workspace.adminConfig, 'creator-recommendation').version}
+                    {workspace.adminConfig?.source === 'server' ? ' · 서버 동기화' : ' · 로컬 설정'}
+                  </span>
+                )}
                 <button type="button" onClick={() => openDataRoomRaw(getRecommendationPolicyExportSummary().rawId)}>
                   RAW-INT-AI-POLICY-001
                 </button>
