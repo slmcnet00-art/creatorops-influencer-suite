@@ -2,8 +2,9 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import readSheet from 'read-excel-file/browser'
 import {
   Activity, ArrowLeft, Bot, CheckCircle2, ChevronRight, Clock3, Database,
-  FileClock, FileText, KeyRound, LayoutDashboard, Paperclip, Play, RefreshCw,
-  Save, ShieldCheck, Trash2, UsersRound, Workflow,
+  Building2, CheckSquare2, ChevronDown, FileClock, FileText, KeyRound,
+  LayoutDashboard, Paperclip, Play, RefreshCw, Save, Search, ShieldCheck,
+  Trash2, UserRoundCog, UsersRound, Workflow,
 } from 'lucide-react'
 import './AdminConsole.css'
 
@@ -21,6 +22,10 @@ const defaultAutomations = [
   { id: 'reference', name: '레퍼런스 수집', schedule: '매일 2회', enabled: true, status: '검토 필요', lastRun: '-' },
   { id: 'access', name: '회원가입·권한 배정', schedule: '이벤트 발생 시', enabled: true, status: '정상', lastRun: '-' },
 ]
+
+const accountRoles = ['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst', 'Client']
+const fullAccessRoles = new Set(['Owner', 'Admin'])
+const accessPageSize = 8
 
 function tone(status) {
   if (status === '정상' || status === 'active') return 'ok'
@@ -60,7 +65,7 @@ export default function AdminConsole({
   summary = {}, dataRoom, accounts = [], brands = [], currentAccount,
   activities = [], apiEvents = [], backendConfig, adminConfig,
   onUpdateAdminConfig, onUpdateAccountRole, onToggleBrandAccess,
-  onTestApis, apiTestStatus,
+  onTestApis, apiTestStatus, canManagePermissions = false,
 }) {
   const [section, setSection] = useState('overview')
   const [policies, setPolicies] = useState(() => mergePolicies(adminConfig?.policies))
@@ -70,6 +75,63 @@ export default function AdminConsole({
   const fileInputRef = useRef(null)
   const apiBaseUrl = String(backendConfig?.apiBaseUrl || '').replace(/\/$/, '')
   const selectedPolicy = policies.find((item) => item.id === selectedPolicyId) || policies[0]
+  const [accessView, setAccessView] = useState('accounts')
+  const [accessSearch, setAccessSearch] = useState('')
+  const [accessRoleFilter, setAccessRoleFilter] = useState('전체')
+  const [accessStatusFilter, setAccessStatusFilter] = useState('전체')
+  const [accessBrandFilter, setAccessBrandFilter] = useState('전체')
+  const [accessPage, setAccessPage] = useState(1)
+  const [selectedAccountIds, setSelectedAccountIds] = useState([])
+  const [expandedAccountId, setExpandedAccountId] = useState(null)
+  const [expandedBrandId, setExpandedBrandId] = useState(null)
+  const [bulkRole, setBulkRole] = useState('')
+  const [bulkBrandId, setBulkBrandId] = useState('')
+  const [brandSearch, setBrandSearch] = useState('')
+
+  const accountStatuses = useMemo(() => [...new Set(accounts.map((account) => account.status).filter(Boolean))], [accounts])
+  const filteredAccounts = useMemo(() => {
+    const keyword = accessSearch.trim().toLowerCase()
+    return accounts.filter((account) => {
+      const hasBrandAccess = fullAccessRoles.has(account.role) || account.brandIds?.includes(accessBrandFilter)
+      return (!keyword || `${account.name || ''} ${account.email || ''}`.toLowerCase().includes(keyword))
+        && (accessRoleFilter === '전체' || account.role === accessRoleFilter)
+        && (accessStatusFilter === '전체' || account.status === accessStatusFilter)
+        && (accessBrandFilter === '전체' || hasBrandAccess)
+    })
+  }, [accessBrandFilter, accessRoleFilter, accessSearch, accessStatusFilter, accounts])
+  const accessPageCount = Math.max(1, Math.ceil(filteredAccounts.length / accessPageSize))
+  const currentAccessPage = Math.min(accessPage, accessPageCount)
+  const visibleAccounts = filteredAccounts.slice((currentAccessPage - 1) * accessPageSize, currentAccessPage * accessPageSize)
+  const selectedAccounts = accounts.filter((account) => selectedAccountIds.includes(account.id))
+  const filteredBrands = useMemo(() => {
+    const keyword = brandSearch.trim().toLowerCase()
+    return brands.filter((brand) => !keyword || String(brand.name || '').toLowerCase().includes(keyword))
+  }, [brandSearch, brands])
+
+  const accountBrandCount = (account) => fullAccessRoles.has(account.role) ? brands.length : (account.brandIds?.length || 0)
+  const getBrandAccounts = (brandId) => accounts.filter((account) => fullAccessRoles.has(account.role) || account.brandIds?.includes(brandId))
+  const toggleVisibleAccounts = () => {
+    const visibleIds = visibleAccounts.map((account) => account.id)
+    const allSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedAccountIds.includes(id))
+    setSelectedAccountIds((selected) => allSelected
+      ? selected.filter((id) => !visibleIds.includes(id))
+      : [...new Set([...selected, ...visibleIds])])
+  }
+  const applyBulkRole = () => {
+    if (!canManagePermissions || !bulkRole) return
+    selectedAccounts.forEach((account) => onUpdateAccountRole?.(account.id, bulkRole))
+    setBulkRole('')
+  }
+  const applyBulkBrand = (mode) => {
+    if (!canManagePermissions || !bulkBrandId) return
+    selectedAccounts.forEach((account) => {
+      if (fullAccessRoles.has(account.role)) return
+      const assigned = account.brandIds?.includes(bulkBrandId)
+      if ((mode === 'add' && !assigned) || (mode === 'remove' && assigned)) {
+        onToggleBrandAccess?.(account.id, bulkBrandId)
+      }
+    })
+  }
 
   useEffect(() => {
     if (!apiBaseUrl) return
@@ -198,7 +260,83 @@ export default function AdminConsole({
         <section className="admin-band"><div className="admin-section-heading"><div><span>연결 상태</span><h2>백엔드·API</h2></div><button type="button" onClick={onTestApis} disabled={apiTestStatus?.running}><RefreshCw size={15} /> 연결 테스트</button></div><div className="admin-connection-grid"><div><Database /><strong>공유 DB</strong><span>{backendConfig?.hasSupabase ? '설정됨' : '설정 필요'}</span></div><div><KeyRound /><strong>API 서버</strong><span>{apiBaseUrl ? '연결 주소 설정됨' : '미연결'}</span></div>{(apiTestStatus?.results || []).map((item) => <div key={item.id || item.name}><CheckCircle2 /><strong>{item.name || item.label}</strong><span>{item.result || item.status}</span></div>)}</div></section>
       </div>}
 
-      {section === 'access' && <div className="admin-page"><section className="admin-band"><div className="admin-section-heading"><div><span>ACCESS CONTROL</span><h2>계정 역할·브랜드 DB</h2></div></div><div className="admin-account-table">{accounts.map((account) => <article key={account.id}><div className="admin-account-identity"><strong>{account.name}</strong><small>{account.email}</small></div><select value={account.role} onChange={(event) => onUpdateAccountRole?.(account.id, event.target.value)}>{['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst', 'Client'].map((role) => <option key={role}>{role}</option>)}</select><div className="admin-brand-access">{brands.map((brand) => { const full = ['Owner', 'Admin'].includes(account.role); const checked = full || account.brandIds?.includes(brand.id); return <label key={brand.id}><input type="checkbox" checked={checked} disabled={full} onChange={() => onToggleBrandAccess?.(account.id, brand.id)} />{brand.name}</label> })}</div></article>)}</div></section></div>}
+      {section === 'access' && <div className="admin-page admin-access-page">
+        <section className="admin-access-summary">
+          <article><UserRoundCog size={18} /><span>전체 계정</span><strong>{accounts.length}</strong><small>활성 {accounts.filter((item) => item.status === '활성').length}</small></article>
+          <article><Building2 size={18} /><span>브랜드 DB</span><strong>{brands.length}</strong><small>브랜드별 접근 분리</small></article>
+          <article><ShieldCheck size={18} /><span>전체 접근</span><strong>{accounts.filter((item) => fullAccessRoles.has(item.role)).length}</strong><small>Owner · Admin</small></article>
+          <article><Clock3 size={18} /><span>확인 필요</span><strong>{accounts.filter((item) => item.status && item.status !== '활성').length}</strong><small>초대·테스트 계정</small></article>
+        </section>
+
+        <section className="admin-band admin-access-workspace">
+          <div className="admin-section-heading admin-access-heading">
+            <div><span>ACCESS CONTROL</span><h2>계정·브랜드 권한 운영</h2><p>사용자 설정과 같은 권한 원장을 사용합니다. 여기서 변경한 역할과 브랜드 접근 범위는 사용자 화면에도 즉시 반영됩니다.</p></div>
+            <div className="admin-access-switch" aria-label="권한 보기 기준">
+              <button className={accessView === 'accounts' ? 'active' : ''} type="button" onClick={() => setAccessView('accounts')}><UsersRound size={15} /> 계정별</button>
+              <button className={accessView === 'brands' ? 'active' : ''} type="button" onClick={() => setAccessView('brands')}><Building2 size={15} /> 브랜드별</button>
+            </div>
+          </div>
+
+          {accessView === 'accounts' ? <>
+            <div className="admin-access-toolbar">
+              <label className="admin-access-search"><Search size={15} /><input value={accessSearch} onChange={(event) => { setAccessSearch(event.target.value); setAccessPage(1) }} placeholder="이름 또는 이메일 검색" /></label>
+              <select aria-label="역할 필터" value={accessRoleFilter} onChange={(event) => { setAccessRoleFilter(event.target.value); setAccessPage(1) }}><option>전체</option>{accountRoles.map((role) => <option key={role}>{role}</option>)}</select>
+              <select aria-label="상태 필터" value={accessStatusFilter} onChange={(event) => { setAccessStatusFilter(event.target.value); setAccessPage(1) }}><option>전체</option>{accountStatuses.map((status) => <option key={status}>{status}</option>)}</select>
+              <select aria-label="브랜드 필터" value={accessBrandFilter} onChange={(event) => { setAccessBrandFilter(event.target.value); setAccessPage(1) }}><option value="전체">전체 브랜드</option>{brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select>
+            </div>
+
+            <div className="admin-bulk-toolbar">
+              <label className="admin-bulk-selection"><input type="checkbox" checked={visibleAccounts.length > 0 && visibleAccounts.every((item) => selectedAccountIds.includes(item.id))} onChange={toggleVisibleAccounts} /><CheckSquare2 size={15} /><strong>{selectedAccountIds.length}명 선택</strong></label>
+              <div className="admin-bulk-actions">
+                <select value={bulkRole} onChange={(event) => setBulkRole(event.target.value)} disabled={!canManagePermissions || !selectedAccountIds.length}><option value="">역할 선택</option>{accountRoles.map((role) => <option key={role}>{role}</option>)}</select>
+                <button type="button" onClick={applyBulkRole} disabled={!bulkRole || !selectedAccountIds.length || !canManagePermissions}>역할 적용</button>
+                <select value={bulkBrandId} onChange={(event) => setBulkBrandId(event.target.value)} disabled={!canManagePermissions || !selectedAccountIds.length}><option value="">브랜드 선택</option>{brands.map((brand) => <option key={brand.id} value={brand.id}>{brand.name}</option>)}</select>
+                <button type="button" onClick={() => applyBulkBrand('add')} disabled={!bulkBrandId || !selectedAccountIds.length || !canManagePermissions}>접근 추가</button>
+                <button type="button" onClick={() => applyBulkBrand('remove')} disabled={!bulkBrandId || !selectedAccountIds.length || !canManagePermissions}>접근 해제</button>
+              </div>
+            </div>
+
+            <div className="admin-access-list">
+              <div className="admin-access-list-head"><span /><span>계정</span><span>역할</span><span>상태</span><span>브랜드</span><span>최근 활동</span><span /></div>
+              {visibleAccounts.map((account) => {
+                const expanded = expandedAccountId === account.id
+                const full = fullAccessRoles.has(account.role)
+                return <div className={`admin-access-row ${expanded ? 'expanded' : ''}`} key={account.id}>
+                  <input type="checkbox" checked={selectedAccountIds.includes(account.id)} onChange={() => setSelectedAccountIds((selected) => selected.includes(account.id) ? selected.filter((id) => id !== account.id) : [...selected, account.id])} />
+                  <div className="admin-account-identity"><strong>{account.name}</strong><small>{account.email}</small></div>
+                  <select value={account.role} disabled={!canManagePermissions} onChange={(event) => onUpdateAccountRole?.(account.id, event.target.value)}>{accountRoles.map((role) => <option key={role}>{role}</option>)}</select>
+                  <span className={`admin-access-state ${account.status === '활성' ? 'ok' : 'warning'}`}>{account.status || '미확인'}</span>
+                  <span className="admin-access-count">{full ? '전체' : `${accountBrandCount(account)}개`}</span>
+                  <span className="admin-access-last">{account.lastActive || '-'}</span>
+                  <button className={`admin-access-expand ${expanded ? 'active' : ''}`} type="button" title="브랜드 권한 상세" onClick={() => setExpandedAccountId(expanded ? null : account.id)}><ChevronDown size={16} /></button>
+                  {expanded && <div className="admin-access-row-detail">
+                    <div><strong>브랜드 접근 범위</strong><small>{full ? '이 역할은 모든 브랜드 DB에 접근합니다.' : '허용할 브랜드를 선택하세요.'}</small></div>
+                    <div className="admin-brand-checkbox-grid">{brands.map((brand) => <label key={brand.id}><input type="checkbox" checked={full || account.brandIds?.includes(brand.id) || false} disabled={full || !canManagePermissions} onChange={() => onToggleBrandAccess?.(account.id, brand.id)} />{brand.name}</label>)}</div>
+                  </div>}
+                </div>
+              })}
+              {!visibleAccounts.length && <div className="admin-access-empty">조건에 맞는 계정이 없습니다.</div>}
+            </div>
+
+            <div className="admin-access-pagination"><span>{filteredAccounts.length}개 계정 · {currentAccessPage}/{accessPageCount} 페이지</span><div><button type="button" disabled={currentAccessPage === 1} onClick={() => setAccessPage((page) => Math.max(1, page - 1))}>이전</button>{Array.from({ length: accessPageCount }, (_, index) => index + 1).slice(Math.max(0, currentAccessPage - 3), Math.max(5, currentAccessPage + 2)).map((page) => <button className={page === currentAccessPage ? 'active' : ''} type="button" key={page} onClick={() => setAccessPage(page)}>{page}</button>)}<button type="button" disabled={currentAccessPage === accessPageCount} onClick={() => setAccessPage((page) => Math.min(accessPageCount, page + 1))}>다음</button></div></div>
+          </> : <>
+            <div className="admin-brand-toolbar"><label className="admin-access-search"><Search size={15} /><input value={brandSearch} onChange={(event) => setBrandSearch(event.target.value)} placeholder="브랜드 검색" /></label><span>{filteredBrands.length}개 브랜드</span></div>
+            <div className="admin-brand-directory">
+              {filteredBrands.map((brand) => {
+                const brandAccounts = getBrandAccounts(brand.id)
+                const expanded = expandedBrandId === brand.id
+                const roleSummary = accountRoles.map((role) => [role, brandAccounts.filter((account) => account.role === role).length]).filter(([, count]) => count)
+                return <article className={expanded ? 'expanded' : ''} key={brand.id}>
+                  <button className="admin-brand-row-main" type="button" onClick={() => setExpandedBrandId(expanded ? null : brand.id)}>
+                    <span className="admin-brand-icon"><Building2 size={17} /></span><span><strong>{brand.name}</strong><small>{brand.client || '브랜드 워크스페이스'}</small></span><b>{brandAccounts.length}명</b><span className="admin-role-mix">{roleSummary.map(([role, count]) => `${role} ${count}`).join(' · ') || '배정 없음'}</span><ChevronDown size={16} />
+                  </button>
+                  {expanded && <div className="admin-brand-members">{brandAccounts.length ? brandAccounts.map((account) => <div className="admin-brand-member" key={account.id}><span><strong>{account.name}</strong><small>{account.email}</small></span><span className={`admin-access-state ${account.status === '활성' ? 'ok' : 'warning'}`}>{account.status || '미확인'}</span><select value={account.role} disabled={!canManagePermissions} onChange={(event) => onUpdateAccountRole?.(account.id, event.target.value)}>{accountRoles.map((role) => <option key={role}>{role}</option>)}</select>{fullAccessRoles.has(account.role) ? <small>전체 브랜드 권한</small> : <button type="button" disabled={!canManagePermissions} onClick={() => onToggleBrandAccess?.(account.id, brand.id)}>접근 해제</button>}</div>) : <div className="admin-access-empty">이 브랜드에 배정된 계정이 없습니다.</div>}</div>}
+                </article>
+              })}
+            </div>
+          </>}
+        </section>
+      </div>}
 
       {section === 'audit' && <div className="admin-page"><section className="admin-band"><div className="admin-section-heading"><div><span>AUDIT TRAIL</span><h2>변경·실행 이력</h2></div><small>{auditRows.length}건</small></div><div className="admin-audit-list">{auditRows.length ? auditRows.map((row) => <div key={row.id}><span>{row.type}</span><strong>{row.text}</strong><small>{row.source} · {row.time || '시간 기록 없음'}</small></div>) : <div className="admin-empty"><Clock3 /> 아직 저장된 감사 로그가 없습니다.</div>}</div></section></div>}
     </main>
