@@ -7816,6 +7816,17 @@ function App() {
   const [brandDirectoryView, setBrandDirectoryView] = useState('top')
   const [brandInsightView, setBrandInsightView] = useState('list')
   const [brandInsightTab, setBrandInsightTab] = useState('collection')
+  const [permissionView, setPermissionView] = useState('accounts')
+  const [permissionSearch, setPermissionSearch] = useState('')
+  const [permissionRoleFilter, setPermissionRoleFilter] = useState('전체')
+  const [permissionStatusFilter, setPermissionStatusFilter] = useState('전체')
+  const [permissionBrandFilter, setPermissionBrandFilter] = useState('전체')
+  const [permissionPage, setPermissionPage] = useState(1)
+  const [selectedPermissionAccountIds, setSelectedPermissionAccountIds] = useState([])
+  const [expandedPermissionAccountId, setExpandedPermissionAccountId] = useState('')
+  const [permissionBrandSearch, setPermissionBrandSearch] = useState('')
+  const [bulkPermissionRole, setBulkPermissionRole] = useState('')
+  const [bulkPermissionBrandId, setBulkPermissionBrandId] = useState('')
   const [selectedBrandInsightName, setSelectedBrandInsightName] = useState(defaultBrandInsightRows[0].name)
   const [referencePage, setReferencePage] = useState(1)
   const [referenceSearchStatus, setReferenceSearchStatus] = useState({
@@ -7917,6 +7928,62 @@ function App() {
     () => getAccessibleBrands(currentAccount, brands),
     [brands, currentAccount],
   )
+  const permissionStatusOptions = useMemo(
+    () => ['전체', ...new Set(accounts.map((account) => account.status).filter(Boolean))],
+    [accounts],
+  )
+  const filteredPermissionAccounts = useMemo(() => {
+    const normalizedQuery = permissionSearch.trim().toLowerCase()
+    return accounts.filter((account) => {
+      const accountBrandIds = getAccountBrandIds(account, brands)
+      const accountBrandNames = brands
+        .filter((brand) => accountBrandIds.includes(brand.id))
+        .map((brand) => brand.name)
+      const searchableText = [
+        account.name,
+        account.email,
+        account.role,
+        teamRoleCatalog[account.role]?.label,
+        account.status,
+        ...accountBrandNames,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+
+      return (
+        (!normalizedQuery || searchableText.includes(normalizedQuery)) &&
+        (permissionRoleFilter === '전체' || account.role === permissionRoleFilter) &&
+        (permissionStatusFilter === '전체' || account.status === permissionStatusFilter) &&
+        (permissionBrandFilter === '전체' || accountBrandIds.includes(Number(permissionBrandFilter)))
+      )
+    })
+  }, [accounts, brands, permissionBrandFilter, permissionRoleFilter, permissionSearch, permissionStatusFilter])
+  const permissionPageSize = 10
+  const permissionPageCount = Math.max(1, Math.ceil(filteredPermissionAccounts.length / permissionPageSize))
+  const safePermissionPage = Math.min(permissionPage, permissionPageCount)
+  const pagedPermissionAccounts = filteredPermissionAccounts.slice(
+    (safePermissionPage - 1) * permissionPageSize,
+    safePermissionPage * permissionPageSize,
+  )
+  const selectedPermissionAccountIdSet = new Set(selectedPermissionAccountIds)
+  const selectedPermissionAccounts = accounts.filter((account) => selectedPermissionAccountIdSet.has(account.id))
+  const filteredPermissionBrands = useMemo(() => {
+    const normalizedQuery = permissionBrandSearch.trim().toLowerCase()
+    return brands.filter((brand) => {
+      const brandAccounts = accounts.filter((account) => getAccountBrandIds(account, brands).includes(brand.id))
+      const searchableText = [
+        brand.name,
+        brand.company,
+        brand.product,
+        ...brandAccounts.flatMap((account) => [account.name, account.email]),
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+      return !normalizedQuery || searchableText.includes(normalizedQuery)
+    })
+  }, [accounts, brands, permissionBrandSearch])
   useEffect(() => {
     if (!accessibleBrands.length) return
     if (accessibleBrands.some((brand) => brand.id === activeBrandId)) return
@@ -11086,6 +11153,87 @@ function App() {
         'team',
         '브랜드 접근권한 업데이트',
       ),
+    )
+  }
+
+  const togglePermissionAccountSelection = (accountId) => {
+    setSelectedPermissionAccountIds((current) =>
+      current.includes(accountId) ? current.filter((id) => id !== accountId) : [...current, accountId],
+    )
+  }
+
+  const togglePermissionPageSelection = () => {
+    const pageIds = pagedPermissionAccounts.map((account) => account.id)
+    const allSelected = pageIds.length > 0 && pageIds.every((id) => selectedPermissionAccountIdSet.has(id))
+    setSelectedPermissionAccountIds((current) =>
+      allSelected
+        ? current.filter((id) => !pageIds.includes(id))
+        : [...new Set([...current, ...pageIds])],
+    )
+  }
+
+  const applyBulkPermissionRole = () => {
+    if (!canManagePermissions || !selectedPermissionAccounts.length || !bulkPermissionRole) return
+    const normalizedRole = normalizeRole(bulkPermissionRole)
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          accounts: current.accounts.map((account) =>
+            selectedPermissionAccountIdSet.has(account.id)
+              ? {
+                  ...account,
+                  role: normalizedRole,
+                  brandIds: fullBrandAccessRoles.has(normalizedRole)
+                    ? current.brands.map((brand) => brand.id)
+                    : account.brandIds?.length
+                      ? account.brandIds
+                      : [current.activeBrandId].filter(Boolean),
+                }
+              : account,
+          ),
+        },
+        'team',
+        `${selectedPermissionAccounts.length}개 계정 역할을 ${teamRoleCatalog[normalizedRole]?.label ?? normalizedRole}로 일괄 변경`,
+      ),
+    )
+    setBulkPermissionRole('')
+    showToast(`${selectedPermissionAccounts.length}개 계정의 역할을 변경했어요.`)
+  }
+
+  const updateBulkPermissionBrandAccess = (mode) => {
+    if (!canManagePermissions || !selectedPermissionAccounts.length || !bulkPermissionBrandId) return
+    const brandId = Number(bulkPermissionBrandId)
+    const targetBrand = brands.find((brand) => brand.id === brandId)
+    const skippedCount = selectedPermissionAccounts.filter((account) => {
+      if (fullBrandAccessRoles.has(normalizeRole(account.role))) return true
+      if (mode !== 'remove') return false
+      const assignedBrandIds = new Set(account.brandIds ?? [])
+      return assignedBrandIds.size <= 1 && assignedBrandIds.has(brandId)
+    }).length
+
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          accounts: current.accounts.map((account) => {
+            if (!selectedPermissionAccountIdSet.has(account.id)) return account
+            if (fullBrandAccessRoles.has(normalizeRole(account.role))) return account
+            const brandIds = new Set(account.brandIds ?? [])
+            if (mode === 'add') brandIds.add(brandId)
+            if (mode === 'remove') {
+              if (brandIds.size <= 1 && brandIds.has(brandId)) return account
+              brandIds.delete(brandId)
+            }
+            return { ...account, brandIds: [...brandIds] }
+          }),
+        },
+        'team',
+        `${selectedPermissionAccounts.length}개 계정에 ${targetBrand?.name ?? '브랜드'} 접근권한 ${mode === 'add' ? '추가' : '제거'}`,
+      ),
+    )
+    showToast(
+      `${targetBrand?.name ?? '브랜드'} 권한을 ${mode === 'add' ? '추가' : '제거'}했어요.${skippedCount ? ` ${skippedCount}개 계정은 전체 접근 또는 최소 1개 브랜드 유지 규칙으로 제외됐습니다.` : ''}`,
     )
   }
 
@@ -16507,6 +16655,331 @@ function App() {
                   </select>
                 </label>
               </div>
+              <div className="permission-console">
+                <div className="permission-console-head">
+                  <div className="permission-view-tabs" role="tablist" aria-label="권한 관리 기준">
+                    <button
+                      className={permissionView === 'accounts' ? 'active' : ''}
+                      type="button"
+                      onClick={() => setPermissionView('accounts')}
+                    >
+                      <UsersRound size={16} /> 계정별
+                    </button>
+                    <button
+                      className={permissionView === 'brands' ? 'active' : ''}
+                      type="button"
+                      onClick={() => setPermissionView('brands')}
+                    >
+                      <Database size={16} /> 브랜드별
+                    </button>
+                  </div>
+                  <span>계정 {accounts.length}개 · 브랜드 {brands.length}개</span>
+                </div>
+
+                {permissionView === 'accounts' ? (
+                  <>
+                    <div className="permission-filter-bar">
+                      <label className="permission-search-field">
+                        <Search size={16} />
+                        <input
+                          value={permissionSearch}
+                          onChange={(event) => {
+                            setPermissionSearch(event.target.value)
+                            setPermissionPage(1)
+                          }}
+                          placeholder="이름, 이메일, 브랜드 검색"
+                        />
+                      </label>
+                      <select
+                        value={permissionRoleFilter}
+                        onChange={(event) => {
+                          setPermissionRoleFilter(event.target.value)
+                          setPermissionPage(1)
+                        }}
+                        aria-label="역할 필터"
+                      >
+                        <option value="전체">전체 역할</option>
+                        {Object.keys(teamRoleCatalog).map((roleKey) => (
+                          <option value={roleKey} key={roleKey}>{teamRoleCatalog[roleKey].label}</option>
+                        ))}
+                      </select>
+                      <select
+                        value={permissionBrandFilter}
+                        onChange={(event) => {
+                          setPermissionBrandFilter(event.target.value)
+                          setPermissionPage(1)
+                        }}
+                        aria-label="브랜드 필터"
+                      >
+                        <option value="전체">전체 브랜드</option>
+                        {brands.map((brand) => <option value={brand.id} key={brand.id}>{brand.name}</option>)}
+                      </select>
+                    </div>
+                    <div className="permission-status-chips" aria-label="계정 상태 필터">
+                      {permissionStatusOptions.map((status) => (
+                        <button
+                          className={permissionStatusFilter === status ? 'active' : ''}
+                          type="button"
+                          key={status}
+                          onClick={() => {
+                            setPermissionStatusFilter(status)
+                            setPermissionPage(1)
+                          }}
+                        >
+                          {status}
+                          <span>
+                            {status === '전체' ? accounts.length : accounts.filter((account) => account.status === status).length}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+
+                    {selectedPermissionAccounts.length > 0 && (
+                      <div className="permission-bulk-toolbar">
+                        <strong>{selectedPermissionAccounts.length}개 계정 선택</strong>
+                        <div>
+                          <select
+                            value={bulkPermissionRole}
+                            onChange={(event) => setBulkPermissionRole(event.target.value)}
+                            disabled={!canManagePermissions}
+                            aria-label="일괄 역할 선택"
+                          >
+                            <option value="">역할 선택</option>
+                            {Object.keys(teamRoleCatalog).map((roleKey) => (
+                              <option value={roleKey} key={roleKey}>{teamRoleCatalog[roleKey].label}</option>
+                            ))}
+                          </select>
+                          <button
+                            className="secondary-button compact-button"
+                            type="button"
+                            onClick={applyBulkPermissionRole}
+                            disabled={!bulkPermissionRole || !canManagePermissions}
+                          >
+                            역할 적용
+                          </button>
+                        </div>
+                        <div>
+                          <select
+                            value={bulkPermissionBrandId}
+                            onChange={(event) => setBulkPermissionBrandId(event.target.value)}
+                            disabled={!canManagePermissions}
+                            aria-label="일괄 브랜드 선택"
+                          >
+                            <option value="">브랜드 선택</option>
+                            {brands.map((brand) => <option value={brand.id} key={brand.id}>{brand.name}</option>)}
+                          </select>
+                          <button
+                            className="secondary-button compact-button"
+                            type="button"
+                            onClick={() => updateBulkPermissionBrandAccess('add')}
+                            disabled={!bulkPermissionBrandId || !canManagePermissions}
+                          >
+                            접근 추가
+                          </button>
+                          <button
+                            className="secondary-button compact-button danger-text"
+                            type="button"
+                            onClick={() => updateBulkPermissionBrandAccess('remove')}
+                            disabled={!bulkPermissionBrandId || !canManagePermissions}
+                          >
+                            접근 제거
+                          </button>
+                        </div>
+                        <button
+                          className="text-button"
+                          type="button"
+                          onClick={() => setSelectedPermissionAccountIds([])}
+                        >
+                          선택 해제
+                        </button>
+                      </div>
+                    )}
+
+                    <div className="permission-account-table">
+                      <div className="permission-account-table-head">
+                        <label>
+                          <input
+                            type="checkbox"
+                            checked={pagedPermissionAccounts.length > 0 && pagedPermissionAccounts.every((account) => selectedPermissionAccountIdSet.has(account.id))}
+                            onChange={togglePermissionPageSelection}
+                          />
+                          <span className="sr-only">현재 페이지 전체 선택</span>
+                        </label>
+                        <span>계정</span>
+                        <span>역할</span>
+                        <span>브랜드 접근</span>
+                        <span>상태</span>
+                        <span>관리</span>
+                      </div>
+                      {pagedPermissionAccounts.length ? (
+                        pagedPermissionAccounts.map((account) => {
+                          const role = teamRoleCatalog[account.role] ?? teamRoleCatalog.Manager
+                          const accessibleBrandIds = new Set(getAccountBrandIds(account, brands))
+                          const accountBrands = brands.filter((brand) => accessibleBrandIds.has(brand.id))
+                          const isExpanded = expandedPermissionAccountId === account.id
+                          const matchingBrands = brands.filter((brand) =>
+                            brand.name.toLowerCase().includes(permissionBrandSearch.trim().toLowerCase()),
+                          )
+                          return (
+                            <div className="permission-account-entry" key={account.id}>
+                              <article className={`permission-account-row ${account.id === currentAccount.id ? 'active-account-row' : ''}`}>
+                                <label>
+                                  <input
+                                    type="checkbox"
+                                    checked={selectedPermissionAccountIdSet.has(account.id)}
+                                    onChange={() => togglePermissionAccountSelection(account.id)}
+                                  />
+                                  <span className="sr-only">{account.name} 선택</span>
+                                </label>
+                                <div className="permission-account-identity">
+                                  <strong>{account.name}</strong>
+                                  <span>{account.email}</span>
+                                  {account.id === currentAccount.id && <small>현재 계정</small>}
+                                </div>
+                                <div className="permission-role-cell">
+                                  <select
+                                    value={account.role}
+                                    onChange={(event) => updateAccountRole(account.id, event.target.value)}
+                                    disabled={!canManagePermissions}
+                                  >
+                                    {Object.keys(teamRoleCatalog).map((roleKey) => (
+                                      <option value={roleKey} key={roleKey}>{teamRoleCatalog[roleKey].label}</option>
+                                    ))}
+                                  </select>
+                                  <small>{role.dataScope}</small>
+                                </div>
+                                <div className="permission-brand-summary">
+                                  {accountBrands.slice(0, 2).map((brand) => <span key={brand.id}>{brand.name}</span>)}
+                                  {accountBrands.length > 2 && <span>+{accountBrands.length - 2}</span>}
+                                </div>
+                                <div className="permission-status-cell">
+                                  <span className={`permission-status ${account.status === '활성' ? 'ready' : account.status === '초대됨' ? 'pending' : 'test'}`}>
+                                    {account.status}
+                                  </span>
+                                  <small>{account.lastActive}</small>
+                                </div>
+                                <button
+                                  className="secondary-button compact-button"
+                                  type="button"
+                                  onClick={() => {
+                                    setExpandedPermissionAccountId(isExpanded ? '' : account.id)
+                                    setPermissionBrandSearch('')
+                                  }}
+                                >
+                                  {isExpanded ? '닫기' : '브랜드 권한'}
+                                </button>
+                              </article>
+                              {isExpanded && (
+                                <div className="permission-brand-editor">
+                                  <div>
+                                    <strong>{account.name}의 브랜드 접근</strong>
+                                    <p>{role.description}</p>
+                                  </div>
+                                  {fullBrandAccessRoles.has(normalizeRole(account.role)) ? (
+                                    <span className="permission-full-access">{role.label}은 전체 브랜드 DB에 접근합니다.</span>
+                                  ) : (
+                                    <>
+                                      <label className="permission-brand-search">
+                                        <Search size={15} />
+                                        <input
+                                          value={permissionBrandSearch}
+                                          onChange={(event) => setPermissionBrandSearch(event.target.value)}
+                                          placeholder="브랜드 검색"
+                                        />
+                                      </label>
+                                      <div className="permission-brand-checklist">
+                                        {matchingBrands.map((brand) => (
+                                          <label className={accessibleBrandIds.has(brand.id) ? 'selected' : ''} key={brand.id}>
+                                            <input
+                                              type="checkbox"
+                                              checked={accessibleBrandIds.has(brand.id)}
+                                              onChange={() => toggleAccountBrandAccess(account.id, brand.id)}
+                                              disabled={!canManagePermissions}
+                                            />
+                                            <span>{brand.name}</span>
+                                          </label>
+                                        ))}
+                                      </div>
+                                    </>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          )
+                        })
+                      ) : (
+                        <div className="permission-empty-state">
+                          <UsersRound size={20} />
+                          <strong>조건에 맞는 계정이 없습니다.</strong>
+                          <span>검색어나 필터를 조정하세요.</span>
+                        </div>
+                      )}
+                    </div>
+                    {permissionPageCount > 1 && (
+                      <div className="permission-pagination">
+                        <button type="button" onClick={() => setPermissionPage(Math.max(1, safePermissionPage - 1))} disabled={safePermissionPage === 1}>이전</button>
+                        {Array.from({ length: permissionPageCount }, (_, index) => index + 1).map((page) => (
+                          <button className={safePermissionPage === page ? 'active' : ''} type="button" key={page} onClick={() => setPermissionPage(page)}>{page}</button>
+                        ))}
+                        <button type="button" onClick={() => setPermissionPage(Math.min(permissionPageCount, safePermissionPage + 1))} disabled={safePermissionPage === permissionPageCount}>다음</button>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div className="permission-brand-view">
+                    <label className="permission-search-field permission-brand-directory-search">
+                      <Search size={16} />
+                      <input
+                        value={permissionBrandSearch}
+                        onChange={(event) => setPermissionBrandSearch(event.target.value)}
+                        placeholder="브랜드명 또는 접근 계정 검색"
+                      />
+                    </label>
+                    <div className="permission-brand-directory">
+                      {filteredPermissionBrands.map((brand) => {
+                        const brandAccounts = accounts.filter((account) => getAccountBrandIds(account, brands).includes(brand.id))
+                        const activeCount = brandAccounts.filter((account) => account.status === '활성').length
+                        const invitedCount = brandAccounts.filter((account) => account.status === '초대됨').length
+                        const roleCounts = Object.keys(teamRoleCatalog)
+                          .map((roleKey) => ({ roleKey, count: brandAccounts.filter((account) => account.role === roleKey).length }))
+                          .filter((item) => item.count > 0)
+                        return (
+                          <article key={brand.id}>
+                            <div className="permission-brand-directory-title">
+                              <div>
+                                <strong>{brand.name}</strong>
+                                <span>{brand.company || brand.product || '브랜드 DB'}</span>
+                              </div>
+                              <span>{brandAccounts.length}개 계정</span>
+                            </div>
+                            <div className="permission-brand-directory-metrics">
+                              <span>활성 <strong>{activeCount}</strong></span>
+                              <span>초대 대기 <strong>{invitedCount}</strong></span>
+                              <span>캠페인 <strong>{campaigns.filter((campaign) => campaign.brandId === brand.id).length}</strong></span>
+                            </div>
+                            <div className="permission-brand-role-counts">
+                              {roleCounts.map(({ roleKey, count }) => (
+                                <span key={roleKey}>{teamRoleCatalog[roleKey].label} {count}</span>
+                              ))}
+                            </div>
+                            <button
+                              className="secondary-button"
+                              type="button"
+                              onClick={() => {
+                                setPermissionBrandFilter(String(brand.id))
+                                setPermissionView('accounts')
+                                setPermissionPage(1)
+                              }}
+                            >
+                              접근 계정 보기 <ArrowRight size={15} />
+                            </button>
+                          </article>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
               <details className="settings-role-summary">
                 <summary className="settings-role-summary-head">
                   <div>
@@ -16525,51 +16998,6 @@ function App() {
                   ))}
                 </div>
               </details>
-              <div className="team-account-list settings-account-list">
-                {accounts.map((account) => {
-                  const role = teamRoleCatalog[account.role] ?? teamRoleCatalog.Manager
-                  const accessibleBrandIds = new Set(getAccountBrandIds(account, brands))
-                  return (
-                    <article className={account.id === currentAccount.id ? 'active-account-card' : ''} key={account.id}>
-                      <div>
-                        <strong>{account.name}</strong>
-                        <span>{account.email}</span>
-                        <small>{account.status} · 최근 활동 {account.lastActive}</small>
-                      </div>
-                      <div className="account-role-controls">
-                        <span>{role.dataScope}</span>
-                        <select
-                          value={account.role}
-                          onChange={(event) => updateAccountRole(account.id, event.target.value)}
-                          disabled={!canManagePermissions}
-                        >
-                          {Object.keys(teamRoleCatalog).map((roleKey) => (
-                            <option value={roleKey} key={roleKey}>
-                              {teamRoleCatalog[roleKey]?.label ?? roleKey}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-                      <p>
-                        {role.description} · 접근 {getAccountBrandScopeLabel(account, brands)}
-                      </p>
-                      <div className="account-brand-access">
-                        {brands.map((brand) => (
-                          <button
-                            className={accessibleBrandIds.has(brand.id) ? 'selected' : ''}
-                            type="button"
-                            key={brand.id}
-                            onClick={() => toggleAccountBrandAccess(account.id, brand.id)}
-                            disabled={!canManagePermissions || account.role === 'Owner'}
-                          >
-                            {brand.name}
-                          </button>
-                        ))}
-                      </div>
-                    </article>
-                  )
-                })}
-              </div>
             </section>
           </section>
         )}
