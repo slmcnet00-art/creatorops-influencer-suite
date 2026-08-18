@@ -1,0 +1,10 @@
+CreatorOps YouTube API Services Compliance Review
+
+1. Open the English review page at /youtube-api-review.
+2. Explain the API workflow: search.list, channels.list, and videos.list.
+3. Run the live public-video request from the actual API client.
+4. Show the API response or the real quota-exhausted response without sample substitution.
+5. Explain how public metadata supports creator discovery and campaign reporting.
+6. Show storage, refresh, access-control, and deletion policies.
+7. Explain that extra quota is needed for repeated campaign-scale discovery, verification, deduplication, and scheduled refreshes.
+8. Confirm that CreatorOps does not access private data or upload, modify, delete, or message through YouTube API Services.

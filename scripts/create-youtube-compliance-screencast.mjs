@@ -1,248 +1,123 @@
 import { chromium } from '@playwright/test'
+import { execFileSync } from 'node:child_process'
 import fs from 'node:fs'
 import path from 'node:path'
 
 const root = process.cwd()
-const outputDir = path.join(root, 'youtube-quota-evidence')
-const videoDir = path.join(outputDir, 'playwright-video')
-const finalVideo = path.join(outputDir, 'creatorops-youtube-api-compliance-screencast.webm')
-const appUrl = 'https://creatorops-influencer-suite.onrender.com'
-const durationMultiplier = 1.8
+const reviewUrl = process.env.REVIEW_URL || 'http://localhost:5173/youtube-api-review'
+const packageDir = path.join(root, 'youtube-compliance-review-20260818')
+const videoDir = path.join(packageDir, 'playwright-video')
+const webmPath = path.join(packageDir, 'CreatorOps-YouTube-API-Review-HD.webm')
+const mp4Path = path.join(packageDir, 'CreatorOps-YouTube-API-Review-HD.mp4')
+const ffmpegPath = path.join(
+  process.env.LOCALAPPDATA || '',
+  'ms-playwright',
+  'ffmpeg-1011',
+  'ffmpeg-win64.exe',
+)
 
 fs.mkdirSync(videoDir, { recursive: true })
-if (fs.existsSync(finalVideo)) fs.unlinkSync(finalVideo)
+for (const filePath of [webmPath, mp4Path]) {
+  if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
+}
 
 const browser = await chromium.launch({ headless: true })
 const context = await browser.newContext({
-  viewport: { width: 1440, height: 900 },
-  recordVideo: {
-    dir: videoDir,
-    size: { width: 1440, height: 900 },
-  },
+  viewport: { width: 1920, height: 1080 },
+  recordVideo: { dir: videoDir, size: { width: 1920, height: 1080 } },
 })
-await context.addInitScript(() => {
-  window.localStorage.setItem('creatorops.practiceTour.completed.v1', 'completed')
-})
-
 const page = await context.newPage()
-page.setDefaultTimeout(7000)
+page.setDefaultTimeout(12000)
 
-async function dismissPracticeTour() {
-  await page.evaluate(() => {
-    window.localStorage.setItem('creatorops.practiceTour.completed.v1', 'completed')
-    document.querySelectorAll('.practice-tour-backdrop').forEach((node) => node.remove())
-  })
-}
-
-async function injectOverlay() {
-  await page.evaluate(() => {
-    const existing = document.getElementById('creatorops-compliance-overlay')
-    if (existing) existing.remove()
-    document.querySelectorAll('.practice-tour-backdrop').forEach((node) => node.remove())
-
-    const overlay = document.createElement('div')
-    overlay.id = 'creatorops-compliance-overlay'
-    overlay.style.position = 'fixed'
-    overlay.style.inset = '0'
-    overlay.style.zIndex = '2147483647'
-    overlay.style.pointerEvents = 'none'
-    overlay.style.fontFamily =
-      '-apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif'
-
-    overlay.innerHTML = `
-      <div id="creatorops-compliance-topbar" style="
-        position: absolute;
-        top: 14px;
-        left: 18px;
-        right: 18px;
-        min-height: 48px;
-        border: 1px solid rgba(15,23,42,.16);
-        border-radius: 14px;
-        background: rgba(255,255,255,.94);
-        box-shadow: 0 18px 44px rgba(15,23,42,.12);
-        display: flex;
-        align-items: center;
-        justify-content: space-between;
-        gap: 18px;
-        padding: 10px 16px;
-      ">
-        <div style="display:flex;align-items:center;gap:10px;">
-          <div style="
-            width: 34px;
-            height: 34px;
-            border-radius: 10px;
-            background: #111827;
-            color: #fff;
-            display:flex;
-            align-items:center;
-            justify-content:center;
-            font-weight:800;
-          ">CO</div>
-          <div>
-            <div style="font-size:14px;font-weight:800;color:#111827;">CreatorOps YouTube API Compliance Review</div>
-            <div id="creatorops-compliance-url" style="font-size:12px;color:#64748b;">${location.href}</div>
-          </div>
-        </div>
-        <div style="font-size:12px;font-weight:800;color:#0369a1;background:#e0f2fe;border:1px solid #bae6fd;border-radius:999px;padding:7px 11px;">
-          Public YouTube metadata only
-        </div>
-      </div>
-      <div id="creatorops-compliance-caption" style="
-        position: absolute;
-        left: 28px;
-        right: 28px;
-        bottom: 24px;
-        border-radius: 18px;
-        background: rgba(2,6,23,.88);
-        color: #fff;
-        padding: 18px 22px;
-        box-shadow: 0 22px 70px rgba(15,23,42,.34);
-        font-size: 21px;
-        line-height: 1.45;
-        font-weight: 650;
-      "></div>
-    `
-    document.body.appendChild(overlay)
-
-    window.__creatoropsSetCaption = (text) => {
-      const caption = document.getElementById('creatorops-compliance-caption')
-      const url = document.getElementById('creatorops-compliance-url')
-      if (caption) caption.textContent = text
-      if (url) url.textContent = location.href
+async function setCaption(text) {
+  await page.evaluate((caption) => {
+    let node = document.getElementById('creatorops-review-caption')
+    if (!node) {
+      node = document.createElement('div')
+      node.id = 'creatorops-review-caption'
+      Object.assign(node.style, {
+        position: 'fixed', left: '40px', right: '40px', bottom: '28px',
+        zIndex: '2147483647', padding: '18px 24px', borderRadius: '12px',
+        background: 'rgba(15, 23, 42, .94)', color: '#fff',
+        boxShadow: '0 20px 50px rgba(15, 23, 42, .28)',
+        font: '600 22px/1.45 -apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif',
+        pointerEvents: 'none',
+      })
+      document.body.appendChild(node)
     }
-  })
+    node.textContent = caption
+  }, text)
 }
 
-async function caption(text, ms = 5200) {
-  await dismissPracticeTour()
-  await injectOverlay()
-  await page.evaluate((value) => window.__creatoropsSetCaption?.(value), text)
-  await page.waitForTimeout(Math.round(ms * durationMultiplier))
+async function pause(text, duration = 5200) {
+  await setCaption(text)
+  await page.waitForTimeout(duration)
 }
 
-async function goto(url, text, ms = 5200) {
-  await page.goto(url, { waitUntil: 'domcontentloaded', timeout: 30000 })
-  await page.waitForTimeout(1200)
-  await dismissPracticeTour()
-  await caption(text, ms)
+async function screenshot(name) {
+  await page.screenshot({ path: path.join(packageDir, name), fullPage: false })
 }
 
-async function clickText(text, captionText, ms = 5200) {
-  await injectOverlay()
-  const locator = page.getByText(text, { exact: false }).first()
-  try {
-    await locator.click({ timeout: 4500 })
-    await page.waitForTimeout(1000)
-  } catch {
-    await page.evaluate((label) => {
-      const candidates = [...document.querySelectorAll('button, a, [role="button"], div, span')]
-      const found = candidates.find((node) => node.textContent?.includes(label))
-      found?.scrollIntoView({ behavior: 'instant', block: 'center' })
-    }, text)
-    await page.waitForTimeout(700)
-  }
-  await caption(captionText, ms)
-}
-
-async function scrollToMiddle(text, ms = 4800) {
-  await injectOverlay()
-  await page.evaluate(() => window.scrollTo({ top: Math.max(0, document.body.scrollHeight * 0.42), behavior: 'smooth' }))
-  await page.waitForTimeout(1100)
-  await caption(text, ms)
-}
-
-await goto(
-  appUrl,
-  'Hello. This screencast explains how CreatorOps uses YouTube API Services in the production client location, and why we need additional quota for campaign-based public creator discovery and reporting.',
+await page.goto(reviewUrl, { waitUntil: 'networkidle', timeout: 60000 })
+await pause(
+  'Step 1. This English review page demonstrates how CreatorOps uses YouTube Data API v3 in the actual API client.',
   6500,
 )
+await screenshot('01-english-review-home.png')
 
-await goto(
-  `${appUrl}/privacy`,
-  'Our public Privacy Policy explains that YouTube API Services are used for public YouTube channel and public video metadata only. We do not request private YouTube account data.',
-  6200,
-)
-
-await goto(
-  `${appUrl}/terms`,
-  'Our Terms of Service are also public. CreatorOps does not use YouTube API Services to upload, modify, delete, or send messages through YouTube.',
-  6200,
-)
-
-await goto(
-  `${appUrl}?youtube_compliance_review=1`,
-  'CreatorOps is campaign based. A user starts from a brand campaign brief, then searches for public creators, saves candidates, tracks published campaign content, and generates reports.',
-  6200,
-)
-
-await clickText(
-  '캠페인',
-  'Each campaign can include many keywords, countries, categories, and creator conditions. The quota increase is needed because marketers must validate many public YouTube channels and videos before selecting a final creator pool.',
-  6500,
-)
-
-await clickText(
-  '발굴',
-  'In Creator Discovery, users search by keyword, country, platform, and category. For YouTube, CreatorOps uses public search and public channel metadata to find relevant creators and validate whether they match the campaign brief.',
+await page.locator('#workflow').scrollIntoViewIfNeeded()
+await pause(
+  'Step 2. The workflow uses search.list for discovery, channels.list for public channel verification, and videos.list for public video metrics.',
   7000,
 )
+await screenshot('02-api-workflow.png')
 
-await scrollToMiddle(
-  'The discovery step is quota-heavy because one useful candidate list may require multiple keyword searches, channel checks, and duplicate filtering. We save results so the same public data does not need to be fetched repeatedly.',
-  6200,
+await page.locator('#live-demo').scrollIntoViewIfNeeded()
+await pause(
+  'Step 3. We now submit a public YouTube video URL. CreatorOps requests only public video and channel metadata from the live backend.',
+  5600,
 )
-
-await clickText(
-  '후보 그룹',
-  'After discovery, users save selected creators into candidate pools or reusable groups. YouTube API Services are not used for outreach. The API is used only to support public discovery and public evaluation data.',
-  6500,
-)
-
-await clickText(
-  '메시지',
-  'The Message area only prepares outreach operations. It does not send messages through YouTube API Services. This keeps YouTube API usage limited to public metadata, not communication actions.',
-  6200,
-)
-
-await clickText(
-  '레퍼런스',
-  'The Reference area helps users find public high-performing content examples. For YouTube, the app can use public video metadata such as title, thumbnail, URL, views, likes, comments, channel information, and collection timestamp.',
+await page.getByRole('button', { name: /Run live request/i }).click()
+await page.waitForTimeout(3500)
+await pause(
+  'The result panel records the real API response. If the current quota is exhausted, the page shows that quota response without substituting sample data.',
   7000,
 )
+await screenshot('03-live-api-request.png')
 
-await scrollToMiddle(
-  'Quota is also needed here because marketers compare several keywords and regions to understand what content is working. CreatorOps stores public metadata and links only. It does not download, copy, or republish YouTube videos.',
-  6000,
+await page.locator('#data-controls').scrollIntoViewIfNeeded()
+await pause(
+  'Step 4. CreatorOps stores public metadata with source and collection timestamps, refreshes it for campaign reporting, and supports deletion by workspace.',
+  7000,
 )
+await screenshot('04-data-controls.png')
 
-await clickText(
-  '리포트',
-  'In Reports, users register public YouTube upload URLs from campaign creators. Public metrics such as views, likes, and comments are refreshed where available and used for campaign performance reports.',
-  6800,
+await pause(
+  'Additional quota is required because each campaign repeats keyword discovery, channel verification, video verification, duplicate filtering, and scheduled metric refreshes across many creators.',
+  8000,
 )
-
-await caption(
-  'Reporting creates repeated public metadata checks over time. For example, a campaign may track many creator videos daily during the campaign period. We batch and reuse stored results, but the normal quota can still be too small for campaign operations.',
-  6200,
-)
-
-await caption(
-  'The quota increase is needed for three documented workflows: public creator discovery, public video reference research, and scheduled public campaign metric refreshes. We do not use the API for private data, uploads, modifications, deletions, or messaging.',
-  6500,
-)
-
-await caption(
-  'In summary, additional quota lets CreatorOps support legitimate campaign-scale public discovery and reporting while keeping API usage limited, documented, and focused on public YouTube metadata only. Thank you.',
-  7600,
+await pause(
+  'CreatorOps does not access private videos or private audience data, and does not upload, modify, delete, or message through YouTube API Services. Thank you for reviewing our request.',
+  8000,
 )
 
 const video = page.video()
-if (!video) {
-  throw new Error('Playwright did not create a video artifact.')
-}
-
+if (!video) throw new Error('Playwright did not create a video artifact.')
 await page.close()
-await video.saveAs(finalVideo)
+await video.saveAs(webmPath)
 await context.close()
 await browser.close()
-console.log(finalVideo)
+
+if (fs.existsSync(ffmpegPath)) {
+  try {
+    execFileSync(
+      ffmpegPath,
+      ['-y', '-i', webmPath, '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', mp4Path],
+      { stdio: 'pipe' },
+    )
+  } catch (error) {
+    console.warn(`MP4 conversion skipped: ${error.message}`)
+  }
+}
+
+console.log(JSON.stringify({ reviewUrl, webmPath, mp4Path: fs.existsSync(mp4Path) ? mp4Path : null }, null, 2))

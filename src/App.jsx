@@ -42,6 +42,7 @@ import './App.css'
 import AdminDataRoom from './AdminDataRoom'
 import AdminConsole from './AdminConsole'
 import AuthPortal from './AuthPortal'
+import YouTubeApiReview from './YouTubeApiReview'
 import {
   buildPermissionTestAccounts,
   canManageTeamPermissions,
@@ -16120,8 +16121,13 @@ function App() {
 
   const currentPath = window.location.pathname
   const isAdminPath = currentPath.startsWith('/admin')
+  const isYouTubeApiReviewPath = currentPath === '/youtube-api-review'
 
   const isAuthPath = currentPath === '/signup' || currentPath === '/login'
+
+  if (isYouTubeApiReviewPath) {
+    return <YouTubeApiReview />
+  }
 
   if (isAuthPath) {
     return (

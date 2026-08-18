@@ -1,0 +1,35 @@
+Subject: Re: YouTube API Services Compliance Review - Updated HD Screencast
+
+Hello YouTube API Services Team,
+
+Thank you for your guidance.
+
+Please find our updated high-definition screencast demonstrating, step by step, how CreatorOps uses YouTube Data API v3 in the live API client. The interface and all on-screen explanations are presented in English.
+
+The screencast covers:
+1. Public creator and video discovery using search.list
+2. Public channel metadata verification using channels.list
+3. Public video metadata and performance retrieval using videos.list
+4. How the returned public data is used for creator evaluation and campaign reporting
+5. Data refresh, storage, access, and deletion controls
+
+API client review URL:
+https://creatorops-influencer-suite.onrender.com/youtube-api-review
+
+HD screencast:
+[Attach CreatorOps-YouTube-API-Review-HD.mp4 or paste the Google Drive link here]
+
+Privacy Policy:
+https://creatorops-influencer-suite.onrender.com/privacy
+
+Terms of Service:
+https://creatorops-influencer-suite.onrender.com/terms
+
+The current default quota is not sufficient for production usage because one campaign requires repeated keyword discovery, channel verification, video verification, duplicate filtering, and scheduled performance refreshes across multiple public creators and content records. The requested quota will support only these documented public-data workflows for authorized marketing teams.
+
+CreatorOps does not use YouTube API Services to access private videos, private audience data, account passwords, upload or modify content, delete YouTube content, or send messages through YouTube.
+
+Please let us know if any additional information is required.
+
+Best regards,
+Mipingplan

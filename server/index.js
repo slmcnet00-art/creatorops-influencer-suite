@@ -1148,6 +1148,110 @@ app.post('/outreach/gmail/send-batch', async (request, response, next) => {
   }
 })
 
+app.post('/youtube/compliance-demo', async (request, response, next) => {
+  const endpoint = '/youtube/compliance-demo'
+  const videoUrl = String(request.body?.videoUrl || '').trim()
+  const videoId = extractYouTubeVideoId(videoUrl)
+
+  try {
+    if (!videoId) throw httpError(400, 'A valid YouTube video URL or video ID is required.')
+
+    const key = requireEnv('YOUTUBE_DATA_API_KEY')
+    const videoParams = new URLSearchParams({
+      part: 'snippet,statistics,contentDetails',
+      id: videoId,
+      key,
+    })
+    const videoPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/videos?${videoParams}`)
+    const video = videoPayload.items?.[0]
+    if (!video) throw httpError(404, 'The requested YouTube video was not found.')
+
+    const channelParams = new URLSearchParams({
+      part: 'snippet,statistics',
+      id: video.snippet?.channelId || '',
+      key,
+    })
+    const channelPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/channels?${channelParams}`)
+    const channel = channelPayload.items?.[0]
+    if (!channel) throw httpError(404, 'The YouTube channel for this video was not found.')
+
+    const result = {
+      checkedAt: new Date().toISOString(),
+      input: {
+        videoUrl: `https://www.youtube.com/watch?v=${videoId}`,
+        videoId,
+      },
+      calls: [
+        {
+          method: 'youtube.videos.list',
+          part: 'snippet, statistics, contentDetails',
+          purpose: 'Retrieve public video metadata and performance counters.',
+          status: 'success',
+        },
+        {
+          method: 'youtube.channels.list',
+          part: 'snippet, statistics',
+          purpose: 'Retrieve public channel identity and aggregate statistics.',
+          status: 'success',
+        },
+      ],
+      video: {
+        id: video.id,
+        title: video.snippet?.title || '',
+        url: `https://www.youtube.com/watch?v=${video.id}`,
+        publishedAt: video.snippet?.publishedAt || '',
+        channelId: video.snippet?.channelId || '',
+        channelTitle: video.snippet?.channelTitle || '',
+        thumbnail: video.snippet?.thumbnails?.high?.url || video.snippet?.thumbnails?.medium?.url || '',
+        duration: video.contentDetails?.duration || '',
+        views: Number(video.statistics?.viewCount || 0),
+        likes: Number(video.statistics?.likeCount || 0),
+        comments: Number(video.statistics?.commentCount || 0),
+      },
+      channel: {
+        id: channel.id,
+        title: channel.snippet?.title || '',
+        description: channel.snippet?.description || '',
+        url: `https://www.youtube.com/channel/${channel.id}`,
+        customUrl: channel.snippet?.customUrl || '',
+        country: channel.snippet?.country || '',
+        thumbnail: channel.snippet?.thumbnails?.medium?.url || channel.snippet?.thumbnails?.default?.url || '',
+        subscribers: channel.statistics?.hiddenSubscriberCount
+          ? null
+          : Number(channel.statistics?.subscriberCount || 0),
+        views: Number(channel.statistics?.viewCount || 0),
+        videos: Number(channel.statistics?.videoCount || 0),
+        hiddenSubscriberCount: Boolean(channel.statistics?.hiddenSubscriberCount),
+      },
+    }
+
+    await safeLogExternalCollectionEvent({
+      rawSourceId: 'RAW-EXT-CONT-001',
+      provider: 'youtube-data-api',
+      endpoint,
+      query: videoId,
+      platform: 'YouTube',
+      requestPayload: { videoId, parts: ['snippet', 'statistics', 'contentDetails'] },
+      responsePayload: { data: result },
+      resultCount: 1,
+    })
+    response.json({ data: result })
+  } catch (error) {
+    await safeLogExternalCollectionEvent({
+      rawSourceId: 'RAW-EXT-CONT-001',
+      provider: 'youtube-data-api',
+      endpoint,
+      query: videoId || videoUrl,
+      platform: 'YouTube',
+      requestPayload: { videoUrl, videoId },
+      responsePayload: getErrorLogPayload(error),
+      status: 'failed',
+      errorMessage: error.message,
+    })
+    next(error)
+  }
+})
+
 app.use((error, request, response, next) => {
   if (response.headersSent) {
     next(error)
