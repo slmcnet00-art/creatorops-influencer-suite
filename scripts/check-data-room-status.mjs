@@ -35,6 +35,13 @@ try {
     }
   }
 
+  if (Array.isArray(payload.missingTables) && payload.missingTables.length) {
+    console.log('')
+    console.log(`Missing required tables: ${payload.missingTables.join(', ')}`)
+    console.log('Run only this idempotent SQL file in Supabase SQL Editor:')
+    console.log('- supabase/migrations/20260810_required_operational_tables.sql')
+  }
+
   if (Array.isArray(logging.nextActions) && logging.nextActions.length) {
     console.log('Next actions:')
     logging.nextActions.forEach((action, index) => console.log(`${index + 1}. ${action}`))

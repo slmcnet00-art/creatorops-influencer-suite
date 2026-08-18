@@ -281,27 +281,43 @@ app.get('/data-room/status', async (request, response) => {
 
   for (const table of status.requiredTables) {
     try {
-      const { error, count } = await supabase
+      // Do a real row query instead of a HEAD count request. PostgREST can
+      // return an empty HEAD response while its schema cache still lacks a
+      // table, which previously made missing operational tables look ready.
+      const { error, data, count, status: httpStatus } = await supabase
         .from(table)
-        .select('*', { count: 'exact', head: true })
+        .select('*', { count: 'exact' })
+        .limit(1)
       checks[table] = error
-        ? { ok: false, message: error.message }
-        : { ok: true, count: count ?? 0 }
+        ? {
+            ok: false,
+            code: error.code || 'UNKNOWN',
+            httpStatus,
+            message: error.message,
+            hint: error.hint || '',
+          }
+        : { ok: true, count: count ?? data?.length ?? 0 }
     } catch (error) {
       checks[table] = { ok: false, message: error.message }
     }
   }
 
   const ok = Object.values(checks).every((item) => item.ok)
+  const missingTables = Object.entries(checks)
+    .filter(([, item]) => !item.ok && (item.code === 'PGRST205' || /schema cache|could not find the table/i.test(item.message || '')))
+    .map(([table]) => table)
   response.json({
     ok,
     service: 'creatorops-api',
     dataRoomLogging: status,
     checks,
+    missingTables,
     tableStatus: ok ? 'ready' : 'schema_or_permission_issue',
     message: ok
       ? 'Data room API logging can write raw events after collection requests.'
-      : 'Data room API logging is configured, but one or more tables are not reachable.',
+      : missingTables.length
+        ? `Missing required Supabase tables: ${missingTables.join(', ')}. Run supabase/migrations/20260810_required_operational_tables.sql.`
+        : 'Data room API logging is configured, but one or more tables are not reachable.',
   })
 })
 
