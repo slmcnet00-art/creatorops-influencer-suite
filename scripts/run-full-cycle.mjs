@@ -52,7 +52,6 @@ async function upsert(table, rows, options = {}) {
   if (!error) return true
   if (isMissingTableError(error)) {
     missingTables.add(table)
-    record(`DB ${table}`, true, 'SKIP: table is not available in the Supabase schema cache')
     return false
   }
   throw new Error(`${table}: ${error.message}`)
@@ -63,7 +62,6 @@ async function insert(table, rows) {
   if (!error) return true
   if (isMissingTableError(error)) {
     missingTables.add(table)
-    record(`DB ${table}`, true, 'SKIP: table is not available in the Supabase schema cache')
     return false
   }
   throw new Error(`${table}: ${error.message}`)
@@ -420,7 +418,7 @@ const expectedTables = [
 for (const table of expectedTables) {
   const total = await count(table)
   if (total === null) {
-    record(`DB ${table}`, true, 'SKIP: table is not available in the Supabase schema cache')
+    record(`DB ${table}`, false, 'MISSING: required operational table is not available in the Supabase schema cache')
   } else {
     record(`DB ${table}`, total > 0, `${total} rows`)
   }
@@ -429,10 +427,10 @@ for (const table of expectedTables) {
 console.log('\nCreatorOps full-cycle result')
 console.table(stages)
 const failures = stages.filter((stage) => !stage.ok)
-console.log(`Missing optional tables: ${[...missingTables].join(', ') || 'none'}`)
+console.log(`Missing required tables: ${[...missingTables].join(', ') || 'none'}`)
 console.log(`\n${stages.length - failures.length}/${stages.length} stages passed`)
 if (failures.length) {
-  console.log('External/API failures:')
+  console.log('Failures:')
   for (const failure of failures) console.log(`- ${failure.stage}: ${failure.detail}`)
   process.exitCode = 1
 }

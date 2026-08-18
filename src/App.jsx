@@ -43,6 +43,18 @@ import AdminDataRoom from './AdminDataRoom'
 import AdminConsole from './AdminConsole'
 import AuthPortal from './AuthPortal'
 import {
+  buildPermissionTestAccounts,
+  canManageTeamPermissions,
+  fullBrandAccessRoles,
+  getAccessibleBrands,
+  getAccessibleSectionIds,
+  getAccountBrandIds,
+  getAccountBrandScopeLabel,
+  mergePermissionTestAccounts,
+  normalizeRole,
+  teamRoleCatalog,
+} from './accessControl'
+import {
   LANGUAGE_OPTIONS,
   MARKET_OPTIONS,
   formatDualCurrency,
@@ -85,8 +97,6 @@ const STORE_KEY = 'creatorops.workspace.v2'
 const TRACKING_DAILY_REFRESH_KEY = 'creatorops.tracking.lastDailyRefresh'
 const GMAIL_AUTH_STORE_KEY = 'creatorops.gmailAuth.v1'
 const PRACTICE_TOUR_STORE_KEY = 'creatorops.practiceTour.completed.v1'
-const GMAIL_MIN_SEND_DELAY_MS = 20000
-const GMAIL_MAX_SEND_DELAY_MS = 60000
 const EXTERNAL_REPORT_PROFILES = [
   {
     match: /brand.*monitor.*influencer|monitor.*influencer/i,
@@ -1099,6 +1109,33 @@ const defaultWorkspace = {
       brandIds: [201],
       lastActive: '초대 대기',
     },
+    {
+      id: 'acct-admin-test',
+      name: '권한 테스트 관리자',
+      email: 'admin.test@miping.co.kr',
+      role: 'Admin',
+      status: '테스트',
+      brandIds: [201, 202, 203],
+      lastActive: '권한 테스트용',
+    },
+    {
+      id: 'acct-marketer-test',
+      name: '브랜드 B 마케터',
+      email: 'marketer.test@miping.co.kr',
+      role: 'Marketer',
+      status: '테스트',
+      brandIds: [202],
+      lastActive: '권한 테스트용',
+    },
+    {
+      id: 'acct-analyst-test',
+      name: '브랜드 A·B 분석 담당',
+      email: 'analyst.test@miping.co.kr',
+      role: 'Analyst',
+      status: '테스트',
+      brandIds: [201, 202],
+      lastActive: '권한 테스트용',
+    },
   ],
   activeAccountId: 'acct-owner',
   brands: defaultBrands,
@@ -1294,65 +1331,6 @@ function resolveDiscoveryApiCountry(country, fallback = 'KR') {
 const campaignStatuses = ['섭외', '콘텐츠 제작', '라이브', '리포트', '완료']
 const campaignTypeOptions = ['제안형', '공개모집', '앰배서더', '커머스/제휴', 'UGC/숏폼', '틱톡 공동구매 셀러']
 
-const teamRoleCatalog = {
-  Owner: {
-    label: '운영 총괄',
-    description: '팀/계정/권한/전체 브랜드를 관리합니다.',
-    dataScope: '전체 브랜드 DB',
-    permissions: ['전체 데이터', '권한 부여', '삭제/초기화', '다운로드'],
-  },
-  Admin: {
-    label: '관리자',
-    description: '브랜드와 캠페인 운영을 관리합니다.',
-    dataScope: '전체 브랜드 DB',
-    permissions: ['브랜드 관리', '캠페인 관리', '데이터 다운로드'],
-  },
-  Manager: {
-    label: '브랜드 매니저',
-    description: '배정된 브랜드의 발굴, 메시지, 리포트를 운영합니다.',
-    dataScope: '배정 브랜드 DB',
-    permissions: ['발굴', '메시지', '리포트'],
-  },
-  Client: {
-    label: '클라이언트',
-    description: '배정된 브랜드의 승인용 풀과 리포트를 봅니다.',
-    dataScope: '배정 브랜드 승인/리포트',
-    permissions: ['컨펌 보기', '리포트 보기'],
-  },
-  Analyst: {
-    label: '분석 담당',
-    description: '데이터 품질과 성과 리포트만 확인합니다.',
-    dataScope: '배정 브랜드 데이터룸/리포트',
-    permissions: ['데이터 검토', '리포트 보기'],
-  },
-}
-
-const fullBrandAccessRoles = new Set(['Owner', 'Admin'])
-
-function normalizeRole(role) {
-  return teamRoleCatalog[role] ? role : 'Manager'
-}
-
-function getAccountBrandIds(account, brands) {
-  if (!account) return []
-  const allBrandIds = brands.map((brand) => brand.id)
-  if (fullBrandAccessRoles.has(normalizeRole(account.role))) return allBrandIds
-  const allowedIds = new Set(account.brandIds ?? [])
-  return allBrandIds.filter((brandId) => allowedIds.has(brandId))
-}
-
-function getAccessibleBrands(account, brands) {
-  const accessibleIds = new Set(getAccountBrandIds(account, brands))
-  return brands.filter((brand) => accessibleIds.has(brand.id))
-}
-
-function getAccountBrandScopeLabel(account, brands) {
-  const role = normalizeRole(account?.role)
-  if (fullBrandAccessRoles.has(role)) return `전체 ${brands.length}개 브랜드`
-  const count = getAccountBrandIds(account, brands).length
-  return `${count}/${brands.length}개 브랜드`
-}
-
 function normalizeBrand(brand, index = 0) {
   const fallback = defaultBrands[index] ?? defaultBrands[0]
   const brief = {
@@ -1530,14 +1508,6 @@ function hasDuplicateSentOutreach(item, outreach = []) {
     candidate.campaignId === item.campaignId &&
     (candidate.sentAt || candidate.status === '발송 완료'),
   )
-}
-
-function randomSendDelayMs() {
-  return Math.round(GMAIL_MIN_SEND_DELAY_MS + Math.random() * (GMAIL_MAX_SEND_DELAY_MS - GMAIL_MIN_SEND_DELAY_MS))
-}
-
-function wait(ms) {
-  return new Promise((resolve) => window.setTimeout(resolve, ms))
 }
 
 function buildOutreachTimeline(item = {}) {
@@ -7654,6 +7624,7 @@ function App() {
   const brandCloudVersionsRef = useRef({})
   const brandCloudSignatureRef = useRef('')
   const skipNextBrandCloudSaveRef = useRef(false)
+  const trackingRefreshInFlightRef = useRef(false)
   const [brandCloudHydratedScope, setBrandCloudHydratedScope] = useState('')
   const [query, setQuery] = useState('')
   const [platform, setPlatform] = useState('전체')
@@ -7932,12 +7903,8 @@ function App() {
       brandIds: cloudBrandIds,
     }
   }, [backendConfig.hasSupabase, brands, localCurrentAccount, workspaceAccess])
-  const canManagePermissions = currentAccount?.role === 'Owner' || currentAccount?.role === 'Admin'
-  const accessibleSectionIds = useMemo(() => {
-    if (currentAccount?.role === 'Client') return ['dashboard', 'campaigns', 'groups', 'report', 'references', 'settings']
-    if (currentAccount?.role === 'Analyst') return ['dashboard', 'report', 'dataRoom', 'settings']
-    return ['dashboard', 'campaigns', 'discovery', 'groups', 'messages', 'report', 'references', 'dataRoom', 'settings']
-  }, [currentAccount?.role])
+  const canManagePermissions = canManageTeamPermissions(currentAccount)
+  const accessibleSectionIds = useMemo(() => getAccessibleSectionIds(currentAccount), [currentAccount])
   const visibleSection = accessibleSectionIds.includes(activeSection) ? activeSection : accessibleSectionIds[0]
   const canAccessSection = (sectionId) => accessibleSectionIds.includes(sectionId)
   const practiceSteps = useMemo(
@@ -8577,9 +8544,17 @@ function App() {
     const today = new Date().toISOString().slice(0, 10)
     if (window.localStorage.getItem(TRACKING_DAILY_REFRESH_KEY) === today) return undefined
 
+    // Claim today's automatic refresh before the request starts so multiple tabs
+    // or development effect replays cannot spend the same provider quota twice.
+    window.localStorage.setItem(TRACKING_DAILY_REFRESH_KEY, today)
+
     const timer = window.setTimeout(() => {
+      if (trackingRefreshInFlightRef.current) return
+      trackingRefreshInFlightRef.current = true
       // eslint-disable-next-line react-hooks/immutability
-      refreshTracking({ mode: 'daily-auto' })
+      Promise.resolve(refreshTracking({ mode: 'daily-auto' })).finally(() => {
+        trackingRefreshInFlightRef.current = false
+      })
     }, 250)
 
     return () => window.clearTimeout(timer)
@@ -13725,6 +13700,25 @@ function App() {
       : `${campaign.name} 인플루언서 전략을 생성했어요.`)
   }
 
+  const createPermissionTestAccounts = () => {
+    if (!canManagePermissions) {
+      showToast('운영 총괄 또는 관리자만 권한 테스트 계정을 만들 수 있습니다.')
+      return
+    }
+    const testAccounts = buildPermissionTestAccounts(brands)
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          accounts: mergePermissionTestAccounts(current.accounts, current.brands),
+        },
+        'team',
+        `권한 테스트 계정 ${testAccounts.length}개 생성`,
+      ),
+    )
+    showToast(`테스트 계정 ${testAccounts.length}개를 만들었습니다. 현재 계정에서 전환해 확인하세요.`)
+  }
+
   const generateCampaignGuideForDetail = async (campaign) => {
     if (!campaign) return
     const campaignBrief = buildCampaignBriefFromCampaign(campaign)
@@ -14796,28 +14790,22 @@ function App() {
     showToast(`배송/수동 정산 상태를 ${nextStatus}로 업데이트했어요.`)
   }
 
-  function applyEstimatedTrackingRefresh(post, isAuto) {
-    const viewLift = Math.max(180, Math.round(post.views * 0.08))
-    return {
-      ...post,
-      views: post.views + viewLift,
-      likes: post.likes + Math.round(viewLift * 0.045),
-      comments: post.comments + Math.round(viewLift * 0.004),
-      shares: post.shares + Math.round(viewLift * 0.006),
-      saves: post.saves + Math.round(viewLift * 0.01),
-      conversions: post.conversions + Math.round(viewLift * 0.0018),
-      metricsSource: isAuto ? '일일 추정 갱신' : '즉시 추정 갱신',
-      lastChecked: nowLabel(),
-    }
-  }
-
   async function refreshTracking({ mode = 'manual' } = {}) {
     const isAuto = mode === 'daily-auto'
     const targetPosts = selectedCampaignTrackedPosts.length ? selectedCampaignTrackedPosts : trackedPosts
 
-    if (backendConfig.apiBaseUrl && targetPosts.length) {
-      try {
-        const payload = await refreshContentMetrics(targetPosts)
+    if (!targetPosts.length) {
+      if (!isAuto) showToast('갱신할 콘텐츠가 없습니다. 콘텐츠 URL을 먼저 등록해주세요.')
+      return false
+    }
+
+    if (!backendConfig.apiBaseUrl) {
+      if (!isAuto) showToast('API 서버가 연결되지 않아 기존 성과 수치를 유지합니다.')
+      return false
+    }
+
+    try {
+      const payload = await refreshContentMetrics(targetPosts)
         const refreshed = Array.isArray(payload?.posts) ? payload.posts : []
         const refreshedById = new Map(refreshed.map((post) => [post.id, post]))
         const refreshedAt = new Date().toISOString()
@@ -14870,27 +14858,12 @@ function App() {
         if (!isAuto) {
           showToast(`성과 데이터 ${refreshed.length}건을 갱신했어요. Instagram/TikTok은 수동 확인이 필요할 수 있어요.`)
         }
-        return
-      } catch (error) {
-        if (!isAuto) {
-          showToast(error instanceof Error ? `API 갱신 실패: ${error.message}` : 'API 갱신 실패로 추정 갱신을 적용합니다.')
-        }
+      return true
+    } catch (error) {
+      if (!isAuto) {
+        showToast(error instanceof Error ? `API 갱신 실패: ${error.message}` : 'API 갱신에 실패해 기존 수치를 유지합니다.')
       }
-    }
-
-    updateWorkspace((current) =>
-      appendActivity(
-        {
-          ...current,
-          trackedPosts: current.trackedPosts.map((post) => applyEstimatedTrackingRefresh(post, isAuto)),
-        },
-        'tracking',
-        isAuto ? '콘텐츠 성과 일일 자동 갱신' : '콘텐츠 성과 즉시 갱신',
-      ),
-    )
-    window.localStorage.setItem(TRACKING_DAILY_REFRESH_KEY, new Date().toISOString().slice(0, 10))
-    if (!isAuto) {
-      showToast('콘텐츠 조회수, 댓글, 공유 데이터를 즉시 갱신했어요.')
+      return false
     }
   }
 
@@ -14944,47 +14917,52 @@ function App() {
       return
     }
 
-    setGmailSending(true)
-    const apiBaseUrl = backendConfig.apiBaseUrl.replace(/\/$/, '')
-    const sentIds = []
-    const failures = []
-
-    for (let index = 0; index < selectedEmailOutreachItems.length; index += 1) {
-      const item = selectedEmailOutreachItems[index]
-      const creator = creators.find((candidate) => candidate.id === item.creatorId)
-      const campaign = brandCampaigns.find((candidate) => candidate.id === item.campaignId)
-
-      if (hasDuplicateSentOutreach(item, outreach)) {
-        failures.push({ item, message: '같은 캠페인과 크리에이터에 대한 중복 발송을 막았습니다.' })
-        continue
-      }
-
-      if (sentIds.length > 0) {
-        const delayMs = randomSendDelayMs()
-        showToast(`다음 Gmail 발송까지 ${Math.round(delayMs / 1000)}초 대기합니다.`)
-        await wait(delayMs)
-      }
-
-      try {
-        const response = await fetch(apiBaseUrl + '/outreach/gmail/send', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            accessToken: gmailAuth.accessToken,
-            to: creator?.contactEmail,
-            subject: `${campaign?.name || '브랜드 캠페인'} 협업 제안드립니다`,
-            message: item.message,
-          }),
-        })
-        const payload = await response.json().catch(() => ({}))
-        if (!response.ok) throw new Error(payload?.message || 'Gmail send failed')
-        sentIds.push(item.id)
-      } catch (error) {
-        failures.push({ item, message: error instanceof Error ? error.message : 'Send failed' })
-      }
+    const deliverableItems = selectedEmailOutreachItems.filter((item) => !hasDuplicateSentOutreach(item, outreach))
+    const locallySkipped = selectedEmailOutreachItems.length - deliverableItems.length
+    if (!deliverableItems.length) {
+      showToast('이미 발송된 동일 캠페인·크리에이터 조합입니다. 중복 발송을 차단했습니다.')
+      return
     }
 
-    setGmailSending(false)
+    setGmailSending(true)
+    const apiBaseUrl = backendConfig.apiBaseUrl.replace(/\/$/, '')
+    let sentIds = []
+    let skippedCount = locallySkipped
+    let failures
+
+    try {
+      const response = await fetch(apiBaseUrl + '/outreach/gmail/send-batch', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          accessToken: gmailAuth.accessToken,
+          workspaceId: backendConfig.workspaceId,
+          items: deliverableItems.map((item) => {
+            const creator = creators.find((candidate) => candidate.id === item.creatorId)
+            const campaign = brandCampaigns.find((candidate) => candidate.id === item.campaignId)
+            return {
+              id: item.id,
+              campaignId: item.campaignId,
+              creatorId: item.creatorId,
+              to: creator?.contactEmail,
+              subject: `${campaign?.name || '브랜드 캠페인'} 협업 제안드립니다`,
+              message: item.message,
+              idempotencyKey: `${item.campaignId}:${item.creatorId}:email`,
+            }
+          }),
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload?.message || 'Gmail 일괄 발송에 실패했습니다.')
+      const results = Array.isArray(payload?.data?.results) ? payload.data.results : []
+      sentIds = results.filter((item) => item.status === 'sent').map((item) => item.id)
+      skippedCount += results.filter((item) => item.status === 'skipped').length
+      failures = results.filter((item) => item.status === 'failed')
+    } catch (error) {
+      failures = [{ message: error instanceof Error ? error.message : 'Gmail 일괄 발송에 실패했습니다.' }]
+    } finally {
+      setGmailSending(false)
+    }
 
     if (failures.some((failure) => /accessToken|token|401|invalid/i.test(failure.message))) {
       window.localStorage.removeItem(GMAIL_AUTH_STORE_KEY)
@@ -15011,11 +14989,8 @@ function App() {
       setSelectedOutreachIds((current) => current.filter((id) => !selectedIds.has(id)))
     }
 
-    if (failures.length) {
-      showToast(`Gmail send: ${sentIds.length} succeeded, ${failures.length} failed: ${failures[0].message}`)
-    } else {
-      showToast(`Gmail send completed for ${sentIds.length} messages.`)
-    }
+    const summary = `Gmail 발송 ${sentIds.length}건 완료${skippedCount ? ` · 중복 차단 ${skippedCount}건` : ''}`
+    showToast(failures.length ? `${summary} · 실패 ${failures.length}건: ${failures[0].message}` : summary)
   }
   const markOutreachSent = (itemId) => {
     updateWorkspace((current) =>
@@ -16502,7 +16477,14 @@ function App() {
                   <span className="mini-label">팀 권한</span>
                   <h2>팀 계정 및 권한</h2>
                 </div>
-                <span className="result-count">{accounts.length}개 계정</span>
+                <div className="toolbar-actions">
+                  <span className="result-count">{accounts.length}개 계정</span>
+                  {canManagePermissions && (
+                    <button className="secondary-button" type="button" onClick={createPermissionTestAccounts}>
+                      권한 테스트 계정 생성
+                    </button>
+                  )}
+                </div>
               </div>
               <div className="settings-current-account">
                 <div>

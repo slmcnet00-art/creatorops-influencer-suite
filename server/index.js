@@ -19,8 +19,12 @@ const MIN_REFERENCE_KNOWN_VIEWS = 500_000
 const MIN_REFERENCE_QUALITY_SCORE = 45
 const SEARCH_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 const SEARCH_CACHE_STALE_TTL_MS = 7 * 24 * 60 * 60 * 1000
+const OUTREACH_BATCH_LIMIT = 50
+const OUTREACH_SEND_INTERVAL_MS = Math.max(250, Number(process.env.OUTREACH_SEND_INTERVAL_MS || 800))
+const OUTREACH_MAX_ATTEMPTS = 3
 const WORKSPACE_ID = process.env.WORKSPACE_ID || process.env.VITE_WORKSPACE_ID || 'miping-main'
 const searchCache = new Map()
+const outreachDeliveryMemory = new Map()
 const aiFeatureConfigMemory = new Map()
 const AI_FEATURE_KEYS = new Set([
   'creator-recommendation',
@@ -203,6 +207,14 @@ app.get('/health', (request, response) => {
     ok: true,
     service: 'creatorops-api',
     version: process.env.RENDER_GIT_COMMIT || 'local',
+    outreach: {
+      gmailOAuthConfigured: Boolean(
+        process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REDIRECT_URI,
+      ),
+      deliveryLogConfigured: getDataRoomLogStatus().configured,
+      batchLimit: OUTREACH_BATCH_LIMIT,
+      maxAttempts: OUTREACH_MAX_ATTEMPTS,
+    },
   })
 })
 
@@ -417,13 +429,13 @@ const DATA_ROOM_RAW_SOURCE_META = {
   },
 }
 
-async function ensureDataRoomWorkspace(supabase) {
+async function ensureDataRoomWorkspace(supabase, workspaceId = WORKSPACE_ID) {
   const { error } = await supabase
     .from('workspaces')
     .upsert(
       {
-        id: WORKSPACE_ID,
-        name: WORKSPACE_ID,
+        id: workspaceId,
+        name: workspaceId,
         updated_at: new Date().toISOString(),
       },
       { onConflict: 'id' },
@@ -606,7 +618,7 @@ async function safeLogExternalCollectionEvent({
   }
 
   try {
-    await ensureDataRoomWorkspace(supabase)
+    await ensureDataRoomWorkspace(supabase, WORKSPACE_ID)
     await ensureDataRoomRawSource(supabase, rawSourceId)
     const { error } = await supabase.from('external_search_events').insert({
       workspace_id: WORKSPACE_ID,
@@ -1041,6 +1053,80 @@ app.post('/outreach/gmail/send', async (request, response, next) => {
       body: JSON.stringify({ raw }),
     })
     response.json({ data: { id: payload.id, threadId: payload.threadId } })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/outreach/gmail/send-batch', async (request, response, next) => {
+  try {
+    const accessToken = String(request.body?.accessToken || '').trim()
+    const workspaceId = String(request.body?.workspaceId || WORKSPACE_ID).trim()
+    const requestedItems = Array.isArray(request.body?.items) ? request.body.items : []
+    if (!accessToken) throw httpError(401, 'Google accessToken is required.')
+    if (!requestedItems.length) throw httpError(400, 'At least one outreach item is required.')
+    if (requestedItems.length > OUTREACH_BATCH_LIMIT) {
+      throw httpError(400, `A batch can contain up to ${OUTREACH_BATCH_LIMIT} items.`)
+    }
+
+    const items = requestedItems.map((item, index) => normalizeOutreachDeliveryItem(item, index))
+    const results = []
+
+    for (let index = 0; index < items.length; index += 1) {
+      const item = items[index]
+      const memoryKey = `${workspaceId}:${item.idempotencyKey}`
+      const memoryEntry = outreachDeliveryMemory.get(memoryKey)
+      if (memoryEntry?.status === 'sending' || memoryEntry?.status === 'sent') {
+        results.push({ id: item.id, status: 'skipped', reason: 'duplicate', providerMessageId: memoryEntry.providerMessageId || '' })
+        continue
+      }
+
+      outreachDeliveryMemory.set(memoryKey, { status: 'sending', updatedAt: Date.now() })
+      const existing = await findOutreachDelivery(workspaceId, item.idempotencyKey)
+      if (existing?.status === 'sending' || existing?.status === 'sent') {
+        outreachDeliveryMemory.set(memoryKey, existing)
+        results.push({ id: item.id, status: 'skipped', reason: 'duplicate', providerMessageId: existing.provider_message_id || '' })
+        continue
+      }
+
+      await persistOutreachDelivery(workspaceId, item, { status: 'sending', attemptCount: 0, lastError: null })
+      try {
+        const payload = await sendGmailWithRetry(accessToken, item)
+        const sentAt = new Date().toISOString()
+        await persistOutreachDelivery(workspaceId, item, {
+          status: 'sent',
+          attemptCount: payload.attemptCount,
+          providerMessageId: payload.id,
+          sentAt,
+          lastError: null,
+        })
+        outreachDeliveryMemory.set(memoryKey, { status: 'sent', providerMessageId: payload.id, updatedAt: Date.now() })
+        results.push({ id: item.id, status: 'sent', providerMessageId: payload.id, threadId: payload.threadId, attemptCount: payload.attemptCount })
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Gmail send failed.'
+        await persistOutreachDelivery(workspaceId, item, {
+          status: 'failed',
+          attemptCount: Number(error?.attemptCount || OUTREACH_MAX_ATTEMPTS),
+          lastError: message,
+        })
+        outreachDeliveryMemory.set(memoryKey, { status: 'failed', lastError: message, updatedAt: Date.now() })
+        results.push({ id: item.id, status: 'failed', message })
+      }
+
+      if (index < items.length - 1) await delay(OUTREACH_SEND_INTERVAL_MS)
+    }
+
+    response.json({
+      data: {
+        results,
+        summary: {
+          requested: items.length,
+          sent: results.filter((item) => item.status === 'sent').length,
+          skipped: results.filter((item) => item.status === 'skipped').length,
+          failed: results.filter((item) => item.status === 'failed').length,
+        },
+      },
+    })
   } catch (error) {
     next(error)
   }
@@ -3755,6 +3841,94 @@ function isInstagramProfileHandle(handle) {
   ])
   if (blocked.has(handle.toLowerCase())) return false
   return /^[a-z0-9._]{2,30}$/i.test(handle)
+}
+
+function normalizeOutreachDeliveryItem(item = {}, index = 0) {
+  const id = String(item.id || `outreach-${Date.now()}-${index}`).trim()
+  const campaignId = String(item.campaignId || '').trim()
+  const creatorId = String(item.creatorId || '').trim()
+  const to = String(item.to || '').trim().toLowerCase()
+  const subject = String(item.subject || 'CreatorOps collaboration proposal').trim()
+  const message = String(item.message || '').trim()
+  if (!to || !message) throw httpError(400, `items[${index}] requires to and message.`)
+  const idempotencyKey = String(item.idempotencyKey || `${campaignId || 'campaign'}:${creatorId || to}:email`).trim()
+  return { id, campaignId, creatorId, to, subject, message, idempotencyKey }
+}
+
+async function findOutreachDelivery(workspaceId, idempotencyKey) {
+  const supabase = getSupabaseAdminClient()
+  if (!supabase) return null
+  const { data, error } = await supabase
+    .from('outreach_messages')
+    .select('id,status,provider_message_id,attempt_count,last_error')
+    .eq('workspace_id', workspaceId)
+    .eq('idempotency_key', idempotencyKey)
+    .in('status', ['sending', 'sent'])
+    .maybeSingle()
+  if (error) {
+    console.warn('Outreach duplicate lookup failed:', error.message)
+    return null
+  }
+  return data
+}
+
+async function persistOutreachDelivery(workspaceId, item, delivery = {}) {
+  const supabase = getSupabaseAdminClient()
+  if (!supabase) return
+  try {
+    await ensureDataRoomWorkspace(supabase, workspaceId)
+    const now = new Date().toISOString()
+    const { data: existing } = await supabase
+      .from('outreach_messages')
+      .select('id')
+      .eq('workspace_id', workspaceId)
+      .eq('idempotency_key', item.idempotencyKey)
+      .maybeSingle()
+    const row = {
+      id: existing?.id || item.id,
+      workspace_id: workspaceId,
+      campaign_id: item.campaignId || null,
+      creator_id: item.creatorId || null,
+      channel: 'email',
+      recipient: item.to,
+      subject: item.subject,
+      message: item.message,
+      status: delivery.status || 'review',
+      provider_message_id: delivery.providerMessageId || null,
+      idempotency_key: item.idempotencyKey,
+      attempt_count: Number(delivery.attemptCount || 0),
+      last_error: delivery.lastError || null,
+      sent_at: delivery.sentAt || null,
+      updated_at: now,
+      metadata: { deliveryProvider: 'gmail', source: 'batch-api' },
+    }
+    const { error } = await supabase.from('outreach_messages').upsert(row, { onConflict: 'id' })
+    if (error) console.warn('Outreach delivery persistence failed:', error.message)
+  } catch (error) {
+    console.warn('Outreach delivery persistence failed:', error instanceof Error ? error.message : error)
+  }
+}
+
+async function sendGmailWithRetry(accessToken, item) {
+  let lastError
+  for (let attempt = 1; attempt <= OUTREACH_MAX_ATTEMPTS; attempt += 1) {
+    try {
+      const raw = buildGmailRawMessage(item)
+      const payload = await fetchJson('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${accessToken}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ raw }),
+      })
+      return { ...payload, attemptCount: attempt }
+    } catch (error) {
+      lastError = error
+      const retryable = error?.status === 429 || Number(error?.status || 0) >= 500
+      if (!retryable || attempt === OUTREACH_MAX_ATTEMPTS) break
+      await delay(500 * (2 ** (attempt - 1)))
+    }
+  }
+  if (lastError && typeof lastError === 'object') lastError.attemptCount = OUTREACH_MAX_ATTEMPTS
+  throw lastError || httpError(502, 'Gmail send failed.')
 }
 
 function isTikTokProfileHandle(handle) {
