@@ -1,5 +1,7 @@
 # CreatorOps 데이터 구축 전략
 
+> 데이터룸 우선 원칙과 프론트 표시 규칙은 [CREATOROPS_PRODUCT_SPEC.md](./CREATOROPS_PRODUCT_SPEC.md)를 따르며, API 필드 계약은 [API_INTEGRATION_CONTRACT.md](./API_INTEGRATION_CONTRACT.md)에서 관리합니다.
+
 경쟁사 API를 가져오지 않고, 합법적으로 확보 가능한 데이터와 우리 자체 운영 데이터를 결합해 정확도를 높인다.
 목표는 브랜드에 맞는 인플루언서와 틱톡 공동구매 셀러를 발굴하고, 대량 섭외와 콘텐츠 성과 추적을 통해 조회수/전환/주문 KPI에 도달하는 것이다.
 

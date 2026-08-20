@@ -1,5 +1,7 @@
 # CreatorOps API Integration Contract
 
+> 제품 흐름과 데이터 출처 원칙은 [CREATOROPS_PRODUCT_SPEC.md](./CREATOROPS_PRODUCT_SPEC.md), raw·계산지표 구조는 [DATA_ARCHITECTURE.md](./DATA_ARCHITECTURE.md)를 기준으로 합니다.
+
 현재 프론트는 Supabase 공유 저장소와 별도 API 프록시를 옵션으로 지원합니다.
 운영 배포에서는 API 키를 브라우저에 두지 말고 `VITE_CREATOROPS_API_BASE_URL` 뒤 서버에 보관합니다.
 

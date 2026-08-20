@@ -1,5 +1,7 @@
 # CreatorOps Workflow Specification
 
+> 이 문서는 [CREATOROPS_PRODUCT_SPEC.md](./CREATOROPS_PRODUCT_SPEC.md)의 운영 흐름을 상세화합니다. 상용화 검증 항목은 [OPERATIONS_CHECKLIST.md](./OPERATIONS_CHECKLIST.md)를 따릅니다.
+
 이 문서는 CreatorOps Influencer Suite의 업무 흐름, 데이터 구조, GitHub 게시 절차를 정리한 문서입니다.
 
 ## 목표

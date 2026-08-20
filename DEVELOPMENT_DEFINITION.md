@@ -1,5 +1,7 @@
 ﻿# CreatorOps 기능정의서
 
+> 최상위 제품 기준은 [CREATOROPS_PRODUCT_SPEC.md](./CREATOROPS_PRODUCT_SPEC.md)입니다. 확정된 변경 사유는 [DECISION_LOG.md](./DECISION_LOG.md)에 기록합니다.
+
 작성일: 2026-06-19  
 문서 목적: 현재까지 구현된 CreatorOps 인플루언서 운영 플랫폼의 기능 범위, 화면 구성, 데이터 구조, API 연동 준비 상태, 미완료 항목을 기능 검토용으로 정리한다.
 
