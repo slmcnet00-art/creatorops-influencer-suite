@@ -1,0 +1,11 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+*.local
+*.log
+node_modules
+dist
+files.zip
+youtube-quota-evidence
