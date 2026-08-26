@@ -90,7 +90,7 @@ Safe production diagnostics:
 GET http://127.0.0.1:8792/readiness?probe=live
 ```
 
-This route uses read-only provider requests for YouTube, Google Search/CX, the configured OpenAI model, and the 14 Supabase data-room tables. Gmail is configuration-only: it reports `authorization_required` until the current browser completes OAuth. The diagnostic never generates AI content, writes data, exchanges an OAuth code, or sends email, and its response never includes credential values. Live results are cached in the API process for five minutes by default so repeated dashboard refreshes do not waste provider quota.
+This route uses read-only provider requests for YouTube, the profile-search provider actually selected by production (Brave Search when configured, otherwise Google Search/CX), the configured OpenAI model, and the 14 Supabase data-room tables. Gmail is configuration-only: it reports `authorization_required` until the current browser completes OAuth. The diagnostic never generates AI content, writes data, exchanges an OAuth code, or sends email, and its response never includes credential values. Live results are cached in the API process for five minutes by default so repeated dashboard refreshes do not waste provider quota.
 
 Missing-key behavior is correct:
 
@@ -111,7 +111,7 @@ Verified:
 - Frontend 200
 - API `/health` 200
 - API `/readiness?probe=live` confirms the read-only safety contract
-- YouTube, Google Search/CX, OpenAI model access, and Supabase table reads are reported independently
+- YouTube, the active profile-search provider, OpenAI model access, and Supabase table reads are reported independently
 - Gmail reports backend OAuth configuration separately from browser user authorization; no email is sent
 
 ## Test Order

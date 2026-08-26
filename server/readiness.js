@@ -61,13 +61,19 @@ export function getConfigurationReadiness(env = process.env) {
     env,
     requiredEnv: ['YOUTUBE_DATA_API_KEY'],
   })
-  const googleSearch = configuredIntegration({
-    key: 'google-search',
-    label: 'Google Search/CX',
-    description: 'Public profile search',
-    env,
-    requiredEnv: ['GOOGLE_SEARCH_API_KEY', 'GOOGLE_SEARCH_CX'],
-  })
+  const useBraveSearch = hasValue(env, 'BRAVE_SEARCH_API_KEY')
+  const profileSearch = {
+    ...configuredIntegration({
+      key: 'profile-search',
+      label: useBraveSearch ? 'Brave Search API' : 'Google Search/CX',
+      description: 'Public profile search',
+      env,
+      requiredEnv: useBraveSearch
+        ? ['BRAVE_SEARCH_API_KEY']
+        : ['GOOGLE_SEARCH_API_KEY', 'GOOGLE_SEARCH_CX'],
+    }),
+    provider: useBraveSearch ? 'brave' : 'google-cse',
+  }
   const openai = configuredIntegration({
     key: 'openai',
     label: 'OpenAI',
@@ -111,7 +117,7 @@ export function getConfigurationReadiness(env = process.env) {
     testMode: 'configuration_only',
   }
 
-  return [youtube, googleSearch, openai, dataRoom, gmail]
+  return [youtube, profileSearch, openai, dataRoom, gmail]
 }
 
 function classifyProbeResponse(response) {
@@ -268,7 +274,28 @@ export async function buildReadinessReport({
       return mergeProbe(integration, await probeRequest(fetchImpl, url, {}, timeoutMs))
     }
 
-    if (integration.key === 'google-search') {
+    if (integration.key === 'profile-search') {
+      if (integration.provider === 'brave') {
+        const url = new URL('https://api.search.brave.com/res/v1/web/search')
+        url.search = new URLSearchParams({
+          q: 'site:youtube.com creator',
+          count: '1',
+          safesearch: 'moderate',
+          country: 'KR',
+        })
+        return mergeProbe(integration, await probeRequest(
+          fetchImpl,
+          url,
+          {
+            headers: {
+              Accept: 'application/json',
+              'X-Subscription-Token': env.BRAVE_SEARCH_API_KEY,
+            },
+          },
+          timeoutMs,
+        ))
+      }
+
       const url = new URL('https://www.googleapis.com/customsearch/v1')
       url.search = new URLSearchParams({
         key: env.GOOGLE_SEARCH_API_KEY,

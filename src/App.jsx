@@ -16575,7 +16575,7 @@ function App() {
                 <div>
                   <strong>안전한 운영 API 진단</strong>
                   <p>
-                    API 서버, YouTube, Google Search/CX, OpenAI 모델, Supabase 데이터룸, Gmail OAuth 설정을 확인합니다.
+                    API 서버, YouTube, 현재 사용 중인 프로필 검색 공급자, OpenAI 모델, Supabase 데이터룸, Gmail OAuth 설정을 확인합니다.
                     데이터 쓰기, AI 콘텐츠 생성, OAuth 승인, 메일 발송은 실행하지 않습니다.
                   </p>
                   {apiTestStatus.checkedAt && (

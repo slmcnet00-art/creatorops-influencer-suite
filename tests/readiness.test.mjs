@@ -10,6 +10,7 @@ const completeEnv = {
   YOUTUBE_DATA_API_KEY: 'youtube-secret-value',
   GOOGLE_SEARCH_API_KEY: 'google-secret-value',
   GOOGLE_SEARCH_CX: 'google-cx-value',
+  BRAVE_SEARCH_API_KEY: 'brave-secret-value',
   OPENAI_API_KEY: 'openai-secret-value',
   OPENAI_MODEL: 'gpt-4.1-mini',
   SUPABASE_URL: 'https://example.supabase.co',
@@ -74,6 +75,9 @@ test('live readiness probes are GET-only and never include secrets in the report
   assert.equal(requests.length, 3)
   assert.ok(requests.every((request) => request.options.method === 'GET'))
   assert.ok(requests.every((request) => request.options.body === undefined))
+  const profileSearchRequest = requests.find((request) => request.url.includes('search.brave.com'))
+  assert.ok(profileSearchRequest)
+  assert.equal(profileSearchRequest.options.headers['X-Subscription-Token'], completeEnv.BRAVE_SEARCH_API_KEY)
 
   const serialized = JSON.stringify(report)
   for (const secret of Object.values(completeEnv)) {
@@ -100,6 +104,32 @@ test('provider errors are classified without returning provider payloads or requ
   assert.equal(report.summary.state, 'not_ready')
   assert.equal(report.integrations.find((item) => item.key === 'openai').state, 'credential_error')
   assert.equal(report.integrations.find((item) => item.key === 'youtube').state, 'rate_limited')
+  assert.equal(report.integrations.find((item) => item.key === 'profile-search').state, 'rate_limited')
   assert.equal(report.integrations.find((item) => item.key === 'data-room').state, 'unavailable')
   assert.equal(JSON.stringify(report).includes('openai-secret-value'), false)
+})
+
+test('profile search readiness falls back to Google CSE only when Brave is not configured', async () => {
+  const requests = []
+  const { BRAVE_SEARCH_API_KEY: _unused, ...googleOnlyEnv } = completeEnv
+  const report = await buildReadinessReport({
+    env: googleOnlyEnv,
+    probe: true,
+    fetchImpl: async (url, options) => {
+      requests.push({ url: String(url), options })
+      return { ok: true, status: 200 }
+    },
+    dataRoomProbe: async () => ({
+      ok: true,
+      tableStatus: 'ready',
+      readyTables: REQUIRED_DATA_ROOM_TABLES.length,
+      requiredTables: REQUIRED_DATA_ROOM_TABLES.length,
+    }),
+  })
+
+  const profileSearch = report.integrations.find((item) => item.key === 'profile-search')
+  assert.equal(profileSearch.provider, 'google-cse')
+  assert.equal(profileSearch.state, 'ready')
+  assert.ok(requests.some((request) => request.url.includes('googleapis.com/customsearch')))
+  assert.ok(requests.every((request) => !request.url.includes('search.brave.com')))
 })
