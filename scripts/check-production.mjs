@@ -35,25 +35,37 @@ async function checkUrl(label, url) {
   }
 }
 
-async function checkPost(label, url, body) {
+async function checkReadiness(label, url) {
   const startedAt = Date.now()
   try {
     const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body),
       signal: AbortSignal.timeout(30000),
     })
     const text = await response.text()
-    const classification = classifyResponse(response, text)
+    const payload = JSON.parse(text)
+    const safe = payload?.safety?.readOnly === true
+      && payload?.safety?.emailSent === false
+      && payload?.safety?.contentGenerated === false
+      && payload?.safety?.dataWritten === false
+      && payload?.safety?.secretsIncluded === false
+    const ready = ['ready', 'ready_with_user_action'].includes(payload?.summary?.state)
+    const integrations = Array.isArray(payload?.integrations) ? payload.integrations : []
+    const needsActionItems = integrations
+      .filter((item) => !['ready', 'authorization_required'].includes(item.state))
+    const blocked = needsActionItems.length > 0
+      && needsActionItems.every((item) => item.state === 'rate_limited')
+    const needsAction = needsActionItems
+      .map((item) => `${item.key}:${item.state}`)
     return {
       label,
       url,
-      ok: response.status === 501 || classification.ok,
-      blocked: classification.blocked,
+      ok: response.ok && payload?.ok === true && safe && ready,
+      blocked,
       status: response.status,
       ms: Date.now() - startedAt,
-      sample: text.slice(0, 180).replace(/\s+/g, ' ').trim(),
+      sample: safe
+        ? `state=${payload?.summary?.state || 'unknown'} ready=${payload?.summary?.ready || 0}/${payload?.summary?.total || 0}${needsAction.length ? ` needs_action=${needsAction.join(',')}` : ''}`
+        : 'Read-only safety contract is missing or invalid.',
     }
   } catch (error) {
     return {
@@ -71,37 +83,9 @@ async function checkPost(label, url, body) {
 const checks = await Promise.all([
   checkUrl('frontend', `${frontendUrl}/?v=production-check-${Date.now()}`),
   checkUrl('api', `${apiUrl}/health`),
+  checkReadiness('safe-readiness', `${apiUrl}/readiness?probe=live`),
 ])
-
-const endpointChecks = await Promise.all([
-  checkPost('youtube-discovery-contract', `${apiUrl}/discovery/youtube/search`, {
-    query: 'pet creator',
-    maxResults: 1,
-  }),
-  checkPost('ai-recommendation-enrichment-contract', `${apiUrl}/ai/recommendations/enrich`, {
-    brand: { name: 'CreatorOps Production Check', product: 'test product' },
-    campaign: { name: 'production route check', goal: 'verify AI recommendation enrichment' },
-    candidates: [{
-      recommendationId: 'rec-production-check',
-      creatorId: 'creator-production-check',
-      creatorName: 'Production Check Creator',
-      platform: 'YouTube',
-      category: 'review',
-      followers: 120000,
-      averageViews: 280000,
-      engagement: 5.8,
-      score: 92,
-      reasons: ['route check candidate'],
-    }],
-  }),
-  checkPost('ai-message-contract', `${apiUrl}/ai/outreach-message`, {
-    creator: { name: 'test' },
-    brand: { brandName: 'test' },
-    campaign: { name: 'test' },
-  }),
-])
-
-const results = [...checks, ...endpointChecks]
+const results = checks
 for (const check of results) {
   const resultLabel = check.ok ? 'OK' : check.blocked ? 'BLOCKED' : 'FAIL'
   console.log(`${resultLabel} ${check.label} ${check.status} ${check.ms}ms ${check.url}`)
@@ -123,8 +107,8 @@ if (failed.length) {
   if (failed.some((check) => check.label === 'api')) {
     console.log('- Render에서 creatorops-suite-api 서비스와 최근 배포 로그를 확인하세요.')
   }
-  if (failed.some((check) => check.label === 'ai-recommendation-enrichment-contract')) {
-    console.log('- 404이면 최신 server/index.js 배포 여부를, 501이면 OPENAI_API_KEY를 확인하세요.')
+  if (failed.some((check) => check.label === 'safe-readiness')) {
+    console.log('- /readiness 결과의 needs_action 상태를 확인하세요. 이 검사는 데이터 쓰기, AI 생성, 메일 발송을 하지 않습니다.')
   }
   process.exitCode = 1
 }

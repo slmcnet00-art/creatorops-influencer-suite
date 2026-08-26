@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import readSheet from 'read-excel-file/browser'
 import {
-  Activity, ArrowLeft, Bot, CheckCircle2, ChevronRight, Clock3, Database,
+  Activity, ArrowLeft, Bot, CheckCircle2, ChevronRight, CircleX, Clock3, Database,
   Building2, CheckSquare2, ChevronDown, FileClock, FileText, KeyRound,
   LayoutDashboard, Paperclip, Play, RefreshCw, Save, Search, ShieldCheck,
   Trash2, UserRoundCog, UsersRound, Workflow,
@@ -257,7 +257,7 @@ export default function AdminConsole({
       </div>}
 
       {section === 'automation' && <div className="admin-page"><section className="admin-band"><div className="admin-section-heading"><div><span>AUTOMATION</span><h2>운영 매크로</h2></div></div><div className="admin-table"><div className="admin-table-head"><span>작업</span><span>주기</span><span>상태</span><span>최근 실행</span><span>활성</span><span /></div>{automations.map((item) => <div className="admin-table-row" key={item.id}><strong>{item.name}</strong><input value={item.schedule} onChange={(event) => saveAutomations(automations.map((row) => row.id === item.id ? { ...row, schedule: event.target.value } : row))} /><span className={`admin-state ${tone(item.status)}`}>{item.status}</span><span>{item.lastRun}</span><input type="checkbox" checked={item.enabled} onChange={() => saveAutomations(automations.map((row) => row.id === item.id ? { ...row, enabled: !row.enabled } : row))} /><button type="button" disabled={!item.enabled} onClick={() => saveAutomations(automations.map((row) => row.id === item.id ? { ...row, lastRun: '방금' } : row))}><Play size={14} /> 실행</button></div>)}</div></section>
-        <section className="admin-band"><div className="admin-section-heading"><div><span>연결 상태</span><h2>백엔드·API</h2></div><button type="button" onClick={onTestApis} disabled={apiTestStatus?.running}><RefreshCw size={15} /> 연결 테스트</button></div><div className="admin-connection-grid"><div><Database /><strong>공유 DB</strong><span>{backendConfig?.hasSupabase ? '설정됨' : '설정 필요'}</span></div><div><KeyRound /><strong>API 서버</strong><span>{apiBaseUrl ? '연결 주소 설정됨' : '미연결'}</span></div>{(apiTestStatus?.results || []).map((item) => <div key={item.id || item.name}><CheckCircle2 /><strong>{item.name || item.label}</strong><span>{item.result || item.status}</span></div>)}</div></section>
+        <section className="admin-band"><div className="admin-section-heading"><div><span>연결 상태</span><h2>백엔드·API</h2></div><button type="button" onClick={onTestApis} disabled={apiTestStatus?.running}><RefreshCw size={15} /> {apiTestStatus?.running ? '진단 중' : '읽기 전용 진단'}</button></div><div className="admin-connection-grid"><div><Database /><strong>공유 DB</strong><span>{backendConfig?.hasSupabase ? '설정됨' : '설정 필요'}</span></div><div><KeyRound /><strong>API 서버</strong><span>{apiBaseUrl ? '연결 주소 설정됨' : '미연결'}</span></div>{(apiTestStatus?.results || []).map((item) => <div className={`api-${item.status || 'unknown'}`} key={item.key || item.id || item.name}>{item.status === 'fail' ? <CircleX /> : item.status === 'action' ? <Clock3 /> : <CheckCircle2 />}<strong>{item.name || item.label}</strong><span>{item.result || item.status}</span></div>)}</div></section>
       </div>}
 
       {section === 'access' && <div className="admin-page admin-access-page">

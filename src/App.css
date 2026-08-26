@@ -2830,12 +2830,21 @@
   background: rgba(255, 245, 245, 0.9);
 }
 
+.api-test-grid article.warning {
+  border-color: rgba(245, 158, 11, 0.28);
+  background: rgba(255, 251, 235, 0.9);
+}
+
 .api-test-grid article.ready svg {
   color: var(--green);
 }
 
 .api-test-grid article.error svg {
   color: #ff3b30;
+}
+
+.api-test-grid article.warning svg {
+  color: #d97706;
 }
 
 .api-test-grid strong {

@@ -8036,7 +8036,7 @@ function App() {
     [activeRecommendations, selectedCampaign],
   )
   const aiRecommendationApiState = useMemo(() => {
-    const routeResult = apiTestStatus.results.find((item) => item.key === 'openai-recommendations')
+    const routeResult = apiTestStatus.results.find((item) => item.key === 'openai')
     const enrichedCount = selectedCampaignRecommendations.filter(
       (recommendation) => recommendation.aiEnriched || recommendation.llmTrace?.provider === 'OpenAI',
     ).length
@@ -8068,8 +8068,8 @@ function App() {
     if (routeResult.status === 'success') {
       return {
         level: 'ready',
-        label: 'OpenAI 보강 가능',
-        detail: routeResult.result || '추천 근거와 메시지 보강 API가 응답했습니다.',
+        label: 'OpenAI 모델 접근 가능',
+        detail: routeResult.result || '읽기 전용 진단에서 설정된 OpenAI 모델 접근을 확인했습니다.',
       }
     }
 
@@ -10933,124 +10933,106 @@ function App() {
     }
 
     const apiBaseUrl = backendConfig.apiBaseUrl.replace(/\/$/, '')
-    const postJson = async (path, body) => {
-      const response = await fetch(`${apiBaseUrl}${path}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      })
-      const contentType = response.headers.get('content-type') || ''
-      const payload = contentType.includes('application/json')
-        ? await response.json().catch(() => ({}))
-        : {}
-      const fallbackText = contentType.includes('application/json') ? '' : await response.text().catch(() => '')
-      if (!response.ok) {
-        throw new Error(formatApiRouteFailure(path, response, payload, fallbackText))
-      }
-      return payload
-    }
-    const checks = [
-      {
-        key: 'health',
-        label: 'API 서버',
-        detail: 'Render 백엔드 /health',
-        run: async () => {
-          const response = await fetch(`${apiBaseUrl}/health`)
-          const payload = await response.json().catch(() => ({}))
-          if (!response.ok || !payload.ok) throw new Error(payload?.message || '서버 health 응답 실패')
-          return `정상 · ${payload.service || 'creatorops-api'}`
-        },
-      },
-      {
-        key: 'youtube',
-        label: 'YouTube Data API',
-        detail: '채널 검색/통계 조회',
-        run: async () => {
-          const payload = await postJson('/discovery/youtube/search', {
-            query: '반려견 켄넬 크리에이터',
-            maxResults: 1,
-          })
-          return `${payload?.data?.length || 0}건 응답`
-        },
-      },
-      {
-        key: 'google-search',
-        label: 'Google Search/CX',
-        detail: 'Instagram/TikTok 공개 프로필 검색',
-        run: async () => {
-          const payload = await postJson('/discovery/google-profiles/search', {
-            query: 'pet influencer Korea',
-            platform: 'TikTok',
-            maxResults: 1,
-          })
-          return `${payload?.data?.length || 0}건 응답`
-        },
-      },
-      {
-        key: 'openai',
-        label: 'OpenAI',
-        detail: '제안 메시지 생성',
-        run: async () => {
-          const payload = await postJson('/ai/outreach-message', {
-            creator: { name: '테스트 크리에이터', platform: 'TikTok', category: '반려동물' },
-            brand: { brandName: 'CreatorOps Test', product: '이동식 켄넬' },
-            campaign: { name: 'API 연결 테스트', oneMessage: '안전하고 편한 이동식 켄넬' },
-          })
-          return payload?.data?.message ? '메시지 생성 성공' : '응답은 왔지만 메시지가 비어 있음'
-        },
-      },
-      {
-        key: 'openai-recommendations',
-        label: 'OpenAI 추천 보강',
-        detail: 'AI 후보 근거/제안각 생성',
-        run: async () => {
-          const payload = await postJson('/ai/recommendations/enrich', {
-            brand: { name: 'CreatorOps Test', product: '이동장 켄넬' },
-            campaign: { name: 'AI recommendation route test', goal: 'reply-friendly outreach' },
-            candidates: [
-              {
-                recommendationId: 'rec-test-1',
-                creatorId: 'creator-test-1',
-                creatorName: '테스트 크리에이터',
-                platform: 'YouTube',
-                category: '펫',
-                followers: 120000,
-                averageViews: 280000,
-                engagement: 5.8,
-                score: 92,
-                reasons: ['펫 이동장 콘텐츠와 카테고리 적합', '평균 조회수 대비 팔로워 효율 높음'],
-              },
-            ],
-          })
-          return payload?.data?.items?.length ? `보강 ${payload.data.items.length}건 성공` : '응답은 왔지만 보강 결과가 비어 있음'
-        },
-      },
-    ]
-
     setApiTestStatus({ running: true, checkedAt: '', results: [] })
-
-    const results = []
-    for (const check of checks) {
-      try {
-        const result = await check.run()
-        results.push({ ...check, status: 'success', result })
-      } catch (error) {
-        results.push({
-          ...check,
-          status: 'fail',
-          result: error instanceof Error ? error.message : '연결 실패',
-        })
+    try {
+      const response = await fetch(`${apiBaseUrl}/readiness?probe=live`)
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok || !payload.ok) {
+        throw new Error(payload?.message || `읽기 전용 진단 요청 실패 (${response.status})`)
       }
-      setApiTestStatus({ running: true, checkedAt: '', results: [...results] })
-    }
+      if (
+        !payload?.safety?.readOnly
+        || payload?.safety?.emailSent
+        || payload?.safety?.contentGenerated
+        || payload?.safety?.dataWritten
+        || payload?.safety?.secretsIncluded !== false
+      ) {
+        throw new Error('서버가 읽기 전용 진단을 보장하지 않아 테스트를 중단했습니다.')
+      }
+      if (!Array.isArray(payload.integrations) || payload.integrations.length < 5) {
+        throw new Error('서버 진단 결과가 불완전합니다. 최신 API 배포 상태를 확인해주세요.')
+      }
 
-    const failedCount = results.filter((item) => item.status === 'fail').length
-    setApiTestStatus({
-      running: false,
-      checkedAt: new Date().toISOString(),
-      results,
-    })
-    showToast(failedCount ? `API 테스트 완료 · ${failedCount}개 확인 필요` : 'API 테스트가 모두 통과했어요.')
+      const mapIntegration = (integration) => {
+        const missing = Array.isArray(integration.missingEnvironment)
+          ? integration.missingEnvironment.join(', ')
+          : ''
+        const latency = Number.isFinite(integration.latencyMs) ? ` · ${integration.latencyMs}ms` : ''
+        const tableCount = Number.isFinite(integration.readyTables)
+          ? ` · 테이블 ${integration.readyTables}/${integration.requiredTables}`
+          : ''
+        const base = {
+          key: integration.key,
+          label: integration.label,
+          detail: integration.description || '읽기 전용 운영 진단',
+        }
+
+        if (integration.key === 'gmail-oauth' && integration.state === 'authorization_required') {
+          return {
+            ...base,
+            status: gmailConnected ? 'success' : 'action',
+            result: gmailConnected
+              ? '현재 브라우저 OAuth 승인 연결됨 · 메일 미발송'
+              : 'OAuth 서버 설정 완료 · 사용자 승인 필요 · 메일 미발송',
+          }
+        }
+        if (integration.state === 'ready') {
+          return { ...base, status: 'success', result: `읽기 전용 확인 완료${latency}${tableCount}` }
+        }
+        if (integration.state === 'rate_limited') {
+          return { ...base, status: 'action', result: `호출 한도 확인 필요${latency}` }
+        }
+        if (integration.state === 'configured') {
+          return { ...base, status: 'action', result: '설정됨 · 실연결 미확인' }
+        }
+        if (integration.state === 'partial_configuration' || integration.state === 'missing_configuration') {
+          return { ...base, status: 'fail', result: missing ? `${missing} 설정 필요` : '서버 환경변수 설정 필요' }
+        }
+        if (integration.state === 'credential_error') {
+          return { ...base, status: 'fail', result: `인증 정보 확인 필요${latency}` }
+        }
+        return { ...base, status: 'fail', result: `${integration.message || '연결 확인 필요'}${latency}${tableCount}` }
+      }
+
+      const results = [
+        {
+          key: 'health',
+          label: 'CreatorOps API 서버',
+          detail: 'Render 백엔드 읽기 전용 진단',
+          status: 'success',
+          result: '정상 · 쓰기/AI 생성/메일 발송 없음',
+        },
+        ...payload.integrations.map(mapIntegration),
+      ]
+      const failedCount = results.filter((item) => item.status === 'fail').length
+      const actionCount = results.filter((item) => item.status === 'action').length
+      setApiTestStatus({
+        running: false,
+        checkedAt: payload.checkedAt || new Date().toISOString(),
+        results,
+      })
+      showToast(
+        failedCount
+          ? `읽기 전용 API 진단 완료 · ${failedCount}개 오류`
+          : actionCount
+            ? `읽기 전용 API 진단 완료 · ${actionCount}개 후속 조치`
+            : '읽기 전용 API 진단이 모두 통과했어요.',
+      )
+    } catch (error) {
+      const result = error instanceof Error ? error.message : '읽기 전용 진단 실패'
+      setApiTestStatus({
+        running: false,
+        checkedAt: new Date().toISOString(),
+        results: [{
+          key: 'health',
+          label: 'CreatorOps API 서버',
+          detail: 'Render 백엔드 /readiness',
+          status: 'fail',
+          result,
+        }],
+      })
+      showToast(result)
+    }
   }
 
   const switchBrand = (brandId) => {
@@ -16523,7 +16505,7 @@ function App() {
                     disabled={apiTestStatus.running}
                   >
                     <ShieldCheck size={16} />
-                    {apiTestStatus.running ? '테스트 중' : 'API 연결 테스트'}
+                    {apiTestStatus.running ? '진단 중' : '읽기 전용 진단'}
                   </button>
                   <button className="primary-button compact-button" type="button" onClick={syncWorkspaceNow}>
                     <RefreshCw size={16} />
@@ -16591,10 +16573,10 @@ function App() {
               </div>
               <div className="api-test-panel">
                 <div>
-                  <strong>실제 발굴/AI 생성 테스트</strong>
+                  <strong>안전한 운영 API 진단</strong>
                   <p>
-                    API 서버, YouTube, Google Search/CX, OpenAI를 순서대로 확인합니다.
-                    OpenAI 테스트는 짧은 제안 메시지 1건을 생성합니다.
+                    API 서버, YouTube, Google Search/CX, OpenAI 모델, Supabase 데이터룸, Gmail OAuth 설정을 확인합니다.
+                    데이터 쓰기, AI 콘텐츠 생성, OAuth 승인, 메일 발송은 실행하지 않습니다.
                   </p>
                   {apiTestStatus.checkedAt && (
                     <small>마지막 테스트 {new Date(apiTestStatus.checkedAt).toLocaleString('ko-KR')}</small>
@@ -16603,8 +16585,15 @@ function App() {
                 <div className="api-test-grid">
                   {apiTestStatus.results.length ? (
                     apiTestStatus.results.map((result) => (
-                      <article className={result.status === 'success' ? 'ready' : 'error'} key={result.key}>
-                        {result.status === 'success' ? <CheckCircle2 size={17} /> : <X size={17} />}
+                      <article
+                        className={result.status === 'success' ? 'ready' : result.status === 'action' ? 'warning' : 'error'}
+                        key={result.key}
+                      >
+                        {result.status === 'success'
+                          ? <CheckCircle2 size={17} />
+                          : result.status === 'action'
+                            ? <ShieldCheck size={17} />
+                            : <X size={17} />}
                         <div>
                           <strong>{result.label}</strong>
                           <span>{result.detail}</span>
@@ -16617,7 +16606,7 @@ function App() {
                       <Database size={17} />
                       <div>
                         <strong>대기 중</strong>
-                        <span>Render 환경변수를 입력한 뒤 API 연결 테스트를 누르세요.</span>
+                        <span>읽기 전용 진단을 실행하면 실제 연결 상태와 필요한 조치를 구분해 표시합니다.</span>
                         <small>{backendConfig.apiBaseUrl || 'API 서버 URL 미연결'}</small>
                       </div>
                     </article>

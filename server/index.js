@@ -3,6 +3,11 @@ import cors from 'cors'
 import express from 'express'
 import { existsSync } from 'node:fs'
 import { createClient } from '@supabase/supabase-js'
+import {
+  buildReadinessReport,
+  getConfigurationReadiness,
+  REQUIRED_DATA_ROOM_TABLES,
+} from './readiness.js'
 
 /* global document */
 
@@ -22,10 +27,13 @@ const SEARCH_CACHE_STALE_TTL_MS = 7 * 24 * 60 * 60 * 1000
 const OUTREACH_BATCH_LIMIT = 50
 const OUTREACH_SEND_INTERVAL_MS = Math.max(250, Number(process.env.OUTREACH_SEND_INTERVAL_MS || 800))
 const OUTREACH_MAX_ATTEMPTS = 3
+const READINESS_CACHE_TTL_MS = Math.max(60_000, Number(process.env.READINESS_CACHE_TTL_MS || 300_000))
 const WORKSPACE_ID = process.env.WORKSPACE_ID || process.env.VITE_WORKSPACE_ID || 'miping-main'
 const searchCache = new Map()
 const outreachDeliveryMemory = new Map()
 const aiFeatureConfigMemory = new Map()
+let readinessProbeCache = { report: null, expiresAt: 0 }
+let readinessProbeInFlight = null
 const AI_FEATURE_KEYS = new Set([
   'creator-recommendation',
   'campaign-strategy',
@@ -203,14 +211,21 @@ function sanitizeAiPromptValue(value) {
 
 
 app.get('/health', (request, response) => {
+  const integrations = getConfigurationReadiness()
+  const gmailOAuth = integrations.find((item) => item.key === 'gmail-oauth')
   response.json({
     ok: true,
     service: 'creatorops-api',
     version: process.env.RENDER_GIT_COMMIT || 'local',
+    readiness: {
+      endpoint: '/readiness?probe=live',
+      state: integrations.every((item) => item.configured) ? 'configured' : 'partial',
+      integrations: Object.fromEntries(integrations.map((item) => [item.key, item.state])),
+    },
     outreach: {
-      gmailOAuthConfigured: Boolean(
-        process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET && process.env.GOOGLE_REDIRECT_URI,
-      ),
+      gmailOAuthConfigured: Boolean(gmailOAuth?.configured),
+      gmailAuthorizationRequired: Boolean(gmailOAuth?.requiresUserAuthorization),
+      gmailAuthUrlReady: Boolean(gmailOAuth?.authUrlReady),
       deliveryLogConfigured: getDataRoomLogStatus().configured,
       batchLimit: OUTREACH_BATCH_LIMIT,
       maxAttempts: OUTREACH_MAX_ATTEMPTS,
@@ -234,22 +249,7 @@ function getDataRoomLogStatus() {
     workspaceId: WORKSPACE_ID,
     readinessLevel: hasSupabaseUrl && hasServiceRoleKey ? 'ready_to_check_tables' : 'missing_environment',
     requiredEnv: ['SUPABASE_URL', 'SUPABASE_SERVICE_ROLE_KEY', 'WORKSPACE_ID'],
-    requiredTables: [
-      'workspaces',
-      'raw_data_sources',
-      'metric_definitions',
-      'external_search_events',
-      'utm_tracking_rows',
-      'external_report_imports',
-      'external_report_rows',
-      'metric_snapshots',
-      'creator_profile_snapshots',
-      'creator_contact_points',
-      'creator_rates',
-      'content_metric_snapshots',
-      'creator_operations',
-      'content_templates',
-    ],
+    requiredTables: REQUIRED_DATA_ROOM_TABLES,
     nextActions: missingEnv.length
       ? [
           'Set the missing environment variables on the Render API service, not the static frontend service.',
@@ -264,16 +264,16 @@ function getDataRoomLogStatus() {
   }
 }
 
-app.get('/data-room/status', async (request, response) => {
-  const status = getDataRoomLogStatus()
+async function checkDataRoomTables(status = getDataRoomLogStatus()) {
   if (!status.configured) {
-    response.json({
+    return {
       ok: false,
-      service: 'creatorops-api',
-      dataRoomLogging: status,
-      message: 'Data room API logging is not configured on this server.',
-    })
-    return
+      checks: {},
+      missingTables: [],
+      tableStatus: 'missing_environment',
+      readyTables: 0,
+      requiredTables: status.requiredTables.length,
+    }
   }
 
   const supabase = getSupabaseAdminClient()
@@ -281,9 +281,7 @@ app.get('/data-room/status', async (request, response) => {
 
   for (const table of status.requiredTables) {
     try {
-      // Do a real row query instead of a HEAD count request. PostgREST can
-      // return an empty HEAD response while its schema cache still lacks a
-      // table, which previously made missing operational tables look ready.
+      // A real row query verifies both schema visibility and read permission.
       const { error, data, count, status: httpStatus } = await supabase
         .from(table)
         .select('*', { count: 'exact' })
@@ -306,19 +304,91 @@ app.get('/data-room/status', async (request, response) => {
   const missingTables = Object.entries(checks)
     .filter(([, item]) => !item.ok && (item.code === 'PGRST205' || /schema cache|could not find the table/i.test(item.message || '')))
     .map(([table]) => table)
-  response.json({
+  const readyTables = Object.values(checks).filter((item) => item.ok).length
+
+  return {
     ok,
-    service: 'creatorops-api',
-    dataRoomLogging: status,
     checks,
     missingTables,
     tableStatus: ok ? 'ready' : 'schema_or_permission_issue',
-    message: ok
+    readyTables,
+    requiredTables: status.requiredTables.length,
+  }
+}
+
+app.get('/data-room/status', async (request, response) => {
+  const status = getDataRoomLogStatus()
+  if (!status.configured) {
+    response.json({
+      ok: false,
+      service: 'creatorops-api',
+      dataRoomLogging: status,
+      message: 'Data room API logging is not configured on this server.',
+    })
+    return
+  }
+
+  const result = await checkDataRoomTables(status)
+  response.json({
+    ok: result.ok,
+    service: 'creatorops-api',
+    dataRoomLogging: status,
+    checks: result.checks,
+    missingTables: result.missingTables,
+    tableStatus: result.tableStatus,
+    readyTables: result.readyTables,
+    requiredTables: result.requiredTables,
+    message: result.ok
       ? 'Data room API logging can write raw events after collection requests.'
-      : missingTables.length
-        ? `Missing required Supabase tables: ${missingTables.join(', ')}. Run supabase/migrations/20260810_required_operational_tables.sql.`
+      : result.missingTables.length
+        ? `Missing required Supabase tables: ${result.missingTables.join(', ')}. Run supabase/migrations/20260810_required_operational_tables.sql.`
         : 'Data room API logging is configured, but one or more tables are not reachable.',
   })
+})
+
+app.get('/readiness', async (request, response, next) => {
+  try {
+    const probe = ['1', 'true', 'live'].includes(String(request.query?.probe || '').toLowerCase())
+    response.set('Cache-Control', 'no-store')
+    if (probe && readinessProbeCache.report && readinessProbeCache.expiresAt > Date.now()) {
+      response.json({
+        ok: true,
+        service: 'creatorops-api',
+        ...readinessProbeCache.report,
+        cache: { hit: true, ttlMs: READINESS_CACHE_TTL_MS },
+      })
+      return
+    }
+    const buildReport = () => buildReadinessReport({
+      probe,
+      dataRoomProbe: async () => checkDataRoomTables(getDataRoomLogStatus()),
+    })
+    let report
+    if (probe) {
+      readinessProbeInFlight ||= buildReport()
+      try {
+        report = await readinessProbeInFlight
+      } finally {
+        readinessProbeInFlight = null
+      }
+    } else {
+      report = await buildReport()
+    }
+    if (probe) {
+      readinessProbeCache = {
+        report,
+        expiresAt: Date.now() + READINESS_CACHE_TTL_MS,
+      }
+    }
+    response.json({
+      ok: true,
+      service: 'creatorops-api',
+      ...report,
+      cache: { hit: false, ttlMs: probe ? READINESS_CACHE_TTL_MS : 0 },
+    })
+  } catch (error) {
+    next(error)
+  }
 })
 
 function getSearchCacheKey(scope, value) {

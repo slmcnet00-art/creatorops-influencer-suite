@@ -374,6 +374,12 @@
 
 .admin-connection-grid svg { grid-row: 1 / 3; color: #2672e6; }
 .admin-connection-grid span { color: #777b84; font-size: 11px; }
+.admin-connection-grid > div.api-success { border-color: #b9e8cf; background: #f1fbf6; }
+.admin-connection-grid > div.api-action { border-color: #f2d59c; background: #fffaf0; }
+.admin-connection-grid > div.api-fail { border-color: #f2c2c2; background: #fff6f6; }
+.admin-connection-grid > div.api-success svg { color: #168454; }
+.admin-connection-grid > div.api-action svg { color: #a86608; }
+.admin-connection-grid > div.api-fail svg { color: #c83f3f; }
 
 .admin-account-identity { display: grid; gap: 4px; }
 .admin-account-identity small { color: #777b84; }
