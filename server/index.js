@@ -730,7 +730,11 @@ async function safeLogExternalCollectionEvent({
 }
 
 function isQuotaExceededError(error) {
-  return error?.status === 403 && /quota/i.test(String(error.message || ''))
+  const status = Number(error?.status || 0)
+  const message = String(error?.message || '')
+  return status === 402
+    || status === 429
+    || (status === 403 && /quota|billing|credit|payment required|rate limit/i.test(message))
 }
 
 app.post('/youtube/channel', async (request, response, next) => {

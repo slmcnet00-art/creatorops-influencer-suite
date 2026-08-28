@@ -2847,6 +2847,40 @@
   color: #d97706;
 }
 
+.route-loading-shell {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  color: #6b7280;
+  background: #f6f7f9;
+}
+
+.route-loading-shell strong {
+  color: #111827;
+  font-size: 16px;
+}
+
+.route-loading-shell > span:last-child {
+  font-size: 13px;
+}
+
+.route-loading-indicator {
+  width: 26px;
+  height: 26px;
+  border: 2px solid #dbeafe;
+  border-top-color: #0a73e8;
+  border-radius: 50%;
+  animation: route-loading-spin 0.8s linear infinite;
+}
+
+@keyframes route-loading-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 .api-test-grid strong {
   color: var(--text-strong);
   font-size: 13px;

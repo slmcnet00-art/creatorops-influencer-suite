@@ -21,6 +21,7 @@ const API_BASE_URL = String(import.meta.env.VITE_CREATOROPS_API_BASE_URL || 'htt
   .replace(/\/$/, '')
 
 const DEFAULT_VIDEO_URL = 'https://www.youtube.com/watch?v=Z3irEyS3_PY'
+const REVIEW_SNAPSHOT_KEY = 'creatorops.youtubeReviewSnapshot.v1'
 
 const formatNumber = (value) => {
   if (value === null || value === undefined) return 'Hidden by channel owner'
@@ -85,6 +86,7 @@ export default function YouTubeApiReview() {
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload.message || 'The live YouTube API request failed.')
       setResult(payload.data)
+      window.sessionStorage.setItem(REVIEW_SNAPSHOT_KEY, JSON.stringify(payload.data))
     } catch (requestError) {
       setError(requestError.message)
       setResult(null)

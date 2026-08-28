@@ -1,123 +1,184 @@
-import { chromium } from '@playwright/test'
+import { chromium } from 'playwright'
 import { execFileSync } from 'node:child_process'
-import fs from 'node:fs'
-import path from 'node:path'
+import { mkdirSync } from 'node:fs'
+import { join, resolve } from 'node:path'
 
-const root = process.cwd()
-const reviewUrl = process.env.REVIEW_URL || 'http://localhost:5173/youtube-api-review'
-const packageDir = path.join(root, 'youtube-compliance-review-20260818')
-const videoDir = path.join(packageDir, 'playwright-video')
-const webmPath = path.join(packageDir, 'CreatorOps-YouTube-API-Review-HD.webm')
-const mp4Path = path.join(packageDir, 'CreatorOps-YouTube-API-Review-HD.mp4')
-const ffmpegPath = path.join(
-  process.env.LOCALAPPDATA || '',
-  'ms-playwright',
-  'ffmpeg-1011',
-  'ffmpeg-win64.exe',
-)
+const root = resolve(process.cwd())
+const outputDir = join(root, 'youtube-compliance-review-20260827')
+const rawDir = join(outputDir, 'raw')
+const appBaseUrl = process.env.REVIEW_BASE_URL || 'http://127.0.0.1:5173'
+const ffmpeg = join(root, 'node_modules', 'ffmpeg-static', 'ffmpeg.exe')
+const rawVideo = join(outputDir, 'creatorops-youtube-api-field-display-raw.webm')
+const finalVideo = join(outputDir, 'CreatorOps-YouTube-API-Field-Display-HD.mp4')
 
-fs.mkdirSync(videoDir, { recursive: true })
-for (const filePath of [webmPath, mp4Path]) {
-  if (fs.existsSync(filePath)) fs.unlinkSync(filePath)
-}
+mkdirSync(rawDir, { recursive: true })
 
 const browser = await chromium.launch({ headless: true })
 const context = await browser.newContext({
   viewport: { width: 1920, height: 1080 },
-  recordVideo: { dir: videoDir, size: { width: 1920, height: 1080 } },
+  recordVideo: { dir: rawDir, size: { width: 1920, height: 1080 } },
 })
 const page = await context.newPage()
-page.setDefaultTimeout(12000)
+page.setDefaultTimeout(30_000)
+let reviewSnapshot = null
 
-async function setCaption(text) {
-  await page.evaluate((caption) => {
-    let node = document.getElementById('creatorops-review-caption')
+async function ensureCaption() {
+  await page.evaluate(() => {
+    let node = document.getElementById('youtube-review-caption')
     if (!node) {
       node = document.createElement('div')
-      node.id = 'creatorops-review-caption'
+      node.id = 'youtube-review-caption'
       Object.assign(node.style, {
-        position: 'fixed', left: '40px', right: '40px', bottom: '28px',
-        zIndex: '2147483647', padding: '18px 24px', borderRadius: '12px',
-        background: 'rgba(15, 23, 42, .94)', color: '#fff',
-        boxShadow: '0 20px 50px rgba(15, 23, 42, .28)',
-        font: '600 22px/1.45 -apple-system, BlinkMacSystemFont, Segoe UI, Arial, sans-serif',
+        position: 'fixed',
+        left: '50%',
+        bottom: '24px',
+        transform: 'translateX(-50%)',
+        zIndex: '2147483647',
+        width: 'min(1540px, calc(100vw - 72px))',
+        padding: '15px 22px',
+        borderRadius: '10px',
+        color: '#fff',
+        background: 'rgba(10, 15, 25, 0.94)',
+        border: '1px solid rgba(255,255,255,0.28)',
+        boxShadow: '0 12px 36px rgba(0,0,0,0.32)',
+        font: '600 23px/1.4 Arial, sans-serif',
+        textAlign: 'center',
         pointerEvents: 'none',
       })
       document.body.appendChild(node)
     }
-    node.textContent = caption
-  }, text)
+  })
 }
 
-async function pause(text, duration = 5200) {
-  await setCaption(text)
-  await page.waitForTimeout(duration)
+async function caption(message, waitMs = 5_000) {
+  await ensureCaption()
+  await page.locator('#youtube-review-caption').evaluate((node, value) => {
+    node.textContent = value
+  }, message)
+  await page.waitForTimeout(waitMs)
 }
 
-async function screenshot(name) {
-  await page.screenshot({ path: path.join(packageDir, name), fullPage: false })
+async function highlight(locator, color = '#ef4444') {
+  await locator.evaluate((element, outlineColor) => {
+    element.dataset.previousReviewOutline = element.style.outline || ''
+    element.style.outline = `5px solid ${outlineColor}`
+    element.style.outlineOffset = '5px'
+    element.style.borderRadius = '8px'
+  }, color)
 }
 
-await page.goto(reviewUrl, { waitUntil: 'networkidle', timeout: 60000 })
-await pause(
-  'Step 1. This English review page demonstrates how CreatorOps uses YouTube Data API v3 in the actual API client.',
-  6500,
-)
-await screenshot('01-english-review-home.png')
+async function clearHighlights() {
+  await page.evaluate(() => {
+    document.querySelectorAll('[data-previous-review-outline]').forEach((element) => {
+      element.style.outline = element.dataset.previousReviewOutline || ''
+      element.style.outlineOffset = ''
+      delete element.dataset.previousReviewOutline
+    })
+  })
+}
 
-await page.locator('#workflow').scrollIntoViewIfNeeded()
-await pause(
-  'Step 2. The workflow uses search.list for discovery, channels.list for public channel verification, and videos.list for public video metrics.',
-  7000,
-)
-await screenshot('02-api-workflow.png')
+// Part 1: run the production request and keep the returned API values on screen.
+await page.goto(`${appBaseUrl}/youtube-api-review`, { waitUntil: 'networkidle', timeout: 60_000 })
+await page.screenshot({ path: join(outputDir, '01-review-home.png') })
+await caption('1. This is the CreatorOps YouTube Data API review client. It uses public, read-only YouTube data.', 5_000)
 
-await page.locator('#live-demo').scrollIntoViewIfNeeded()
-await pause(
-  'Step 3. We now submit a public YouTube video URL. CreatorOps requests only public video and channel metadata from the live backend.',
-  5600,
-)
-await page.getByRole('button', { name: /Run live request/i }).click()
-await page.waitForTimeout(3500)
-await pause(
-  'The result panel records the real API response. If the current quota is exhausted, the page shows that quota response without substituting sample data.',
-  7000,
-)
-await screenshot('03-live-api-request.png')
+const workflow = page.locator('#workflow')
+await workflow.scrollIntoViewIfNeeded()
+await highlight(workflow)
+await caption('2. search.list discovers public content. channels.list and videos.list retrieve the public fields displayed by CreatorOps.', 7_000)
+await clearHighlights()
 
-await page.locator('#data-controls').scrollIntoViewIfNeeded()
-await pause(
-  'Step 4. CreatorOps stores public metadata with source and collection timestamps, refreshes it for campaign reporting, and supports deletion by workspace.',
-  7000,
-)
-await screenshot('04-data-controls.png')
+const liveDemo = page.locator('#live-demo')
+await liveDemo.scrollIntoViewIfNeeded()
+await highlight(liveDemo)
+await caption('3. A public YouTube video URL is sent to the production API server. No API key is shown in the browser.', 6_000)
+await clearHighlights()
 
-await pause(
-  'Additional quota is required because each campaign repeats keyword discovery, channel verification, video verification, duplicate filtering, and scheduled metric refreshes across many creators.',
-  8000,
-)
-await pause(
-  'CreatorOps does not access private videos or private audience data, and does not upload, modify, delete, or message through YouTube API Services. Thank you for reviewing our request.',
-  8000,
-)
+await page.getByRole('button', { name: 'Run live request', exact: true }).click()
+const successMessage = page.getByText('Live response received', { exact: true })
+const errorMessage = page.locator('.yt-review-alert')
+await Promise.race([
+  successMessage.waitFor({ state: 'visible', timeout: 35_000 }),
+  errorMessage.waitFor({ state: 'visible', timeout: 35_000 }),
+])
+
+if (await successMessage.isVisible()) {
+  reviewSnapshot = await page.evaluate(() => JSON.parse(window.sessionStorage.getItem('creatorops.youtubeReviewSnapshot.v1') || 'null'))
+  const resultPanel = successMessage.locator('xpath=..')
+  await resultPanel.scrollIntoViewIfNeeded()
+  await highlight(resultPanel, '#16a34a')
+  await page.screenshot({ path: join(outputDir, '02-live-api-response.png') })
+  await caption('4. This is the live API response: video title, publish date, views, likes, comments, channel ID, subscribers, and video count.', 10_000)
+  await caption('The response panel also records videos.list and channels.list success plus the exact verification timestamp.', 7_000)
+  await clearHighlights()
+} else {
+  await errorMessage.scrollIntoViewIfNeeded()
+  await highlight(errorMessage)
+  await page.screenshot({ path: join(outputDir, '02-live-api-error.png') })
+  await caption('4. The client shows the real API error without substituting sample data. The request and requested resource parts remain visible.', 9_000)
+  await clearHighlights()
+}
+
+// Part 2: show where the same fields appear in the actual CreatorOps workflow.
+await page.goto(`${appBaseUrl}/?review=youtube&lang=en`, { waitUntil: 'networkidle', timeout: 60_000 })
+await page.locator('body[data-youtube-review-mode="ready"]').waitFor({ state: 'visible', timeout: 20_000 })
+await caption('5. Now we open the actual CreatorOps operations client in the temporary English review mode.', 5_000)
+await page.getByRole('button', { name: 'Discovery', exact: true }).click()
+await page.waitForTimeout(1_200)
+
+const youtubeBriefControl = page.getByRole('button', { name: 'YouTube', exact: true })
+await youtubeBriefControl.scrollIntoViewIfNeeded()
+await highlight(youtubeBriefControl)
+await caption('6. Discovery is for finding YouTube influencers and channels. The highlighted selector limits influencer discovery to YouTube.', 7_000)
+await clearHighlights()
+
+const creatorCard = page.locator('.creator-list .recommendation-card').first()
+await creatorCard.scrollIntoViewIfNeeded()
+await highlight(creatorCard, '#16a34a')
+await page.screenshot({ path: join(outputDir, '03-influencer-discovery.png') })
+await caption('7. The channels.list response appears in the existing influencer result card: channel identity, subscribers, and channel performance.', 8_000)
+await caption('Average views, engagement, match score, and estimated fee are CreatorOps calculations shown separately in the same operational card.', 8_000)
+await clearHighlights()
+
+await page.getByRole('button', { name: 'References', exact: true }).click()
+await page.waitForTimeout(1_200)
+const contentReferenceTab = page.getByRole('button', { name: /Find content references/i }).first()
+await contentReferenceTab.scrollIntoViewIfNeeded()
+await highlight(contentReferenceTab)
+await caption('8. References is a separate workflow for finding content references, not influencers.', 7_000)
+await clearHighlights()
+
+const referenceCard = page.locator('.reference-card').filter({ hasText: reviewSnapshot?.video?.title || '' }).first()
+await referenceCard.scrollIntoViewIfNeeded()
+await highlight(referenceCard, '#16a34a')
+await page.screenshot({ path: join(outputDir, '04-content-reference.png') })
+await caption('9. The videos.list response appears in the existing content reference card with thumbnail, title, views, likes, comments, and publish date.', 9_000)
+await clearHighlights()
+
+await caption('CreatorOps uses these public fields for read-only discovery and evaluation. It does not upload, edit, or delete YouTube content.', 8_000)
 
 const video = page.video()
 if (!video) throw new Error('Playwright did not create a video artifact.')
 await page.close()
-await video.saveAs(webmPath)
+await video.saveAs(rawVideo)
 await context.close()
 await browser.close()
 
-if (fs.existsSync(ffmpegPath)) {
-  try {
-    execFileSync(
-      ffmpegPath,
-      ['-y', '-i', webmPath, '-c:v', 'libx264', '-preset', 'medium', '-crf', '20', '-pix_fmt', 'yuv420p', '-movflags', '+faststart', mp4Path],
-      { stdio: 'pipe' },
-    )
-  } catch (error) {
-    console.warn(`MP4 conversion skipped: ${error.message}`)
-  }
+execFileSync(ffmpeg, [
+  '-y',
+  '-ss', '0.25',
+  '-i', rawVideo,
+  '-c:v', 'libx264',
+  '-preset', 'medium',
+  '-crf', '19',
+  '-pix_fmt', 'yuv420p',
+  '-movflags', '+faststart',
+  '-an',
+  finalVideo,
+], { stdio: 'inherit' })
+
+for (const [name, second] of [['frame-first', '2'], ['frame-api-response', '34'], ['frame-influencer-discovery', '58'], ['frame-content-reference', '80']]) {
+  execFileSync(ffmpeg, ['-y', '-ss', second, '-i', finalVideo, '-frames:v', '1', join(outputDir, `${name}.png`)], { stdio: 'ignore' })
 }
 
-console.log(JSON.stringify({ reviewUrl, webmPath, mp4Path: fs.existsSync(mp4Path) ? mp4Path : null }, null, 2))
+console.log(JSON.stringify({ appBaseUrl, rawVideo, finalVideo }, null, 2))

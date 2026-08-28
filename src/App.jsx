@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import {
   ArrowRight,
   ArrowUpRight,
@@ -37,12 +37,8 @@ import {
   WalletCards,
   X,
 } from 'lucide-react'
-import { readSheet } from 'read-excel-file/browser'
 import './App.css'
-import AdminDataRoom from './AdminDataRoom'
-import AdminConsole from './AdminConsole'
-import AuthPortal from './AuthPortal'
-import YouTubeApiReview from './YouTubeApiReview'
+import { isYouTubeEnglishReviewMode, useEnglishReviewMode } from './useEnglishReviewMode'
 import {
   buildPermissionTestAccounts,
   canManageTeamPermissions,
@@ -94,9 +90,23 @@ import {
   searchYouTubeCreatorDiscovery,
 } from './dataConnectors'
 
+const AdminDataRoom = lazy(() => import('./AdminDataRoom'))
+const AdminConsole = lazy(() => import('./AdminConsole'))
+const AuthPortal = lazy(() => import('./AuthPortal'))
+const YouTubeApiReview = lazy(() => import('./YouTubeApiReview'))
+
+let spreadsheetReaderPromise
+
+async function readSpreadsheet(file, options) {
+  spreadsheetReaderPromise ||= import('read-excel-file/browser').then(({ readSheet }) => readSheet)
+  const reader = await spreadsheetReaderPromise
+  return reader(file, options)
+}
+
 const STORE_KEY = 'creatorops.workspace.v2'
 const TRACKING_DAILY_REFRESH_KEY = 'creatorops.tracking.lastDailyRefresh'
 const GMAIL_AUTH_STORE_KEY = 'creatorops.gmailAuth.v1'
+const YOUTUBE_REVIEW_SNAPSHOT_KEY = 'creatorops.youtubeReviewSnapshot.v1'
 const PRACTICE_TOUR_STORE_KEY = 'creatorops.practiceTour.completed.v1'
 const EXTERNAL_REPORT_PROFILES = [
   {
@@ -279,7 +289,7 @@ async function readExternalReportWorkbook(file, profile) {
   for (const sheet of profile.sheets) {
     try {
       if (sheet.fallback && sheets.length) continue
-      const rows = await readSheet(file, { sheet: sheet.option })
+      const rows = await readSpreadsheet(file, { sheet: sheet.option })
       const parsedRows = buildExternalRowsFromSheet(rows, profile.normalizedType)
       if (parsedRows.length || sheet.required || sheet.fallback) {
         sheets.push({
@@ -293,7 +303,7 @@ async function readExternalReportWorkbook(file, profile) {
   }
 
   if (!sheets.length) {
-    const rows = await readSheet(file)
+    const rows = await readSpreadsheet(file)
     sheets.push({
       sheetName: 'First Sheet',
       rows: buildExternalRowsFromSheet(rows, profile.normalizedType),
@@ -2450,7 +2460,7 @@ function buildLearningMaterialsFromRows(rawRows, sourceType, sourceName = '') {
 }
 
 async function readLearningWorkbookRows(file) {
-  if (/\.xlsx$/i.test(file.name)) return readSheet(file)
+  if (/\.xlsx$/i.test(file.name)) return readSpreadsheet(file)
 
   const text = await file.text()
   const document = new DOMParser().parseFromString(text, 'text/xml')
@@ -7598,7 +7608,17 @@ function createDataRoomDisplayGate(rawData = [], metrics = []) {
   }
 }
 
-function App() {
+function AppContent() {
+  const youtubeEnglishReviewMode = isYouTubeEnglishReviewMode()
+  useEnglishReviewMode(youtubeEnglishReviewMode)
+  const [youtubeReviewSnapshot] = useState(() => {
+    if (!youtubeEnglishReviewMode) return null
+    try {
+      return JSON.parse(window.sessionStorage.getItem(YOUTUBE_REVIEW_SNAPSHOT_KEY) || 'null')
+    } catch {
+      return null
+    }
+  })
   const [workspace, setWorkspace] = usePersistentState(STORE_KEY, defaultWorkspace)
   const backendConfig = useMemo(() => getBackendConfig(), [])
   const [cloudSyncStatus, setCloudSyncStatus] = useState({
@@ -7670,7 +7690,7 @@ function App() {
     youtubeApiKey: '',
     googleApiKey: '',
     googleCx: '',
-    maxResults: '300',
+    maxResults: youtubeEnglishReviewMode ? '8' : '300',
   })
   const [briefAutoDraft, setBriefAutoDraft] = useState({
     rawText: '',
@@ -8361,12 +8381,48 @@ function App() {
     brandInsightRows.find((row) => row.name === selectedBrandInsightName) ||
     displayedBrandInsightRows[0] ||
     brandInsightRows[0]
+  const youtubeReviewReference = useMemo(() => {
+    if (!youtubeEnglishReviewMode || !youtubeReviewSnapshot?.video) return null
+    const { video, channel, checkedAt } = youtubeReviewSnapshot
+    return {
+      id: `youtube-review-video:${video.id}`,
+      referenceKind: 'content',
+      trackingType: 'content',
+      mediaType: '영상',
+      platform: 'YouTube',
+      country: channel?.country || 'KR',
+      title: video.title,
+      url: video.url,
+      thumbnailUrl: video.thumbnail,
+      views: Number(video.views || 0),
+      accountFollowers: Number(channel?.subscribers || 0),
+      likes: Number(video.likes || 0),
+      comments: Number(video.comments || 0),
+      shares: 0,
+      publishedAt: video.publishedAt?.slice(0, 10) || '',
+      savedAt: 'Live API response',
+      source: 'YouTube Data API videos.list',
+      sourceCollectedAt: checkedAt,
+      searchOnly: true,
+      hook: '',
+      analysis: '',
+      applyIdea: '',
+    }
+  }, [youtubeEnglishReviewMode, youtubeReviewSnapshot])
+  const reviewContentReferences = useMemo(
+    () => (
+      youtubeReviewReference
+        ? [youtubeReviewReference, ...contentTrackingReferences.filter((item) => item.url !== youtubeReviewReference.url)]
+        : contentTrackingReferences
+    ),
+    [contentTrackingReferences, youtubeReviewReference],
+  )
   const hasReferenceSearchResults = referenceSearchResults.length > 0
   const activeReferenceBase = hasReferenceSearchResults
     ? referenceSearchResults
     : referenceMode === 'brand'
       ? brandTrackingReferences
-      : contentTrackingReferences
+      : reviewContentReferences
   const referenceCountryOptions = useMemo(
     () => [
       ...referenceCountryPresets,
@@ -8630,6 +8686,55 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [trackedPosts.length])
 
+  const youtubeReviewCreator = useMemo(() => {
+    if (!youtubeEnglishReviewMode || !youtubeReviewSnapshot?.channel) return null
+    const { channel, video, checkedAt } = youtubeReviewSnapshot
+    const averageViews = Number(channel.videos)
+      ? Math.round(Number(channel.views || 0) / Number(channel.videos))
+      : 0
+    const engagement = Number(video?.views)
+      ? ((Number(video.likes || 0) + Number(video.comments || 0)) / Number(video.views)) * 100
+      : 0
+
+    return {
+      id: `youtube-review-channel:${channel.id}`,
+      name: channel.title || video?.channelTitle || 'YouTube channel',
+      handle: channel.customUrl || channel.id,
+      platform: 'YouTube',
+      category: 'Creator',
+      audience: 'Public YouTube audience',
+      country: channel.country || 'KR',
+      city: channel.country || 'KR',
+      avatar: channel.thumbnail || video?.thumbnail || '',
+      profileUrl: channel.url || `https://www.youtube.com/channel/${channel.id}`,
+      followers: Number(channel.subscribers || 0),
+      averageViews,
+      engagement,
+      totalViews: Number(channel.views || 0),
+      videoCount: Number(channel.videos || 0),
+      topics: ['YouTube', 'public channel', video?.title].filter(Boolean),
+      fit: 82,
+      brandSafety: 98,
+      fakeRisk: 0,
+      status: 'Live API verified',
+      sourceType: 'youtube-api-review-live',
+      sourceName: 'YouTube Data API channels.list',
+      sourceCollectedAt: checkedAt,
+      sourceNote: 'Live channels.list response. Average views and engagement are CreatorOps calculations from the returned public statistics.',
+      needsVerification: false,
+      isDemo: false,
+      isSynthetic: false,
+      metricSources: [
+        { label: 'Subscribers and channel totals', rawId: 'RAW-EXT-CHN-001', metricId: 'MET-AI-002', status: 'Verified' },
+        { label: 'Average views and engagement', rawId: 'RAW-EXT-CHN-001', metricId: 'MET-AI-004', status: 'Calculated' },
+      ],
+    }
+  }, [youtubeEnglishReviewMode, youtubeReviewSnapshot])
+  const discoveryCreatorPool = useMemo(
+    () => (youtubeReviewCreator ? [youtubeReviewCreator, ...creators.filter((creator) => creator.id !== youtubeReviewCreator.id)] : creators),
+    [creators, youtubeReviewCreator],
+  )
+
   const filteredCreators = useMemo(() => {
     const queryTerms = query
       .split(/[,\s]+/)
@@ -8644,7 +8749,7 @@ function App() {
     const minFit = parseDiscoveryFilterValue(discoveryFilters.minFit)
     const selectedCountry = String(discoveryFilters.country || '전체')
 
-    return creators
+    return discoveryCreatorPool
       .filter((creator) => {
         if (!showExampleCreators && isExampleCreator(creator)) return false
         const pendingMetrics = hasPendingMetrics(creator)
@@ -8673,7 +8778,7 @@ function App() {
         )
       })
       .sort(compareCreatorsByDiscoveryPriority)
-  }, [category, creators, discoveryFilters, platform, query, showExampleCreators])
+  }, [category, discoveryCreatorPool, discoveryFilters, platform, query, showExampleCreators])
 
   const discoveryPageSize = 20
   const discoveryTotalPages = Math.max(1, Math.ceil(filteredCreators.length / discoveryPageSize))
@@ -10022,7 +10127,7 @@ function App() {
     if (!file) return
 
     try {
-      const rows = await readSheet(file)
+      const rows = await readSpreadsheet(file)
       const sourceRows = buildExternalRowsFromSheet(rows, 'content_tracking_bulk')
       const payloads = sourceRows.map((row) => row.payload)
       if (!payloads.length) {
@@ -10249,7 +10354,7 @@ function App() {
     if (!file) return
 
     try {
-      const rows = await readSheet(file)
+      const rows = await readSpreadsheet(file)
       const sourceRows = buildExternalRowsFromSheet(rows, 'creator_group_bulk')
       const payloads = sourceRows.map((row) => row.payload)
       if (!payloads.length) {
@@ -18421,8 +18526,8 @@ function App() {
               }}
             >
               <Video size={17} />
-              <span>콘텐츠 추적</span>
-              <small>콘텐츠 저장기능</small>
+              <span>콘텐츠 레퍼런스 찾기</span>
+              <small>콘텐츠 검색·저장</small>
             </button>
           </div>
 
@@ -22953,6 +23058,24 @@ function Modal({ title, children, onClose, variant = '' }) {
         {children}
       </section>
     </div>
+  )
+}
+
+function RouteLoadingFallback() {
+  return (
+    <main className="route-loading-shell" aria-live="polite">
+      <span className="route-loading-indicator" aria-hidden="true" />
+      <strong>화면을 준비하고 있습니다.</strong>
+      <span>필요한 운영 데이터만 불러오는 중입니다.</span>
+    </main>
+  )
+}
+
+function App() {
+  return (
+    <Suspense fallback={<RouteLoadingFallback />}>
+      <AppContent />
+    </Suspense>
   )
 }
 
