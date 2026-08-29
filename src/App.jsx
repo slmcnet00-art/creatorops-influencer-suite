@@ -52,12 +52,18 @@ import {
   teamRoleCatalog,
 } from './accessControl'
 import {
+  CAMPAIGN_MARKET_MODES,
   LANGUAGE_OPTIONS,
   MARKET_OPTIONS,
+  buildCampaignMarkets,
   formatDualCurrency,
+  getCampaignMarketCountries,
   getLanguageInstruction,
   getMarketConfig,
+  isMultiMarketCampaign,
   normalizeCampaignMarket,
+  normalizeCampaignMarkets,
+  resolveCampaignMarketCountry,
 } from './marketLocalization'
 import {
   getBackendConfig,
@@ -1048,6 +1054,7 @@ const deliveryStatusOptions = ['배송 준비', '발송 대기', '발송 완료'
 
 const createEmptyFulfillmentDraft = () => ({
   campaignId: '',
+  marketCountry: '',
   creatorId: '',
   paymentDate: '',
   recipient: '',
@@ -1339,6 +1346,53 @@ function resolveDiscoveryApiCountry(country, fallback = 'KR') {
   if (!normalizedCountry || normalizedCountry === '전체') return fallback || 'KR'
   return discoveryApiCountryFallbacks[normalizedCountry] || normalizedCountry
 }
+
+function resolveCampaignRecordMarket(campaign = {}, ...countryCandidates) {
+  const marketCountries = getCampaignMarketCountries(campaign)
+  for (const candidate of countryCandidates) {
+    const normalized = String(candidate || '').toUpperCase()
+    if (!normalized) continue
+    const matchedMarket = marketCountries.find((marketCountry) => matchesDiscoveryCountry(normalized, marketCountry))
+    if (matchedMarket) return matchedMarket
+  }
+  return resolveCampaignMarketCountry(campaign, countryCandidates.find(Boolean))
+}
+
+function applyPrimaryCampaignMarket(draft, countries) {
+  const targetMarkets = [...new Set((countries || []).map((country) => String(country || '').toUpperCase()).filter(Boolean))]
+  const safeMarkets = targetMarkets.length ? targetMarkets : ['KR']
+  const primary = getMarketConfig(safeMarkets[0])
+  return {
+    ...draft,
+    targetMarkets: safeMarkets,
+    targetCountry: primary.country,
+    outputLanguage: primary.language,
+    localCurrency: primary.currency,
+    exchangeRateKrw: String(primary.exchangeRateKrw),
+  }
+}
+
+function toggleCampaignMarket(draft, country) {
+  if (draft.marketMode !== CAMPAIGN_MARKET_MODES.multi) {
+    return applyPrimaryCampaignMarket(draft, [country])
+  }
+  const current = Array.isArray(draft.targetMarkets) && draft.targetMarkets.length
+    ? draft.targetMarkets
+    : [draft.targetCountry || 'KR']
+  const next = current.includes(country)
+    ? current.filter((item) => item !== country)
+    : [...current, country]
+  return applyPrimaryCampaignMarket(draft, next.length ? next : [country])
+}
+
+function getCampaignMarketSummary(campaign = {}) {
+  const markets = normalizeCampaignMarkets(campaign)
+  const labels = markets.map((market) => market.label).join(', ')
+  return isMultiMarketCampaign(campaign)
+    ? `글로벌 ${markets.length}개 마켓 · ${labels}`
+    : `단일 국가 · ${labels || getMarketConfig(campaign.targetCountry).label}`
+}
+
 const campaignStatuses = ['섭외', '콘텐츠 제작', '라이브', '리포트', '완료']
 const campaignTypeOptions = ['제안형', '공개모집', '앰배서더', '커머스/제휴', 'UGC/숏폼', '틱톡 공동구매 셀러']
 
@@ -1398,6 +1452,11 @@ function normalizeCampaign(campaign, brands) {
     uploadDue: campaign.schedule?.uploadDue ?? campaign.uploadDueDate ?? fallback?.schedule?.uploadDue ?? '',
     reportDue: campaign.schedule?.reportDue ?? campaign.reportDueDate ?? fallback?.schedule?.reportDue ?? '',
   }
+  const markets = normalizeCampaignMarkets(campaign)
+  const primaryMarket = markets[0] || getMarketConfig(campaign.targetCountry || 'KR')
+  const marketMode = campaign.marketMode === CAMPAIGN_MARKET_MODES.multi || markets.length > 1
+    ? CAMPAIGN_MARKET_MODES.multi
+    : CAMPAIGN_MARKET_MODES.single
 
   return {
     ...campaign,
@@ -1414,6 +1473,15 @@ function normalizeCampaign(campaign, brands) {
     targetRevenue: targets.targetRevenue,
     sellerRecruitTarget: Number(campaign.sellerRecruitTarget ?? fallback?.sellerRecruitTarget ?? 0),
     recommendationTargetCount: getCampaignRecommendationTarget(campaign, fallback),
+    marketMode,
+    markets,
+    targetMarkets: markets.map((market) => market.country),
+    targetCountry: primaryMarket.country,
+    outputLanguage: campaign.outputLanguage || primaryMarket.language,
+    localCurrency: campaign.localCurrency || primaryMarket.currency,
+    exchangeRateKrw: Number(campaign.exchangeRateKrw) > 0
+      ? Number(campaign.exchangeRateKrw)
+      : primaryMarket.exchangeRateKrw,
     schedule,
   }
 }
@@ -2819,6 +2887,8 @@ function buildUtmTrackingLog({ campaign = {}, creator = {}, brand = {}, tracking
     campaign_id: campaign?.id ?? '',
     campaignName: campaign?.name ?? '',
     campaign_name: campaign?.name ?? '',
+    marketCountry: resolveCampaignRecordMarket(campaign, creator?.country, creator?.searchCountry),
+    market_country: resolveCampaignRecordMarket(campaign, creator?.country, creator?.searchCountry),
     creatorId: creator?.id ?? '',
     creatorName: creator?.name ?? '',
     creatorHandle: creator?.handle ?? '',
@@ -3346,6 +3416,7 @@ function buildRecommendation(creator, brief, campaign) {
     id: createId(),
     creatorId: creator.id,
     campaignId: campaign?.id,
+    marketCountry: resolveCampaignRecordMarket(campaign, creator.country, creator.searchCountry),
     score,
     decision:
       risk.includes('미달') || risk.includes('효율 낮음') || exclusionHits.length
@@ -7715,6 +7786,8 @@ function AppContent() {
     searchKeywords: '',
     exclusionKeywords: '',
     landingUrl: '',
+    marketMode: CAMPAIGN_MARKET_MODES.single,
+    targetMarkets: ['KR'],
     targetCountry: 'KR',
     outputLanguage: 'ko',
     localCurrency: 'KRW',
@@ -7762,6 +7835,7 @@ function AppContent() {
     handle: '',
     platform: 'Instagram',
     category: '리뷰',
+    country: 'KR',
     city: '서울',
     followers: '',
     averageViews: '',
@@ -7788,6 +7862,7 @@ function AppContent() {
   })
   const [trackingDraft, setTrackingDraft] = useState({
     campaignId: '',
+    marketCountry: '',
     creatorId: 'auto',
     platform: 'Instagram',
     title: '',
@@ -8030,6 +8105,10 @@ function AppContent() {
   )
   const selectedCampaign =
     brandCampaigns.find((campaign) => campaign.id === selectedCampaignId) ?? brandCampaigns[0]
+  const trackingDraftCampaign =
+    brandCampaigns.find((campaign) => campaign.id === Number(trackingDraft.campaignId)) ?? selectedCampaign
+  const fulfillmentDraftCampaign =
+    brandCampaigns.find((campaign) => campaign.id === Number(fulfillmentDraft.campaignId)) ?? selectedCampaign
   const activeCampaignIdSet = useMemo(
     () => new Set(brandCampaigns.map((campaign) => campaign.id)),
     [brandCampaigns],
@@ -8876,7 +8955,7 @@ function AppContent() {
           creatorName: creator?.name || '',
           handle: creator?.handle || '',
           platform: post.platform,
-          country: creator?.country || '',
+          country: post.marketCountry || resolveCampaignRecordMarket(campaign, creator?.country, creator?.searchCountry),
           language: '',
           profileUrl: creator?.profileUrl || '',
           url: post.url,
@@ -8898,6 +8977,112 @@ function AppContent() {
     () => (externalVideoReportRows.length ? externalVideoReportRows : fallbackTrackedReportRows),
     [externalVideoReportRows, fallbackTrackedReportRows],
   )
+  const campaignMarketPerformance = useMemo(() => {
+    if (!selectedCampaign) return { rows: [], total: null }
+
+    const creatorById = new Map(creators.map((creator) => [creator.id, creator]))
+    const marketRows = normalizeCampaignMarkets(selectedCampaign)
+    const campaignFulfillment = fulfillmentRecords.filter((record) => record.campaignId === selectedCampaign.id)
+    const campaignConversions = conversionEvents.filter((event) => event.campaignId === selectedCampaign.id)
+    const campaignCreatorOperations = creatorOperations.filter((record) => record.campaignId === selectedCampaign.id)
+    const recordMarket = (record = {}) => {
+      const creator = creatorById.get(record.creatorId)
+      return resolveCampaignRecordMarket(
+        selectedCampaign,
+        record.marketCountry,
+        record.country,
+        creator?.country,
+        creator?.searchCountry,
+      )
+    }
+
+    const rows = marketRows.map((market) => {
+      const recommendationRows = selectedCampaignRecommendations.filter((record) => recordMarket(record) === market.country)
+      const assignedCreatorIds = (selectedCampaign.creatorIds || []).filter((creatorId) => {
+        const creator = creatorById.get(creatorId)
+        return resolveCampaignRecordMarket(selectedCampaign, creator?.country, creator?.searchCountry) === market.country
+      })
+      const discoveredCreatorIds = new Set([
+        ...recommendationRows.map((record) => record.creatorId),
+        ...assignedCreatorIds,
+      ].filter(Boolean))
+      const outreachRows = selectedCampaignOutreach.filter((record) => recordMarket(record) === market.country)
+      const responseRows = outreachRows.filter((record) => (
+        record.responseAt || String(record.status || '').includes('응답') || String(record.status || '').includes('섭외')
+      ))
+      const recruitedRows = selectedCampaignRecruitedPool.filter((record) => recordMarket(record) === market.country)
+      const contentRows = selectedCampaignTrackedPosts.filter((record) => recordMarket(record) === market.country)
+      const fulfillmentRows = campaignFulfillment.filter((record) => recordMarket(record) === market.country)
+      const operationRows = campaignCreatorOperations.filter((record) => recordMarket(record) === market.country)
+      const conversionRows = campaignConversions.filter((record) => recordMarket(record) === market.country)
+      const views = contentRows.reduce((sum, record) => sum + Number(record.views || 0), 0)
+      const engagement = contentRows.reduce(
+        (sum, record) => sum + Number(record.likes || 0) + Number(record.comments || 0) + Number(record.shares || 0) + Number(record.saves || 0),
+        0,
+      )
+      const trackedConversions = contentRows.reduce((sum, record) => sum + Number(record.conversions || 0), 0)
+      const purchased = conversionRows.filter((event) => event.eventType === 'purchase')
+      const refunded = conversionRows.filter((event) => event.eventType === 'refund')
+      const conversions = conversionRows.length ? Math.max(0, purchased.length - refunded.length) : trackedConversions
+      let revenue = Math.max(
+        0,
+        purchased.reduce((sum, event) => sum + Number(event.eventValue || 0), 0) -
+          refunded.reduce((sum, event) => sum + Number(event.eventValue || 0), 0),
+      )
+      let cost = fulfillmentRows.reduce((sum, record) => sum + Number(record.paymentAmount || 0), 0) +
+        operationRows.reduce((sum, record) => sum + Number(record.actualCost || 0), 0)
+      if (marketRows.length === 1) {
+        if (!cost) cost = Number(selectedCampaign.spend || 0)
+        if (!revenue) revenue = Number(selectedCampaign.revenue || 0)
+      }
+
+      return {
+        ...market,
+        discovered: discoveredCreatorIds.size,
+        contacted: outreachRows.length,
+        responded: responseRows.length,
+        recruited: recruitedRows.length,
+        uploaded: contentRows.length,
+        cost,
+        views,
+        engagementRate: views ? (engagement / views) * 100 : 0,
+        conversions,
+        revenue,
+        cpa: conversions && cost ? cost / conversions : 0,
+        roas: cost ? (revenue / cost) * 100 : 0,
+      }
+    })
+    const total = rows.reduce(
+      (summary, row) => ({
+        discovered: summary.discovered + row.discovered,
+        contacted: summary.contacted + row.contacted,
+        responded: summary.responded + row.responded,
+        recruited: summary.recruited + row.recruited,
+        uploaded: summary.uploaded + row.uploaded,
+        cost: summary.cost + row.cost,
+        views: summary.views + row.views,
+        engagement: summary.engagement + (row.views * row.engagementRate) / 100,
+        conversions: summary.conversions + row.conversions,
+        revenue: summary.revenue + row.revenue,
+      }),
+      { discovered: 0, contacted: 0, responded: 0, recruited: 0, uploaded: 0, cost: 0, views: 0, engagement: 0, conversions: 0, revenue: 0 },
+    )
+    total.engagementRate = total.views ? (total.engagement / total.views) * 100 : 0
+    total.cpa = total.conversions && total.cost ? total.cost / total.conversions : 0
+    total.roas = total.cost ? (total.revenue / total.cost) * 100 : 0
+
+    return { rows, total }
+  }, [
+    conversionEvents,
+    creatorOperations,
+    creators,
+    fulfillmentRecords,
+    selectedCampaign,
+    selectedCampaignOutreach,
+    selectedCampaignRecommendations,
+    selectedCampaignRecruitedPool,
+    selectedCampaignTrackedPosts,
+  ])
   const creatorPerformanceLearningMap = useMemo(
     () => buildCreatorPerformanceLearningMap(creators, activeTrackedPosts, externalVideoReportRows),
     [activeTrackedPosts, creators, externalVideoReportRows],
@@ -11822,6 +12007,7 @@ function AppContent() {
       id: createId() + creator.id,
       creatorId: creator.id,
       campaignId: campaign.id,
+      marketCountry: recommendation.marketCountry || resolveCampaignRecordMarket(campaign, creator.country, creator.searchCountry),
       source,
       status: '승인 대기',
       channel: contactPlan.id,
@@ -12668,6 +12854,7 @@ function AppContent() {
       id: createId() + creator.id,
       creatorId: creator.id,
       campaignId: campaign.id,
+      marketCountry: recommendation.marketCountry || fallbackRecommendation?.marketCountry || resolveCampaignRecordMarket(campaign, creator.country, creator.searchCountry),
       source: '자동',
       status: '승인 대기',
       channel: contactPlan.id,
@@ -12833,6 +13020,7 @@ function AppContent() {
     setFulfillmentDraft({
       ...createEmptyFulfillmentDraft(),
       campaignId: campaignOverride.id,
+      marketCountry: resolveCampaignRecordMarket(campaignOverride, recruitedCreator?.country, recruitedCreator?.searchCountry),
       creatorId: recruitedCreator?.id ?? '',
       recipient: recruitedCreator?.name ?? '',
       handle: recruitedCreator?.handle ?? '',
@@ -12872,6 +13060,8 @@ function AppContent() {
       ['metric', 'value', 'source_raw'],
       ['brand', activeBrand.name, 'workspace.brands'],
       ['campaign', reportName, 'workspace.campaigns'],
+      ['market_mode', isMultiMarketCampaign(selectedCampaign) ? 'multi' : 'single', 'workspace.campaigns.markets'],
+      ['markets', getCampaignMarketCountries(selectedCampaign).join(', '), 'workspace.campaigns.markets'],
       ['exported_at', exportedAt, 'browser_export'],
       ['uses_external_raw', reportUsesExternalRaw ? 'yes' : 'no', 'externalReportRows'],
       ['tracked_content_count', reportVideoRows.length, 'RAW-EXT-MON-VIDEO-001'],
@@ -13005,8 +13195,30 @@ function AppContent() {
       ]),
     ]
 
+    const marketPerformanceRows = [
+      ['country', 'market', 'currency', 'discovered', 'contacted', 'responded', 'recruited', 'uploaded', 'cost_krw', 'views', 'engagement_rate', 'conversions', 'revenue_krw', 'cpa_krw', 'roas'],
+      ...campaignMarketPerformance.rows.map((row) => [
+        row.country,
+        row.label,
+        row.currency,
+        row.discovered,
+        row.contacted,
+        row.responded,
+        row.recruited,
+        row.uploaded,
+        row.cost,
+        row.views,
+        percent(row.engagementRate),
+        row.conversions,
+        row.revenue,
+        row.cpa ? Math.round(row.cpa) : 0,
+        row.cost ? `${Math.round(row.roas)}%` : '',
+      ]),
+    ]
+
     exportExcelWorkbook('creatorops-monitor-report-' + normalizeHandleSegment(reportName) + '.xls', [
       { name: 'Summary', rows: summaryRows },
+      { name: 'Country Markets', rows: marketPerformanceRows },
       { name: 'Raw Sources', rows: rawSourceRows },
       { name: 'Video Monitor Data', rows: videoMonitorRows },
       { name: 'Brand Monitor Influencers', rows: brandMonitorRows },
@@ -13641,6 +13853,8 @@ function AppContent() {
     approvalFlow: campaign.approvalFlow || '',
     commerceMetric: campaign.commerceMetric || '',
     landingUrl: campaign.landingUrl || campaign.productUrl || campaign.trackingUrl || '',
+    marketMode: isMultiMarketCampaign(campaign) ? CAMPAIGN_MARKET_MODES.multi : CAMPAIGN_MARKET_MODES.single,
+    targetMarkets: getCampaignMarketCountries(campaign),
     targetCountry: normalizeCampaignMarket(campaign).country,
     outputLanguage: normalizeCampaignMarket(campaign).language,
     localCurrency: normalizeCampaignMarket(campaign).currency,
@@ -13660,6 +13874,22 @@ function AppContent() {
     if (!activeCampaignForModal || !campaignEditDraft) return
 
     const nextBudget = Number(campaignEditDraft.budget) || activeCampaignForModal.budget
+    const selectedMarketCountries = campaignEditDraft.marketMode === CAMPAIGN_MARKET_MODES.multi
+      ? campaignEditDraft.targetMarkets
+      : [campaignEditDraft.targetCountry]
+    const primaryMarket = getMarketConfig(selectedMarketCountries[0] || campaignEditDraft.targetCountry || 'KR')
+    const markets = buildCampaignMarkets(selectedMarketCountries, activeCampaignForModal).map((market, index) => (
+      index === 0
+        ? {
+            ...market,
+            language: campaignEditDraft.outputLanguage || primaryMarket.language,
+            currency: campaignEditDraft.localCurrency || primaryMarket.currency,
+            exchangeRateKrw: Number(campaignEditDraft.exchangeRateKrw) || primaryMarket.exchangeRateKrw,
+            exchangeRateSource: campaignEditDraft.exchangeRateSource || '운영 기준환율(수동)',
+            exchangeRateUpdatedAt: campaignEditDraft.exchangeRateUpdatedAt || nowLabel(),
+          }
+        : market
+    ))
     const nextCampaign = {
       ...activeCampaignForModal,
       name: campaignEditDraft.name || activeCampaignForModal.name,
@@ -13693,10 +13923,13 @@ function AppContent() {
       approvalFlow: campaignEditDraft.approvalFlow,
       commerceMetric: campaignEditDraft.commerceMetric,
       landingUrl: campaignEditDraft.landingUrl,
-      targetCountry: campaignEditDraft.targetCountry,
-      outputLanguage: campaignEditDraft.outputLanguage,
-      localCurrency: campaignEditDraft.localCurrency,
-      exchangeRateKrw: Number(campaignEditDraft.exchangeRateKrw) || 1,
+      marketMode: campaignEditDraft.marketMode,
+      markets,
+      targetMarkets: markets.map((market) => market.country),
+      targetCountry: markets[0]?.country || campaignEditDraft.targetCountry,
+      outputLanguage: markets[0]?.language || campaignEditDraft.outputLanguage,
+      localCurrency: markets[0]?.currency || campaignEditDraft.localCurrency,
+      exchangeRateKrw: markets[0]?.exchangeRateKrw || Number(campaignEditDraft.exchangeRateKrw) || 1,
       exchangeRateSource: campaignEditDraft.exchangeRateSource || '운영 기준환율(수동)',
       exchangeRateUpdatedAt: campaignEditDraft.exchangeRateUpdatedAt || nowLabel(),
     }
@@ -13786,7 +14019,9 @@ function AppContent() {
     brandOwner: activeBrand.owner || activeBrand.name,
     campaignId: campaign.id,
     campaignName: campaign.name || '신규 인플루언서 캠페인',
+    marketMode: isMultiMarketCampaign(campaign) ? CAMPAIGN_MARKET_MODES.multi : CAMPAIGN_MARKET_MODES.single,
     market: normalizeCampaignMarket(campaign),
+    markets: normalizeCampaignMarkets(campaign),
     localizationInstruction: getLanguageInstruction(campaign),
     product: campaign.product || campaignBrief.product || '',
     objective: campaign.objective || campaignBrief.goal || '',
@@ -14371,6 +14606,21 @@ function AppContent() {
     const budget = Number(campaignDraft.budget) || Math.max(estimatedCost, 15000000)
     const campaignBrief = buildCampaignBriefFromDraft(campaignDraft)
     const nextCampaignId = createId()
+    const selectedMarketCountries = campaignDraft.marketMode === CAMPAIGN_MARKET_MODES.multi
+      ? campaignDraft.targetMarkets
+      : [campaignDraft.targetCountry]
+    const markets = buildCampaignMarkets(selectedMarketCountries).map((market, index) => (
+      index === 0
+        ? {
+            ...market,
+            language: campaignDraft.outputLanguage || market.language,
+            currency: campaignDraft.localCurrency || market.currency,
+            exchangeRateKrw: Number(campaignDraft.exchangeRateKrw) || market.exchangeRateKrw,
+            exchangeRateSource: '운영 기준환율(수동)',
+            exchangeRateUpdatedAt: nowLabel(),
+          }
+        : market
+    ))
     const nextCampaign = {
       id: nextCampaignId,
       brandId: activeBrand.id,
@@ -14403,10 +14653,13 @@ function AppContent() {
       approvalFlow: campaignDraft.approvalFlow || '브리프 전달 → 콘텐츠 검수 → 게시 확인 → 성과 리포트',
       commerceMetric: campaignDraft.commerceMetric || '조회/댓글/공유와 전환 링크',
       landingUrl: campaignDraft.landingUrl?.trim() || '',
-      targetCountry: campaignDraft.targetCountry || 'KR',
-      outputLanguage: campaignDraft.outputLanguage || 'ko',
-      localCurrency: campaignDraft.localCurrency || 'KRW',
-      exchangeRateKrw: Number(campaignDraft.exchangeRateKrw) || 1,
+      marketMode: campaignDraft.marketMode,
+      markets,
+      targetMarkets: markets.map((market) => market.country),
+      targetCountry: markets[0]?.country || campaignDraft.targetCountry || 'KR',
+      outputLanguage: markets[0]?.language || campaignDraft.outputLanguage || 'ko',
+      localCurrency: markets[0]?.currency || campaignDraft.localCurrency || 'KRW',
+      exchangeRateKrw: markets[0]?.exchangeRateKrw || Number(campaignDraft.exchangeRateKrw) || 1,
       exchangeRateSource: '운영 기준환율(수동)',
       exchangeRateUpdatedAt: nowLabel(),
       kpiGoal: campaignDraft.kpiGoal || '조회수/전환 KPI 미정',
@@ -14450,10 +14703,13 @@ function AppContent() {
           approvalFlow: campaignDraft.approvalFlow,
           commerceMetric: campaignDraft.commerceMetric,
           landingUrl: campaignDraft.landingUrl?.trim() || '',
-          targetCountry: campaignDraft.targetCountry || 'KR',
-          outputLanguage: campaignDraft.outputLanguage || 'ko',
-          localCurrency: campaignDraft.localCurrency || 'KRW',
-          exchangeRateKrw: Number(campaignDraft.exchangeRateKrw) || 1,
+          marketMode: campaignDraft.marketMode,
+          markets,
+          targetMarkets: markets.map((market) => market.country),
+          targetCountry: markets[0]?.country || campaignDraft.targetCountry || 'KR',
+          outputLanguage: markets[0]?.language || campaignDraft.outputLanguage || 'ko',
+          localCurrency: markets[0]?.currency || campaignDraft.localCurrency || 'KRW',
+          exchangeRateKrw: markets[0]?.exchangeRateKrw || Number(campaignDraft.exchangeRateKrw) || 1,
           kpiGoal: campaignDraft.kpiGoal,
           targetViews: normalizeNumericTarget(campaignDraft.targetViews),
           targetConversions: normalizeNumericTarget(campaignDraft.targetConversions),
@@ -14527,6 +14783,8 @@ function AppContent() {
       product: '',
       objective: '브랜드 인지도',
       campaignType: '제안형',
+      marketMode: CAMPAIGN_MARKET_MODES.single,
+      targetMarkets: ['KR'],
       targetCountry: 'KR',
       outputLanguage: 'ko',
       localCurrency: 'KRW',
@@ -14589,7 +14847,7 @@ function AppContent() {
       contactEmail: creatorDraft.contactEmail,
       preferredContactChannel: creatorDraft.preferredContactChannel,
       category: creatorDraft.category,
-      country: 'KR',
+      country: creatorDraft.country || 'KR',
       followers,
       averageViews,
       engagement,
@@ -14633,6 +14891,7 @@ function AppContent() {
       handle: '',
       platform: 'Instagram',
       category: '리뷰',
+      country: 'KR',
       city: '서울',
       followers: '',
       averageViews: '',
@@ -14660,6 +14919,7 @@ function AppContent() {
       id: createId(),
       creatorId: selectedCreator.id,
       campaignId: campaign.id,
+      marketCountry: resolveCampaignRecordMarket(campaign, selectedCreator.country, selectedCreator.searchCountry),
       source: '수동',
       status: '승인 대기',
       channel: contactPlan.id,
@@ -14695,6 +14955,7 @@ function AppContent() {
       id: createId(),
       creatorId: selectedCreator.id,
       campaignId: campaign.id,
+      marketCountry: resolveCampaignRecordMarket(campaign, selectedCreator.country, selectedCreator.searchCountry),
       amount: selectedCreator.price,
       status: '견적 대기',
       createdAt: nowLabel(),
@@ -14767,6 +15028,7 @@ function AppContent() {
   const createTrackedPost = async (event) => {
     event.preventDefault()
     const campaignId = Number(trackingDraft.campaignId) || selectedCampaign?.id
+    const trackingCampaign = brandCampaigns.find((campaign) => campaign.id === campaignId) || selectedCampaign
     const uploadedUrl = trackingDraft.url.trim()
 
     if (!campaignId) {
@@ -14856,7 +15118,7 @@ function AppContent() {
             contactEmail: '',
             preferredContactChannel: platform === 'YouTube' ? 'email' : platform === 'TikTok' ? 'tiktok_dm' : 'instagram_dm',
             category: '\uB9AC\uBDF0',
-            country: activeBrand.country || 'KR',
+            country: resolveCampaignRecordMarket(trackingCampaign, effectiveDraft.marketCountry, activeBrand.country),
             followers,
             averageViews: views,
             engagement,
@@ -14881,10 +15143,18 @@ function AppContent() {
         }
       }
 
+      const resolvedCreator = nextCreators.find((creator) => creator.id === creatorId)
+      const marketCountry = resolveCampaignRecordMarket(
+        trackingCampaign,
+        effectiveDraft.marketCountry,
+        resolvedCreator?.country,
+        resolvedCreator?.searchCountry,
+      )
       const nextPost = {
         id: createId(),
         campaignId,
         creatorId,
+        marketCountry,
         platform,
         title: savedPostTitle,
         url: uploadedUrl,
@@ -14934,6 +15204,7 @@ function AppContent() {
 
     setTrackingDraft({
       campaignId: '',
+      marketCountry: '',
       creatorId: 'auto',
       platform: 'Instagram',
       title: '',
@@ -14973,6 +15244,12 @@ function AppContent() {
       id: createId(),
       campaignId,
       creatorId,
+      marketCountry: resolveCampaignRecordMarket(
+        campaigns.find((campaign) => campaign.id === campaignId) || selectedCampaign,
+        fulfillmentDraft.marketCountry,
+        creator?.country,
+        creator?.searchCountry,
+      ),
       paymentDate: fulfillmentDraft.paymentDate.trim() || nowLabel(),
       recipient,
       handle: fulfillmentDraft.handle.trim() || creator?.handle || '',
@@ -15402,6 +15679,7 @@ function AppContent() {
               id: createId(),
               creatorId: creator.id,
               campaignId: campaign.id,
+              marketCountry: outreachItem.marketCountry || resolveCampaignRecordMarket(campaign, creator.country, creator.searchCountry),
               source: outreachItem.source ?? '수동',
               channel: outreachItem.channel ?? getRecommendedContactChannelId(creator),
               status: '섭외 완료',
@@ -17207,6 +17485,7 @@ function AppContent() {
                 <Stat label="제품/서비스" value={selectedCampaign?.product || brandBrief.product || '-'} />
                 <Stat label="타깃" value={selectedCampaign?.targetPersona || brandBrief.persona || '-'} />
                 <Stat label="키워드" value={selectedCampaign?.searchKeywords || brandBrief.keywords || '-'} />
+                <Stat label="운영 국가" value={selectedCampaign ? getCampaignMarketSummary(selectedCampaign) : '-'} />
                 <Stat label="후보 조건" value={`${compactNumber(selectedCampaign?.minFollowers || brandBrief.minFollowers)}+ · ${won(selectedCampaign?.maxCreatorFee || brandBrief.maxPrice)}`} />
               </div>
               <div className="campaign-brief-actions">
@@ -19310,7 +19589,7 @@ function AppContent() {
                   <div>
                     <span className="mini-label">캠페인 상세</span>
                     <strong>{activeCampaignForModal.name}</strong>
-                    <p>{activeCampaignForModal.objective} · {activeCampaignForModal.owner} · 마감 {activeCampaignForModal.deadline ?? '미정'}</p>
+                    <p>{activeCampaignForModal.objective} · {getCampaignMarketSummary(activeCampaignForModal)} · {activeCampaignForModal.owner} · 마감 {activeCampaignForModal.deadline ?? '미정'}</p>
                   </div>
                   <div className="campaign-detail-page-actions">
                     {campaignEditDraft ? (
@@ -19371,21 +19650,73 @@ function AppContent() {
                         <input value={campaignEditDraft.searchKeywords} onChange={(event) => updateCampaignEditField('searchKeywords', event.target.value)} />
                       </label>
                     </div>
+                    <div className="campaign-market-mode compact" role="group" aria-label="캠페인 국가 운영 방식 수정">
+                      <button
+                        className={campaignEditDraft.marketMode === CAMPAIGN_MARKET_MODES.single ? 'active' : ''}
+                        type="button"
+                        onClick={() => setCampaignEditDraft((current) => ({
+                          ...applyPrimaryCampaignMarket(current, [current.targetCountry || current.targetMarkets?.[0] || 'KR']),
+                          marketMode: CAMPAIGN_MARKET_MODES.single,
+                        }))}
+                      >
+                        <strong>단일 국가</strong>
+                        <span>한 국가 집중 운영</span>
+                      </button>
+                      <button
+                        className={campaignEditDraft.marketMode === CAMPAIGN_MARKET_MODES.multi ? 'active' : ''}
+                        type="button"
+                        onClick={() => setCampaignEditDraft((current) => ({
+                          ...current,
+                          marketMode: CAMPAIGN_MARKET_MODES.multi,
+                          targetMarkets: current.targetMarkets?.length ? current.targetMarkets : [current.targetCountry || 'KR'],
+                        }))}
+                      >
+                        <strong>글로벌 다국가</strong>
+                        <span>국가별 퍼널·성과 비교</span>
+                      </button>
+                    </div>
+                    {campaignEditDraft.marketMode === CAMPAIGN_MARKET_MODES.multi ? (
+                      <div className="campaign-market-picker compact">
+                        <div>
+                          {MARKET_OPTIONS.map((market) => (
+                            <label key={market.country}>
+                              <input
+                                type="checkbox"
+                                checked={campaignEditDraft.targetMarkets.includes(market.country)}
+                                onChange={() => setCampaignEditDraft((current) => toggleCampaignMarket(current, market.country))}
+                              />
+                              <strong>{market.label}</strong>
+                              <small>{market.country} · {market.currency}</small>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
                     <div className="campaign-edit-schedule-grid">
                       <label>
-                        운영 국가
+                        {campaignEditDraft.marketMode === CAMPAIGN_MARKET_MODES.multi ? '대표 국가' : '운영 국가'}
                         <select
                           value={campaignEditDraft.targetCountry}
                           onChange={(event) => {
-                            const market = getMarketConfig(event.target.value)
-                            setCampaignEditDraft((current) => ({ ...current, targetCountry: market.country, outputLanguage: market.language, localCurrency: market.currency, exchangeRateKrw: String(market.exchangeRateKrw) }))
+                            const nextCountry = event.target.value
+                            setCampaignEditDraft((current) => (
+                              applyPrimaryCampaignMarket(
+                                current,
+                                current.marketMode === CAMPAIGN_MARKET_MODES.multi
+                                  ? [nextCountry, ...current.targetMarkets.filter((country) => country !== nextCountry)]
+                                  : [nextCountry],
+                              )
+                            ))
                           }}
                         >
-                          {MARKET_OPTIONS.map((market) => <option key={market.country} value={market.country}>{market.label}</option>)}
+                          {(campaignEditDraft.marketMode === CAMPAIGN_MARKET_MODES.multi
+                            ? MARKET_OPTIONS.filter((market) => campaignEditDraft.targetMarkets.includes(market.country))
+                            : MARKET_OPTIONS
+                          ).map((market) => <option key={market.country} value={market.country}>{market.label}</option>)}
                         </select>
                       </label>
                       <label>
-                        산출물 언어
+                        대표 산출물 언어
                         <select value={campaignEditDraft.outputLanguage} onChange={(event) => updateCampaignEditField('outputLanguage', event.target.value)}>
                           {LANGUAGE_OPTIONS.map((language) => <option key={language.value} value={language.value}>{language.label}</option>)}
                         </select>
@@ -19956,6 +20287,79 @@ function AppContent() {
               </div>
               <BarChart3 size={24} />
             </div>
+
+            <section className="campaign-market-report">
+              <div className="campaign-market-report-head">
+                <div>
+                  <span className="mini-label">국가별 통합 트래킹</span>
+                  <strong>{isMultiMarketCampaign(selectedCampaign) ? '글로벌 캠페인 국가 비교' : '단일 국가 캠페인 성과'}</strong>
+                  <p>발굴부터 연락·회신·섭외·업로드·성과까지 동일한 국가 코드로 연결합니다.</p>
+                </div>
+                <span className="campaign-context-chip">
+                  {isMultiMarketCampaign(selectedCampaign) ? `${campaignMarketPerformance.rows.length}개 마켓` : campaignMarketPerformance.rows[0]?.label || '국가 미설정'}
+                </span>
+              </div>
+              {campaignMarketPerformance.total && (
+                <div className="campaign-market-total-strip">
+                  <span>발굴 <strong>{campaignMarketPerformance.total.discovered}명</strong></span>
+                  <span>섭외 <strong>{campaignMarketPerformance.total.recruited}명</strong></span>
+                  <span>업로드 <strong>{campaignMarketPerformance.total.uploaded}건</strong></span>
+                  <span>조회 <strong>{compactNumber(campaignMarketPerformance.total.views)}</strong></span>
+                  <span>전환 <strong>{compactNumber(campaignMarketPerformance.total.conversions)}</strong></span>
+                  <span>ROAS <strong>{campaignMarketPerformance.total.cost ? `${Math.round(campaignMarketPerformance.total.roas)}%` : '-'}</strong></span>
+                </div>
+              )}
+              <div className="campaign-market-table-wrap">
+                <table className="campaign-market-table">
+                  <thead>
+                    <tr>
+                      <th>국가</th>
+                      <th>발굴</th>
+                      <th>연락</th>
+                      <th>회신</th>
+                      <th>섭외</th>
+                      <th>업로드</th>
+                      <th>비용</th>
+                      <th>조회수</th>
+                      <th>참여율</th>
+                      <th>전환</th>
+                      <th>매출</th>
+                      <th>CPA</th>
+                      <th>ROAS</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {campaignMarketPerformance.rows.map((row) => {
+                      const marketCampaign = {
+                        ...selectedCampaign,
+                        targetCountry: row.country,
+                        localCurrency: row.currency,
+                        exchangeRateKrw: row.exchangeRateKrw,
+                        markets: [row],
+                      }
+                      return (
+                        <tr key={row.country}>
+                          <td><strong>{row.label}</strong><small>{row.country} · {row.currency}</small></td>
+                          <td>{row.discovered}</td>
+                          <td>{row.contacted}</td>
+                          <td>{row.responded}</td>
+                          <td>{row.recruited}</td>
+                          <td>{row.uploaded}</td>
+                          <td>{row.cost ? formatDualCurrency(row.cost, marketCampaign) : '-'}</td>
+                          <td>{compactNumber(row.views)}</td>
+                          <td>{percent(row.engagementRate)}</td>
+                          <td>{compactNumber(row.conversions)}</td>
+                          <td>{row.revenue ? formatDualCurrency(row.revenue, marketCampaign) : '-'}</td>
+                          <td>{row.cpa ? formatDualCurrency(row.cpa, marketCampaign) : '-'}</td>
+                          <td>{row.cost ? `${Math.round(row.roas)}%` : '-'}</td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              <small className="campaign-market-report-note">비용·매출이 없는 국가는 실제 정산 또는 전환 이벤트 연결 전까지 ‘-’로 표시합니다.</small>
+            </section>
 
             <div className="dashboard-section-label report-section-pad">
               <span className="mini-label">품질 스코어</span>
@@ -20582,21 +20986,74 @@ function AppContent() {
                     </select>
                   </label>
                 </div>
+                <div className="campaign-market-mode" role="group" aria-label="캠페인 국가 운영 방식">
+                  <button
+                    className={campaignDraft.marketMode === CAMPAIGN_MARKET_MODES.single ? 'active' : ''}
+                    type="button"
+                    onClick={() => setCampaignDraft((current) => ({
+                      ...applyPrimaryCampaignMarket(current, [current.targetCountry || current.targetMarkets?.[0] || 'KR']),
+                      marketMode: CAMPAIGN_MARKET_MODES.single,
+                    }))}
+                  >
+                    <strong>단일 국가</strong>
+                    <span>한 국가의 섭외와 성과를 집중 운영</span>
+                  </button>
+                  <button
+                    className={campaignDraft.marketMode === CAMPAIGN_MARKET_MODES.multi ? 'active' : ''}
+                    type="button"
+                    onClick={() => setCampaignDraft((current) => ({
+                      ...current,
+                      marketMode: CAMPAIGN_MARKET_MODES.multi,
+                      targetMarkets: current.targetMarkets?.length ? current.targetMarkets : [current.targetCountry || 'KR'],
+                    }))}
+                  >
+                    <strong>글로벌 다국가</strong>
+                    <span>여러 국가를 통합 운영하고 국가별 비교</span>
+                  </button>
+                </div>
+                {campaignDraft.marketMode === CAMPAIGN_MARKET_MODES.multi ? (
+                  <div className="campaign-market-picker">
+                    <span>운영 마켓을 모두 선택하세요. 첫 번째 선택 국가가 대표 통화·언어 기준입니다.</span>
+                    <div>
+                      {MARKET_OPTIONS.map((market) => (
+                        <label key={market.country}>
+                          <input
+                            type="checkbox"
+                            checked={campaignDraft.targetMarkets.includes(market.country)}
+                            onChange={() => setCampaignDraft((current) => toggleCampaignMarket(current, market.country))}
+                          />
+                          <strong>{market.label}</strong>
+                          <small>{market.country} · {market.currency}</small>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
                 <div className="modal-two-col">
                   <label>
-                    운영 국가
+                    {campaignDraft.marketMode === CAMPAIGN_MARKET_MODES.multi ? '대표 국가' : '운영 국가'}
                     <select
                       value={campaignDraft.targetCountry}
                       onChange={(event) => {
-                        const market = getMarketConfig(event.target.value)
-                        setCampaignDraft({ ...campaignDraft, targetCountry: market.country, outputLanguage: market.language, localCurrency: market.currency, exchangeRateKrw: String(market.exchangeRateKrw) })
+                        const nextCountry = event.target.value
+                        setCampaignDraft((current) => (
+                          applyPrimaryCampaignMarket(
+                            current,
+                            current.marketMode === CAMPAIGN_MARKET_MODES.multi
+                              ? [nextCountry, ...current.targetMarkets.filter((country) => country !== nextCountry)]
+                              : [nextCountry],
+                          )
+                        ))
                       }}
                     >
-                      {MARKET_OPTIONS.map((market) => <option key={market.country} value={market.country}>{market.label}</option>)}
+                      {(campaignDraft.marketMode === CAMPAIGN_MARKET_MODES.multi
+                        ? MARKET_OPTIONS.filter((market) => campaignDraft.targetMarkets.includes(market.country))
+                        : MARKET_OPTIONS
+                      ).map((market) => <option key={market.country} value={market.country}>{market.label}</option>)}
                     </select>
                   </label>
                   <label>
-                    산출물 언어
+                    대표 산출물 언어
                     <select value={campaignDraft.outputLanguage} onChange={(event) => setCampaignDraft({ ...campaignDraft, outputLanguage: event.target.value })}>
                       {LANGUAGE_OPTIONS.map((language) => <option key={language.value} value={language.value}>{language.label}</option>)}
                     </select>
@@ -21031,14 +21488,22 @@ function AppContent() {
                   />
                 </label>
               </div>
-              <label>
-                지역
-                <input
-                  value={creatorDraft.city}
-                  onChange={(event) => setCreatorDraft({ ...creatorDraft, city: event.target.value })}
-                  placeholder="서울"
-                />
-              </label>
+              <div className="modal-two-col">
+                <label>
+                  활동 국가
+                  <select value={creatorDraft.country} onChange={(event) => setCreatorDraft({ ...creatorDraft, country: event.target.value })}>
+                    {MARKET_OPTIONS.map((market) => <option key={market.country} value={market.country}>{market.label} · {market.country}</option>)}
+                  </select>
+                </label>
+                <label>
+                  지역/도시
+                  <input
+                    value={creatorDraft.city}
+                    onChange={(event) => setCreatorDraft({ ...creatorDraft, city: event.target.value })}
+                    placeholder="서울, Tokyo, New York"
+                  />
+                </label>
+              </div>
               <label>
                 키워드
                 <input
@@ -21140,13 +21605,34 @@ function AppContent() {
                 캠페인
                 <select
                   value={trackingDraft.campaignId || selectedCampaign?.id || ''}
-                  onChange={(event) => setTrackingDraft({ ...trackingDraft, campaignId: event.target.value })}
+                  onChange={(event) => {
+                    const campaign = brandCampaigns.find((item) => item.id === Number(event.target.value))
+                    setTrackingDraft({
+                      ...trackingDraft,
+                      campaignId: event.target.value,
+                      marketCountry: getCampaignMarketCountries(campaign)[0] || '',
+                    })
+                  }}
                 >
                   {brandCampaigns.map((campaign) => (
                     <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
                   ))}
                 </select>
               </label>
+              {isMultiMarketCampaign(trackingDraftCampaign) && (
+                <label>
+                  운영 국가
+                  <select
+                    value={trackingDraft.marketCountry || getCampaignMarketCountries(trackingDraftCampaign)[0] || ''}
+                    onChange={(event) => setTrackingDraft({ ...trackingDraft, marketCountry: event.target.value })}
+                  >
+                    {normalizeCampaignMarkets(trackingDraftCampaign).map((market) => (
+                      <option key={market.country} value={market.country}>{market.label} · {market.country}</option>
+                    ))}
+                  </select>
+                  <span>이 콘텐츠의 국가별 성과 리포트 귀속 기준입니다.</span>
+                </label>
+              )}
               <label>
                 콘텐츠 URL · 필수
                 <input
@@ -21246,7 +21732,14 @@ function AppContent() {
                   캠페인
                   <select
                     value={fulfillmentDraft.campaignId || selectedCampaign?.id || ''}
-                    onChange={(event) => setFulfillmentDraft({ ...fulfillmentDraft, campaignId: event.target.value })}
+                    onChange={(event) => {
+                      const nextCampaign = brandCampaigns.find((campaign) => campaign.id === Number(event.target.value))
+                      setFulfillmentDraft({
+                        ...fulfillmentDraft,
+                        campaignId: event.target.value,
+                        marketCountry: getCampaignMarketCountries(nextCampaign)[0] || '',
+                      })
+                    }}
                   >
                     {brandCampaigns.map((campaign) => (
                       <option key={campaign.id} value={campaign.id}>{campaign.name}</option>
@@ -21262,6 +21755,7 @@ function AppContent() {
                       setFulfillmentDraft({
                         ...fulfillmentDraft,
                         creatorId: event.target.value,
+                        marketCountry: resolveCampaignRecordMarket(fulfillmentDraftCampaign, nextCreator?.country, nextCreator?.searchCountry),
                         recipient: nextCreator?.name ?? fulfillmentDraft.recipient,
                         handle: nextCreator?.handle ?? fulfillmentDraft.handle,
                         accountHolder: nextCreator?.name ?? fulfillmentDraft.accountHolder,
@@ -21274,6 +21768,20 @@ function AppContent() {
                   </select>
                 </label>
               </div>
+              {isMultiMarketCampaign(fulfillmentDraftCampaign) && (
+                <label>
+                  운영 국가
+                  <select
+                    value={fulfillmentDraft.marketCountry || getCampaignMarketCountries(fulfillmentDraftCampaign)[0] || ''}
+                    onChange={(event) => setFulfillmentDraft({ ...fulfillmentDraft, marketCountry: event.target.value })}
+                  >
+                    {normalizeCampaignMarkets(fulfillmentDraftCampaign).map((market) => (
+                      <option key={market.country} value={market.country}>{market.label} · {market.country}</option>
+                    ))}
+                  </select>
+                  <span>배송비·지급액이 집계될 국가를 지정합니다.</span>
+                </label>
+              )}
               <div className="modal-two-col">
                 <label>
                   결제일
@@ -22658,7 +23166,7 @@ function CampaignCard({ campaign, creators, kpiSummary, onOpen, onDelete }) {
           </div>
           <h3>{campaign.name}</h3>
           <p>
-            {campaign.owner} · {creators.length}명 배정
+            {getCampaignMarketSummary(campaign)} · {campaign.owner} · {creators.length}명 배정
           </p>
         </div>
       </div>

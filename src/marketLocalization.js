@@ -14,22 +14,83 @@ export const LANGUAGE_OPTIONS = [
   { value: 'zh-CN', label: '중국어(간체)' },
 ]
 
+export const CAMPAIGN_MARKET_MODES = {
+  single: 'single',
+  multi: 'multi',
+}
+
 export function getMarketConfig(country = 'KR') {
   return MARKET_OPTIONS.find((market) => market.country === country) || MARKET_OPTIONS[0]
 }
 
+export function normalizeCampaignMarkets(campaign = {}) {
+  const sourceMarkets = Array.isArray(campaign.markets) && campaign.markets.length
+    ? campaign.markets
+    : Array.isArray(campaign.targetMarkets) && campaign.targetMarkets.length
+      ? campaign.targetMarkets
+      : [campaign.targetCountry || campaign.country || 'KR']
+  const seen = new Set()
+
+  return sourceMarkets
+    .map((entry) => {
+      const country = String(typeof entry === 'string' ? entry : entry?.country || '').toUpperCase()
+      if (!country || seen.has(country)) return null
+      seen.add(country)
+      const fallback = getMarketConfig(country)
+      const source = typeof entry === 'string' ? {} : entry
+      return {
+        country,
+        label: source.label || fallback.label,
+        language: source.language || fallback.language,
+        languageLabel: source.languageLabel || fallback.languageLabel,
+        currency: source.currency || fallback.currency,
+        currencySymbol: source.currencySymbol || fallback.currencySymbol,
+        exchangeRateKrw: Number(source.exchangeRateKrw) > 0
+          ? Number(source.exchangeRateKrw)
+          : fallback.exchangeRateKrw,
+        exchangeRateSource: source.exchangeRateSource || campaign.exchangeRateSource || '운영 기준환율(수동)',
+        exchangeRateUpdatedAt: source.exchangeRateUpdatedAt || campaign.exchangeRateUpdatedAt || '',
+      }
+    })
+    .filter(Boolean)
+}
+
+export function getCampaignMarketCountries(campaign = {}) {
+  return normalizeCampaignMarkets(campaign).map((market) => market.country)
+}
+
+export function isMultiMarketCampaign(campaign = {}) {
+  return campaign.marketMode === CAMPAIGN_MARKET_MODES.multi || getCampaignMarketCountries(campaign).length > 1
+}
+
+export function buildCampaignMarkets(countries = [], campaign = {}) {
+  const existing = new Map(normalizeCampaignMarkets(campaign).map((market) => [market.country, market]))
+  return [...new Set((Array.isArray(countries) ? countries : [countries]).map((country) => String(country || '').toUpperCase()).filter(Boolean))]
+    .map((country) => existing.get(country) || normalizeCampaignMarkets({ targetCountry: country })[0])
+    .filter(Boolean)
+}
+
+export function resolveCampaignMarketCountry(campaign = {}, country = '') {
+  const markets = normalizeCampaignMarkets(campaign)
+  const requested = String(country || '').toUpperCase()
+  if (requested && markets.some((market) => market.country === requested)) return requested
+  return markets[0]?.country || 'KR'
+}
+
 export function normalizeCampaignMarket(campaign = {}) {
-  const fallback = getMarketConfig(campaign.targetCountry || campaign.country || 'KR')
+  const campaignMarkets = normalizeCampaignMarkets(campaign)
+  const primaryMarket = campaignMarkets[0]
+  const fallback = getMarketConfig(primaryMarket?.country || campaign.targetCountry || campaign.country || 'KR')
   return {
-    country: campaign.targetCountry || fallback.country,
-    countryLabel: fallback.label,
-    language: campaign.outputLanguage || fallback.language,
-    languageLabel: LANGUAGE_OPTIONS.find((item) => item.value === (campaign.outputLanguage || fallback.language))?.label || fallback.languageLabel,
-    currency: campaign.localCurrency || fallback.currency,
-    currencySymbol: fallback.currencySymbol,
-    exchangeRateKrw: Number(campaign.exchangeRateKrw) > 0 ? Number(campaign.exchangeRateKrw) : fallback.exchangeRateKrw,
-    exchangeRateSource: campaign.exchangeRateSource || '운영 기준환율(수동)',
-    exchangeRateUpdatedAt: campaign.exchangeRateUpdatedAt || '',
+    country: primaryMarket?.country || campaign.targetCountry || fallback.country,
+    countryLabel: primaryMarket?.label || fallback.label,
+    language: campaign.outputLanguage || primaryMarket?.language || fallback.language,
+    languageLabel: LANGUAGE_OPTIONS.find((item) => item.value === (campaign.outputLanguage || primaryMarket?.language || fallback.language))?.label || primaryMarket?.languageLabel || fallback.languageLabel,
+    currency: campaign.localCurrency || primaryMarket?.currency || fallback.currency,
+    currencySymbol: primaryMarket?.currencySymbol || fallback.currencySymbol,
+    exchangeRateKrw: Number(campaign.exchangeRateKrw) > 0 ? Number(campaign.exchangeRateKrw) : primaryMarket?.exchangeRateKrw || fallback.exchangeRateKrw,
+    exchangeRateSource: campaign.exchangeRateSource || primaryMarket?.exchangeRateSource || '운영 기준환율(수동)',
+    exchangeRateUpdatedAt: campaign.exchangeRateUpdatedAt || primaryMarket?.exchangeRateUpdatedAt || '',
   }
 }
 
