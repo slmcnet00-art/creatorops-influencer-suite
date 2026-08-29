@@ -9032,7 +9032,7 @@ function AppContent() {
       let cost = fulfillmentRows.reduce((sum, record) => sum + Number(record.paymentAmount || 0), 0) +
         operationRows.reduce((sum, record) => sum + Number(record.actualCost || 0), 0)
       if (marketRows.length === 1) {
-        if (!cost) cost = Number(selectedCampaign.spend || 0)
+        cost = Math.max(cost, Number(selectedCampaign.spend || 0))
         if (!revenue) revenue = Number(selectedCampaign.revenue || 0)
       }
 
