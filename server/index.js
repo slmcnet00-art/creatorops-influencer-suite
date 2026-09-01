@@ -1,9 +1,11 @@
 import { config as loadEnv } from 'dotenv'
 import cors from 'cors'
 import express from 'express'
+import JSZip from 'jszip'
 import { lookup } from 'node:dns/promises'
 import { existsSync } from 'node:fs'
 import { isIP } from 'node:net'
+import { inflateRawSync } from 'node:zlib'
 import { createClient } from '@supabase/supabase-js'
 import { readSheet as readNodeSheet } from 'read-excel-file/node'
 import {
@@ -589,14 +591,29 @@ function normalizeKnowledgeDownloadUrl(value) {
   const url = new URL(sourceUrl)
   const driveFileMatch = url.hostname === 'drive.google.com' && url.pathname.match(/^\/file\/d\/([^/]+)/)
   if (driveFileMatch) {
-    return { sourceUrl, downloadUrl: `https://drive.google.com/uc?export=download&id=${encodeURIComponent(driveFileMatch[1])}`, fallbackName: '' }
+    return { sourceUrl, downloadUrls: [`https://drive.usercontent.google.com/download?id=${encodeURIComponent(driveFileMatch[1])}&export=download&confirm=t`], fallbackName: '' }
   }
   const sheetMatch = ['docs.google.com', 'sheets.google.com'].includes(url.hostname) && url.pathname.match(/^\/spreadsheets\/d\/([^/]+)/)
   if (sheetMatch) {
-    return { sourceUrl, downloadUrl: `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetMatch[1])}/export?format=xlsx`, fallbackName: `google-sheet-${sheetMatch[1]}.xlsx` }
+    return {
+      sourceUrl,
+      downloadUrls: [
+        `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetMatch[1])}/export?format=xlsx`,
+        `https://drive.usercontent.google.com/download?id=${encodeURIComponent(sheetMatch[1])}&export=download&confirm=t`,
+      ],
+      fallbackName: `google-sheet-${sheetMatch[1]}.xlsx`,
+    }
   }
   const fallbackName = decodeURIComponent(url.pathname.split('/').filter(Boolean).pop() || '')
-  return { sourceUrl, downloadUrl: sourceUrl, fallbackName }
+  return { sourceUrl, downloadUrls: [sourceUrl], fallbackName }
+}
+
+function readableHeaderFileName(value = '') {
+  const original = String(value).trim()
+  if (!original || !/[\u0080-\u00ff]/.test(original)) return original
+  const decoded = Buffer.from(original, 'latin1').toString('utf8')
+  const koreanCount = (decoded.match(/[가-힣]/g) || []).length
+  return decoded.includes('\ufffd') || !koreanCount ? original : decoded
 }
 
 function responseFileName(response, fallbackName = '') {
@@ -606,7 +623,7 @@ function responseFileName(response, fallbackName = '') {
     try { return decodeURIComponent(utf8Match[1].replace(/^"|"$/g, '')) } catch { /* use fallback */ }
   }
   const plainMatch = disposition.match(/filename="?([^";]+)"?/i)
-  return String(plainMatch?.[1] || fallbackName || '').trim()
+  return readableHeaderFileName(plainMatch?.[1] || fallbackName || '')
 }
 
 function inferKnowledgeExtension(fileName, contentType = '') {
@@ -633,22 +650,103 @@ async function readKnowledgeResponseBuffer(response) {
   return Buffer.concat(chunks, totalBytes)
 }
 
+function decodeSpreadsheetXml(value = '') {
+  return String(value)
+    .replace(/&#x([0-9a-f]+);/gi, (_match, code) => String.fromCodePoint(Number.parseInt(code, 16)))
+    .replace(/&#(\d+);/g, (_match, code) => String.fromCodePoint(Number(code)))
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&amp;/g, '&')
+}
+
+function spreadsheetCellText(cellXml = '') {
+  const inlineValues = [...cellXml.matchAll(/<t(?:\s[^>]*)?>([\s\S]*?)<\/t>/g)].map((match) => match[1])
+  if (inlineValues.length) return decodeSpreadsheetXml(inlineValues.join(''))
+  const value = cellXml.match(/<v>([\s\S]*?)<\/v>/)?.[1] || ''
+  return decodeSpreadsheetXml(value)
+}
+
+async function readRecoverableXlsxText(buffer) {
+  try {
+    const rows = await readNodeSheet(buffer)
+    return rows.map((row) => row.map((cell) => String(cell ?? '')).join('\t')).join('\n')
+  } catch (originalError) {
+    const worksheets = new Map()
+    try {
+      const archive = await JSZip.loadAsync(buffer)
+      const sheetNames = Object.keys(archive.files).filter((name) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(name))
+      for (const sheetName of sheetNames) {
+        try { worksheets.set(sheetName, await archive.file(sheetName)?.async('string')) } catch { /* recover below */ }
+      }
+    } catch {
+      // Some source workbooks have a damaged central directory while their worksheet entries remain readable.
+    }
+    for (let offset = 0; offset <= buffer.length - 30; offset += 1) {
+      if (buffer.readUInt32LE(offset) !== 0x04034b50) continue
+      const method = buffer.readUInt16LE(offset + 8)
+      const compressedSize = buffer.readUInt32LE(offset + 18)
+      const fileNameLength = buffer.readUInt16LE(offset + 26)
+      const extraLength = buffer.readUInt16LE(offset + 28)
+      const nameStart = offset + 30
+      const dataStart = nameStart + fileNameLength + extraLength
+      const dataEnd = dataStart + compressedSize
+      if (dataEnd > buffer.length) continue
+      const sheetName = buffer.subarray(nameStart, nameStart + fileNameLength).toString('utf8')
+      if (!/^xl\/worksheets\/sheet\d+\.xml$/i.test(sheetName) || worksheets.has(sheetName)) continue
+      try {
+        const compressed = buffer.subarray(dataStart, dataEnd)
+        const xml = method === 8 ? inflateRawSync(compressed).toString('utf8') : method === 0 ? compressed.toString('utf8') : ''
+        if (xml) worksheets.set(sheetName, xml)
+      } catch {
+        // Skip only the damaged worksheet entry.
+      }
+    }
+    const sheetNames = [...worksheets.keys()]
+      .sort((left, right) => Number(left.match(/sheet(\d+)/i)?.[1]) - Number(right.match(/sheet(\d+)/i)?.[1]))
+    const recoveredSheets = []
+    for (const [index, sheetName] of sheetNames.entries()) {
+      try {
+        const xml = worksheets.get(sheetName)
+        const rows = [...String(xml || '').matchAll(/<row\b[^>]*>([\s\S]*?)<\/row>/g)]
+          .map((rowMatch) => [...rowMatch[1].matchAll(/<c\b[^>]*>([\s\S]*?)<\/c>/g)]
+            .map((cellMatch) => spreadsheetCellText(cellMatch[1])).filter(Boolean).join('\t'))
+          .filter(Boolean)
+        if (rows.length) recoveredSheets.push(`[시트 ${index + 1}]\n${rows.join('\n')}`)
+      } catch {
+        // A damaged worksheet must not discard the readable worksheets in the same workbook.
+      }
+    }
+    if (!recoveredSheets.length) throw originalError
+    return recoveredSheets.join('\n\n')
+  }
+}
+
+async function downloadKnowledgeResponse(downloadUrls) {
+  let lastResponse
+  for (const initialUrl of downloadUrls) {
+    let currentUrl = initialUrl
+    for (let redirectCount = 0; redirectCount <= 5; redirectCount += 1) {
+      currentUrl = await assertPublicKnowledgeUrl(currentUrl)
+      lastResponse = await fetch(currentUrl, {
+        headers: { Accept: 'text/plain,text/markdown,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,*/*;q=0.5', 'User-Agent': 'CreatorOpsKnowledgeImporter/1.0' },
+        redirect: 'manual',
+        signal: AbortSignal.timeout(15_000),
+      })
+      if (![301, 302, 303, 307, 308].includes(lastResponse.status)) break
+      const location = lastResponse.headers.get('location')
+      if (!location || redirectCount === 5) throw httpError(400, 'The learning material URL has too many redirects.')
+      currentUrl = new URL(location, currentUrl).toString()
+    }
+    if (lastResponse?.ok) return lastResponse
+  }
+  return lastResponse
+}
+
 async function fetchKnowledgeUrlAttachment(value, featureKey) {
   const normalized = normalizeKnowledgeDownloadUrl(value)
-  let currentUrl = normalized.downloadUrl
-  let response
-  for (let redirectCount = 0; redirectCount <= 5; redirectCount += 1) {
-    currentUrl = await assertPublicKnowledgeUrl(currentUrl)
-    response = await fetch(currentUrl, {
-      headers: { Accept: 'text/plain,text/markdown,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,*/*;q=0.5', 'User-Agent': 'CreatorOpsKnowledgeImporter/1.0' },
-      redirect: 'manual',
-      signal: AbortSignal.timeout(15_000),
-    })
-    if (![301, 302, 303, 307, 308].includes(response.status)) break
-    const location = response.headers.get('location')
-    if (!location || redirectCount === 5) throw httpError(400, 'The learning material URL has too many redirects.')
-    currentUrl = new URL(location, currentUrl).toString()
-  }
+  const response = await downloadKnowledgeResponse(normalized.downloadUrls)
   if (!response?.ok) throw httpError(response?.status || 502, `Learning material download failed with ${response?.status || 'an unknown status'}.`)
   const declaredSize = Number(response.headers.get('content-length') || 0)
   if (declaredSize > AI_KNOWLEDGE_URL_MAX_BYTES) throw httpError(413, 'URL learning materials must be 10MB or smaller.')
@@ -662,8 +760,7 @@ async function fetchKnowledgeUrlAttachment(value, featureKey) {
     : `url-learning-material.${extension}`
   let text
   if (extension === 'xlsx') {
-    const rows = await readNodeSheet(buffer)
-    text = rows.map((row) => row.map((cell) => String(cell ?? '')).join('\t')).join('\n')
+    text = await readRecoverableXlsxText(buffer)
   } else {
     text = new TextDecoder().decode(buffer)
     if (extension === 'json') {
@@ -677,7 +774,7 @@ async function fetchKnowledgeUrlAttachment(value, featureKey) {
     type: contentType || extension,
     size: buffer.byteLength,
     text: text.slice(0, 120_000),
-    sourceType: 'url',
+    sourceType: normalized.sourceUrl.includes('drive.google.com') || normalized.sourceUrl.includes('docs.google.com') ? 'google_drive' : 'url',
     sourceUrl: normalized.sourceUrl,
     uploadedAt: new Date().toISOString(),
   }
@@ -701,8 +798,10 @@ function normalizeAiFeatureConfig(featureKey, value = {}) {
       type: String(item?.type || 'text'),
       size: Number(item?.size || 0),
       text: String(item?.text || '').slice(0, 120_000),
-      sourceType: item?.sourceType === 'url' ? 'url' : 'file',
+      sourceType: ['url', 'google_drive'].includes(item?.sourceType) ? item.sourceType : 'file',
       sourceUrl: safeKnowledgeSourceUrl(item?.sourceUrl),
+      sourceFolderUrl: safeKnowledgeSourceUrl(item?.sourceFolderUrl),
+      sourceModifiedAt: item?.sourceModifiedAt || null,
       uploadedAt: item?.uploadedAt || new Date().toISOString(),
     }))
     : []
@@ -715,6 +814,10 @@ function normalizeAiFeatureConfig(featureKey, value = {}) {
     version: String(value.version || 'v1.0').slice(0, 40),
     status: value.status === 'active' ? 'active' : 'draft',
     attachments,
+    sourceRootUrl: safeKnowledgeSourceUrl(value.sourceRootUrl),
+    sourceFolderUrl: safeKnowledgeSourceUrl(value.sourceFolderUrl),
+    strategyUploadUrl: safeKnowledgeSourceUrl(value.strategyUploadUrl),
+    sourceSyncedAt: value.sourceSyncedAt || null,
     updatedAt: value.updatedAt || new Date().toISOString(),
   }
 }

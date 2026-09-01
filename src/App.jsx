@@ -32,12 +32,17 @@ import {
   Target,
   Trash2,
   TrendingUp,
+  UploadCloud,
   UsersRound,
   Video,
   WalletCards,
   X,
 } from 'lucide-react'
 import './App.css'
+import {
+  CREATOROPS_LEARNING_ROOT_URL,
+  CREATOROPS_STRATEGY_UPLOAD_URL,
+} from '../shared/creatorOpsLearningSources'
 import { isYouTubeEnglishReviewMode, useEnglishReviewMode } from './useEnglishReviewMode'
 import {
   buildPermissionTestAccounts,
@@ -6571,7 +6576,9 @@ function buildDataRoomExtendedRawCatalog({
       lastCollectedAt: nowText,
       nextCollectAt: '프롬프트 또는 학습자료 변경 시',
       status: '정상',
-      sourceLocation: '관리자 콘솔 > AI 학습·정책',
+      sourceLocation: 'Google Drive > creatorops / 학습자료 > 공통 + 기능별 5개 폴더',
+      sourceUrl: CREATOROPS_LEARNING_ROOT_URL,
+      strategyUploadUrl: CREATOROPS_STRATEGY_UPLOAD_URL,
       storageLocation: 'Supabase workspaces.settings.aiFeatureConfigs / 서버 메모리 fallback',
       dashboardArea: 'AI 추천, 캠페인 전략, 콘텐츠 가이드, 제안 메시지, 레퍼런스 분석, 데이터룸',
       metricIds: ['MET-AI-001', 'MET-AI-003', 'MET-AI-006', 'MET-AI-GEN-001', 'MET-AI-GEN-002', 'MET-GUIDE-001'],
@@ -6580,7 +6587,7 @@ function buildDataRoomExtendedRawCatalog({
       techOwner: 'AI/Backend',
       qualityIssue: '초안은 실행에 반영하지 않으며 활성 버전 변경 시 이전 실행 결과와 버전을 함께 보존해야 함',
       logLocation: 'ai_generation_runs.sourceRawIds / API response policyVersion',
-      note: '활성 상태로 저장한 설정만 다음 AI 호출에 적용',
+      note: 'Drive 원본 15종을 공통 3종 + 기능별 자료로 분리 연결. 활성 상태로 저장한 설정만 다음 AI 호출에 적용',
       active: true,
     },
     {
@@ -19872,6 +19879,10 @@ function AppContent() {
                   <strong>캠페인 전략</strong>
                   <p>캠페인 생성 때 입력한 브랜드/제품 raw를 기준으로 섭외 방향, 후보 우선순위, 메시지 전략을 생성합니다.</p>
                   <div className="campaign-guide-actions">
+                    <a className="secondary-button compact-button" href={CREATOROPS_STRATEGY_UPLOAD_URL} target="_blank" rel="noreferrer">
+                      <UploadCloud size={16} />
+                      전략서 업로드
+                    </a>
                     <button
                       className="primary-button compact-button"
                       type="button"
@@ -21169,6 +21180,10 @@ function AppContent() {
                   <p>이번 캠페인의 상세페이지, USP, 금지/주의 표현, 기존 성과 자료를 첨부하면 가이드와 메시지에 반영합니다.</p>
                 </div>
                 <div className="campaign-guide-actions">
+                  <a className="secondary-button compact-button" href={CREATOROPS_STRATEGY_UPLOAD_URL} target="_blank" rel="noreferrer">
+                    <UploadCloud size={16} />
+                    전략서 업로드 폴더
+                  </a>
                   <button className="secondary-button compact-button" type="button" onClick={downloadCampaignGuideTemplate}>
                     <Download size={16} />
                     엑셀 양식

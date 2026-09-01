@@ -18,7 +18,8 @@
     "test:readiness": "node --test tests/readiness.test.mjs",
     "test:permissions": "node --test tests/access-control.test.mjs",
     "render:create-api": "node scripts/render-create-api.mjs",
-    "render:sync-env": "node scripts/render-sync-env.mjs"
+    "render:sync-env": "node scripts/render-sync-env.mjs",
+    "learning:sync-drive": "node scripts/sync-drive-learning.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",

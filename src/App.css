@@ -11427,6 +11427,16 @@
   line-height: 1.5;
 }
 
+.data-room-source-link {
+  display: inline-flex;
+  margin-top: 6px;
+  color: var(--accent);
+  font-weight: 850;
+  text-decoration: none;
+}
+
+.data-room-source-link:hover { text-decoration: underline; }
+
 .linked-chip-list {
   display: flex;
   flex-wrap: wrap;

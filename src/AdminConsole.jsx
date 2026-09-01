@@ -3,10 +3,15 @@ import readSheet from 'read-excel-file/browser'
 import {
   Activity, ArrowLeft, Bot, CheckCircle2, ChevronRight, CircleX, Clock3, Database,
   Building2, CheckSquare2, ChevronDown, ExternalLink, FileClock, FileText, KeyRound,
-  LayoutDashboard, Link2, Play, RefreshCw, Save, Search, ShieldCheck,
+  FolderOpen, LayoutDashboard, Link2, Play, RefreshCw, Save, Search, ShieldCheck,
   Trash2, UploadCloud, UserRoundCog, UsersRound, Workflow,
 } from 'lucide-react'
 import './AdminConsole.css'
+import {
+  CREATOROPS_LEARNING_FOLDERS,
+  CREATOROPS_LEARNING_ROOT_URL,
+  CREATOROPS_STRATEGY_UPLOAD_URL,
+} from '../shared/creatorOpsLearningSources'
 
 const knowledgeFileExtensions = new Set(['txt', 'md', 'csv', 'json', 'xlsx'])
 const maxKnowledgeFileCount = 20
@@ -92,6 +97,7 @@ export default function AdminConsole({
   const fileInputRef = useRef(null)
   const apiBaseUrl = String(backendConfig?.apiBaseUrl || '').replace(/\/$/, '')
   const selectedPolicy = policies.find((item) => item.id === selectedPolicyId) || policies[0]
+  const selectedPolicyFolder = CREATOROPS_LEARNING_FOLDERS[selectedPolicy?.id]
   const [accessView, setAccessView] = useState('accounts')
   const [accessSearch, setAccessSearch] = useState('')
   const [accessRoleFilter, setAccessRoleFilter] = useState('전체')
@@ -314,6 +320,12 @@ export default function AdminConsole({
         <section className="admin-policy-editor">
           <div className="admin-section-heading"><div><span>AI CONTROL</span><h2>{selectedPolicy.name}</h2></div><span className={`admin-state ${tone(selectedPolicy.status)}`}>{selectedPolicy.status === 'active' ? '활성' : '초안'}</span></div>
           <p className="admin-policy-help">활성 정책은 다음 AI 실행부터 자동으로 프롬프트에 합쳐집니다. 첨부자료는 원문 파일이 아니라 추출된 텍스트 지식으로 저장되어 추천·생성 시 참고됩니다.</p>
+          <div className="admin-drive-source-bar">
+            <div><strong>Google Drive 학습 출처</strong><small>공통 자료와 선택 기능 폴더의 원본을 함께 추적합니다.</small></div>
+            <a href={CREATOROPS_LEARNING_ROOT_URL} target="_blank" rel="noreferrer"><FolderOpen size={14} /> 전체 학습자료</a>
+            {selectedPolicyFolder && <a href={selectedPolicyFolder.url} target="_blank" rel="noreferrer"><FolderOpen size={14} /> {selectedPolicyFolder.label}</a>}
+            <a href={CREATOROPS_STRATEGY_UPLOAD_URL} target="_blank" rel="noreferrer"><UploadCloud size={14} /> 전략서 업로드</a>
+          </div>
           <label>기능 설명<textarea value={selectedPolicy.description || ''} onChange={(event) => updatePolicy({ description: event.target.value })} /></label>
           <label>관리자 프롬프트<textarea className="large" value={selectedPolicy.systemPrompt || ''} onChange={(event) => updatePolicy({ systemPrompt: event.target.value })} placeholder="AI가 반드시 따라야 할 역할, 우선순위, 판단 기준을 입력하세요." /></label>
           <label>운영 규칙<textarea className="large" value={selectedPolicy.rules || ''} onChange={(event) => updatePolicy({ rules: event.target.value })} placeholder="금지 규칙, 필수 출력 항목, 검증 기준을 입력하세요." /></label>
@@ -337,11 +349,11 @@ export default function AdminConsole({
             </div>
             <div className="admin-knowledge-divider"><span>또는</span></div>
             <div className="admin-knowledge-url-row">
-              <label><Link2 size={15} /><input aria-label="학습자료 URL" type="url" value={knowledgeUrl} onChange={(event) => setKnowledgeUrl(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); handleKnowledgeUrl() } }} placeholder="공개 파일 또는 Google Sheets URL" disabled={isImportingUrl || (selectedPolicy.attachments || []).length >= maxKnowledgeFileCount} /></label>
+              <label><Link2 size={15} /><input aria-label="학습자료 URL" type="url" value={knowledgeUrl} onChange={(event) => setKnowledgeUrl(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); handleKnowledgeUrl() } }} placeholder="공개 파일 또는 Google Drive·Sheets URL" disabled={isImportingUrl || (selectedPolicy.attachments || []).length >= maxKnowledgeFileCount} /></label>
               <button type="button" onClick={handleKnowledgeUrl} disabled={!knowledgeUrl.trim() || isImportingUrl || (selectedPolicy.attachments || []).length >= maxKnowledgeFileCount}>{isImportingUrl ? '읽는 중...' : 'URL 등록'}</button>
             </div>
             <small className="admin-knowledge-url-help">공개 접근 가능한 TXT·MD·CSV·JSON·XLSX 파일만 등록됩니다. URL 자료도 20개 제한에 포함됩니다.</small>
-            {(selectedPolicy.attachments || []).length ? <div className="admin-attachment-list">{selectedPolicy.attachments.map((file) => <div key={file.id}><span className="admin-file-extension">{file.extension || fileExtension(file.name)}</span><span><strong>{file.name}</strong><small>{file.sourceType === 'url' ? 'URL · ' : ''}{formatFileSize(file.size)} · {(file.text?.length || 0).toLocaleString()}자 추출</small></span>{file.sourceUrl ? <a className="admin-source-link" href={file.sourceUrl} target="_blank" rel="noreferrer" title="원본 링크 열기"><ExternalLink size={14} /></a> : <span /> }<button type="button" title="삭제" onClick={() => updatePolicy({ attachments: selectedPolicy.attachments.filter((item) => item.id !== file.id) })}><Trash2 size={14} /></button></div>)}</div> : <div className="admin-empty-knowledge"><FileText size={18} /> 연결된 학습자료가 없습니다.</div>}
+            {(selectedPolicy.attachments || []).length ? <div className="admin-attachment-list">{selectedPolicy.attachments.map((file) => <div key={file.id}><span className="admin-file-extension">{file.extension || fileExtension(file.name)}</span><span><strong>{file.name}</strong><small>{file.sourceType === 'google_drive' ? 'Google Drive · ' : file.sourceType === 'url' ? 'URL · ' : ''}{formatFileSize(file.size)} · {(file.text?.length || 0).toLocaleString()}자 추출{file.sourceModifiedAt ? ` · 원본 ${new Date(file.sourceModifiedAt).toLocaleDateString('ko-KR')}` : ''}</small></span>{file.sourceUrl ? <a className="admin-source-link" href={file.sourceUrl} target="_blank" rel="noreferrer" title="원본 링크 열기"><ExternalLink size={14} /></a> : <span /> }<button type="button" title="삭제" onClick={() => updatePolicy({ attachments: selectedPolicy.attachments.filter((item) => item.id !== file.id) })}><Trash2 size={14} /></button></div>)}</div> : <div className="admin-empty-knowledge"><FileText size={18} /> 연결된 학습자료가 없습니다.</div>}
           </div>
           <div className="admin-policy-meta"><label>버전<input value={selectedPolicy.version || ''} onChange={(event) => updatePolicy({ version: event.target.value })} /></label><label>상태<select value={selectedPolicy.status || 'draft'} onChange={(event) => updatePolicy({ status: event.target.value })}><option value="draft">초안</option><option value="active">활성</option></select></label></div>
           {saveState && <p className="admin-save-state">{saveState}</p>}
