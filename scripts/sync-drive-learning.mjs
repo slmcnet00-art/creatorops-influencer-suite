@@ -1,5 +1,6 @@
 import {
   CREATOROPS_FEATURE_LEARNING_SOURCES,
+  CREATOROPS_FEATURE_POLICY_DEFAULTS,
   CREATOROPS_LEARNING_FOLDERS,
   CREATOROPS_LEARNING_ROOT_URL,
   CREATOROPS_STRATEGY_UPLOAD_URL,
@@ -21,7 +22,10 @@ async function jsonRequest(path, options = {}) {
 
 const currentPayload = await jsonRequest('/admin/ai-configs')
 const currentConfigs = new Map((currentPayload.data?.configs || []).map((config) => [config.featureKey || config.id, config]))
-const importedByDriveId = new Map()
+const importedByDriveId = new Map((currentPayload.data?.configs || [])
+  .flatMap((config) => config.attachments || [])
+  .filter((attachment) => String(attachment.id || '').startsWith('drive-') && attachment.text)
+  .map((attachment) => [String(attachment.id).replace(/^drive-/, ''), attachment]))
 
 async function importSource(featureKey, source) {
   if (importedByDriveId.has(source.id)) return importedByDriveId.get(source.id)
@@ -49,9 +53,14 @@ for (const featureKey of Object.keys(CREATOROPS_FEATURE_LEARNING_SOURCES)) {
     attachments.push(await importSource(featureKey, source))
   }
   const current = currentConfigs.get(featureKey) || {}
+  const defaults = CREATOROPS_FEATURE_POLICY_DEFAULTS[featureKey]
   const nextConfig = {
     ...current,
     featureKey,
+    name: current.name && current.name !== featureKey ? current.name : defaults.name,
+    description: current.description || defaults.description,
+    systemPrompt: current.systemPrompt || defaults.systemPrompt,
+    rules: current.rules || defaults.rules,
     attachments,
     version,
     status: 'active',

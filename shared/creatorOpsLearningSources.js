@@ -12,6 +12,39 @@ export const CREATOROPS_LEARNING_FOLDERS = {
   developer: { label: '9. 개발팀 부록', url: 'https://drive.google.com/drive/folders/1_DSVlUvdhKyPZG5BlzihQs6bgw5Rz-_D' },
 }
 
+export const CREATOROPS_FEATURE_POLICY_DEFAULTS = {
+  'creator-recommendation': {
+    name: 'AI 인플루언서 추천',
+    description: '캠페인 브리프와 실제 후보 데이터를 바탕으로 추천 근거, 제안 각도, 주의점을 생성합니다.',
+    systemPrompt: '브랜드 적합성과 조회 성과를 우선하되 제공된 원천 데이터만 사용합니다. 확인되지 않은 수치를 만들지 않습니다.',
+    rules: '조회수 폭발력, 평균 조회수, 참여율, 콘텐츠 적합성, 데이터 신뢰도를 함께 평가합니다.',
+  },
+  'campaign-strategy': {
+    name: '캠페인 전략 생성',
+    description: '브랜드·제품·타깃·KPI를 바탕으로 실행 가능한 캠페인 전략을 생성합니다.',
+    systemPrompt: '브랜드 목표를 실행 구조, 콘텐츠 메시지, 채널별 역할, KPI로 구체화합니다.',
+    rules: '허위 후기, 여론 조작, 성과 보장은 제안하지 않습니다. 합법적인 협찬·광고 전략만 생성합니다.',
+  },
+  'content-guide': {
+    name: '인플루언서 가이드 생성',
+    description: '캠페인 전략과 저장한 제작 레퍼런스를 크리에이터 전달용 가이드로 변환합니다.',
+    systemPrompt: '크리에이터가 바로 촬영할 수 있도록 원메시지, 후킹, 컷 구성, 필수 노출, 금지 표현을 구체적으로 작성합니다.',
+    rules: '내부 계산식과 raw 데이터 ID는 최종 가이드에 노출하지 않습니다.',
+  },
+  'outreach-message': {
+    name: '제안 메시지 생성',
+    description: '후보별 추천 근거와 캠페인 조건을 친근하고 답변하기 쉬운 제안 메시지로 만듭니다.',
+    systemPrompt: '실제 콘텐츠를 확인한 듯한 구체적인 칭찬과 답변하기 쉬운 질문을 포함합니다.',
+    rules: '과장, 압박, 복붙투 문장을 피하고 광고 표기 안내를 자연스럽게 포함합니다.',
+  },
+  'reference-analysis': {
+    name: '레퍼런스 분석',
+    description: '저장한 콘텐츠에서 재사용할 후킹 구조, 장면, CTA를 추출합니다.',
+    systemPrompt: '원문을 복제하지 않고 구조와 정보 배열만 분석해 새 캠페인에 맞게 변형합니다.',
+    rules: '분석 대상은 사용자가 저장한 콘텐츠로 제한하며, 분석은 저장 이후 명시적으로 실행합니다.',
+  },
+}
+
 const driveFile = (folderKey, id, name, modifiedAt) => ({
   folderKey,
   id,
@@ -62,4 +95,3 @@ export const CREATOROPS_FEATURE_LEARNING_SOURCES = {
 export function getCreatorOpsLearningSources(featureKey) {
   return [...CREATOROPS_COMMON_LEARNING_SOURCES, ...(CREATOROPS_FEATURE_LEARNING_SOURCES[featureKey] || [])]
 }
-
