@@ -1,5 +1,6 @@
 export const CREATOROPS_LEARNING_ROOT_URL = 'https://drive.google.com/drive/folders/1nJT0g8GvbvNX2xzqVBCaIGHdIRdQWEvo'
-export const CREATOROPS_STRATEGY_UPLOAD_URL = 'https://drive.google.com/drive/folders/15N-WwgtT4YartS9I1GoZKjl0n11F1kmU'
+export const CREATOROPS_STRATEGY_DRIVE_FOLDER_URL = 'https://drive.google.com/drive/folders/15N-WwgtT4YartS9I1GoZKjl0n11F1kmU'
+export const CREATOROPS_STRATEGY_UPLOAD_URL = 'https://creatorops-influencer-suite.onrender.com/admin?section=policy&feature=campaign-strategy'
 
 export const CREATOROPS_LEARNING_FOLDERS = {
   common: { label: '0. 공통', url: 'https://drive.google.com/drive/folders/1KJZJHWaCDnITyVdEwn9iv9JAfKwE2shI' },
@@ -8,7 +9,7 @@ export const CREATOROPS_LEARNING_FOLDERS = {
   'content-guide': { label: '3. 인플루언서 가이드 생성', url: 'https://drive.google.com/drive/folders/1vSFamqVVTqJ9c__4KitA5VC31mUL5PRU' },
   'outreach-message': { label: '4. 제안 메시지 생성', url: 'https://drive.google.com/drive/folders/1XklHoVx04r_o0dM96TfFZTpxrZaSCFoz' },
   'reference-analysis': { label: '5. 레퍼런스 분석', url: 'https://drive.google.com/drive/folders/1B4Yq5FgutY4O1kQShs7e-LkZW82urqYI' },
-  strategyUpload: { label: '6. 전략서 업로드', url: CREATOROPS_STRATEGY_UPLOAD_URL },
+  strategyUpload: { label: '6. 전략서 보관', url: CREATOROPS_STRATEGY_DRIVE_FOLDER_URL },
   developer: { label: '9. 개발팀 부록', url: 'https://drive.google.com/drive/folders/1_DSVlUvdhKyPZG5BlzihQs6bgw5Rz-_D' },
 }
 

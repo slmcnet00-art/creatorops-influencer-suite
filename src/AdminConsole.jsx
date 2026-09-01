@@ -10,11 +10,21 @@ import './AdminConsole.css'
 import {
   CREATOROPS_LEARNING_FOLDERS,
   CREATOROPS_LEARNING_ROOT_URL,
-  CREATOROPS_STRATEGY_UPLOAD_URL,
 } from '../shared/creatorOpsLearningSources'
 
 const knowledgeFileExtensions = new Set(['txt', 'md', 'csv', 'json', 'xlsx'])
 const maxKnowledgeFileCount = 20
+const adminSectionIds = new Set(['overview', 'data', 'policy', 'automation', 'access', 'audit'])
+
+function initialAdminSection() {
+  const requested = typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('section')
+  return adminSectionIds.has(requested) ? requested : 'overview'
+}
+
+function initialPolicyId() {
+  const requested = typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('feature')
+  return defaultPolicies.some((policy) => policy.id === requested) ? requested : 'creator-recommendation'
+}
 
 function fileExtension(name = '') {
   return String(name).split('.').pop()?.toLowerCase() || ''
@@ -86,10 +96,10 @@ export default function AdminConsole({
   onUpdateAdminConfig, onUpdateAccountRole, onToggleBrandAccess,
   onTestApis, apiTestStatus, canManagePermissions = false,
 }) {
-  const [section, setSection] = useState('overview')
+  const [section, setSection] = useState(initialAdminSection)
   const [policies, setPolicies] = useState(() => mergePolicies(adminConfig?.policies))
   const [automations, setAutomations] = useState(adminConfig?.automations?.length ? adminConfig.automations : defaultAutomations)
-  const [selectedPolicyId, setSelectedPolicyId] = useState('creator-recommendation')
+  const [selectedPolicyId, setSelectedPolicyId] = useState(initialPolicyId)
   const [saveState, setSaveState] = useState('')
   const [isFileDragActive, setIsFileDragActive] = useState(false)
   const [knowledgeUrl, setKnowledgeUrl] = useState('')
@@ -324,13 +334,12 @@ export default function AdminConsole({
             <div><strong>Google Drive 학습 출처</strong><small>공통 자료와 선택 기능 폴더의 원본을 함께 추적합니다.</small></div>
             <a href={CREATOROPS_LEARNING_ROOT_URL} target="_blank" rel="noreferrer"><FolderOpen size={14} /> 전체 학습자료</a>
             {selectedPolicyFolder && <a href={selectedPolicyFolder.url} target="_blank" rel="noreferrer"><FolderOpen size={14} /> {selectedPolicyFolder.label}</a>}
-            <a href={CREATOROPS_STRATEGY_UPLOAD_URL} target="_blank" rel="noreferrer"><UploadCloud size={14} /> 전략서 업로드</a>
           </div>
           <label>기능 설명<textarea value={selectedPolicy.description || ''} onChange={(event) => updatePolicy({ description: event.target.value })} /></label>
           <label>관리자 프롬프트<textarea className="large" value={selectedPolicy.systemPrompt || ''} onChange={(event) => updatePolicy({ systemPrompt: event.target.value })} placeholder="AI가 반드시 따라야 할 역할, 우선순위, 판단 기준을 입력하세요." /></label>
           <label>운영 규칙<textarea className="large" value={selectedPolicy.rules || ''} onChange={(event) => updatePolicy({ rules: event.target.value })} placeholder="금지 규칙, 필수 출력 항목, 검증 기준을 입력하세요." /></label>
           <div className="admin-knowledge-block">
-            <div className="admin-knowledge-heading"><div><strong>학습자료</strong><small>TXT, MD, CSV, JSON, XLSX만 첨부할 수 있습니다.</small></div><span className="admin-knowledge-count">{(selectedPolicy.attachments || []).length} / {maxKnowledgeFileCount}</span></div>
+            <div className="admin-knowledge-heading"><div><strong>{selectedPolicy.id === 'campaign-strategy' ? '전략서 및 학습자료 업로드' : '학습자료'}</strong><small>TXT, MD, CSV, JSON, XLSX만 첨부할 수 있습니다.</small></div><span className="admin-knowledge-count">{(selectedPolicy.attachments || []).length} / {maxKnowledgeFileCount}</span></div>
             <input ref={fileInputRef} hidden multiple type="file" accept=".txt,.md,.csv,.json,.xlsx" onChange={(event) => { handleFiles(event.target.files); event.target.value = '' }} />
             <div
               className={`admin-knowledge-dropzone ${isFileDragActive ? 'active' : ''} ${(selectedPolicy.attachments || []).length >= maxKnowledgeFileCount ? 'disabled' : ''}`}

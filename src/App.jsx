@@ -19881,7 +19881,7 @@ function AppContent() {
                   <div className="campaign-guide-actions">
                     <a className="secondary-button compact-button" href={CREATOROPS_STRATEGY_UPLOAD_URL} target="_blank" rel="noreferrer">
                       <UploadCloud size={16} />
-                      전략서 업로드
+                      관리자에서 전략서 업로드
                     </a>
                     <button
                       className="primary-button compact-button"
@@ -21182,7 +21182,7 @@ function AppContent() {
                 <div className="campaign-guide-actions">
                   <a className="secondary-button compact-button" href={CREATOROPS_STRATEGY_UPLOAD_URL} target="_blank" rel="noreferrer">
                     <UploadCloud size={16} />
-                    전략서 업로드 폴더
+                    관리자에서 전략서 업로드
                   </a>
                   <button className="secondary-button compact-button" type="button" onClick={downloadCampaignGuideTemplate}>
                     <Download size={16} />
