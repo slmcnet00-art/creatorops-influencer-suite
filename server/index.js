@@ -1,8 +1,11 @@
 import { config as loadEnv } from 'dotenv'
 import cors from 'cors'
 import express from 'express'
+import { lookup } from 'node:dns/promises'
 import { existsSync } from 'node:fs'
+import { isIP } from 'node:net'
 import { createClient } from '@supabase/supabase-js'
+import { readSheet as readNodeSheet } from 'read-excel-file/node'
 import {
   buildReadinessReport,
   getConfigurationReadiness,
@@ -530,9 +533,154 @@ async function ensureDataRoomWorkspace(supabase, workspaceId = WORKSPACE_ID) {
 }
 
 const AI_KNOWLEDGE_FILE_EXTENSIONS = new Set(['txt', 'md', 'csv', 'json', 'xlsx'])
+const AI_KNOWLEDGE_URL_MAX_BYTES = 10 * 1024 * 1024
 
 function aiKnowledgeFileExtension(name = '') {
   return String(name).split('.').pop()?.toLowerCase() || ''
+}
+
+function safeKnowledgeSourceUrl(value) {
+  try {
+    const url = new URL(String(value || '').trim())
+    if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return ''
+    return url.toString()
+  } catch {
+    return ''
+  }
+}
+
+function isPrivateNetworkAddress(address) {
+  const normalized = String(address || '').toLowerCase()
+  if (!isIP(normalized)) return true
+  if (normalized.includes(':')) {
+    if (normalized === '::1' || normalized === '::' || normalized.startsWith('fe80:') || normalized.startsWith('fc') || normalized.startsWith('fd')) return true
+    if (normalized.startsWith('::ffff:')) return isPrivateNetworkAddress(normalized.slice(7))
+    return false
+  }
+  const [a, b] = normalized.split('.').map(Number)
+  return a === 0 || a === 10 || a === 127 || a >= 224
+    || (a === 100 && b >= 64 && b <= 127)
+    || (a === 169 && b === 254)
+    || (a === 172 && b >= 16 && b <= 31)
+    || (a === 192 && b === 168)
+}
+
+async function assertPublicKnowledgeUrl(value) {
+  const safeUrl = safeKnowledgeSourceUrl(value)
+  if (!safeUrl) throw httpError(400, 'A valid public http or https URL is required.')
+  const url = new URL(safeUrl)
+  const hostname = url.hostname.toLowerCase()
+  if (hostname === 'localhost' || hostname.endsWith('.localhost')) throw httpError(400, 'Private or local URLs are not supported.')
+  let addresses
+  try {
+    addresses = await lookup(hostname, { all: true, verbatim: true })
+  } catch {
+    throw httpError(400, 'The learning material URL hostname could not be resolved.')
+  }
+  if (!addresses.length || addresses.some((item) => isPrivateNetworkAddress(item.address))) {
+    throw httpError(400, 'Private or local URLs are not supported.')
+  }
+  return safeUrl
+}
+
+function normalizeKnowledgeDownloadUrl(value) {
+  const sourceUrl = safeKnowledgeSourceUrl(value)
+  if (!sourceUrl) throw httpError(400, 'A valid public http or https URL is required.')
+  const url = new URL(sourceUrl)
+  const driveFileMatch = url.hostname === 'drive.google.com' && url.pathname.match(/^\/file\/d\/([^/]+)/)
+  if (driveFileMatch) {
+    return { sourceUrl, downloadUrl: `https://drive.google.com/uc?export=download&id=${encodeURIComponent(driveFileMatch[1])}`, fallbackName: '' }
+  }
+  const sheetMatch = ['docs.google.com', 'sheets.google.com'].includes(url.hostname) && url.pathname.match(/^\/spreadsheets\/d\/([^/]+)/)
+  if (sheetMatch) {
+    return { sourceUrl, downloadUrl: `https://docs.google.com/spreadsheets/d/${encodeURIComponent(sheetMatch[1])}/export?format=xlsx`, fallbackName: `google-sheet-${sheetMatch[1]}.xlsx` }
+  }
+  const fallbackName = decodeURIComponent(url.pathname.split('/').filter(Boolean).pop() || '')
+  return { sourceUrl, downloadUrl: sourceUrl, fallbackName }
+}
+
+function responseFileName(response, fallbackName = '') {
+  const disposition = response.headers.get('content-disposition') || ''
+  const utf8Match = disposition.match(/filename\*=UTF-8''([^;]+)/i)
+  if (utf8Match) {
+    try { return decodeURIComponent(utf8Match[1].replace(/^"|"$/g, '')) } catch { /* use fallback */ }
+  }
+  const plainMatch = disposition.match(/filename="?([^";]+)"?/i)
+  return String(plainMatch?.[1] || fallbackName || '').trim()
+}
+
+function inferKnowledgeExtension(fileName, contentType = '') {
+  const named = aiKnowledgeFileExtension(fileName)
+  if (AI_KNOWLEDGE_FILE_EXTENSIONS.has(named)) return named
+  const mime = String(contentType).split(';')[0].trim().toLowerCase()
+  if (mime === 'text/markdown') return 'md'
+  if (mime === 'text/csv') return 'csv'
+  if (mime === 'application/json' || mime.endsWith('+json')) return 'json'
+  if (mime === 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet') return 'xlsx'
+  if (mime === 'text/plain') return 'txt'
+  return ''
+}
+
+async function readKnowledgeResponseBuffer(response) {
+  const chunks = []
+  let totalBytes = 0
+  for await (const chunk of response.body || []) {
+    const buffer = Buffer.from(chunk)
+    totalBytes += buffer.byteLength
+    if (totalBytes > AI_KNOWLEDGE_URL_MAX_BYTES) throw httpError(413, 'URL learning materials must be 10MB or smaller.')
+    chunks.push(buffer)
+  }
+  return Buffer.concat(chunks, totalBytes)
+}
+
+async function fetchKnowledgeUrlAttachment(value, featureKey) {
+  const normalized = normalizeKnowledgeDownloadUrl(value)
+  let currentUrl = normalized.downloadUrl
+  let response
+  for (let redirectCount = 0; redirectCount <= 5; redirectCount += 1) {
+    currentUrl = await assertPublicKnowledgeUrl(currentUrl)
+    response = await fetch(currentUrl, {
+      headers: { Accept: 'text/plain,text/markdown,text/csv,application/json,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,*/*;q=0.5', 'User-Agent': 'CreatorOpsKnowledgeImporter/1.0' },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(15_000),
+    })
+    if (![301, 302, 303, 307, 308].includes(response.status)) break
+    const location = response.headers.get('location')
+    if (!location || redirectCount === 5) throw httpError(400, 'The learning material URL has too many redirects.')
+    currentUrl = new URL(location, currentUrl).toString()
+  }
+  if (!response?.ok) throw httpError(response?.status || 502, `Learning material download failed with ${response?.status || 'an unknown status'}.`)
+  const declaredSize = Number(response.headers.get('content-length') || 0)
+  if (declaredSize > AI_KNOWLEDGE_URL_MAX_BYTES) throw httpError(413, 'URL learning materials must be 10MB or smaller.')
+  const buffer = await readKnowledgeResponseBuffer(response)
+  const contentType = response.headers.get('content-type') || ''
+  const responseName = responseFileName(response, normalized.fallbackName)
+  const extension = inferKnowledgeExtension(responseName, contentType)
+  if (!extension) throw httpError(400, 'The URL must return a TXT, MD, CSV, JSON, or XLSX file.')
+  const name = AI_KNOWLEDGE_FILE_EXTENSIONS.has(aiKnowledgeFileExtension(responseName))
+    ? responseName
+    : `url-learning-material.${extension}`
+  let text
+  if (extension === 'xlsx') {
+    const rows = await readNodeSheet(buffer)
+    text = rows.map((row) => row.map((cell) => String(cell ?? '')).join('\t')).join('\n')
+  } else {
+    text = new TextDecoder().decode(buffer)
+    if (extension === 'json') {
+      try { JSON.parse(text) } catch { throw httpError(400, 'The URL did not return valid JSON.') }
+    }
+  }
+  return {
+    id: `${Date.now()}-${featureKey}-url`,
+    name: name.slice(0, 180),
+    extension,
+    type: contentType || extension,
+    size: buffer.byteLength,
+    text: text.slice(0, 120_000),
+    sourceType: 'url',
+    sourceUrl: normalized.sourceUrl,
+    uploadedAt: new Date().toISOString(),
+  }
 }
 
 function validateAiKnowledgeAttachments(attachments) {
@@ -553,6 +701,8 @@ function normalizeAiFeatureConfig(featureKey, value = {}) {
       type: String(item?.type || 'text'),
       size: Number(item?.size || 0),
       text: String(item?.text || '').slice(0, 120_000),
+      sourceType: item?.sourceType === 'url' ? 'url' : 'file',
+      sourceUrl: safeKnowledgeSourceUrl(item?.sourceUrl),
       uploadedAt: item?.uploadedAt || new Date().toISOString(),
     }))
     : []
@@ -992,6 +1142,17 @@ app.post('/ai/recommendations/enrich', async (request, response, next) => {
 app.get('/admin/ai-configs', async (_request, response, next) => {
   try {
     response.json({ data: { workspaceId: WORKSPACE_ID, configs: await getAiFeatureConfigs() } })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/admin/ai-configs/:featureKey/import-url', async (request, response, next) => {
+  try {
+    const featureKey = String(request.params.featureKey || '')
+    if (!AI_FEATURE_KEYS.has(featureKey)) throw httpError(400, 'Unsupported AI feature key.')
+    const attachment = await fetchKnowledgeUrlAttachment(request.body?.url, featureKey)
+    response.json({ data: { workspaceId: WORKSPACE_ID, attachment } })
   } catch (error) {
     next(error)
   }

@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import readSheet from 'read-excel-file/browser'
 import {
   Activity, ArrowLeft, Bot, CheckCircle2, ChevronRight, CircleX, Clock3, Database,
-  Building2, CheckSquare2, ChevronDown, FileClock, FileText, KeyRound,
-  LayoutDashboard, Play, RefreshCw, Save, Search, ShieldCheck,
+  Building2, CheckSquare2, ChevronDown, ExternalLink, FileClock, FileText, KeyRound,
+  LayoutDashboard, Link2, Play, RefreshCw, Save, Search, ShieldCheck,
   Trash2, UploadCloud, UserRoundCog, UsersRound, Workflow,
 } from 'lucide-react'
 import './AdminConsole.css'
@@ -87,6 +87,8 @@ export default function AdminConsole({
   const [selectedPolicyId, setSelectedPolicyId] = useState('creator-recommendation')
   const [saveState, setSaveState] = useState('')
   const [isFileDragActive, setIsFileDragActive] = useState(false)
+  const [knowledgeUrl, setKnowledgeUrl] = useState('')
+  const [isImportingUrl, setIsImportingUrl] = useState(false)
   const fileInputRef = useRef(null)
   const apiBaseUrl = String(backendConfig?.apiBaseUrl || '').replace(/\/$/, '')
   const selectedPolicy = policies.find((item) => item.id === selectedPolicyId) || policies[0]
@@ -240,6 +242,40 @@ export default function AdminConsole({
     setSaveState(notices.join(' · '))
   }
 
+  const handleKnowledgeUrl = async () => {
+    const url = knowledgeUrl.trim()
+    const existing = selectedPolicy.attachments || []
+    if (!url) return
+    if (existing.length >= maxKnowledgeFileCount) {
+      setSaveState('학습자료는 파일과 URL을 합쳐 기능별 최대 20개까지 등록할 수 있습니다.')
+      return
+    }
+    if (existing.some((item) => item.sourceUrl === url)) {
+      setSaveState('이미 등록된 URL입니다.')
+      return
+    }
+    if (!apiBaseUrl) {
+      setSaveState('URL 자료를 읽으려면 API 서버 연결이 필요합니다.')
+      return
+    }
+    setIsImportingUrl(true)
+    setSaveState('URL에서 자료를 읽는 중...')
+    try {
+      const response = await fetch(`${apiBaseUrl}/admin/ai-configs/${selectedPolicy.id}/import-url`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }),
+      })
+      const result = await response.json().catch(() => ({}))
+      if (!response.ok || !result.data?.attachment) throw new Error(result.message || result.error || 'URL 자료를 읽지 못했습니다.')
+      updatePolicy({ attachments: [...existing, result.data.attachment] })
+      setKnowledgeUrl('')
+      setSaveState(`${result.data.attachment.name}을 URL에서 읽었습니다. 저장하면 다음 AI 실행부터 참고합니다.`)
+    } catch (error) {
+      setSaveState(error instanceof Error ? error.message : 'URL 자료를 읽지 못했습니다.')
+    } finally {
+      setIsImportingUrl(false)
+    }
+  }
+
   const saveAutomations = (next) => { setAutomations(next); persistLocal(policies, next) }
   const navigation = [
     ['overview', '운영 개요', LayoutDashboard], ['data', '데이터룸', Database], ['policy', 'AI 학습 관리', Bot],
@@ -273,7 +309,7 @@ export default function AdminConsole({
 
       {section === 'policy' && <div className="admin-page admin-policy-layout">
         <section className="admin-policy-list"><div className="admin-section-heading"><div><span>기능 목록</span><h2>AI 학습 및 생성 정책</h2></div></div>
-          {policies.map((policy) => <button className={policy.id === selectedPolicy.id ? 'active' : ''} type="button" key={policy.id} onClick={() => setSelectedPolicyId(policy.id)}><div><strong>{policy.name}</strong><small>{policy.description}</small></div><span className={`admin-state ${tone(policy.status)}`}>{policy.status === 'active' ? '활성' : '초안'}</span></button>)}
+          {policies.map((policy) => <button className={policy.id === selectedPolicy.id ? 'active' : ''} type="button" key={policy.id} onClick={() => { setSelectedPolicyId(policy.id); setKnowledgeUrl(''); setSaveState('') }}><div><strong>{policy.name}</strong><small>{policy.description}</small></div><span className={`admin-state ${tone(policy.status)}`}>{policy.status === 'active' ? '활성' : '초안'}</span></button>)}
         </section>
         <section className="admin-policy-editor">
           <div className="admin-section-heading"><div><span>AI CONTROL</span><h2>{selectedPolicy.name}</h2></div><span className={`admin-state ${tone(selectedPolicy.status)}`}>{selectedPolicy.status === 'active' ? '활성' : '초안'}</span></div>
@@ -299,7 +335,13 @@ export default function AdminConsole({
               <UploadCloud size={22} />
               <span><strong>{(selectedPolicy.attachments || []).length >= maxKnowledgeFileCount ? '첨부 가능한 20개를 모두 등록했습니다.' : '파일을 끌어놓거나 클릭해서 첨부'}</strong><small>문서 양식 없이 원본 자료를 바로 연결합니다. 최대 20개</small></span>
             </div>
-            {(selectedPolicy.attachments || []).length ? <div className="admin-attachment-list">{selectedPolicy.attachments.map((file) => <div key={file.id}><span className="admin-file-extension">{file.extension || fileExtension(file.name)}</span><span><strong>{file.name}</strong><small>{formatFileSize(file.size)} · {(file.text?.length || 0).toLocaleString()}자 추출</small></span><button type="button" title="삭제" onClick={() => updatePolicy({ attachments: selectedPolicy.attachments.filter((item) => item.id !== file.id) })}><Trash2 size={14} /></button></div>)}</div> : <div className="admin-empty-knowledge"><FileText size={18} /> 연결된 학습자료가 없습니다.</div>}
+            <div className="admin-knowledge-divider"><span>또는</span></div>
+            <div className="admin-knowledge-url-row">
+              <label><Link2 size={15} /><input aria-label="학습자료 URL" type="url" value={knowledgeUrl} onChange={(event) => setKnowledgeUrl(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); handleKnowledgeUrl() } }} placeholder="공개 파일 또는 Google Sheets URL" disabled={isImportingUrl || (selectedPolicy.attachments || []).length >= maxKnowledgeFileCount} /></label>
+              <button type="button" onClick={handleKnowledgeUrl} disabled={!knowledgeUrl.trim() || isImportingUrl || (selectedPolicy.attachments || []).length >= maxKnowledgeFileCount}>{isImportingUrl ? '읽는 중...' : 'URL 등록'}</button>
+            </div>
+            <small className="admin-knowledge-url-help">공개 접근 가능한 TXT·MD·CSV·JSON·XLSX 파일만 등록됩니다. URL 자료도 20개 제한에 포함됩니다.</small>
+            {(selectedPolicy.attachments || []).length ? <div className="admin-attachment-list">{selectedPolicy.attachments.map((file) => <div key={file.id}><span className="admin-file-extension">{file.extension || fileExtension(file.name)}</span><span><strong>{file.name}</strong><small>{file.sourceType === 'url' ? 'URL · ' : ''}{formatFileSize(file.size)} · {(file.text?.length || 0).toLocaleString()}자 추출</small></span>{file.sourceUrl ? <a className="admin-source-link" href={file.sourceUrl} target="_blank" rel="noreferrer" title="원본 링크 열기"><ExternalLink size={14} /></a> : <span /> }<button type="button" title="삭제" onClick={() => updatePolicy({ attachments: selectedPolicy.attachments.filter((item) => item.id !== file.id) })}><Trash2 size={14} /></button></div>)}</div> : <div className="admin-empty-knowledge"><FileText size={18} /> 연결된 학습자료가 없습니다.</div>}
           </div>
           <div className="admin-policy-meta"><label>버전<input value={selectedPolicy.version || ''} onChange={(event) => updatePolicy({ version: event.target.value })} /></label><label>상태<select value={selectedPolicy.status || 'draft'} onChange={(event) => updatePolicy({ status: event.target.value })}><option value="draft">초안</option><option value="active">활성</option></select></label></div>
           {saveState && <p className="admin-save-state">{saveState}</p>}
