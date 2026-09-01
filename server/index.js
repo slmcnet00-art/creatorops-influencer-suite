@@ -529,11 +529,27 @@ async function ensureDataRoomWorkspace(supabase, workspaceId = WORKSPACE_ID) {
   if (error) throw error
 }
 
+const AI_KNOWLEDGE_FILE_EXTENSIONS = new Set(['txt', 'md', 'csv', 'json', 'xlsx'])
+
+function aiKnowledgeFileExtension(name = '') {
+  return String(name).split('.').pop()?.toLowerCase() || ''
+}
+
+function validateAiKnowledgeAttachments(attachments) {
+  if (!Array.isArray(attachments)) return
+  if (attachments.length > 20) throw httpError(400, 'AI learning materials are limited to 20 files per feature.')
+  const invalid = attachments.filter((item) => !AI_KNOWLEDGE_FILE_EXTENSIONS.has(aiKnowledgeFileExtension(item?.name)))
+  if (invalid.length) throw httpError(400, 'AI learning materials support TXT, MD, CSV, JSON, and XLSX files only.')
+}
+
 function normalizeAiFeatureConfig(featureKey, value = {}) {
   const attachments = Array.isArray(value.attachments)
-    ? value.attachments.slice(0, 20).map((item, index) => ({
+    ? value.attachments
+      .filter((item) => AI_KNOWLEDGE_FILE_EXTENSIONS.has(aiKnowledgeFileExtension(item?.name)))
+      .slice(0, 20).map((item, index) => ({
       id: String(item?.id || `${featureKey}-${index}`),
       name: String(item?.name || `knowledge-${index + 1}`),
+      extension: aiKnowledgeFileExtension(item?.name),
       type: String(item?.type || 'text'),
       size: Number(item?.size || 0),
       text: String(item?.text || '').slice(0, 120_000),
@@ -985,6 +1001,7 @@ app.put('/admin/ai-configs/:featureKey', async (request, response, next) => {
   try {
     const featureKey = String(request.params.featureKey || '')
     if (!AI_FEATURE_KEYS.has(featureKey)) throw httpError(400, 'Unsupported AI feature key.')
+    validateAiKnowledgeAttachments(request.body?.attachments)
     const config = await saveAiFeatureConfig(featureKey, request.body || {})
     response.json({ data: { workspaceId: WORKSPACE_ID, config } })
   } catch (error) {

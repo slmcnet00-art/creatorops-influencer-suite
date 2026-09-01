@@ -3,10 +3,23 @@ import readSheet from 'read-excel-file/browser'
 import {
   Activity, ArrowLeft, Bot, CheckCircle2, ChevronRight, CircleX, Clock3, Database,
   Building2, CheckSquare2, ChevronDown, FileClock, FileText, KeyRound,
-  LayoutDashboard, Paperclip, Play, RefreshCw, Save, Search, ShieldCheck,
-  Trash2, UserRoundCog, UsersRound, Workflow,
+  LayoutDashboard, Play, RefreshCw, Save, Search, ShieldCheck,
+  Trash2, UploadCloud, UserRoundCog, UsersRound, Workflow,
 } from 'lucide-react'
 import './AdminConsole.css'
+
+const knowledgeFileExtensions = new Set(['txt', 'md', 'csv', 'json', 'xlsx'])
+const maxKnowledgeFileCount = 20
+
+function fileExtension(name = '') {
+  return String(name).split('.').pop()?.toLowerCase() || ''
+}
+
+function formatFileSize(bytes = 0) {
+  if (bytes < 1024) return `${bytes} B`
+  if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
+}
 
 const defaultPolicies = [
   { id: 'creator-recommendation', name: 'AI 인플루언서 추천', description: '캠페인 브리프와 실제 후보 데이터를 바탕으로 추천 근거, 제안 각도, 주의점을 생성합니다.', systemPrompt: '브랜드 적합성과 조회 성과를 우선하되 제공된 원천 데이터만 사용합니다. 확인되지 않은 수치를 만들지 않습니다.', rules: '조회수 폭발력, 평균 조회수, 참여율, 콘텐츠 적합성, 데이터 신뢰도를 함께 평가합니다.', version: 'v1.0', status: 'active', attachments: [] },
@@ -43,7 +56,7 @@ function mergePolicies(localPolicies = [], remotePolicies = []) {
 }
 
 async function extractAttachment(file) {
-  const extension = file.name.split('.').pop()?.toLowerCase()
+  const extension = fileExtension(file.name)
   let text
   if (extension === 'xlsx') {
     const rows = await readSheet(file)
@@ -54,6 +67,7 @@ async function extractAttachment(file) {
   return {
     id: `${Date.now()}-${file.name}`,
     name: file.name,
+    extension,
     type: file.type || extension || 'text',
     size: file.size,
     text: text.slice(0, 120000),
@@ -72,6 +86,7 @@ export default function AdminConsole({
   const [automations, setAutomations] = useState(adminConfig?.automations?.length ? adminConfig.automations : defaultAutomations)
   const [selectedPolicyId, setSelectedPolicyId] = useState('creator-recommendation')
   const [saveState, setSaveState] = useState('')
+  const [isFileDragActive, setIsFileDragActive] = useState(false)
   const fileInputRef = useRef(null)
   const apiBaseUrl = String(backendConfig?.apiBaseUrl || '').replace(/\/$/, '')
   const selectedPolicy = policies.find((item) => item.id === selectedPolicyId) || policies[0]
@@ -194,14 +209,35 @@ export default function AdminConsole({
   const handleFiles = async (files) => {
     const selected = [...files]
     if (!selected.length) return
-    setSaveState('자료를 읽는 중...')
-    try {
-      const attachments = await Promise.all(selected.map(extractAttachment))
-      updatePolicy({ attachments: [...(selectedPolicy.attachments || []), ...attachments].slice(0, 20) })
-      setSaveState(`${attachments.length}개 자료를 읽었습니다. 저장하면 다음 AI 실행부터 참고합니다.`)
-    } catch {
-      setSaveState('자료를 읽지 못했습니다. TXT, MD, CSV, JSON, XLSX 형식을 확인해주세요.')
+    const existing = selectedPolicy.attachments || []
+    const availableCount = Math.max(0, maxKnowledgeFileCount - existing.length)
+    const invalid = selected.filter((file) => !knowledgeFileExtensions.has(fileExtension(file.name)))
+    const existingKeys = new Set(existing.map((file) => `${String(file.name || '').toLowerCase()}::${Number(file.size || 0)}`))
+    const duplicate = selected.filter((file) => existingKeys.has(`${file.name.toLowerCase()}::${file.size}`))
+    const candidates = selected
+      .filter((file) => knowledgeFileExtensions.has(fileExtension(file.name)))
+      .filter((file) => !existingKeys.has(`${file.name.toLowerCase()}::${file.size}`))
+    const accepted = candidates.slice(0, availableCount)
+    const overLimitCount = Math.max(0, candidates.length - accepted.length)
+
+    if (!accepted.length) {
+      if (!availableCount) setSaveState('학습자료는 기능별로 최대 20개까지 첨부할 수 있습니다.')
+      else if (invalid.length) setSaveState(`지원하지 않는 형식입니다: ${invalid.map((file) => file.name).join(', ')} · TXT, MD, CSV, JSON, XLSX만 첨부할 수 있습니다.`)
+      else setSaveState('이미 첨부된 동일한 파일입니다.')
+      return
     }
+    setSaveState('자료를 읽는 중...')
+    const results = await Promise.allSettled(accepted.map(extractAttachment))
+    const attachments = results.filter((result) => result.status === 'fulfilled').map((result) => result.value)
+    const failedCount = results.length - attachments.length
+    if (attachments.length) updatePolicy({ attachments: [...existing, ...attachments] })
+    const notices = [`${attachments.length}개 자료를 읽었습니다.`]
+    if (invalid.length) notices.push(`지원하지 않는 형식 ${invalid.length}개 제외`)
+    if (duplicate.length) notices.push(`중복 ${duplicate.length}개 제외`)
+    if (overLimitCount) notices.push(`20개 제한 초과 ${overLimitCount}개 제외`)
+    if (failedCount) notices.push(`읽기 실패 ${failedCount}개`)
+    notices.push('저장하면 다음 AI 실행부터 참고합니다.')
+    setSaveState(notices.join(' · '))
   }
 
   const saveAutomations = (next) => { setAutomations(next); persistLocal(policies, next) }
@@ -246,9 +282,24 @@ export default function AdminConsole({
           <label>관리자 프롬프트<textarea className="large" value={selectedPolicy.systemPrompt || ''} onChange={(event) => updatePolicy({ systemPrompt: event.target.value })} placeholder="AI가 반드시 따라야 할 역할, 우선순위, 판단 기준을 입력하세요." /></label>
           <label>운영 규칙<textarea className="large" value={selectedPolicy.rules || ''} onChange={(event) => updatePolicy({ rules: event.target.value })} placeholder="금지 규칙, 필수 출력 항목, 검증 기준을 입력하세요." /></label>
           <div className="admin-knowledge-block">
-            <div className="admin-knowledge-heading"><div><strong>학습자료</strong><small>TXT, MD, CSV, JSON, XLSX · 최대 20개</small></div><button type="button" onClick={() => fileInputRef.current?.click()}><Paperclip size={14} /> 자료 첨부</button></div>
+            <div className="admin-knowledge-heading"><div><strong>학습자료</strong><small>TXT, MD, CSV, JSON, XLSX만 첨부할 수 있습니다.</small></div><span className="admin-knowledge-count">{(selectedPolicy.attachments || []).length} / {maxKnowledgeFileCount}</span></div>
             <input ref={fileInputRef} hidden multiple type="file" accept=".txt,.md,.csv,.json,.xlsx" onChange={(event) => { handleFiles(event.target.files); event.target.value = '' }} />
-            {(selectedPolicy.attachments || []).length ? <div className="admin-attachment-list">{selectedPolicy.attachments.map((file) => <div key={file.id}><FileText size={15} /><span><strong>{file.name}</strong><small>{Math.ceil((file.text?.length || 0) / 1000)}천 자 추출</small></span><button type="button" title="삭제" onClick={() => updatePolicy({ attachments: selectedPolicy.attachments.filter((item) => item.id !== file.id) })}><Trash2 size={14} /></button></div>)}</div> : <div className="admin-empty-knowledge">아직 첨부한 자료가 없습니다.</div>}
+            <div
+              className={`admin-knowledge-dropzone ${isFileDragActive ? 'active' : ''} ${(selectedPolicy.attachments || []).length >= maxKnowledgeFileCount ? 'disabled' : ''}`}
+              role="button"
+              tabIndex={(selectedPolicy.attachments || []).length >= maxKnowledgeFileCount ? -1 : 0}
+              aria-disabled={(selectedPolicy.attachments || []).length >= maxKnowledgeFileCount}
+              onClick={() => (selectedPolicy.attachments || []).length < maxKnowledgeFileCount && fileInputRef.current?.click()}
+              onKeyDown={(event) => { if ((event.key === 'Enter' || event.key === ' ') && (selectedPolicy.attachments || []).length < maxKnowledgeFileCount) fileInputRef.current?.click() }}
+              onDragEnter={(event) => { event.preventDefault(); if ((selectedPolicy.attachments || []).length < maxKnowledgeFileCount) setIsFileDragActive(true) }}
+              onDragOver={(event) => event.preventDefault()}
+              onDragLeave={(event) => { event.preventDefault(); if (!event.currentTarget.contains(event.relatedTarget)) setIsFileDragActive(false) }}
+              onDrop={(event) => { event.preventDefault(); setIsFileDragActive(false); handleFiles(event.dataTransfer.files) }}
+            >
+              <UploadCloud size={22} />
+              <span><strong>{(selectedPolicy.attachments || []).length >= maxKnowledgeFileCount ? '첨부 가능한 20개를 모두 등록했습니다.' : '파일을 끌어놓거나 클릭해서 첨부'}</strong><small>문서 양식 없이 원본 자료를 바로 연결합니다. 최대 20개</small></span>
+            </div>
+            {(selectedPolicy.attachments || []).length ? <div className="admin-attachment-list">{selectedPolicy.attachments.map((file) => <div key={file.id}><span className="admin-file-extension">{file.extension || fileExtension(file.name)}</span><span><strong>{file.name}</strong><small>{formatFileSize(file.size)} · {(file.text?.length || 0).toLocaleString()}자 추출</small></span><button type="button" title="삭제" onClick={() => updatePolicy({ attachments: selectedPolicy.attachments.filter((item) => item.id !== file.id) })}><Trash2 size={14} /></button></div>)}</div> : <div className="admin-empty-knowledge"><FileText size={18} /> 연결된 학습자료가 없습니다.</div>}
           </div>
           <div className="admin-policy-meta"><label>버전<input value={selectedPolicy.version || ''} onChange={(event) => updatePolicy({ version: event.target.value })} /></label><label>상태<select value={selectedPolicy.status || 'draft'} onChange={(event) => updatePolicy({ status: event.target.value })}><option value="draft">초안</option><option value="active">활성</option></select></label></div>
           {saveState && <p className="admin-save-state">{saveState}</p>}
