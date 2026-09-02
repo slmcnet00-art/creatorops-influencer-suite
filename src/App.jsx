@@ -222,14 +222,6 @@ const practiceTourSteps = [
     task: '저장 리스트에서 분석을 열어 후킹/컷 구성/CTA를 읽고, 괜찮을 때만 가이드 차용을 누르세요.',
     action: '레퍼런스 보기',
   },
-  {
-    section: 'dataRoom',
-    title: '데이터 원천 확인',
-    label: '데이터룸',
-    detail: '대시보드와 리포트 수치가 어떤 raw 데이터와 계산지표에서 나왔는지 점검합니다.',
-    task: 'Raw 데이터와 연결 계산지표를 눌러 수집 상태, 원천 위치, 계산식을 확인하세요.',
-    action: '데이터룸 보기',
-  },
 ]
 
 function formatApiRouteFailure(path, response, payload = {}, fallbackText = '') {
@@ -7950,12 +7942,23 @@ function AppContent() {
   const [dataRoomRawCategory, setDataRoomRawCategory] = useState('전체')
   const [dataRoomRawMethod, setDataRoomRawMethod] = useState('전체')
   const [dataRoomRawOwner, setDataRoomRawOwner] = useState('전체')
-  const [dataRoomRawQuery, setDataRoomRawQuery] = useState('')
+  const [dataRoomRawQuery, setDataRoomRawQuery] = useState(() => (
+    typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('raw') || ''
+  ))
   const [dataRoomMetricTab, setDataRoomMetricTab] = useState('전체')
   const [dataRoomMetricStatus, setDataRoomMetricStatus] = useState('전체')
   const [dataRoomMetricBundle, setDataRoomMetricBundle] = useState('전체')
-  const [dataRoomMetricQuery, setDataRoomMetricQuery] = useState('')
-  const [selectedDataRoomItem, setSelectedDataRoomItem] = useState({ type: 'raw', id: 'RAW-INT-CRM-001' })
+  const [dataRoomMetricQuery, setDataRoomMetricQuery] = useState(() => (
+    typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('metric') || ''
+  ))
+  const [selectedDataRoomItem, setSelectedDataRoomItem] = useState(() => {
+    if (typeof window === 'undefined') return { type: 'raw', id: 'RAW-INT-CRM-001' }
+    const searchParams = new URLSearchParams(window.location.search)
+    const metricId = searchParams.get('metric')
+    const rawId = searchParams.get('raw')
+    if (metricId) return { type: 'metric', id: metricId }
+    return { type: 'raw', id: rawId || 'RAW-INT-CRM-001' }
+  })
   const [dataRoomImportStatus, setDataRoomImportStatus] = useState('외부 보고서 업로드 대기')
   const [dataRoomApiEvents, setDataRoomApiEvents] = useState([])
   const [dataRoomApiStatus, setDataRoomApiStatus] = useState({
@@ -10081,8 +10084,7 @@ function AppContent() {
   )
 
   useEffect(() => {
-    const isDataRoomRoute =
-      visibleSection === 'dataRoom' || window.location.pathname.toLowerCase().startsWith('/admin')
+    const isDataRoomRoute = window.location.pathname.toLowerCase().startsWith('/admin')
     if (!backendConfig.hasSupabase || !isDataRoomRoute) return undefined
     let cancelled = false
 
@@ -10136,8 +10138,7 @@ function AppContent() {
   }, [])
 
   useEffect(() => {
-    const isDataRoomRoute =
-      visibleSection === 'dataRoom' || window.location.pathname.toLowerCase().startsWith('/admin')
+    const isDataRoomRoute = window.location.pathname.toLowerCase().startsWith('/admin')
     if (!isDataRoomRoute) return
     let cancelled = false
 
@@ -11776,23 +11777,19 @@ function AppContent() {
   }
 
   const openDataRoomRaw = (rawId) => {
-    setSelectedDataRoomItem({ type: 'raw', id: rawId })
-    setDataRoomRawTab('전체')
-    setDataRoomRawStatus('전체')
-    setDataRoomRawCategory('전체')
-    setDataRoomRawMethod('전체')
-    setDataRoomRawOwner('전체')
-    setDataRoomRawQuery('')
-    jumpTo('dataRoom')
+    if (!hasAdminRouteAccess) {
+      showToast('데이터룸은 관리자 화면에서만 조회·관리할 수 있습니다.')
+      return
+    }
+    window.location.assign(`/admin?section=data&raw=${encodeURIComponent(rawId)}`)
   }
 
   const openDataRoomMetric = (metricId) => {
-    setSelectedDataRoomItem({ type: 'metric', id: metricId })
-    setDataRoomMetricTab('전체')
-    setDataRoomMetricStatus('전체')
-    setDataRoomMetricBundle('전체')
-    setDataRoomMetricQuery(metricId)
-    jumpTo('dataRoom')
+    if (!hasAdminRouteAccess) {
+      showToast('데이터룸은 관리자 화면에서만 조회·관리할 수 있습니다.')
+      return
+    }
+    window.location.assign(`/admin?section=data&metric=${encodeURIComponent(metricId)}`)
   }
 
   const openPracticeTour = () => {
@@ -16675,14 +16672,6 @@ function AppContent() {
               onClick={() => jumpTo('references')}
             />
           )}
-          {canAccessSection('dataRoom') && (
-            <NavButton
-              active={visibleSection === 'dataRoom'}
-              icon={<Database size={18} />}
-              label="데이터룸"
-              onClick={() => jumpTo('dataRoom')}
-            />
-          )}
         </nav>
 
         <div className="sidebar-bottom-actions">
@@ -16820,57 +16809,6 @@ function AppContent() {
           </>
         )}
 
-        {visibleSection === 'dataRoom' && (
-          <AdminDataRoom
-            summary={dataRoomSummary}
-            rawData={filteredDataRoomRawData}
-            allRawData={dataRoomRawData}
-            groupedMetrics={groupedDataRoomMetrics}
-            allMetrics={dataRoomMetrics}
-            workflowCoverage={dataRoomWorkflowCoverage}
-            pendingBundles={dataRoomPendingBundles}
-            rawTab={dataRoomRawTab}
-            setRawTab={setDataRoomRawTab}
-            rawStatus={dataRoomRawStatus}
-            setRawStatus={setDataRoomRawStatus}
-            rawCategory={dataRoomRawCategory}
-            setRawCategory={setDataRoomRawCategory}
-            rawMethod={dataRoomRawMethod}
-            setRawMethod={setDataRoomRawMethod}
-            rawOwner={dataRoomRawOwner}
-            setRawOwner={setDataRoomRawOwner}
-            rawQuery={dataRoomRawQuery}
-            setRawQuery={setDataRoomRawQuery}
-            metricTab={dataRoomMetricTab}
-            setMetricTab={setDataRoomMetricTab}
-            metricStatus={dataRoomMetricStatus}
-            setMetricStatus={setDataRoomMetricStatus}
-            metricBundle={dataRoomMetricBundle}
-            setMetricBundle={setDataRoomMetricBundle}
-            metricQuery={dataRoomMetricQuery}
-            setMetricQuery={setDataRoomMetricQuery}
-            rawCategories={dataRoomRawCategories}
-            rawMethods={dataRoomRawMethods}
-            rawOwners={dataRoomRawOwners}
-            selectedItem={selectedDataRoomItem}
-            setSelectedItem={setSelectedDataRoomItem}
-            activeDetail={activeDataRoomDetail}
-            rawStatuses={dataRoomRawStatuses}
-            metricStatuses={dataRoomMetricStatuses}
-            scopes={dataRoomScopes}
-            importStatus={dataRoomImportStatus}
-            onImportExternalReport={handleExternalReportImport}
-            onDownloadExternalReportTemplate={downloadExternalReportTemplate}
-            apiStatus={dataRoomApiStatus}
-            onRefreshApiStatus={refreshDataRoomApiStatus}
-            apiEvents={dataRoomApiEvents}
-            onRefreshApiEvents={refreshDataRoomApiEvents}
-            onLog={() => showToast('선택한 raw 데이터의 수집 로그 위치를 확인하세요. 실제 로그 테이블 연결 시 상세 로그가 열립니다.')}
-            onRefreshRaw={() => showToast('수동 재수집 요청이 등록되었습니다. 실제 작업 큐 연결 시 job id를 표시합니다.')}
-            onMetricLog={() => showToast('계산 로그 위치와 최근 계산 상태를 확인합니다.')}
-            onRecalculate={() => showToast('계산지표 재계산 요청이 등록되었습니다. 실제 큐 연결 시 재계산 job id를 표시합니다.')}
-          />
-        )}
         {visibleSection === 'settings' && (
           <section className="settings-grid">
             <section className="panel settings-sync-panel">

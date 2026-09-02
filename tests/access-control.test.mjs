@@ -20,7 +20,7 @@ test('Owner와 Admin은 전체 브랜드와 권한 관리에 접근한다', () =
     const account = { role, brandIds: [] }
     assert.deepEqual(getAccountBrandIds(account, brands), [201, 202, 203])
     assert.equal(canManageTeamPermissions(account), true)
-    assert.equal(canAccessSection(account, 'dataRoom'), true)
+    assert.equal(canAccessSection(account, 'dataRoom'), false)
   }
 })
 
@@ -30,15 +30,16 @@ test('Manager와 Marketer는 배정된 브랜드만 본다', () => {
   assert.deepEqual(getAccessibleBrands(manager, brands).map((brand) => brand.id), [201])
   assert.deepEqual(getAccessibleBrands(marketer, brands).map((brand) => brand.id), [202])
   assert.equal(canManageTeamPermissions(manager), false)
+  assert.equal(canAccessSection(manager, 'dataRoom'), false)
   assert.equal(canAccessSection(marketer, 'messages'), true)
   assert.equal(canAccessSection(marketer, 'dataRoom'), false)
 })
 
-test('Analyst는 리포트와 데이터룸만, Client는 승인 화면만 접근한다', () => {
+test('Analyst는 리포트만, Client는 승인 화면만 접근한다', () => {
   const analyst = { role: 'Analyst', brandIds: [201, 202] }
   const client = { role: 'Client', brandIds: [201] }
   assert.equal(canAccessSection(analyst, 'report'), true)
-  assert.equal(canAccessSection(analyst, 'dataRoom'), true)
+  assert.equal(canAccessSection(analyst, 'dataRoom'), false)
   assert.equal(canAccessSection(analyst, 'messages'), false)
   assert.equal(canAccessSection(client, 'campaigns'), true)
   assert.equal(canAccessSection(client, 'groups'), true)

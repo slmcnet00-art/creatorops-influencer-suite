@@ -26,7 +26,7 @@ export const teamRoleCatalog = {
   Analyst: {
     label: '분석 담당',
     description: '배정된 브랜드의 데이터 품질과 성과 리포트를 확인합니다.',
-    dataScope: '배정 브랜드 데이터룸/리포트',
+    dataScope: '배정 브랜드 리포트',
     permissions: ['데이터 검토', '리포트 보기'],
   },
   Client: {
@@ -40,11 +40,11 @@ export const teamRoleCatalog = {
 export const fullBrandAccessRoles = new Set(['Owner', 'Admin'])
 
 const sectionAccessByRole = {
-  Owner: ['dashboard', 'campaigns', 'discovery', 'groups', 'messages', 'report', 'references', 'dataRoom', 'settings'],
-  Admin: ['dashboard', 'campaigns', 'discovery', 'groups', 'messages', 'report', 'references', 'dataRoom', 'settings'],
-  Manager: ['dashboard', 'campaigns', 'discovery', 'groups', 'messages', 'report', 'references', 'dataRoom', 'settings'],
+  Owner: ['dashboard', 'campaigns', 'discovery', 'groups', 'messages', 'report', 'references', 'settings'],
+  Admin: ['dashboard', 'campaigns', 'discovery', 'groups', 'messages', 'report', 'references', 'settings'],
+  Manager: ['dashboard', 'campaigns', 'discovery', 'groups', 'messages', 'report', 'references', 'settings'],
   Marketer: ['dashboard', 'campaigns', 'discovery', 'groups', 'messages', 'report', 'references', 'settings'],
-  Analyst: ['dashboard', 'report', 'dataRoom', 'settings'],
+  Analyst: ['dashboard', 'report', 'settings'],
   Client: ['dashboard', 'campaigns', 'groups', 'report', 'references', 'settings'],
 }
 
