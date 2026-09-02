@@ -199,11 +199,18 @@
 .yt-review-result-empty p { max-width: 320px; margin: 8px 0 0; color: var(--yt-review-muted); font-size: 11px; line-height: 1.5; }
 .yt-review-result-status { display: inline-flex; width: fit-content; align-items: center; gap: 7px; margin-bottom: 16px; padding: 6px 9px; border-radius: 999px; color: #067647; background: #ecfdf3; font-size: 10px; font-weight: 800; }
 .yt-review-video-summary { display: grid; grid-template-columns: 136px minmax(0, 1fr); gap: 15px; align-items: center; }
-.yt-review-video-summary img { width: 136px; aspect-ratio: 16 / 9; object-fit: cover; border-radius: 5px; background: #eaecf0; }
+.yt-review-thumbnail-link { position: relative; display: block; width: 136px; aspect-ratio: 16 / 9; overflow: hidden; border-radius: 5px; background: #eaecf0; }
+.yt-review-thumbnail-link img { width: 100%; height: 100%; object-fit: cover; }
+.yt-review-thumbnail-play { position: absolute; inset: 0; display: grid; place-items: center; color: #fff !important; background: rgba(0, 0, 0, .48); opacity: 0; transition: opacity .18s ease; }
+.yt-review-thumbnail-link:hover .yt-review-thumbnail-play,
+.yt-review-thumbnail-link:focus-visible .yt-review-thumbnail-play { opacity: 1; }
+.yt-review-thumbnail-link:focus-visible { outline: 3px solid rgba(37, 99, 235, .35); outline-offset: 2px; }
 .yt-review-video-summary span,
 .yt-review-channel-summary span { color: var(--yt-review-muted); font-size: 9px; font-weight: 800; text-transform: uppercase; }
 .yt-review-video-summary h3 { margin: 5px 0; font-size: 15px; line-height: 1.35; }
 .yt-review-video-summary p { margin: 0; color: var(--yt-review-muted); font-size: 10px; }
+.yt-review-original-link { display: inline-flex; align-items: center; gap: 4px; margin-top: 7px; color: var(--yt-review-blue); font-size: 9px; font-weight: 750; text-decoration: none; }
+.yt-review-original-link:hover { text-decoration: underline; }
 .yt-review-metrics { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 14px; }
 .yt-review-metric { display: grid; gap: 4px; padding: 10px; border-radius: 5px; background: #f5f8fd; }
 .yt-review-metric span { color: var(--yt-review-muted); font-size: 9px; }

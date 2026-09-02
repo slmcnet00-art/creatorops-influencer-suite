@@ -218,11 +218,23 @@ export default function YouTubeApiReview() {
               <>
                 <div className="yt-review-result-status"><Check size={16} /> Live response received</div>
                 <div className="yt-review-video-summary">
-                  <img src={result.video.thumbnail} alt="YouTube video thumbnail returned by the API" />
+                  <a
+                    className="yt-review-thumbnail-link"
+                    href={result.video.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    aria-label={`Open the original YouTube video: ${result.video.title}`}
+                  >
+                    <img src={result.video.thumbnail} alt="YouTube video thumbnail returned by the API" />
+                    <span className="yt-review-thumbnail-play" aria-hidden="true"><Play size={22} /></span>
+                  </a>
                   <div>
                     <span>VIDEO RESOURCE</span>
                     <h3>{result.video.title}</h3>
                     <p>{result.video.channelTitle} · {result.video.publishedAt?.slice(0, 10)}</p>
+                    <a className="yt-review-original-link" href={result.video.url} target="_blank" rel="noreferrer">
+                      Open original video on YouTube <ExternalLink size={12} />
+                    </a>
                   </div>
                 </div>
                 <div className="yt-review-metrics">
