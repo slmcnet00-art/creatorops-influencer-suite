@@ -93,6 +93,7 @@ async function extractAttachment(file) {
 export default function AdminConsole({
   summary = {}, dataRoom, accounts = [], brands = [], currentAccount,
   activities = [], apiEvents = [], backendConfig, adminConfig,
+  adminAccessToken = '',
   onUpdateAdminConfig, onUpdateAccountRole, onToggleBrandAccess,
   onTestApis, apiTestStatus, canManagePermissions = false,
 }) {
@@ -106,6 +107,7 @@ export default function AdminConsole({
   const [isImportingUrl, setIsImportingUrl] = useState(false)
   const fileInputRef = useRef(null)
   const apiBaseUrl = String(backendConfig?.apiBaseUrl || '').replace(/\/$/, '')
+  const adminRequestHeaders = adminAccessToken ? { Authorization: `Bearer ${adminAccessToken}` } : {}
   const selectedPolicy = policies.find((item) => item.id === selectedPolicyId) || policies[0]
   const selectedPolicyFolder = CREATOROPS_LEARNING_FOLDERS[selectedPolicy?.id]
   const [accessView, setAccessView] = useState('accounts')
@@ -168,7 +170,7 @@ export default function AdminConsole({
 
   useEffect(() => {
     if (!apiBaseUrl) return
-    fetch(`${apiBaseUrl}/admin/ai-configs`)
+    fetch(`${apiBaseUrl}/admin/ai-configs`, { headers: adminRequestHeaders })
       .then((response) => response.ok ? response.json() : Promise.reject(new Error('설정을 불러오지 못했습니다.')))
       .then((result) => {
         const nextPolicies = mergePolicies(policies, result.data?.configs || [])
@@ -184,7 +186,7 @@ export default function AdminConsole({
       .catch(() => setSaveState('서버 설정을 불러오지 못해 로컬 설정을 표시합니다.'))
     // Initial server hydration only. Later changes are persisted explicitly.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [apiBaseUrl])
+  }, [adminAccessToken, apiBaseUrl])
 
   const auditRows = useMemo(() => [
     ...apiEvents.map((item, index) => ({ id: item.id || `api-${index}`, type: item.event_type || 'api', text: item.message || item.endpoint || 'API 수집 이벤트', time: item.created_at || '', source: 'API' })),
@@ -211,7 +213,7 @@ export default function AdminConsole({
     setSaveState('저장 중...')
     try {
       const response = await fetch(`${apiBaseUrl}/admin/ai-configs/${nextPolicy.id}`, {
-        method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(nextPolicy),
+        method: 'PUT', headers: { 'Content-Type': 'application/json', ...adminRequestHeaders }, body: JSON.stringify(nextPolicy),
       })
       if (!response.ok) throw new Error('저장 실패')
       const result = await response.json()
@@ -278,7 +280,7 @@ export default function AdminConsole({
     setSaveState('URL에서 자료를 읽는 중...')
     try {
       const response = await fetch(`${apiBaseUrl}/admin/ai-configs/${selectedPolicy.id}/import-url`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url }),
+        method: 'POST', headers: { 'Content-Type': 'application/json', ...adminRequestHeaders }, body: JSON.stringify({ url }),
       })
       const result = await response.json().catch(() => ({}))
       if (!response.ok || !result.data?.attachment) throw new Error(result.message || result.error || 'URL 자료를 읽지 못했습니다.')

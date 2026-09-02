@@ -32,7 +32,6 @@ import {
   Target,
   Trash2,
   TrendingUp,
-  UploadCloud,
   UsersRound,
   Video,
   WalletCards,
@@ -1844,8 +1843,8 @@ function normalizeWorkspace(saved) {
   }
 }
 
-function getActiveAdminPolicy(adminConfig, featureKey) {
-  const policies = Array.isArray(adminConfig?.policies) ? adminConfig.policies : []
+function getActiveAiPolicyStatus(policies, featureKey) {
+  if (!Array.isArray(policies)) return null
   return policies.find((policy) => policy?.featureKey === featureKey && policy?.status === 'active') ?? null
 }
 
@@ -7712,6 +7711,7 @@ function AppContent() {
     checkedAt: '',
     results: [],
   })
+  const [aiPolicyStatus, setAiPolicyStatus] = useState([])
   const [authSession, setAuthSession] = useState(null)
   const [, setAuthReady] = useState(!backendConfig.hasSupabase)
   const [workspaceAccess, setWorkspaceAccess] = useState(null)
@@ -8018,6 +8018,9 @@ function AppContent() {
     }
   }, [backendConfig.hasSupabase, brands, localCurrentAccount, workspaceAccess])
   const canManagePermissions = canManageTeamPermissions(currentAccount)
+  const hasAdminRouteAccess = canManagePermissions && (
+    !backendConfig.hasSupabase || Boolean(authSession?.access_token && workspaceAccess?.membership?.status === 'active')
+  )
   const accessibleSectionIds = useMemo(() => getAccessibleSectionIds(currentAccount), [currentAccount])
   const visibleSection = accessibleSectionIds.includes(activeSection) ? activeSection : accessibleSectionIds[0]
   const canAccessSection = (sectionId) => accessibleSectionIds.includes(sectionId)
@@ -11054,52 +11057,34 @@ function AppContent() {
     if (!apiBaseUrl) return
     let cancelled = false
 
-    const syncAdminPolicies = async () => {
+    const syncAiPolicyStatus = async () => {
       try {
-        const response = await fetch(`${apiBaseUrl}/admin/ai-configs`, { cache: 'no-store' })
-        if (!response.ok) throw new Error('admin policy sync failed')
+        const response = await fetch(`${apiBaseUrl}/ai/policy-status`, { cache: 'no-store' })
+        if (!response.ok) throw new Error('AI policy status sync failed')
         const result = await response.json()
         if (cancelled) return
-        const serverPolicies = Array.isArray(result.data?.configs) ? result.data.configs : []
-        if (!serverPolicies.length) return
-        setWorkspace((current) => {
-          const currentPolicies = Array.isArray(current.adminConfig?.policies) ? current.adminConfig.policies : []
-          const currentSignature = currentPolicies.map(({ id, version, status, updatedAt }) => ({ id, version, status, updatedAt }))
-          const serverSignature = serverPolicies.map(({ id, version, status, updatedAt }) => ({ id, version, status, updatedAt }))
-          if (JSON.stringify(currentSignature) === JSON.stringify(serverSignature) && current.adminConfig?.source === 'server') {
-            return current
-          }
-          return {
-            ...current,
-            adminConfig: {
-              ...(current.adminConfig || {}),
-              policies: serverPolicies,
-              source: 'server',
-              syncedAt: new Date().toISOString(),
-            },
-          }
-        })
+        setAiPolicyStatus(Array.isArray(result.data?.policies) ? result.data.policies : [])
       } catch {
-        // Keep the last verified policy when the server is temporarily unavailable.
+        // Keep the last safe version metadata while the API is temporarily unavailable.
       }
     }
 
     const syncOnVisible = () => {
-      if (document.visibilityState === 'visible') syncAdminPolicies()
+      if (document.visibilityState === 'visible') syncAiPolicyStatus()
     }
 
-    syncAdminPolicies()
-    const intervalId = window.setInterval(syncAdminPolicies, 30000)
-    window.addEventListener('focus', syncAdminPolicies)
+    syncAiPolicyStatus()
+    const intervalId = window.setInterval(syncAiPolicyStatus, 30000)
+    window.addEventListener('focus', syncAiPolicyStatus)
     document.addEventListener('visibilitychange', syncOnVisible)
 
     return () => {
       cancelled = true
       window.clearInterval(intervalId)
-      window.removeEventListener('focus', syncAdminPolicies)
+      window.removeEventListener('focus', syncAiPolicyStatus)
       document.removeEventListener('visibilitychange', syncOnVisible)
     }
-  }, [backendConfig.apiBaseUrl, setWorkspace])
+  }, [backendConfig.apiBaseUrl])
 
   const openCreatorRateEditor = (creator) => {
     const rate = getCreatorRateSummary(creator)
@@ -12642,7 +12627,7 @@ function AppContent() {
   const enrichRecommendationsWithAi = async (rankedRecommendations, campaignBrief, campaign) => {
     const apiBaseUrl = backendConfig.apiBaseUrl?.replace(/\/$/, '')
     if (!apiBaseUrl || !rankedRecommendations.length) {
-      return { recommendations: rankedRecommendations, status: 'local', enrichedCount: 0 }
+      return { recommendations: [], status: 'error', enrichedCount: 0, message: '관리자 AI 서버가 연결되지 않았습니다.' }
     }
 
     const creatorById = new Map(creators.map((creator) => [creator.id, getCreatorWithPerformanceLearning(creator)]))
@@ -12754,8 +12739,7 @@ function AppContent() {
     } catch (error) {
       console.warn('AI recommendation enrichment failed', error)
       const message = error instanceof Error ? error.message : 'AI API 보강 실패'
-      showToast(`AI 추천 보강 실패 · ${message} 데이터룸 기준 추천으로 계속 진행합니다.`)
-      return { recommendations: rankedRecommendations, status: 'fallback', enrichedCount: 0, message }
+      return { recommendations: [], status: 'error', enrichedCount: 0, message }
     }
   }
 
@@ -12815,13 +12799,12 @@ function AppContent() {
     }
 
     const enrichmentResult = await enrichRecommendationsWithAi(ranked, campaignBrief, selectedCampaign)
+    if (enrichmentResult.status !== 'openai') {
+      showToast(`AI 추천을 생성하지 못했습니다. ${enrichmentResult.message || '관리자 정책 연결 상태를 확인해 주세요.'}`)
+      return
+    }
     const finalRanked = enrichmentResult.recommendations
-    const enrichmentLabel =
-      enrichmentResult.status === 'openai'
-        ? ` · AI 보강 ${enrichmentResult.enrichedCount}명`
-        : enrichmentResult.status === 'fallback'
-          ? ' · AI 보강 실패, 데이터룸 점수 사용'
-          : ' · 데이터룸 점수 사용'
+    const enrichmentLabel = ` · AI 보강 ${enrichmentResult.enrichedCount}명`
 
     updateWorkspace((current) => {
       const scopedRecommendations = current.recommendations.filter((recommendation) => {
@@ -14108,7 +14091,6 @@ function AppContent() {
     let policyFeatureKey = null
     let engine = 'local-strategy-director'
     let sourceRawIds = ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001']
-    let usedFallback = false
     const apiBaseUrl = String(backendConfig?.apiBaseUrl || '').replace(/\/$/, '')
 
     if (apiBaseUrl) {
@@ -14133,8 +14115,9 @@ function AppContent() {
         sourceRawIds = payload?.data?.sourceRawIds || sourceRawIds
         engine = 'admin-policy-api'
       } catch (error) {
-        usedFallback = true
         console.warn('Campaign strategy API fallback:', error)
+        showToast(`${campaign.name} 전략을 생성하지 못했습니다. 관리자 AI 정책 연결 상태를 확인해 주세요.`)
+        return
       }
     }
     const generatedAt = nowLabel()
@@ -14173,9 +14156,7 @@ function AppContent() {
         `${campaign.name} 인플루언서 전략 생성`,
       ),
     )
-    showToast(usedFallback
-      ? `${campaign.name} 전략을 로컬 초안으로 생성했어요. 관리자 AI 연결 상태를 확인해 주세요.`
-      : `${campaign.name} 인플루언서 전략을 생성했어요.`)
+    showToast(`${campaign.name} 인플루언서 전략을 생성했어요.`)
   }
 
   const createPermissionTestAccounts = () => {
@@ -14211,7 +14192,6 @@ function AppContent() {
     let policyFeatureKey = null
     let engine = 'local-strategy-director'
     let sourceRawIds = ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001', 'RAW-EXT-REF-001']
-    let usedFallback = false
     const apiBaseUrl = String(backendConfig?.apiBaseUrl || '').replace(/\/$/, '')
 
     if (apiBaseUrl) {
@@ -14236,8 +14216,9 @@ function AppContent() {
         sourceRawIds = payload?.data?.sourceRawIds || sourceRawIds
         engine = 'admin-policy-api'
       } catch (error) {
-        usedFallback = true
         console.warn('Campaign guide API fallback:', error)
+        showToast(`${campaign.name} 가이드를 생성하지 못했습니다. 관리자 AI 정책 연결 상태를 확인해 주세요.`)
+        return
       }
     }
     const generatedAt = nowLabel()
@@ -14272,9 +14253,7 @@ function AppContent() {
         `${campaign.name} 인플루언서 가이드 생성`,
       ),
     )
-    showToast(usedFallback
-      ? `${campaign.name} 가이드를 로컬 초안으로 생성했어요. 관리자 AI 연결 상태를 확인해 주세요.`
-      : `${campaign.name} 인플루언서 가이드를 생성했어요.`)
+    showToast(`${campaign.name} 인플루언서 가이드를 생성했어요.`)
   }
 
   const generateCampaignIndividualGuidesForDetail = (campaign) => {
@@ -16490,6 +16469,7 @@ function AppContent() {
   const campaignModalIndividualGuideCount = activeCampaignForModal
     ? Object.keys(activeCampaignForModal.individualContentGuides || {}).length
     : 0
+  const activeCampaignStrategyPolicy = getActiveAiPolicyStatus(aiPolicyStatus, 'campaign-strategy')
 
   const currentPath = window.location.pathname
   const isAdminPath = currentPath.startsWith('/admin')
@@ -16512,6 +16492,16 @@ function AppContent() {
   }
 
   if (isAdminPath) {
+    if (!hasAdminRouteAccess) {
+      return (
+        <main className="admin-route-denied">
+          <ShieldCheck size={32} />
+          <h1>관리자 전용 화면입니다</h1>
+          <p>Owner 또는 Admin 권한으로 로그인한 계정만 접근할 수 있습니다.</p>
+          <a className="secondary-button" href="/">사용자 화면으로 돌아가기</a>
+        </main>
+      )
+    }
     return (
       <AdminConsole
         summary={dataRoomSummary}
@@ -16560,6 +16550,7 @@ function AppContent() {
             onRefreshApiStatus={refreshDataRoomApiStatus}
             apiEvents={dataRoomApiEvents}
             onRefreshApiEvents={refreshDataRoomApiEvents}
+            canOpenAdminSources
             onLog={() => showToast('수집 로그를 확인했습니다.')}
             onRefreshRaw={() => showToast('재수집 요청을 등록했습니다.')}
             onMetricLog={() => showToast('계산 로그를 확인했습니다.')}
@@ -16574,6 +16565,7 @@ function AppContent() {
         apiEvents={dataRoomApiEvents}
         backendConfig={backendConfig}
         adminConfig={workspace.adminConfig}
+        adminAccessToken={authSession?.access_token || ''}
         onUpdateAdminConfig={(nextAdminConfig) =>
           updateWorkspace((current) => ({
             ...current,
@@ -17605,10 +17597,9 @@ function AppContent() {
                 <span>정책 {getRecommendationPolicyExportSummary().version}</span>
                 <span>담당 {getRecommendationPolicyExportSummary().owner}</span>
                 <span>점검 {getRecommendationPolicyExportSummary().lastUpdated}</span>
-                {getActiveAdminPolicy(workspace.adminConfig, 'creator-recommendation') && (
+                {getActiveAiPolicyStatus(aiPolicyStatus, 'creator-recommendation') && (
                   <span>
-                    관리자 학습 {getActiveAdminPolicy(workspace.adminConfig, 'creator-recommendation').version}
-                    {workspace.adminConfig?.source === 'server' ? ' · 서버 동기화' : ' · 로컬 설정'}
+                    운영 학습 {getActiveAiPolicyStatus(aiPolicyStatus, 'creator-recommendation').version} · 자동 동기화
                   </span>
                 )}
                 <button type="button" onClick={() => openDataRoomRaw(getRecommendationPolicyExportSummary().rawId)}>
@@ -19878,11 +19869,8 @@ function AppContent() {
                   <span className="mini-label">인플루언서 전략</span>
                   <strong>캠페인 전략</strong>
                   <p>캠페인 생성 때 입력한 브랜드/제품 raw를 기준으로 섭외 방향, 후보 우선순위, 메시지 전략을 생성합니다.</p>
+                  {activeCampaignStrategyPolicy && <small className="active-policy-note">운영 기준 {activeCampaignStrategyPolicy.version} · 관리자 업데이트 자동 반영</small>}
                   <div className="campaign-guide-actions">
-                    <a className="secondary-button compact-button" href={CREATOROPS_STRATEGY_UPLOAD_URL} target="_blank" rel="noreferrer">
-                      <UploadCloud size={16} />
-                      관리자에서 전략서 업로드
-                    </a>
                     <button
                       className="primary-button compact-button"
                       type="button"
@@ -21180,10 +21168,6 @@ function AppContent() {
                   <p>이번 캠페인의 상세페이지, USP, 금지/주의 표현, 기존 성과 자료를 첨부하면 가이드와 메시지에 반영합니다.</p>
                 </div>
                 <div className="campaign-guide-actions">
-                  <a className="secondary-button compact-button" href={CREATOROPS_STRATEGY_UPLOAD_URL} target="_blank" rel="noreferrer">
-                    <UploadCloud size={16} />
-                    관리자에서 전략서 업로드
-                  </a>
                   <button className="secondary-button compact-button" type="button" onClick={downloadCampaignGuideTemplate}>
                     <Download size={16} />
                     엑셀 양식
@@ -22246,6 +22230,7 @@ function AppContent() {
                 <span className="mini-label">인플루언서 전략</span>
                 <strong>캠페인 전략</strong>
                 <p>캠페인 생성 때 입력한 브랜드/제품 raw를 기준으로 섭외 방향, 후보 우선순위, 메시지 전략을 생성합니다.</p>
+                {activeCampaignStrategyPolicy && <small className="active-policy-note">운영 기준 {activeCampaignStrategyPolicy.version} · 관리자 업데이트 자동 반영</small>}
                 <div className="campaign-guide-actions">
                   <button
                     className="primary-button compact-button"

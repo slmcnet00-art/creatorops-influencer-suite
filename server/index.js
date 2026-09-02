@@ -874,6 +874,34 @@ async function getActiveAiFeatureConfig(featureKey) {
   return config?.status === 'active' ? config : null
 }
 
+async function requireAdminWorkspaceAccess(request, _response, next) {
+  try {
+    const authorization = String(request.headers.authorization || '')
+    const accessToken = authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim()
+    if (!accessToken) throw httpError(401, 'Administrator authentication is required.')
+    const supabase = getSupabaseAdminClient()
+    if (!supabase) throw httpError(503, 'Administrator authentication is not configured.')
+    const { data: userData, error: userError } = await supabase.auth.getUser(accessToken)
+    const user = userData?.user
+    if (userError || !user) throw httpError(401, 'The administrator session is invalid or expired.')
+    const { data: membership, error: membershipError } = await supabase
+      .from('workspace_members')
+      .select('workspace_id,user_id,role,status')
+      .eq('workspace_id', WORKSPACE_ID)
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .maybeSingle()
+    if (membershipError) throw membershipError
+    if (!membership || !['Owner', 'Admin'].includes(membership.role)) {
+      throw httpError(403, 'Owner or Admin workspace access is required.')
+    }
+    request.adminUser = { id: user.id, role: membership.role }
+    next()
+  } catch (error) {
+    next(error)
+  }
+}
+
 function applyAdminKnowledge(prompt, config) {
   if (!config) return prompt
   const knowledge = (config.attachments || [])
@@ -1161,6 +1189,7 @@ app.post('/ai/outreach-message', async (request, response, next) => {
   try {
     const { creator, brand, campaign } = request.body || {}
     const config = await getActiveAiFeatureConfig('outreach-message')
+    if (!config) throw httpError(503, 'An active administrator outreach-message policy is required.')
     const prompt = applyAdminKnowledge(buildOutreachMessagePrompt(creator, brand, campaign), config)
     const message = await callOpenAIText(prompt)
     response.json({ data: { message, policyVersion: config?.version || null, policyFeatureKey: config?.featureKey || null } })
@@ -1173,6 +1202,7 @@ app.post('/ai/content-guide', async (request, response, next) => {
   try {
     const { brand, campaign, seedingType, channel, references, draftGuide } = request.body || {}
     const config = await getActiveAiFeatureConfig('content-guide')
+    if (!config) throw httpError(503, 'An active administrator content-guide policy is required.')
     const prompt = applyAdminKnowledge(buildContentGuidePrompt({ brand, campaign, seedingType, channel, references, draftGuide }), config)
     const guide = await callOpenAIText(prompt)
     response.json({
@@ -1192,6 +1222,7 @@ app.post('/ai/campaign-strategy', async (request, response, next) => {
   try {
     const { brand, campaign, brief, creators, recommendations, draftStrategy } = request.body || {}
     const config = await getActiveAiFeatureConfig('campaign-strategy')
+    if (!config) throw httpError(503, 'An active administrator campaign-strategy policy is required.')
     const prompt = applyAdminKnowledge(
       buildCampaignStrategyPrompt({ brand, campaign, brief, creators, recommendations, draftStrategy }),
       config,
@@ -1217,6 +1248,7 @@ app.post('/ai/recommendations/enrich', async (request, response, next) => {
     if (!safeCandidates.length) throw httpError(400, 'candidates are required.')
 
     const config = await getActiveAiFeatureConfig('creator-recommendation')
+    if (!config) throw httpError(503, 'An active administrator creator-recommendation policy is required.')
     const prompt = applyAdminKnowledge(
       buildRecommendationEnrichmentPrompt({ brand, campaign, candidates: safeCandidates }),
       config,
@@ -1242,7 +1274,25 @@ app.post('/ai/recommendations/enrich', async (request, response, next) => {
   }
 })
 
-app.get('/admin/ai-configs', async (_request, response, next) => {
+app.get('/ai/policy-status', async (_request, response, next) => {
+  try {
+    const policies = (await getAiFeatureConfigs())
+      .filter((config) => config.status === 'active')
+      .map((config) => ({
+        featureKey: config.featureKey,
+        name: config.name,
+        status: config.status,
+        version: config.version,
+        updatedAt: config.updatedAt,
+        sourceSyncedAt: config.sourceSyncedAt,
+      }))
+    response.json({ data: { policies } })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/admin/ai-configs', requireAdminWorkspaceAccess, async (_request, response, next) => {
   try {
     response.json({ data: { workspaceId: WORKSPACE_ID, configs: await getAiFeatureConfigs() } })
   } catch (error) {
@@ -1250,7 +1300,7 @@ app.get('/admin/ai-configs', async (_request, response, next) => {
   }
 })
 
-app.post('/admin/ai-configs/:featureKey/import-url', async (request, response, next) => {
+app.post('/admin/ai-configs/:featureKey/import-url', requireAdminWorkspaceAccess, async (request, response, next) => {
   try {
     const featureKey = String(request.params.featureKey || '')
     if (!AI_FEATURE_KEYS.has(featureKey)) throw httpError(400, 'Unsupported AI feature key.')
@@ -1261,7 +1311,7 @@ app.post('/admin/ai-configs/:featureKey/import-url', async (request, response, n
   }
 })
 
-app.put('/admin/ai-configs/:featureKey', async (request, response, next) => {
+app.put('/admin/ai-configs/:featureKey', requireAdminWorkspaceAccess, async (request, response, next) => {
   try {
     const featureKey = String(request.params.featureKey || '')
     if (!AI_FEATURE_KEYS.has(featureKey)) throw httpError(400, 'Unsupported AI feature key.')

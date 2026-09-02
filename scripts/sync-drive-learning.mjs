@@ -8,12 +8,15 @@ import {
 } from '../shared/creatorOpsLearningSources.js'
 
 const apiBaseUrl = String(process.argv[2] || process.env.CREATOROPS_API_BASE_URL || 'https://creatorops-suite-api.onrender.com').replace(/\/$/, '')
+const adminAccessToken = String(process.env.CREATOROPS_ADMIN_ACCESS_TOKEN || '').trim()
 const version = 'v1.1-drive-2026-09-02'
+
+if (!adminAccessToken) throw new Error('CREATOROPS_ADMIN_ACCESS_TOKEN is required for Drive learning synchronization.')
 
 async function jsonRequest(path, options = {}) {
   const response = await fetch(`${apiBaseUrl}${path}`, {
     ...options,
-    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) },
+    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${adminAccessToken}`, ...(options.headers || {}) },
   })
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) throw new Error(`${path}: ${payload.message || payload.error || response.status}`)

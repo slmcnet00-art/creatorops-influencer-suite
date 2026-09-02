@@ -252,6 +252,7 @@ export default function AdminDataRoom({
   onRefreshApiStatus,
   apiEvents = [],
   onRefreshApiEvents,
+  canOpenAdminSources = false,
   onLog,
   onRefreshRaw,
   onMetricLog,
@@ -1106,7 +1107,7 @@ export default function AdminDataRoom({
                 <div><dt>수집 목적</dt><dd>{activeDetail.purpose}</dd></div>
                 <div><dt>수집 방식</dt><dd>{activeDetail.method}</dd></div>
                 <div><dt>최근/다음 수집</dt><dd>{activeDetail.lastCollectedAt} / {activeDetail.nextCollectAt}</dd></div>
-                <div><dt>원천 위치</dt><dd>{activeDetail.sourceLocation}{activeDetail.sourceUrl ? <><br /><a className="data-room-source-link" href={activeDetail.sourceUrl} target="_blank" rel="noreferrer">Google Drive 원본 열기</a></> : null}</dd></div>
+                <div><dt>원천 위치</dt><dd>{activeDetail.sourceLocation}{canOpenAdminSources && activeDetail.sourceUrl ? <><br /><a className="data-room-source-link" href={activeDetail.sourceUrl} target="_blank" rel="noreferrer">Google Drive 원본 열기</a></> : null}</dd></div>
                 <div><dt>저장 위치</dt><dd>{activeDetail.storageLocation}</dd></div>
                 <div><dt>대시보드 사용</dt><dd>{activeDetail.dashboardArea}</dd></div>
                 <div><dt>품질 이슈</dt><dd>{activeDetail.qualityIssue}</dd></div>
