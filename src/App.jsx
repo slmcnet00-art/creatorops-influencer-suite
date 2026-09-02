@@ -70,6 +70,7 @@ import {
   normalizeCampaignMarkets,
   resolveCampaignMarketCountry,
 } from './marketLocalization'
+import { getAiOutputPolicyState } from './aiPolicyVersions'
 import {
   getBackendConfig,
   getAuthSession,
@@ -14145,6 +14146,9 @@ function AppContent() {
                     packageVersion: policyVersion || 'strategy-director-v2.3-local',
                     policyFeatureKey,
                     engine,
+                    strategyPolicyVersion: policyVersion || 'strategy-director-v2.3-local',
+                    strategyPolicyFeatureKey: policyFeatureKey,
+                    strategyEngine: engine,
                   },
                 }
               : item,
@@ -14242,6 +14246,9 @@ function AppContent() {
                     packageVersion: policyVersion || 'strategy-director-v2.3-local',
                     policyFeatureKey,
                     engine,
+                    guidePolicyVersion: policyVersion || 'strategy-director-v2.3-local',
+                    guidePolicyFeatureKey: policyFeatureKey,
+                    guideEngine: engine,
                   },
                 }
               : item,
@@ -16468,6 +16475,8 @@ function AppContent() {
     ? Object.keys(activeCampaignForModal.individualContentGuides || {}).length
     : 0
   const activeCampaignStrategyPolicy = getActiveAiPolicyStatus(aiPolicyStatus, 'campaign-strategy')
+  const activeContentGuidePolicy = getActiveAiPolicyStatus(aiPolicyStatus, 'content-guide')
+  const activeCreatorRecommendationPolicy = getActiveAiPolicyStatus(aiPolicyStatus, 'creator-recommendation')
 
   const currentPath = window.location.pathname
   const isAdminPath = currentPath.startsWith('/admin')
@@ -17657,6 +17666,7 @@ function AppContent() {
                         recommendation={recommendation}
                         creator={creator}
                         campaign={selectedCampaign}
+                        activePolicy={activeCreatorRecommendationPolicy}
                         checked={selectedRecommendationIds.includes(recommendation.id)}
                         active={selectedRecommendationDetailId === recommendation.creatorId}
                         onSelect={() => {
@@ -18120,6 +18130,7 @@ function AppContent() {
                       recommendation={recommendation}
                       creator={learnedCreator}
                       campaign={selectedCampaign}
+                      activePolicy={activeCreatorRecommendationPolicy}
                       active={selectedCreator?.id === creator.id}
                       checked={selectedDiscoveryCreatorIds.includes(creator.id)}
                       profileUrl={getCreatorProfileUrl(creator, getRecommendedContactChannelId(creator))}
@@ -18409,6 +18420,7 @@ function AppContent() {
                     recommendation={recommendation}
                     creator={learnedCreator}
                     campaign={selectedCampaign}
+                    activePolicy={activeCreatorRecommendationPolicy}
                     active={selectedCreator?.id === creator.id}
                     checked={selectedCandidatePoolIds.includes(creator.id)}
                     profileUrl={profileUrl}
@@ -19798,7 +19810,12 @@ function AppContent() {
                   <span className="mini-label">인플루언서 전략</span>
                   <strong>캠페인 전략</strong>
                   <p>캠페인 생성 때 입력한 브랜드/제품 raw를 기준으로 섭외 방향, 후보 우선순위, 메시지 전략을 생성합니다.</p>
-                  {activeCampaignStrategyPolicy && <small className="active-policy-note">운영 기준 {activeCampaignStrategyPolicy.version} · 관리자 업데이트 자동 반영</small>}
+                  <PolicyFreshnessNote
+                    activePolicy={activeCampaignStrategyPolicy}
+                    campaign={activeCampaignForModal}
+                    featureKey="campaign-strategy"
+                    hasOutput={Boolean(activeCampaignForModal.influencerStrategy)}
+                  />
                   <div className="campaign-guide-actions">
                     <button
                       className="primary-button compact-button"
@@ -19859,6 +19876,12 @@ function AppContent() {
                   <p>
                     {activeCampaignForModal.guideSeedType ?? '무가시딩'} · {activeCampaignForModal.guideChannel ?? 'Instagram Reels'} · 원메시지/후킹포인트 기반
                   </p>
+                  <PolicyFreshnessNote
+                    activePolicy={activeContentGuidePolicy}
+                    campaign={activeCampaignForModal}
+                    featureKey="content-guide"
+                    hasOutput={Boolean(activeCampaignForModal.generatedContentGuide)}
+                  />
                   <div className="campaign-guide-actions">
                     <button
                       className="secondary-button compact-button"
@@ -22159,7 +22182,12 @@ function AppContent() {
                 <span className="mini-label">인플루언서 전략</span>
                 <strong>캠페인 전략</strong>
                 <p>캠페인 생성 때 입력한 브랜드/제품 raw를 기준으로 섭외 방향, 후보 우선순위, 메시지 전략을 생성합니다.</p>
-                {activeCampaignStrategyPolicy && <small className="active-policy-note">운영 기준 {activeCampaignStrategyPolicy.version} · 관리자 업데이트 자동 반영</small>}
+                <PolicyFreshnessNote
+                  activePolicy={activeCampaignStrategyPolicy}
+                  campaign={activeCampaignForModal}
+                  featureKey="campaign-strategy"
+                  hasOutput={Boolean(activeCampaignForModal.influencerStrategy)}
+                />
                 <div className="campaign-guide-actions">
                   <button
                     className="primary-button compact-button"
@@ -22218,6 +22246,12 @@ function AppContent() {
                 <p>
                   {activeCampaignForModal.guideSeedType ?? '무가시딩'} · {activeCampaignForModal.guideChannel ?? 'Instagram Reels'} · 원메시지/후킹포인트 기반
                 </p>
+                <PolicyFreshnessNote
+                  activePolicy={activeContentGuidePolicy}
+                  campaign={activeCampaignForModal}
+                  featureKey="content-guide"
+                  hasOutput={Boolean(activeCampaignForModal.generatedContentGuide)}
+                />
                 <div className="campaign-guide-actions">
                   <button
                     className="secondary-button compact-button"
@@ -22589,6 +22623,31 @@ function ReferenceMedia({ item }) {
   return <div className="reference-media">{content}</div>
 }
 
+function PolicyFreshnessNote({ activePolicy, campaign, featureKey, hasOutput }) {
+  const state = getAiOutputPolicyState({
+    activePolicy,
+    generationState: campaign?.generationState,
+    featureKey,
+    hasOutput,
+  })
+  if (!state) return null
+
+  if (state.status === 'stale') {
+    return (
+      <small className="active-policy-note is-stale">
+        생성 기준 {state.generatedVersion} → 최신 {state.activeVersion} · 재생성 필요
+      </small>
+    )
+  }
+  if (state.status === 'unknown') {
+    return <small className="active-policy-note is-stale">운영 기준 {state.activeVersion} · 생성 버전 미확인 · 재생성 권장</small>
+  }
+  if (state.status === 'current') {
+    return <small className="active-policy-note is-current">운영 기준 {state.activeVersion} · 최신 기준 반영됨</small>
+  }
+  return <small className="active-policy-note">운영 기준 {state.activeVersion} · 관리자 업데이트 자동 반영</small>
+}
+
 function PracticeTour({ steps, currentIndex, currentStep, onClose, onDismiss, onStepChange, onComplete }) {
   const totalSteps = steps.length || 1
   const isFirst = currentIndex <= 0
@@ -22820,6 +22879,7 @@ function RecommendationCard({
   recommendation,
   creator,
   campaign,
+  activePolicy,
   checked,
   active = false,
   onSelect,
@@ -22918,6 +22978,15 @@ function RecommendationCard({
     { label: '\uC608\uC0C1 CPV', value: costPerView ? `${costPerView}\uC6D0` : '\uC0B0\uC815 \uC804' },
     { label: '\uC870\uD68C \uD3ED\uBC1C', value: viralityLabel },
   ]
+  const recommendationPolicyState = getAiOutputPolicyState({
+    activePolicy,
+    generationState: {
+      recommendationPolicyVersion: recommendation.llmTrace?.promptVersion,
+      policyFeatureKey: recommendation.llmTrace?.policyFeatureKey,
+    },
+    featureKey: 'creator-recommendation',
+    hasOutput: Boolean(recommendation.aiEnriched || recommendation.llmTrace),
+  })
 
   return (
     <article className={`recommendation-card ${active ? 'active' : ''} ${checked ? 'selected' : ''}`}>
@@ -23049,6 +23118,18 @@ function RecommendationCard({
         {recommendation.aiEnriched && (
           <small className="recommendation-learning-source">
             OpenAI 보강 · {recommendation.llmTrace?.model || 'connected model'}
+          </small>
+        )}
+        {recommendationPolicyState?.needsRegeneration && (
+          <small className="recommendation-learning-source policy-stale">
+            {recommendationPolicyState.status === 'stale'
+              ? `AI 추천 기준 ${recommendationPolicyState.generatedVersion} → ${recommendationPolicyState.activeVersion} · AI 매칭 재실행 필요`
+              : `AI 추천 기준 ${recommendationPolicyState.activeVersion} · 생성 버전 미확인 · AI 매칭 재실행 권장`}
+          </small>
+        )}
+        {recommendationPolicyState?.status === 'current' && (
+          <small className="recommendation-learning-source policy-current">
+            AI 추천 기준 {recommendationPolicyState.activeVersion} · 최신 기준 반영됨
           </small>
         )}
       </div>

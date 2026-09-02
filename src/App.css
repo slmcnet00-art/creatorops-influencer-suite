@@ -4681,6 +4681,21 @@
   line-height: 1.35;
 }
 
+.recommendation-learning-source.policy-current {
+  color: #087443;
+  font-weight: 800;
+}
+
+.recommendation-learning-source.policy-stale {
+  width: fit-content;
+  padding: 4px 7px;
+  border: 1px solid #fedf89;
+  border-radius: 7px;
+  background: #fffaeb;
+  color: #b54708;
+  font-weight: 800;
+}
+
 .recommendation-reasons {
   margin-top: 8px;
   color: var(--text);
@@ -11462,6 +11477,16 @@
   background: rgba(var(--primary-rgb), 0.08);
   font-size: 11px;
   font-weight: 850;
+}
+
+.active-policy-note.is-current {
+  color: #067647;
+  background: #ecfdf3;
+}
+
+.active-policy-note.is-stale {
+  color: #b54708;
+  background: #fffaeb;
 }
 
 .data-room-source-link {
