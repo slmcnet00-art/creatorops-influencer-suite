@@ -88,3 +88,5 @@ services:
         sync: false
       - key: CRON_SECRET
         sync: false
+      - key: AUTOMATION_TRACKING_LIMIT
+        value: 100

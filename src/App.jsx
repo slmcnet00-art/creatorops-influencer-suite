@@ -76,6 +76,9 @@ import {
   getAuthSession,
   getCurrentWorkspaceAccess,
   importExternalReport,
+  loadAdminAccessMembers,
+  loadAdminAuditLogs,
+  loadAdminJobRuns,
   loadBrandCloudWorkspaces,
   loadDataRoomApiStatus,
   loadExternalSearchEvents,
@@ -88,6 +91,8 @@ import {
   signInWithEmail,
   signOut,
   syncDataRoomRegistry,
+  runAdminOperationJob,
+  updateAdminAccessMember,
   watchCloudWorkspace,
   watchBrandCloudWorkspaces,
 } from './backendSync'
@@ -118,6 +123,7 @@ async function readSpreadsheet(file, options) {
 const STORE_KEY = 'creatorops.workspace.v2'
 const TRACKING_DAILY_REFRESH_KEY = 'creatorops.tracking.lastDailyRefresh'
 const GMAIL_AUTH_STORE_KEY = 'creatorops.gmailAuth.v1'
+const GMAIL_OAUTH_STATE_KEY = 'creatorops.gmailOAuthState.v1'
 const YOUTUBE_REVIEW_SNAPSHOT_KEY = 'creatorops.youtubeReviewSnapshot.v1'
 const PRACTICE_TOUR_STORE_KEY = 'creatorops.practiceTour.completed.v1'
 const EXTERNAL_REPORT_PROFILES = [
@@ -1840,6 +1846,34 @@ function normalizeWorkspace(saved) {
 function getActiveAiPolicyStatus(policies, featureKey) {
   if (!Array.isArray(policies)) return null
   return policies.find((policy) => policy?.featureKey === featureKey && policy?.status === 'active') ?? null
+}
+
+function formatAdminTimestamp(value) {
+  const parsed = value ? new Date(value) : null
+  return parsed && !Number.isNaN(parsed.getTime()) ? parsed.toLocaleString('ko-KR') : '-'
+}
+
+function mapAdminAccessMember(member, brands = []) {
+  const email = String(member?.email || '')
+  const mappedBrandIds = member?.brandIds?.includes('*')
+    ? brands.map((brand) => brand.id)
+    : (member?.brandIds || [])
+        .map((brandId) => brands.find((brand) => String(brand.id) === String(brandId))?.id)
+        .filter((brandId) => brandId != null)
+  const statusLabels = { active: '활성', invited: '초대됨', disabled: '비활성' }
+  return {
+    id: member?.userId || member?.id,
+    userId: member?.userId || member?.id,
+    name: email ? email.split('@')[0] : '워크스페이스 계정',
+    email,
+    role: normalizeRole(member?.role),
+    status: statusLabels[member?.status] || member?.status || '미확인',
+    serverStatus: member?.status || 'active',
+    brandIds: mappedBrandIds,
+    createdAt: member?.createdAt || '',
+    lastActive: formatAdminTimestamp(member?.updatedAt),
+    source: 'Supabase Auth',
+  }
 }
 
 const BRAND_SCOPED_ARRAY_KEYS = [
@@ -7710,6 +7744,10 @@ function AppContent() {
   const [, setAuthReady] = useState(!backendConfig.hasSupabase)
   const [workspaceAccess, setWorkspaceAccess] = useState(null)
   const [, setWorkspaceAccessError] = useState('')
+  const [adminAccessMembers, setAdminAccessMembers] = useState(null)
+  const [adminAuditLogs, setAdminAuditLogs] = useState([])
+  const [adminJobRuns, setAdminJobRuns] = useState([])
+  const [adminRunningJob, setAdminRunningJob] = useState('')
   const [authEmail, setAuthEmail] = useState('')
   const [cloudWorkspaceLoaded, setCloudWorkspaceLoaded] = useState(!backendConfig.hasSupabase)
   const cloudVersionRef = useRef('')
@@ -7754,6 +7792,7 @@ function AppContent() {
       return null
     }
   })
+  const [gmailClock, setGmailClock] = useState(() => Date.now())
   const [gmailSending, setGmailSending] = useState(false)
   const [outreachStatusFilter, setOutreachStatusFilter] = useState('전체')
   const [outreachSearchQuery, setOutreachSearchQuery] = useState('')
@@ -8371,7 +8410,7 @@ function AppContent() {
     () => selectedOutreachItems.filter((item) => hasDuplicateSentOutreach(item, outreach)).length,
     [outreach, selectedOutreachItems],
   )
-  const gmailConnected = Boolean(gmailAuth?.accessToken && Number(gmailAuth.expiresAt || 0) > 0)
+  const gmailConnected = Boolean(gmailAuth?.accessToken && Number(gmailAuth.expiresAt || 0) > gmailClock + 30_000)
   const allOutreachSelected =
     filteredCampaignOutreach.length > 0 &&
     filteredCampaignOutreach.every((item) => selectedOutreachIds.includes(item.id))
@@ -8715,6 +8754,11 @@ function AppContent() {
   }, [toast])
 
   useEffect(() => {
+    const timer = window.setInterval(() => setGmailClock(Date.now()), 60_000)
+    return () => window.clearInterval(timer)
+  }, [])
+
+  useEffect(() => {
     if (!backendConfig.hasSupabase) return undefined
 
     let cancelled = false
@@ -8756,6 +8800,34 @@ function AppContent() {
       unsubscribe()
     }
   }, [backendConfig.hasSupabase])
+
+  useEffect(() => {
+    const accessToken = authSession?.access_token
+    const onAdminRoute = window.location.pathname.startsWith('/admin')
+    if (!backendConfig.apiBaseUrl || !accessToken || !canManagePermissions || !onAdminRoute) {
+      return undefined
+    }
+
+    let cancelled = false
+    Promise.all([
+      loadAdminAccessMembers(accessToken),
+      loadAdminAuditLogs(accessToken, 120),
+      loadAdminJobRuns(accessToken, 80),
+    ])
+      .then(([accessResult, auditResult, jobResult]) => {
+        if (cancelled) return
+        setAdminAccessMembers((accessResult.members || []).map((member) => mapAdminAccessMember(member, brands)))
+        setAdminAuditLogs(auditResult.logs || [])
+        setAdminJobRuns(jobResult.runs || [])
+      })
+      .catch((error) => {
+        if (!cancelled) setToast(error instanceof Error ? error.message : '서버 권한 원장을 불러오지 못했습니다.')
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [authSession?.access_token, backendConfig.apiBaseUrl, brands, canManagePermissions])
 
   useEffect(() => {
     if (!trackedPosts.length) return undefined
@@ -10999,15 +11071,24 @@ function AppContent() {
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
     if (params.get('google_oauth') !== '1') return undefined
+    if (backendConfig.hasSupabase && !authSession?.access_token) return undefined
 
     const apiBaseUrl = backendConfig.apiBaseUrl?.replace(/\/$/, '')
     const code = params.get('code')
     const error = params.get('error')
+    const returnedState = params.get('state')
+    const expectedState = window.sessionStorage.getItem(GMAIL_OAUTH_STATE_KEY)
     const cleanUrl = window.location.pathname + (window.location.hash || '')
     window.history.replaceState({}, document.title, cleanUrl)
+    window.sessionStorage.removeItem(GMAIL_OAUTH_STATE_KEY)
 
     if (error) {
       window.setTimeout(() => showToast('Gmail 연결에 실패했습니다: ' + error), 0)
+      return undefined
+    }
+
+    if (!returnedState || !expectedState || returnedState !== expectedState) {
+      window.setTimeout(() => showToast('Gmail 연결 보안 상태값이 일치하지 않아 인증을 중단했습니다.'), 0)
       return undefined
     }
 
@@ -11021,7 +11102,10 @@ function AppContent() {
       try {
         const response = await fetch(apiBaseUrl + '/oauth/google/token', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            Authorization: `Bearer ${authSession?.access_token || ''}`,
+            'Content-Type': 'application/json',
+          },
           body: JSON.stringify({ code }),
         })
         const payload = await response.json().catch(() => ({}))
@@ -11029,7 +11113,7 @@ function AppContent() {
         const nextAuth = {
           accessToken: payload.data?.accessToken,
           refreshToken: payload.data?.refreshToken || '',
-          expiresAt: Date.now() + Math.max(Number(payload.data?.expiresIn || 3600) - 60, 60) * 1000,
+          expiresAt: payload.data?.expiresAt || gmailClock + Math.max(Number(payload.data?.expiresIn || 3600) - 60, 60) * 1000,
           connectedAt: new Date().toISOString(),
           scope: payload.data?.scope || '',
         }
@@ -11048,7 +11132,7 @@ function AppContent() {
     return () => {
       cancelled = true
     }
-  }, [backendConfig.apiBaseUrl])
+  }, [authSession?.access_token, backendConfig.apiBaseUrl, backendConfig.hasSupabase, gmailClock])
 
 
   const updateWorkspace = (mutator) => {
@@ -11087,7 +11171,7 @@ function AppContent() {
       window.removeEventListener('focus', syncAiPolicyStatus)
       document.removeEventListener('visibilitychange', syncOnVisible)
     }
-  }, [backendConfig.apiBaseUrl])
+  }, [authSession?.access_token, backendConfig.apiBaseUrl, backendConfig.hasSupabase])
 
   const openCreatorRateEditor = (creator) => {
     const rate = getCreatorRateSummary(creator)
@@ -11422,6 +11506,93 @@ function AppContent() {
         '브랜드 접근권한 업데이트',
       ),
     )
+  }
+
+  const refreshAdminAuditTrail = async () => {
+    if (!authSession?.access_token) return
+    try {
+      const result = await loadAdminAuditLogs(authSession.access_token, 120)
+      setAdminAuditLogs(result.logs || [])
+    } catch {
+      // The permission mutation already reports its own result; a later admin refresh retries audit hydration.
+    }
+  }
+
+  const runAdminAutomation = async (jobName) => {
+    if (!authSession?.access_token || adminRunningJob) return
+    setAdminRunningJob(jobName)
+    try {
+      const result = await runAdminOperationJob(authSession.access_token, jobName)
+      const [jobsResult, auditResult] = await Promise.all([
+        loadAdminJobRuns(authSession.access_token, 80),
+        loadAdminAuditLogs(authSession.access_token, 120),
+      ])
+      setAdminJobRuns(jobsResult.runs || [])
+      setAdminAuditLogs(auditResult.logs || [])
+      await refreshDataRoomApiStatus()
+      const summary = result.run?.result || {}
+      showToast(
+        jobName === 'tracking-refresh'
+          ? `성과 자동 수집 완료 · ${summary.refreshedPosts || 0}개 콘텐츠`
+          : jobName === 'metric-recalculation'
+            ? `지표 자동 재계산 완료 · ${summary.calculatedMetrics || 0}개 지표`
+            : '일일 운영 자동화가 완료됐습니다.',
+      )
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '운영 자동화 실행에 실패했습니다.')
+    } finally {
+      setAdminRunningJob('')
+    }
+  }
+
+  const updateAdminAccountRole = async (accountId, role) => {
+    const serverAccount = adminAccessMembers?.find((account) => account.id === accountId)
+    if (!serverAccount) {
+      updateAccountRole(accountId, role)
+      return
+    }
+    try {
+      const result = await updateAdminAccessMember(authSession?.access_token, accountId, {
+        role,
+        status: serverAccount.serverStatus,
+        brandIds: serverAccount.brandIds,
+      })
+      const nextAccount = mapAdminAccessMember(result.member, brands)
+      setAdminAccessMembers((current) => (current || []).map((account) => account.id === accountId ? nextAccount : account))
+      await refreshAdminAuditTrail()
+      showToast(`${serverAccount.email || serverAccount.name} 역할을 ${role}로 변경했습니다.`)
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '서버 계정 역할을 변경하지 못했습니다.')
+    }
+  }
+
+  const toggleAdminAccountBrandAccess = async (accountId, brandId) => {
+    const serverAccount = adminAccessMembers?.find((account) => account.id === accountId)
+    if (!serverAccount) {
+      toggleAccountBrandAccess(accountId, brandId)
+      return
+    }
+    if (fullBrandAccessRoles.has(normalizeRole(serverAccount.role))) return
+    const nextBrandIds = serverAccount.brandIds.includes(brandId)
+      ? serverAccount.brandIds.filter((item) => item !== brandId)
+      : [...serverAccount.brandIds, brandId]
+    if (!nextBrandIds.length && serverAccount.serverStatus === 'active') {
+      showToast('활성 계정에는 최소 1개 브랜드 DB 접근권한이 필요합니다.')
+      return
+    }
+    try {
+      const result = await updateAdminAccessMember(authSession?.access_token, accountId, {
+        role: serverAccount.role,
+        status: serverAccount.serverStatus,
+        brandIds: nextBrandIds,
+      })
+      const nextAccount = mapAdminAccessMember(result.member, brands)
+      setAdminAccessMembers((current) => (current || []).map((account) => account.id === accountId ? nextAccount : account))
+      await refreshAdminAuditTrail()
+      showToast('서버 브랜드 접근권한을 업데이트했습니다.')
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '서버 브랜드 접근권한을 변경하지 못했습니다.')
+    }
   }
 
   const togglePermissionAccountSelection = (accountId) => {
@@ -15380,15 +15551,49 @@ function AppContent() {
     }
   }
 
+  const getFreshGmailAccessToken = async () => {
+    if (gmailAuth?.accessToken && Number(gmailAuth.expiresAt || 0) > gmailClock + 30_000) return gmailAuth.accessToken
+    if (!gmailAuth?.refreshToken) throw new Error('Gmail 승인이 만료되었습니다. Gmail을 다시 연결해주세요.')
+    if (!authSession?.access_token) throw new Error('Gmail 토큰 갱신 전에 CreatorOps 계정 로그인이 필요합니다.')
+    const apiBaseUrl = backendConfig.apiBaseUrl.replace(/\/$/, '')
+    const response = await fetch(apiBaseUrl + '/oauth/google/refresh', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${authSession.access_token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ refreshToken: gmailAuth.refreshToken }),
+    })
+    const payload = await response.json().catch(() => ({}))
+    if (!response.ok || !payload.data?.accessToken) throw new Error(payload.message || 'Gmail 승인을 갱신하지 못했습니다.')
+    const nextAuth = {
+      ...gmailAuth,
+      accessToken: payload.data.accessToken,
+      expiresAt: payload.data.expiresAt || gmailClock + Math.max(Number(payload.data.expiresIn || 3600) - 60, 60) * 1000,
+      scope: payload.data.scope || gmailAuth.scope || '',
+    }
+    window.localStorage.setItem(GMAIL_AUTH_STORE_KEY, JSON.stringify(nextAuth))
+    setGmailAuth(nextAuth)
+    return nextAuth.accessToken
+  }
+
   const connectGmail = async () => {
     if (!backendConfig.apiBaseUrl) {
       showToast('Gmail 발송은 CreatorOps API 서버 연결이 필요합니다.')
       return
     }
+    if (!authSession?.access_token) {
+      showToast('Gmail 연결 전에 CreatorOps 계정으로 로그인해주세요.')
+      return
+    }
 
     try {
       const apiBaseUrl = backendConfig.apiBaseUrl.replace(/\/$/, '')
-      const response = await fetch(apiBaseUrl + '/oauth/google/auth-url?state=creatorops-gmail')
+      const oauthState = window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`
+      window.sessionStorage.setItem(GMAIL_OAUTH_STATE_KEY, oauthState)
+      const response = await fetch(`${apiBaseUrl}/oauth/google/auth-url?state=${encodeURIComponent(oauthState)}`, {
+        headers: { Authorization: `Bearer ${authSession.access_token}` },
+      })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok || !payload?.data?.url) throw new Error(payload?.message || 'Gmail 인증 URL을 만들지 못했습니다.')
       window.location.href = payload.data.url
@@ -15416,7 +15621,7 @@ function AppContent() {
       showToast('Gmail 발송은 CreatorOps API 서버 연결이 필요합니다.')
       return
     }
-    if (!gmailConnected) {
+    if (!gmailConnected && !gmailAuth?.refreshToken) {
       showToast('먼저 Gmail을 연결해주세요.')
       return
     }
@@ -15435,11 +15640,15 @@ function AppContent() {
     let failures
 
     try {
+      const gmailAccessToken = await getFreshGmailAccessToken()
       const response = await fetch(apiBaseUrl + '/outreach/gmail/send-batch', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          Authorization: `Bearer ${authSession?.access_token || ''}`,
+          'Content-Type': 'application/json',
+        },
         body: JSON.stringify({
-          accessToken: gmailAuth.accessToken,
+          accessToken: gmailAccessToken,
           workspaceId: backendConfig.workspaceId,
           items: deliverableItems.map((item) => {
             const creator = creators.find((candidate) => candidate.id === item.creatorId)
@@ -16564,12 +16773,15 @@ function AppContent() {
             onRecalculate={() => showToast('재계산 요청을 등록했습니다.')}
           />
         )}
-        accounts={accounts}
+        accounts={adminAccessMembers ?? accounts}
         brands={brands}
         currentAccount={currentAccount}
         canManagePermissions={canManagePermissions}
         activities={activities}
         apiEvents={dataRoomApiEvents}
+        auditLogs={adminAuditLogs}
+        jobRuns={adminJobRuns}
+        runningJob={adminRunningJob}
         backendConfig={backendConfig}
         adminConfig={workspace.adminConfig}
         adminAccessToken={authSession?.access_token || ''}
@@ -16579,8 +16791,9 @@ function AppContent() {
             adminConfig: nextAdminConfig,
           }))
         }
-        onUpdateAccountRole={updateAccountRole}
-        onToggleBrandAccess={toggleAccountBrandAccess}
+        onUpdateAccountRole={updateAdminAccountRole}
+        onToggleBrandAccess={toggleAdminAccountBrandAccess}
+        onRunAutomation={runAdminAutomation}
         onTestApis={testProductionApis}
         apiTestStatus={apiTestStatus}
       />

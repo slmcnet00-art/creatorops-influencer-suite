@@ -13,6 +13,12 @@ import {
   getConfigurationReadiness,
   REQUIRED_DATA_ROOM_TABLES,
 } from './readiness.js'
+import { FULL_WORKSPACE_ROLES, prepareMemberAccessUpdate } from './accessPolicy.js'
+import {
+  aggregateOperationalMetrics,
+  AUTOMATED_METRIC_DEFINITIONS,
+  normalizeOperationJobName,
+} from './operationsJobs.js'
 
 /* global document */
 
@@ -37,6 +43,7 @@ const WORKSPACE_ID = process.env.WORKSPACE_ID || process.env.VITE_WORKSPACE_ID |
 const searchCache = new Map()
 const outreachDeliveryMemory = new Map()
 const aiFeatureConfigMemory = new Map()
+const activeOperationJobs = new Map()
 let readinessProbeCache = { report: null, expiresAt: 0 }
 let readinessProbeInFlight = null
 const AI_FEATURE_KEYS = new Set([
@@ -902,6 +909,300 @@ async function requireAdminWorkspaceAccess(request, _response, next) {
   }
 }
 
+async function requireWorkspaceAccess(request, _response, next) {
+  try {
+    const authorization = String(request.headers.authorization || '')
+    const accessToken = authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim()
+    if (!accessToken) throw httpError(401, 'Workspace authentication is required.')
+    const supabase = getSupabaseAdminClient()
+    if (!supabase) throw httpError(503, 'Workspace authentication is not configured.')
+    const { data: userData, error: userError } = await supabase.auth.getUser(accessToken)
+    const user = userData?.user
+    if (userError || !user) throw httpError(401, 'The workspace session is invalid or expired.')
+    const { data: membership, error: membershipError } = await supabase
+      .from('workspace_members')
+      .select('workspace_id,user_id,role,status')
+      .eq('workspace_id', WORKSPACE_ID)
+      .eq('user_id', user.id)
+      .eq('status', 'active')
+      .maybeSingle()
+    if (membershipError) throw membershipError
+    if (!membership) throw httpError(403, 'Active workspace access is required.')
+    request.workspaceUser = { id: user.id, role: membership.role }
+    next()
+  } catch (error) {
+    next(error)
+  }
+}
+
+async function writeAuditLog({ actorId = null, action, targetType = null, targetId = null, metadata = {} }) {
+  const supabase = getSupabaseAdminClient()
+  if (!supabase) return { status: 'unavailable' }
+  await ensureDataRoomWorkspace(supabase)
+  const { data, error } = await supabase
+    .from('audit_logs')
+    .insert({
+      workspace_id: WORKSPACE_ID,
+      actor_id: actorId,
+      action,
+      target_type: targetType,
+      target_id: targetId == null ? null : String(targetId),
+      metadata,
+    })
+    .select('id,created_at')
+    .single()
+  if (error) throw error
+  return { status: 'saved', id: data?.id, createdAt: data?.created_at }
+}
+
+async function safeWriteAuditLog(entry) {
+  try {
+    return await writeAuditLog(entry)
+  } catch (error) {
+    console.warn('Audit log persistence failed:', error instanceof Error ? error.message : error)
+    return { status: 'failed' }
+  }
+}
+
+function isUuid(value) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(value || ''))
+}
+
+function requireCronAccess(request, _response, next) {
+  const expected = String(process.env.CRON_SECRET || '').trim()
+  const authorization = String(request.headers.authorization || '')
+  const supplied = String(request.headers['x-cron-secret'] || authorization.match(/^Bearer\s+(.+)$/i)?.[1] || '').trim()
+  if (!expected) {
+    next(httpError(503, 'Scheduled job authentication is not configured.'))
+    return
+  }
+  if (!supplied || supplied.length !== expected.length || supplied !== expected) {
+    next(httpError(401, 'Scheduled job authentication failed.'))
+    return
+  }
+  next()
+}
+
+function trackedPostIdentity(post = {}) {
+  return String(post.id || post.contentId || post.url || post.contentUrl || '')
+}
+
+function normalizeAutomationSourceType(value) {
+  const allowed = new Set(['api_direct', 'api_authorized', 'public_snapshot', 'manual', 'calculated', 'ai_derived'])
+  return allowed.has(value) ? value : 'api_direct'
+}
+
+async function runTrackingRefreshOperation() {
+  const supabase = getSupabaseAdminClient()
+  if (!supabase) throw httpError(503, 'Supabase is required for scheduled tracking refresh.')
+  const [{ data: fullSnapshot, error: fullError }, { data: brandSnapshots, error: brandError }] = await Promise.all([
+    supabase.from('workspace_snapshots').select('payload,updated_at').eq('workspace_id', WORKSPACE_ID).maybeSingle(),
+    supabase.from('brand_scoped_snapshots').select('brand_id,payload,updated_at').eq('workspace_id', WORKSPACE_ID),
+  ])
+  if (fullError) throw fullError
+  if (brandError) throw brandError
+
+  const containers = [
+    ...(fullSnapshot?.payload ? [{ type: 'workspace', payload: fullSnapshot.payload }] : []),
+    ...(brandSnapshots || []).map((snapshot) => ({ type: 'brand', brandId: snapshot.brand_id, payload: snapshot.payload || {} })),
+  ]
+  const uniquePosts = new Map()
+  containers.forEach((container) => {
+    ;(container.payload?.trackedPosts || []).forEach((post) => {
+      const identity = trackedPostIdentity(post)
+      if (identity && !uniquePosts.has(identity)) uniquePosts.set(identity, post)
+    })
+  })
+  const limit = Math.max(1, Math.min(500, Number(process.env.AUTOMATION_TRACKING_LIMIT || 100)))
+  const sourcePosts = [...uniquePosts.values()].slice(0, limit)
+  if (!sourcePosts.length) return { refreshedPosts: 0, updatedSnapshots: 0, reason: 'no_tracked_posts' }
+
+  const refreshedPosts = await refreshTrackedPosts(sourcePosts)
+  const refreshedById = new Map(refreshedPosts.map((post) => [trackedPostIdentity(post), post]))
+  let updatedSnapshots = 0
+  for (const container of containers) {
+    const existingPosts = container.payload?.trackedPosts || []
+    const nextPosts = existingPosts.map((post) => refreshedById.get(trackedPostIdentity(post)) || post)
+    if (!nextPosts.some((post, index) => post !== existingPosts[index])) continue
+    const nextPayload = { ...container.payload, trackedPosts: nextPosts }
+    if (container.type === 'workspace') {
+      const { error } = await supabase
+        .from('workspace_snapshots')
+        .update({ payload: nextPayload, updated_at: new Date().toISOString() })
+        .eq('workspace_id', WORKSPACE_ID)
+      if (error) throw error
+    } else {
+      const { error } = await supabase
+        .from('brand_scoped_snapshots')
+        .update({ payload: nextPayload, updated_at: new Date().toISOString() })
+        .eq('workspace_id', WORKSPACE_ID)
+        .eq('brand_id', container.brandId)
+      if (error) throw error
+    }
+    updatedSnapshots += 1
+  }
+
+  const measuredAt = new Date().toISOString()
+  const rawRows = refreshedPosts
+    .filter((post) => post.url || post.contentUrl)
+    .map((post) => ({
+      workspace_id: WORKSPACE_ID,
+      brand_id: post.brandId == null ? null : String(post.brandId),
+      campaign_id: post.campaignId == null ? null : String(post.campaignId),
+      creator_id: post.creatorId == null ? null : String(post.creatorId),
+      content_id: String(post.contentId || post.id || trackedPostIdentity(post)),
+      platform: post.platform || 'unknown',
+      content_url: post.url || post.contentUrl,
+      measured_at: post.updatedAt || post.collectedAt || measuredAt,
+      views: Number(post.views || 0),
+      likes: Number(post.likes || 0),
+      comments: Number(post.comments || 0),
+      shares: Number(post.shares || 0),
+      saves: Number(post.saves || 0),
+      conversions: Number(post.conversions || 0),
+      revenue: Number(post.revenue || 0),
+      source_type: normalizeAutomationSourceType(post.sourceType),
+      source_provider: post.sourceProvider || post.provider || 'tracking-refresh',
+      source_url: post.url || post.contentUrl,
+      confidence_score: Number(post.confidence || 90),
+      raw_payload: post,
+    }))
+  if (rawRows.length) {
+    const { error } = await supabase.from('content_metric_snapshots').insert(rawRows)
+    if (error) throw error
+  }
+  return { refreshedPosts: refreshedPosts.length, updatedSnapshots, rawRows: rawRows.length }
+}
+
+async function runMetricRecalculationOperation() {
+  const supabase = getSupabaseAdminClient()
+  if (!supabase) throw httpError(503, 'Supabase is required for metric recalculation.')
+  for (const definition of AUTOMATED_METRIC_DEFINITIONS) {
+    for (const rawSourceId of definition.rawSourceIds) await ensureDataRoomRawSource(supabase, rawSourceId)
+  }
+  const definitions = AUTOMATED_METRIC_DEFINITIONS.map((definition) => ({
+    id: definition.id,
+    workspace_id: WORKSPACE_ID,
+    scope: definition.id.startsWith('MET-OPS') ? 'internal' : 'external',
+    bundle: definition.id.startsWith('MET-OPS') ? '데이터 운영 번들' : 'SNS 반응 번들',
+    name: definition.name,
+    description: 'CreatorOps 자동 재계산 작업에서 생성하는 운영 지표',
+    formula: definition.formula,
+    raw_source_ids: definition.rawSourceIds,
+    period: definition.id === 'MET-OPS-001' ? '최근 24시간' : '누적 스냅샷',
+    refresh_cycle: '매일/관리자 즉시 실행',
+    display_location: '관리자 데이터룸',
+    interpretation: '원천 스냅샷과 수집 로그를 기준으로 자동 계산',
+    reliability: '중간',
+    owner_dept: '데이터/개발',
+    status: 'ok',
+    metadata: { automation: 'metric-recalculation', version: 'v1' },
+    updated_at: new Date().toISOString(),
+  }))
+  const { error: definitionError } = await supabase.from('metric_definitions').upsert(definitions, { onConflict: 'id' })
+  if (definitionError) throw definitionError
+
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+  const [{ data: contentRows, error: contentError }, { data: collectionRows, error: collectionError }] = await Promise.all([
+    supabase
+      .from('content_metric_snapshots')
+      .select('id,views,likes,comments,shares')
+      .eq('workspace_id', WORKSPACE_ID)
+      .order('measured_at', { ascending: false })
+      .limit(10000),
+    supabase
+      .from('external_search_events')
+      .select('id,status')
+      .eq('workspace_id', WORKSPACE_ID)
+      .gte('created_at', since)
+      .limit(10000),
+  ])
+  if (contentError) throw contentError
+  if (collectionError) throw collectionError
+
+  const metrics = aggregateOperationalMetrics(contentRows || [], collectionRows || [])
+  const definitionById = new Map(AUTOMATED_METRIC_DEFINITIONS.map((item) => [item.id, item]))
+  const calculatedAt = new Date().toISOString()
+  const snapshots = metrics.map((metric) => ({
+    workspace_id: WORKSPACE_ID,
+    metric_id: metric.metricId,
+    dimension: { automation: 'metric-recalculation', scope: 'workspace' },
+    value: metric.value,
+    value_json: metric.valueJson || {},
+    raw_source_ids: definitionById.get(metric.metricId)?.rawSourceIds || [],
+    source_row_ids: metric.sourceRowIds || [],
+    calculated_at: calculatedAt,
+    status: (contentRows || []).length || metric.metricId === 'MET-OPS-001' ? 'ok' : 'needs_review',
+    notes: 'CreatorOps 운영 자동 재계산 v1',
+  }))
+  const { error: snapshotError } = await supabase.from('metric_snapshots').insert(snapshots)
+  if (snapshotError) throw snapshotError
+  return { calculatedMetrics: snapshots.length, contentRows: contentRows?.length || 0, collectionRows: collectionRows?.length || 0 }
+}
+
+async function executeOperationJob(jobName, { actorId = null, trigger = 'manual' } = {}) {
+  const normalizedJobName = normalizeOperationJobName(jobName)
+  if (!normalizedJobName) throw httpError(400, 'Unsupported operation job.')
+  if (activeOperationJobs.has(normalizedJobName)) throw httpError(409, 'This operation job is already running.')
+  const supabase = getSupabaseAdminClient()
+  if (!supabase) throw httpError(503, 'Supabase is required for operation jobs.')
+
+  const startedAt = new Date().toISOString()
+  const { data: run, error: runError } = await supabase
+    .from('job_runs')
+    .insert({ workspace_id: WORKSPACE_ID, job_name: normalizedJobName, status: 'running', detail: trigger, metadata: { trigger, actorId } })
+    .select('id,started_at')
+    .single()
+  if (runError) throw runError
+  activeOperationJobs.set(normalizedJobName, run.id)
+
+  try {
+    let result
+    if (normalizedJobName === 'tracking-refresh') result = await runTrackingRefreshOperation()
+    if (normalizedJobName === 'metric-recalculation') result = await runMetricRecalculationOperation()
+    if (normalizedJobName === 'daily-operations') {
+      const tracking = await runTrackingRefreshOperation()
+      const metrics = await runMetricRecalculationOperation()
+      result = { tracking, metrics }
+    }
+    const finishedAt = new Date().toISOString()
+    const { error: finishError } = await supabase
+      .from('job_runs')
+      .update({ status: 'success', detail: JSON.stringify(result), metadata: { trigger, actorId, result }, finished_at: finishedAt })
+      .eq('id', run.id)
+    if (finishError) throw finishError
+    await safeWriteAuditLog({
+      actorId,
+      action: 'automation.job.succeeded',
+      targetType: 'job_run',
+      targetId: run.id,
+      metadata: { jobName: normalizedJobName, trigger, result, startedAt, finishedAt },
+    })
+    return { id: run.id, jobName: normalizedJobName, status: 'success', startedAt: run.started_at || startedAt, finishedAt, result }
+  } catch (error) {
+    const finishedAt = new Date().toISOString()
+    await supabase
+      .from('job_runs')
+      .update({
+        status: 'failed',
+        detail: error instanceof Error ? error.message : 'Operation job failed.',
+        metadata: { trigger, actorId, errorType: error?.name || 'Error' },
+        finished_at: finishedAt,
+      })
+      .eq('id', run.id)
+    await safeWriteAuditLog({
+      actorId,
+      action: 'automation.job.failed',
+      targetType: 'job_run',
+      targetId: run.id,
+      metadata: { jobName: normalizedJobName, trigger, error: error instanceof Error ? error.message : String(error) },
+    })
+    throw error
+  } finally {
+    activeOperationJobs.delete(normalizedJobName)
+  }
+}
+
 function applyAdminKnowledge(prompt, config) {
   if (!config) return prompt
   const knowledge = (config.attachments || [])
@@ -1300,6 +1601,204 @@ app.get('/admin/ai-configs', requireAdminWorkspaceAccess, async (_request, respo
   }
 })
 
+app.get('/admin/access/members', requireAdminWorkspaceAccess, async (_request, response, next) => {
+  try {
+    const supabase = getSupabaseAdminClient()
+    const [{ data: members, error: memberError }, { data: brandRows, error: brandError }] = await Promise.all([
+      supabase
+        .from('workspace_members')
+        .select('user_id,role,status,invited_email,created_at')
+        .eq('workspace_id', WORKSPACE_ID)
+        .order('created_at'),
+      supabase
+        .from('brand_memberships')
+        .select('user_id,brand_id,role,status,updated_at')
+        .eq('workspace_id', WORKSPACE_ID)
+        .eq('status', 'active')
+        .order('brand_id'),
+    ])
+    if (memberError) throw memberError
+    if (brandError) throw brandError
+
+    const brandsByUser = new Map()
+    ;(brandRows || []).forEach((row) => {
+      const current = brandsByUser.get(row.user_id) || []
+      current.push(String(row.brand_id))
+      brandsByUser.set(row.user_id, current)
+    })
+    const items = (members || []).map((member) => ({
+      id: member.user_id,
+      userId: member.user_id,
+      email: member.invited_email || '',
+      role: member.role,
+      status: member.status,
+      brandIds: FULL_WORKSPACE_ROLES.has(member.role) ? ['*'] : (brandsByUser.get(member.user_id) || []),
+      createdAt: member.created_at,
+    }))
+    response.json({ data: { workspaceId: WORKSPACE_ID, members: items } })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.patch('/admin/access/members/:userId', requireAdminWorkspaceAccess, async (request, response, next) => {
+  const userId = String(request.params.userId || '').trim()
+  try {
+    if (!isUuid(userId)) throw httpError(400, 'A valid member user ID is required.')
+    const supabase = getSupabaseAdminClient()
+    const { data: currentMember, error: currentError } = await supabase
+      .from('workspace_members')
+      .select('user_id,role,status,invited_email')
+      .eq('workspace_id', WORKSPACE_ID)
+      .eq('user_id', userId)
+      .maybeSingle()
+    if (currentError) throw currentError
+    if (!currentMember) throw httpError(404, 'Workspace member not found.')
+
+    const { count: activeOwnerCount, error: ownerCountError } = await supabase
+      .from('workspace_members')
+      .select('user_id', { count: 'exact', head: true })
+      .eq('workspace_id', WORKSPACE_ID)
+      .eq('role', 'Owner')
+      .eq('status', 'active')
+    if (ownerCountError) throw ownerCountError
+
+    let update
+    try {
+      update = prepareMemberAccessUpdate(currentMember, request.body || {}, activeOwnerCount || 0)
+    } catch (error) {
+      throw httpError(error.status || 400, error.message)
+    }
+
+    const { data: previousBrandRows, error: previousBrandError } = await supabase
+      .from('brand_memberships')
+      .select('workspace_id,brand_id,user_id,role,status,invited_email,granted_by,created_at,updated_at')
+      .eq('workspace_id', WORKSPACE_ID)
+      .eq('user_id', userId)
+    if (previousBrandError) throw previousBrandError
+
+    const changedAt = new Date().toISOString()
+    const { error: memberUpdateError } = await supabase
+      .from('workspace_members')
+      .update({ role: update.role, status: update.status })
+      .eq('workspace_id', WORKSPACE_ID)
+      .eq('user_id', userId)
+    if (memberUpdateError) throw memberUpdateError
+
+    try {
+      const { error: deleteError } = await supabase
+        .from('brand_memberships')
+        .delete()
+        .eq('workspace_id', WORKSPACE_ID)
+        .eq('user_id', userId)
+      if (deleteError) throw deleteError
+
+      if (!FULL_WORKSPACE_ROLES.has(update.role) && update.status === 'active') {
+        const rows = update.brandIds.map((brandId) => ({
+          workspace_id: WORKSPACE_ID,
+          brand_id: brandId,
+          user_id: userId,
+          role: update.role,
+          status: 'active',
+          invited_email: currentMember.invited_email || null,
+          granted_by: request.adminUser.id,
+          updated_at: changedAt,
+        }))
+        const { error: insertError } = await supabase.from('brand_memberships').insert(rows)
+        if (insertError) throw insertError
+      }
+    } catch (brandMutationError) {
+      await supabase
+        .from('workspace_members')
+        .update({ role: currentMember.role, status: currentMember.status })
+        .eq('workspace_id', WORKSPACE_ID)
+        .eq('user_id', userId)
+      await supabase.from('brand_memberships').delete().eq('workspace_id', WORKSPACE_ID).eq('user_id', userId)
+      if (previousBrandRows?.length) await supabase.from('brand_memberships').insert(previousBrandRows)
+      throw brandMutationError
+    }
+
+    const audit = await safeWriteAuditLog({
+      actorId: request.adminUser.id,
+      action: 'access.member.updated',
+      targetType: 'workspace_member',
+      targetId: userId,
+      metadata: {
+        before: { role: currentMember.role, status: currentMember.status, brandIds: (previousBrandRows || []).map((row) => String(row.brand_id)) },
+        after: update,
+      },
+    })
+    response.json({
+      data: {
+        member: {
+          id: userId,
+          userId,
+          email: currentMember.invited_email || '',
+          role: update.role,
+          status: update.status,
+          brandIds: FULL_WORKSPACE_ROLES.has(update.role) ? ['*'] : update.brandIds,
+          updatedAt: changedAt,
+        },
+        auditLogged: audit.status === 'saved',
+      },
+    })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/admin/audit-logs', requireAdminWorkspaceAccess, async (request, response, next) => {
+  try {
+    const limit = Math.min(200, Math.max(1, Number(request.query.limit) || 80))
+    const supabase = getSupabaseAdminClient()
+    const { data, error } = await supabase
+      .from('audit_logs')
+      .select('id,actor_id,action,target_type,target_id,metadata,created_at')
+      .eq('workspace_id', WORKSPACE_ID)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    if (error) throw error
+    response.json({ data: { workspaceId: WORKSPACE_ID, logs: data || [] } })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.get('/admin/jobs', requireAdminWorkspaceAccess, async (request, response, next) => {
+  try {
+    const limit = Math.min(200, Math.max(1, Number(request.query.limit) || 50))
+    const supabase = getSupabaseAdminClient()
+    const { data, error } = await supabase
+      .from('job_runs')
+      .select('id,job_name,status,detail,metadata,started_at,finished_at')
+      .eq('workspace_id', WORKSPACE_ID)
+      .order('started_at', { ascending: false })
+      .limit(limit)
+    if (error) throw error
+    response.json({ data: { workspaceId: WORKSPACE_ID, runs: data || [], activeJobs: [...activeOperationJobs.keys()] } })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/admin/jobs/:jobName/run', requireAdminWorkspaceAccess, async (request, response, next) => {
+  try {
+    const run = await executeOperationJob(request.params.jobName, { actorId: request.adminUser.id, trigger: 'admin' })
+    response.json({ data: { workspaceId: WORKSPACE_ID, run } })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/jobs/daily-operations', requireCronAccess, async (_request, response, next) => {
+  try {
+    const run = await executeOperationJob('daily-operations', { actorId: null, trigger: 'cron' })
+    response.json({ data: { workspaceId: WORKSPACE_ID, run } })
+  } catch (error) {
+    next(error)
+  }
+})
+
 app.post('/admin/ai-configs/:featureKey/import-url', requireAdminWorkspaceAccess, async (request, response, next) => {
   try {
     const featureKey = String(request.params.featureKey || '')
@@ -1317,6 +1816,13 @@ app.put('/admin/ai-configs/:featureKey', requireAdminWorkspaceAccess, async (req
     if (!AI_FEATURE_KEYS.has(featureKey)) throw httpError(400, 'Unsupported AI feature key.')
     validateAiKnowledgeAttachments(request.body?.attachments)
     const config = await saveAiFeatureConfig(featureKey, request.body || {})
+    await safeWriteAuditLog({
+      actorId: request.adminUser.id,
+      action: 'ai.policy.updated',
+      targetType: 'ai_feature_config',
+      targetId: featureKey,
+      metadata: { version: config.version, status: config.status, attachmentCount: config.attachments?.length || 0 },
+    })
     response.json({ data: { workspaceId: WORKSPACE_ID, config } })
   } catch (error) {
     next(error)
@@ -1388,7 +1894,7 @@ app.post('/tracking/refresh', async (request, response, next) => {
   }
 })
 
-app.get('/oauth/google/auth-url', (request, response, next) => {
+app.get('/oauth/google/auth-url', requireWorkspaceAccess, (request, response, next) => {
   try {
     const clientId = requireEnv('GMAIL_CLIENT_ID')
     const redirectUri = requireEnv('GOOGLE_OAUTH_REDIRECT_URI')
@@ -1425,7 +1931,7 @@ app.get('/oauth/google/callback', (request, response, next) => {
   }
 })
 
-app.post('/oauth/google/token', async (request, response, next) => {
+app.post('/oauth/google/token', requireWorkspaceAccess, async (request, response, next) => {
   try {
     const code = String(request.body?.code || '').trim()
     if (!code) throw httpError(400, 'code is required.')
@@ -1441,11 +1947,19 @@ app.post('/oauth/google/token', async (request, response, next) => {
         grant_type: 'authorization_code',
       }),
     })
+    await safeWriteAuditLog({
+      actorId: request.workspaceUser.id,
+      action: 'gmail.oauth.connected',
+      targetType: 'provider_connection',
+      targetId: 'google-gmail',
+      metadata: { scope: payload.scope || null, hasRefreshToken: Boolean(payload.refresh_token) },
+    })
     response.json({
       data: {
         accessToken: payload.access_token,
         refreshToken: payload.refresh_token,
         expiresIn: payload.expires_in,
+        expiresAt: Date.now() + Math.max(Number(payload.expires_in || 3600) - 60, 60) * 1000,
         scope: payload.scope,
         tokenType: payload.token_type,
       },
@@ -1455,7 +1969,42 @@ app.post('/oauth/google/token', async (request, response, next) => {
   }
 })
 
-app.post('/outreach/gmail/send', async (request, response, next) => {
+app.post('/oauth/google/refresh', requireWorkspaceAccess, async (request, response, next) => {
+  try {
+    const refreshToken = String(request.body?.refreshToken || '').trim()
+    if (!refreshToken) throw httpError(400, 'refreshToken is required.')
+    const payload = await fetchJson('https://oauth2.googleapis.com/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        refresh_token: refreshToken,
+        client_id: requireEnv('GMAIL_CLIENT_ID'),
+        client_secret: requireEnv('GMAIL_CLIENT_SECRET'),
+        grant_type: 'refresh_token',
+      }),
+    })
+    await safeWriteAuditLog({
+      actorId: request.workspaceUser.id,
+      action: 'gmail.oauth.refreshed',
+      targetType: 'provider_connection',
+      targetId: 'google-gmail',
+      metadata: { scope: payload.scope || null },
+    })
+    response.json({
+      data: {
+        accessToken: payload.access_token,
+        expiresIn: payload.expires_in,
+        expiresAt: Date.now() + Math.max(Number(payload.expires_in || 3600) - 60, 60) * 1000,
+        scope: payload.scope,
+        tokenType: payload.token_type,
+      },
+    })
+  } catch (error) {
+    next(error)
+  }
+})
+
+app.post('/outreach/gmail/send', requireWorkspaceAccess, async (request, response, next) => {
   try {
     const accessToken = String(request.body?.accessToken || '').trim()
     const to = String(request.body?.to || '').trim()
@@ -1473,18 +2022,26 @@ app.post('/outreach/gmail/send', async (request, response, next) => {
       },
       body: JSON.stringify({ raw }),
     })
+    await safeWriteAuditLog({
+      actorId: request.workspaceUser.id,
+      action: 'outreach.gmail.sent',
+      targetType: 'gmail_message',
+      targetId: payload.id,
+      metadata: { recipientDomain: to.split('@')[1] || '', threadId: payload.threadId || null },
+    })
     response.json({ data: { id: payload.id, threadId: payload.threadId } })
   } catch (error) {
     next(error)
   }
 })
 
-app.post('/outreach/gmail/send-batch', async (request, response, next) => {
+app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, response, next) => {
   try {
     const accessToken = String(request.body?.accessToken || '').trim()
     const workspaceId = String(request.body?.workspaceId || WORKSPACE_ID).trim()
     const requestedItems = Array.isArray(request.body?.items) ? request.body.items : []
     if (!accessToken) throw httpError(401, 'Google accessToken is required.')
+    if (workspaceId !== WORKSPACE_ID) throw httpError(403, 'The requested workspace does not match the authenticated workspace.')
     if (!requestedItems.length) throw httpError(400, 'At least one outreach item is required.')
     if (requestedItems.length > OUTREACH_BATCH_LIMIT) {
       throw httpError(400, `A batch can contain up to ${OUTREACH_BATCH_LIMIT} items.`)
@@ -1537,15 +2094,23 @@ app.post('/outreach/gmail/send-batch', async (request, response, next) => {
       if (index < items.length - 1) await delay(OUTREACH_SEND_INTERVAL_MS)
     }
 
+    const summary = {
+      requested: items.length,
+      sent: results.filter((item) => item.status === 'sent').length,
+      skipped: results.filter((item) => item.status === 'skipped').length,
+      failed: results.filter((item) => item.status === 'failed').length,
+    }
+    await safeWriteAuditLog({
+      actorId: request.workspaceUser.id,
+      action: summary.failed ? 'outreach.gmail.batch.partial' : 'outreach.gmail.batch.sent',
+      targetType: 'outreach_batch',
+      targetId: `gmail-${Date.now()}`,
+      metadata: summary,
+    })
     response.json({
       data: {
         results,
-        summary: {
-          requested: items.length,
-          sent: results.filter((item) => item.status === 'sent').length,
-          skipped: results.filter((item) => item.status === 'skipped').length,
-          failed: results.filter((item) => item.status === 'failed').length,
-        },
+        summary,
       },
     })
   } catch (error) {

@@ -768,10 +768,15 @@ drop policy if exists "Owners can update workspaces" on public.workspaces;
 drop policy if exists "Authenticated users can create owned workspaces" on public.workspaces;
 drop policy if exists "Members can read workspace members" on public.workspace_members;
 drop policy if exists "Owners and managers can manage workspace members" on public.workspace_members;
+drop policy if exists "Members read self or admins read workspace members" on public.workspace_members;
+drop policy if exists "Owners and admins manage workspace members" on public.workspace_members;
 drop policy if exists "Members can read brand memberships" on public.brand_memberships;
 drop policy if exists "Owners and admins can manage brand memberships" on public.brand_memberships;
+drop policy if exists "Members read own or admins read brand memberships" on public.brand_memberships;
 drop policy if exists "Members can read workspace snapshots" on public.workspace_snapshots;
 drop policy if exists "Members can write workspace snapshots" on public.workspace_snapshots;
+drop policy if exists "Owners and admins read workspace snapshots" on public.workspace_snapshots;
+drop policy if exists "Owners and admins write workspace snapshots" on public.workspace_snapshots;
 drop policy if exists "Brand members can read brand scoped snapshots" on public.brand_scoped_snapshots;
 drop policy if exists "Brand operators can write brand scoped snapshots" on public.brand_scoped_snapshots;
 drop policy if exists "Members can read provider connections" on public.provider_connections;
@@ -783,6 +788,9 @@ drop policy if exists "Members can write content tracking" on public.content_tra
 drop policy if exists "Members can read performance snapshots" on public.performance_snapshots;
 drop policy if exists "Members can write performance snapshots" on public.performance_snapshots;
 drop policy if exists "Members can read job runs" on public.job_runs;
+drop policy if exists "Owners and admins read audit logs" on public.audit_logs;
+drop policy if exists "Members write own audit logs" on public.audit_logs;
+drop policy if exists "Owners and admins read job runs" on public.job_runs;
 drop policy if exists "Members can read raw data sources" on public.raw_data_sources;
 drop policy if exists "Owners and managers can manage raw data sources" on public.raw_data_sources;
 drop policy if exists "Members can read metric definitions" on public.metric_definitions;
@@ -829,32 +837,38 @@ create policy "Owners can update workspaces"
   using (owner_id = auth.uid())
   with check (owner_id = auth.uid());
 
-create policy "Members can read workspace members"
+create policy "Members read self or admins read workspace members"
   on public.workspace_members for select to authenticated
-  using (public.is_workspace_member(workspace_id));
+  using (
+    user_id = auth.uid()
+    or public.is_workspace_member(workspace_id, array['Owner', 'Admin'])
+  );
 
-create policy "Owners and managers can manage workspace members"
+create policy "Owners and admins manage workspace members"
   on public.workspace_members for all to authenticated
-  using (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']))
-  with check (public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']));
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Admin']))
+  with check (public.is_workspace_member(workspace_id, array['Owner', 'Admin']));
 
-create policy "Members can read brand memberships"
+create policy "Members read own or admins read brand memberships"
   on public.brand_memberships for select to authenticated
-  using (public.is_workspace_member(workspace_id));
+  using (
+    user_id = auth.uid()
+    or public.is_workspace_member(workspace_id, array['Owner', 'Admin'])
+  );
 
 create policy "Owners and admins can manage brand memberships"
   on public.brand_memberships for all to authenticated
   using (public.is_workspace_member(workspace_id, array['Owner', 'Admin']))
   with check (public.is_workspace_member(workspace_id, array['Owner', 'Admin']));
 
-create policy "Members can read workspace snapshots"
+create policy "Owners and admins read workspace snapshots"
   on public.workspace_snapshots for select to authenticated
-  using (public.is_workspace_member(workspace_id));
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Admin']));
 
-create policy "Members can write workspace snapshots"
+create policy "Owners and admins write workspace snapshots"
   on public.workspace_snapshots for all to authenticated
-  using (public.is_workspace_member(workspace_id))
-  with check (public.is_workspace_member(workspace_id));
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Admin']))
+  with check (public.is_workspace_member(workspace_id, array['Owner', 'Admin']));
 
 create policy "Brand members can read brand scoped snapshots"
   on public.brand_scoped_snapshots for select to authenticated
@@ -862,8 +876,8 @@ create policy "Brand members can read brand scoped snapshots"
 
 create policy "Brand operators can write brand scoped snapshots"
   on public.brand_scoped_snapshots for all to authenticated
-  using (public.has_brand_access(workspace_id, brand_id, array['Admin', 'Manager', 'Marketer', 'Analyst']))
-  with check (public.has_brand_access(workspace_id, brand_id, array['Admin', 'Manager', 'Marketer', 'Analyst']));
+  using (public.has_brand_access(workspace_id, brand_id, array['Admin', 'Manager', 'Marketer']))
+  with check (public.has_brand_access(workspace_id, brand_id, array['Admin', 'Manager', 'Marketer']));
 
 create policy "Members can read provider connections"
   on public.provider_connections for select to authenticated
@@ -976,17 +990,17 @@ create policy "Owners and managers can manage metric definition versions"
   using (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']))
   with check (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']));
 
-create policy "Members can read audit logs"
+create policy "Owners and admins read audit logs"
   on public.audit_logs for select to authenticated
-  using (public.is_workspace_member(workspace_id));
+  using (public.is_workspace_member(workspace_id, array['Owner', 'Admin']));
 
-create policy "Members can write audit logs"
+create policy "Members write own audit logs"
   on public.audit_logs for insert to authenticated
-  with check (public.is_workspace_member(workspace_id));
+  with check (actor_id = auth.uid() and public.is_workspace_member(workspace_id));
 
-create policy "Members can read job runs"
+create policy "Owners and admins read job runs"
   on public.job_runs for select to authenticated
-  using (workspace_id is null or public.is_workspace_member(workspace_id));
+  using (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Admin']));
 
 create policy "Members can read raw data sources"
   on public.raw_data_sources for select to authenticated

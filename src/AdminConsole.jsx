@@ -46,10 +46,27 @@ const defaultPolicies = [
 
 const defaultAutomations = [
   { id: 'utm', name: 'UTM·숏링크 생성', schedule: '요청 시', enabled: true, status: '정상', lastRun: '-' },
-  { id: 'report', name: '리포트 API 적재·추출', schedule: '매일 1회', enabled: true, status: '설정 필요', lastRun: '-' },
-  { id: 'reference', name: '레퍼런스 수집', schedule: '매일 2회', enabled: true, status: '검토 필요', lastRun: '-' },
+  { id: 'report', name: '지표 재계산·리포트 적재', schedule: '매일 1회', enabled: true, status: '실행 대기', lastRun: '-' },
+  { id: 'reference', name: '콘텐츠 성과 자동 수집', schedule: '매일 2회', enabled: true, status: '실행 대기', lastRun: '-' },
+  { id: 'daily', name: '일일 통합 운영 작업', schedule: '매일 03:00', enabled: true, status: '실행 대기', lastRun: '-' },
   { id: 'access', name: '회원가입·권한 배정', schedule: '이벤트 발생 시', enabled: true, status: '정상', lastRun: '-' },
 ]
+
+const automationJobMap = {
+  report: 'metric-recalculation',
+  reference: 'tracking-refresh',
+  daily: 'daily-operations',
+  'metric-recalculation': 'metric-recalculation',
+  'tracking-refresh': 'tracking-refresh',
+  'daily-operations': 'daily-operations',
+}
+
+function mergeAutomations(localAutomations = []) {
+  return defaultAutomations.map((base) => ({
+    ...base,
+    ...(localAutomations.find((item) => item.id === base.id) || {}),
+  }))
+}
 
 const accountRoles = ['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst', 'Client']
 const fullAccessRoles = new Set(['Owner', 'Admin'])
@@ -92,14 +109,14 @@ async function extractAttachment(file) {
 
 export default function AdminConsole({
   summary = {}, dataRoom, accounts = [], brands = [], currentAccount,
-  activities = [], apiEvents = [], backendConfig, adminConfig,
+  activities = [], apiEvents = [], auditLogs = [], jobRuns = [], runningJob = '', backendConfig, adminConfig,
   adminAccessToken = '',
   onUpdateAdminConfig, onUpdateAccountRole, onToggleBrandAccess,
-  onTestApis, apiTestStatus, canManagePermissions = false,
+  onTestApis, onRunAutomation, apiTestStatus, canManagePermissions = false,
 }) {
   const [section, setSection] = useState(initialAdminSection)
   const [policies, setPolicies] = useState(() => mergePolicies(adminConfig?.policies))
-  const [automations, setAutomations] = useState(adminConfig?.automations?.length ? adminConfig.automations : defaultAutomations)
+  const [automations, setAutomations] = useState(() => mergeAutomations(adminConfig?.automations))
   const [selectedPolicyId, setSelectedPolicyId] = useState(initialPolicyId)
   const [saveState, setSaveState] = useState('')
   const [isFileDragActive, setIsFileDragActive] = useState(false)
@@ -110,6 +127,13 @@ export default function AdminConsole({
   const adminRequestHeaders = adminAccessToken ? { Authorization: `Bearer ${adminAccessToken}` } : {}
   const selectedPolicy = policies.find((item) => item.id === selectedPolicyId) || policies[0]
   const selectedPolicyFolder = CREATOROPS_LEARNING_FOLDERS[selectedPolicy?.id]
+  const latestJobByName = useMemo(() => {
+    const map = new Map()
+    jobRuns.forEach((run) => {
+      if (!map.has(run.job_name)) map.set(run.job_name, run)
+    })
+    return map
+  }, [jobRuns])
   const [accessView, setAccessView] = useState('accounts')
   const [accessSearch, setAccessSearch] = useState('')
   const [accessRoleFilter, setAccessRoleFilter] = useState('전체')
@@ -189,9 +213,16 @@ export default function AdminConsole({
   }, [adminAccessToken, apiBaseUrl])
 
   const auditRows = useMemo(() => [
+    ...auditLogs.map((item, index) => ({
+      id: `audit-${item.id || index}`,
+      type: item.action || 'audit',
+      text: [item.target_type, item.target_id].filter(Boolean).join(' · ') || '운영 변경 기록',
+      time: item.created_at || '',
+      source: item.actor_id ? `계정 ${String(item.actor_id).slice(0, 8)}` : '시스템',
+    })),
     ...apiEvents.map((item, index) => ({ id: item.id || `api-${index}`, type: item.event_type || 'api', text: item.message || item.endpoint || 'API 수집 이벤트', time: item.created_at || '', source: 'API' })),
     ...activities.map((item, index) => ({ id: item.id || `activity-${index}`, type: item.type || 'operation', text: item.text || item.label || String(item), time: item.time || item.createdAt || '', source: '워크스페이스' })),
-  ].slice(0, 80), [activities, apiEvents])
+  ].slice(0, 120), [activities, apiEvents, auditLogs])
 
   const persistLocal = (nextPolicies = policies, nextAutomations = automations) => {
     onUpdateAdminConfig?.({ ...(adminConfig || {}), policies: nextPolicies, automations: nextAutomations, updatedAt: new Date().toISOString() })
@@ -372,7 +403,14 @@ export default function AdminConsole({
         </section>
       </div>}
 
-      {section === 'automation' && <div className="admin-page"><section className="admin-band"><div className="admin-section-heading"><div><span>AUTOMATION</span><h2>운영 매크로</h2></div></div><div className="admin-table"><div className="admin-table-head"><span>작업</span><span>주기</span><span>상태</span><span>최근 실행</span><span>활성</span><span /></div>{automations.map((item) => <div className="admin-table-row" key={item.id}><strong>{item.name}</strong><input value={item.schedule} onChange={(event) => saveAutomations(automations.map((row) => row.id === item.id ? { ...row, schedule: event.target.value } : row))} /><span className={`admin-state ${tone(item.status)}`}>{item.status}</span><span>{item.lastRun}</span><input type="checkbox" checked={item.enabled} onChange={() => saveAutomations(automations.map((row) => row.id === item.id ? { ...row, enabled: !row.enabled } : row))} /><button type="button" disabled={!item.enabled} onClick={() => saveAutomations(automations.map((row) => row.id === item.id ? { ...row, lastRun: '방금' } : row))}><Play size={14} /> 실행</button></div>)}</div></section>
+      {section === 'automation' && <div className="admin-page"><section className="admin-band"><div className="admin-section-heading"><div><span>AUTOMATION</span><h2>운영 매크로</h2><p>실행 버튼은 실제 서버 작업을 시작하고 결과를 job_runs와 감사 로그에 기록합니다.</p></div></div><div className="admin-table"><div className="admin-table-head"><span>작업</span><span>주기</span><span>상태</span><span>최근 실행</span><span>활성</span><span /></div>{automations.map((item) => {
+        const jobKey = automationJobMap[item.id]
+        const latestRun = jobKey ? latestJobByName.get(jobKey) : null
+        const isRunning = runningJob === jobKey || latestRun?.status === 'running'
+        const liveStatus = isRunning ? '실행 중' : latestRun?.status === 'success' ? '정상' : latestRun?.status === 'failed' ? '오류' : jobKey ? '실행 대기' : item.status
+        const lastRun = latestRun?.finished_at || latestRun?.started_at
+        return <div className="admin-table-row" key={item.id}><strong>{item.name}</strong><input value={item.schedule} onChange={(event) => saveAutomations(automations.map((row) => row.id === item.id ? { ...row, schedule: event.target.value } : row))} /><span className={`admin-state ${tone(liveStatus)}`}>{liveStatus}</span><span>{lastRun ? new Date(lastRun).toLocaleString('ko-KR') : item.lastRun}</span><input type="checkbox" checked={item.enabled} onChange={() => saveAutomations(automations.map((row) => row.id === item.id ? { ...row, enabled: !row.enabled } : row))} /><button type="button" disabled={!item.enabled || !jobKey || Boolean(runningJob)} onClick={() => onRunAutomation?.(jobKey)}><Play size={14} /> {isRunning ? '실행 중' : jobKey ? '실행' : '이벤트'}</button></div>
+      })}</div></section>
         <section className="admin-band"><div className="admin-section-heading"><div><span>연결 상태</span><h2>백엔드·API</h2></div><button type="button" onClick={onTestApis} disabled={apiTestStatus?.running}><RefreshCw size={15} /> {apiTestStatus?.running ? '진단 중' : '읽기 전용 진단'}</button></div><div className="admin-connection-grid"><div><Database /><strong>공유 DB</strong><span>{backendConfig?.hasSupabase ? '설정됨' : '설정 필요'}</span></div><div><KeyRound /><strong>API 서버</strong><span>{apiBaseUrl ? '연결 주소 설정됨' : '미연결'}</span></div>{(apiTestStatus?.results || []).map((item) => <div className={`api-${item.status || 'unknown'}`} key={item.key || item.id || item.name}>{item.status === 'fail' ? <CircleX /> : item.status === 'action' ? <Clock3 /> : <CheckCircle2 />}<strong>{item.name || item.label}</strong><span>{item.result || item.status}</span></div>)}</div></section>
       </div>}
 

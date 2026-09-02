@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { canReadFullWorkspace, canWriteBrandWorkspace, canWriteFullWorkspace } from './workspacePermissions'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -26,6 +27,44 @@ function getCreatorOpsApiUrl(path) {
   const baseUrl = import.meta.env.VITE_CREATOROPS_API_BASE_URL || ''
   if (!baseUrl) return path
   return `${baseUrl.replace(/\/$/, '')}${path}`
+}
+
+async function fetchAdminApi(path, accessToken, options = {}) {
+  if (!accessToken) throw new Error('관리자 로그인 세션이 필요합니다.')
+  const response = await fetch(getCreatorOpsApiUrl(path), {
+    ...options,
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      'Content-Type': 'application/json',
+      ...(options.headers || {}),
+    },
+  })
+  const payload = await response.json().catch(() => ({}))
+  if (!response.ok) throw new Error(payload.message || `관리자 API 요청 실패 (${response.status})`)
+  return payload.data || {}
+}
+
+export async function loadAdminAccessMembers(accessToken) {
+  return fetchAdminApi('/admin/access/members', accessToken)
+}
+
+export async function updateAdminAccessMember(accessToken, userId, patch) {
+  return fetchAdminApi(`/admin/access/members/${encodeURIComponent(userId)}`, accessToken, {
+    method: 'PATCH',
+    body: JSON.stringify(patch || {}),
+  })
+}
+
+export async function loadAdminAuditLogs(accessToken, limit = 80) {
+  return fetchAdminApi(`/admin/audit-logs?limit=${Math.min(200, Math.max(1, Number(limit) || 80))}`, accessToken)
+}
+
+export async function loadAdminJobRuns(accessToken, limit = 50) {
+  return fetchAdminApi(`/admin/jobs?limit=${Math.min(200, Math.max(1, Number(limit) || 50))}`, accessToken)
+}
+
+export async function runAdminOperationJob(accessToken, jobName) {
+  return fetchAdminApi(`/admin/jobs/${encodeURIComponent(jobName)}/run`, accessToken, { method: 'POST' })
 }
 
 export async function loadDataRoomApiStatus() {
@@ -531,6 +570,14 @@ export async function loadCloudWorkspace() {
   if (membership.status === 'forbidden') {
     return { status: 'forbidden', workspace: null, message: 'This account has not been granted access to the workspace.' }
   }
+  if (!canReadFullWorkspace(membership.member?.role)) {
+    return {
+      status: 'restricted',
+      workspace: null,
+      updatedAt: null,
+      message: 'This account uses brand-scoped workspace snapshots only.',
+    }
+  }
 
   const { data, error } = await supabase
     .from('workspace_snapshots')
@@ -558,6 +605,9 @@ export async function saveCloudWorkspace(workspace, options = {}) {
   }
   if (membership.status === 'forbidden') {
     return { status: 'forbidden', message: 'This account cannot save this workspace.' }
+  }
+  if (!canWriteFullWorkspace(membership.member?.role)) {
+    return { status: 'forbidden', message: 'Only Owner or Admin can save the full workspace snapshot.' }
   }
 
   const { data: current, error: currentError } = await supabase
@@ -686,6 +736,9 @@ export async function saveBrandCloudWorkspace(brandId, payload, options = {}) {
   }
   if (membership.status === 'forbidden') {
     return { status: 'forbidden', message: 'This account cannot save this workspace.' }
+  }
+  if (!canWriteBrandWorkspace(membership.member?.role)) {
+    return { status: 'forbidden', message: 'This role has read-only access to brand data.' }
   }
 
   const { data: current, error: currentError } = await supabase
