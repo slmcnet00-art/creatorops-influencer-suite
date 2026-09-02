@@ -21,6 +21,7 @@ import {
   LayoutDashboard,
   MessageSquare,
   MoreHorizontal,
+  Play,
   Plus,
   Radio,
   RefreshCw,
@@ -19299,17 +19300,7 @@ function AppContent() {
                     </button>
                   )
                 })()}
-                <div className="reference-media">
-                  {item.thumbnailUrl ? (
-                    <img src={item.thumbnailUrl} alt="" />
-                  ) : (
-                    <div className="reference-media-placeholder">
-                      {item.mediaType === '영상' ? <Video size={24} /> : <ImageIcon size={24} />}
-                      <span>{item.platform}</span>
-                      <small>썸네일 없음</small>
-                    </div>
-                  )}
-                </div>
+                <ReferenceMedia item={item} />
                 <div className="reference-body">
                   <div className="tracked-post-head">
                     <span className="reference-rank-chip">#{(safeReferencePage - 1) * referencePageSize + index + 1}</span>
@@ -22567,6 +22558,35 @@ function NavButton({ active, icon, label, onClick }) {
       <span>{label}</span>
     </button>
   )
+}
+
+function ReferenceMedia({ item }) {
+  const content = item.thumbnailUrl ? (
+    <img src={item.thumbnailUrl} alt={`${item.title || item.platform} 썸네일`} />
+  ) : (
+    <div className="reference-media-placeholder">
+      {item.mediaType === '영상' ? <Video size={24} /> : <ImageIcon size={24} />}
+      <span>{item.platform}</span>
+      <small>썸네일 없음</small>
+    </div>
+  )
+
+  if (item.mediaType === '영상' && item.url) {
+    return (
+      <a
+        className="reference-media reference-media-link"
+        href={item.url}
+        target="_blank"
+        rel="noreferrer"
+        aria-label={`${item.title || item.platform} 원본 영상 열기`}
+      >
+        {content}
+        <span className="reference-media-play" aria-hidden="true"><Play size={26} fill="currentColor" /></span>
+      </a>
+    )
+  }
+
+  return <div className="reference-media">{content}</div>
 }
 
 function PracticeTour({ steps, currentIndex, currentStep, onClose, onDismiss, onStepChange, onComplete }) {

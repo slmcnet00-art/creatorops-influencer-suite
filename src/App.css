@@ -2081,6 +2081,32 @@
   background: #eef2f1;
 }
 
+.reference-media-link {
+  position: relative;
+  display: block;
+}
+
+.reference-media-play {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  background: rgba(0, 0, 0, 0.46);
+  opacity: 0;
+  transition: opacity 0.18s ease;
+}
+
+.reference-media-link:hover .reference-media-play,
+.reference-media-link:focus-visible .reference-media-play {
+  opacity: 1;
+}
+
+.reference-media-link:focus-visible {
+  outline: 3px solid rgba(var(--primary-rgb), 0.32);
+  outline-offset: 2px;
+}
+
 .reference-media img {
   width: 100%;
   height: 100%;
