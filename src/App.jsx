@@ -16010,6 +16010,21 @@ function AppContent() {
 
     setGmailSending(true)
     try {
+      const messageType = getOutreachMessageType(bulkOutreachMessageType)
+      const campaign = selectedCampaign || brandCampaigns[0] || defaultCampaigns[0]
+      const campaignBrief = buildCampaignDiscoveryBrief(brandBrief, campaign)
+      const testCreator = {
+        name: '크리에이터님',
+        platform: 'Instagram',
+        topics: ['웰니스', '건강한 라이프스타일'],
+      }
+      const marketCountry = resolveCampaignRecordMarket(campaign, '한국', '한국')
+      const subject = `[CreatorOps 실제 발송 테스트 · ${messageType.shortLabel}] ${buildOutreachSubject(messageType.id, campaign, marketCountry)}`
+      const message = [
+        buildTypedProposalMessage(testCreator, campaignBrief, campaign, messageType.id, marketCountry, 'ko'),
+        '',
+        `※ CreatorOps Gmail API ${messageType.label} 운영 테스트 메일 · ${new Date().toLocaleString('ko-KR')}`,
+      ].join('\n')
       const gmailAccessToken = await getFreshGmailAccessToken()
       const apiBaseUrl = backendConfig.apiBaseUrl.replace(/\/$/, '')
       const response = await fetch(apiBaseUrl + '/outreach/gmail/send', {
@@ -16021,28 +16036,15 @@ function AppContent() {
         body: JSON.stringify({
           accessToken: gmailAccessToken,
           to: recipient,
-          subject: '[CreatorOps 발송 테스트] 헬시 스낵 챌린지 협업 제안드립니다',
-          message: [
-            '안녕하세요, 크리에이터님.',
-            '',
-            '평소 건강한 식단과 일상 루틴을 자연스럽게 소개하시는 콘텐츠를 인상 깊게 보았습니다.',
-            "미핑기획에서 준비 중인 '헬시 스낵 챌린지'와 콘텐츠 결이 잘 맞아 협업을 제안드립니다.",
-            '',
-            '제품을 직접 경험한 뒤 솔직한 사용 장면과 일상 속 활용법을 담은 콘텐츠를 함께 만들고자 합니다.',
-            '참여 가능 여부와 협업 단가, 가능한 업로드 일정을 회신해 주시면 상세 가이드를 전달드리겠습니다.',
-            '',
-            '감사합니다.',
-            'CreatorOps 드림',
-            '',
-            `※ CreatorOps Gmail API 운영 테스트 메일 · ${new Date().toLocaleString('ko-KR')}`,
-          ].join('\n'),
+          subject,
+          message,
         }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok || !payload.data?.id) {
         throw new Error(payload.message || 'Gmail 테스트 메일을 발송하지 못했습니다.')
       }
-      showToast(`${recipient}로 Gmail 연결 테스트 메일을 보냈습니다.`)
+      showToast(`${recipient}로 ${messageType.label} Gmail 테스트 메일을 보냈습니다.`)
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Gmail 테스트 메일 발송에 실패했습니다.')
     } finally {
@@ -21434,7 +21436,7 @@ function AppContent() {
                   onClick={sendGmailConnectionTest}
                 >
                   <Send size={15} />
-                  Gmail 연결 테스트
+                  선택 유형 Gmail 테스트
                 </button>
               )}
               <button
