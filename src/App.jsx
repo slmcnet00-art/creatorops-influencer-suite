@@ -2915,6 +2915,7 @@ function buildTypedProposalMessage(
   typeId = DEFAULT_OUTREACH_MESSAGE_TYPE,
   marketCountry = '',
   languageOverride = '',
+  commercialTermsOverride = null,
 ) {
   const type = getOutreachMessageType(typeId)
   const assignedMarketCountry = marketCountry || resolveCampaignRecordMarket(campaign, creator?.country, creator?.searchCountry)
@@ -2928,7 +2929,7 @@ function buildTypedProposalMessage(
   const deadline = campaign?.deadline || campaign?.recruitmentDeadline || ''
   const selectedLanguage = languageOverride || market.language
   const language = ['en', 'ja', 'zh-CN'].includes(selectedLanguage) ? selectedLanguage : 'ko'
-  const commercialTerms = buildOutreachCommercialTerms(type.id, creator, campaign)
+  const commercialTerms = commercialTermsOverride || buildOutreachCommercialTerms(type.id, creator, campaign)
   const fixedOfferLabel = formatOutreachOfferAmount(
     commercialTerms.fixedOfferAmountKrw,
     campaign,
@@ -2938,7 +2939,7 @@ function buildTypedProposalMessage(
 
   const typeCopy = {
     gifted_seeding: {
-      ko: `${product}을 제공해드리고 직접 경험하신 뒤 콘텐츠 협업 가능 여부를 먼저 여짙는 무가 시딩 제안입니다. 구체적인 업로드 여부와 형식은 참여 의사를 확인한 후 무리 없이 협의하겠습니다.`,
+      ko: `${product}을 제공해드리고 직접 경험하신 뒤 콘텐츠 협업 가능 여부를 먼저 여쭙는 무가 시딩 제안입니다. 구체적인 업로드 여부와 형식은 참여 의사를 확인한 후 무리 없이 협의하겠습니다.`,
       en: `We would love to send you ${product} to try and first confirm whether a gifted-seeding collaboration feels right for you. Any posting format or requirement would be agreed with you in advance.`,
       ja: `${product}をお送りし、ご使用後にギフティング形式のご協業が可能かまずご相談するご提案です。投稿形式や条件は事前にご相談いたします。`,
       'zh-CN': `我们希望先向您寄送${product}试用，并了解您是否愿意参与产品赠送型合作。发布形式与具体要求将在您同意后提前协商。`,
@@ -8002,6 +8003,9 @@ function AppContent() {
   const [outreachStatusFilter, setOutreachStatusFilter] = useState('전체')
   const [outreachSearchQuery, setOutreachSearchQuery] = useState('')
   const [outreachResponseNote, setOutreachResponseNote] = useState('')
+  const [outreachSubjectDraft, setOutreachSubjectDraft] = useState('')
+  const [outreachMessageDraft, setOutreachMessageDraft] = useState('')
+  const [outreachOfferAmountDraft, setOutreachOfferAmountDraft] = useState('')
   const [bulkOutreachMessageType, setBulkOutreachMessageType] = useState(DEFAULT_OUTREACH_MESSAGE_TYPE)
   const [realDiscoveryDraft, setRealDiscoveryDraft] = useState({
     youtubeApiKey: '',
@@ -15797,6 +15801,7 @@ function AppContent() {
       commercialTerms,
       subject: buildOutreachSubject(messageType, campaign, item.marketCountry),
       message: buildTypedProposalMessage(creator, campaignBrief, campaign, messageType, item.marketCountry),
+      manualEdited: false,
       messageUpdatedAt: nowLabel(),
     }
   }
@@ -15825,6 +15830,8 @@ function AppContent() {
 
   const updateOutreachMessageType = (itemId, messageType) => {
     const type = getOutreachMessageType(messageType)
+    const currentItem = activeOutreach.find((item) => item.id === itemId)
+    const rebuiltItem = currentItem ? rebuildOutreachForMessageType(currentItem, type.id) : null
     updateWorkspace((current) =>
       appendActivity(
         {
@@ -15837,7 +15844,97 @@ function AppContent() {
         `${type.label} 메시지 템플릿 적용`,
       ),
     )
+    if (rebuiltItem) {
+      setOutreachSubjectDraft(rebuiltItem.subject || '')
+      setOutreachMessageDraft(rebuiltItem.message || '')
+      setOutreachOfferAmountDraft(
+        rebuiltItem.commercialTerms?.fixedOfferAmountKrw
+          ? String(rebuiltItem.commercialTerms.fixedOfferAmountKrw)
+          : '',
+      )
+    }
     showToast(`메시지 유형을 '${type.label}'(으)로 바꾸었어요.`)
+  }
+
+  const saveOutreachMessageDraft = (itemId) => {
+    const subject = outreachSubjectDraft.trim()
+    const message = outreachMessageDraft.trim()
+    if (!subject || !message) {
+      showToast('제목과 발송 본문을 모두 입력해주세요.')
+      return
+    }
+    const eventTime = nowLabel()
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          outreach: current.outreach.map((item) =>
+            item.id === itemId
+              ? { ...item, subject, message, manualEdited: true, messageUpdatedAt: eventTime }
+              : item,
+          ),
+        },
+        'outreach',
+        '제안 메시지 제목·본문 수동 수정',
+      ),
+    )
+    showToast('수정한 제목과 발송 본문을 저장했어요.')
+  }
+
+  const applyOutreachFixedOfferAmount = (itemId) => {
+    const amount = Number(String(outreachOfferAmountDraft || '').replace(/[^\d]/g, ''))
+    if (!amount) {
+      showToast('B급 고정 제안 금액을 원화 기준으로 입력해주세요.')
+      return
+    }
+    const item = activeOutreach.find((candidate) => candidate.id === itemId)
+    const creator = creators.find((candidate) => candidate.id === item?.creatorId)
+    const campaign = campaigns.find((candidate) => candidate.id === item?.campaignId)
+    if (!item || !creator || !campaign || item.messageType !== 'paid_seeding_b') return
+
+    const commercialTerms = {
+      ...buildOutreachCommercialTerms(item.messageType, creator, campaign),
+      pricingMode: 'fixed_guide',
+      fixedOfferAmountKrw: amount,
+      guideSource: '운영자 수동 확정 금액',
+    }
+    const campaignBrief = buildCampaignDiscoveryBrief(brandBrief, campaign)
+    const subject = buildOutreachSubject(item.messageType, campaign, item.marketCountry)
+    const message = buildTypedProposalMessage(
+      creator,
+      campaignBrief,
+      campaign,
+      item.messageType,
+      item.marketCountry,
+      '',
+      commercialTerms,
+    )
+    const eventTime = nowLabel()
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          outreach: current.outreach.map((outreachItem) =>
+            outreachItem.id === itemId
+              ? {
+                  ...outreachItem,
+                  commercialTerms,
+                  subject,
+                  message,
+                  manualEdited: false,
+                  messageUpdatedAt: eventTime,
+                }
+              : outreachItem,
+          ),
+        },
+        'outreach',
+        `B급 고정 제안 금액 ${won(amount)} 수동 반영`,
+      ),
+    )
+    setOutreachSubjectDraft(subject)
+    setOutreachMessageDraft(message)
+    setOutreachOfferAmountDraft(String(amount))
+    showToast(`B급 고정 제안 금액을 ${won(amount)}으로 반영했어요.`)
   }
 
   const getFreshGmailAccessToken = async () => {
@@ -16202,7 +16299,14 @@ function AppContent() {
 
   const openOutreachDetail = (itemId) => {
     const item = activeOutreach.find((outreachItem) => outreachItem.id === itemId)
+    const creator = creators.find((candidate) => candidate.id === item?.creatorId)
+    const campaign = campaigns.find((candidate) => candidate.id === item?.campaignId)
+    const messageType = getOutreachMessageType(item?.messageType || inferOutreachMessageType(creator)).id
+    const commercialTerms = item?.commercialTerms || buildOutreachCommercialTerms(messageType, creator, campaign)
     setOutreachResponseNote(item?.responseNote ?? '')
+    setOutreachSubjectDraft(item?.subject || buildOutreachSubject(messageType, campaign, item?.marketCountry))
+    setOutreachMessageDraft(item?.message || '')
+    setOutreachOfferAmountDraft(commercialTerms.fixedOfferAmountKrw ? String(commercialTerms.fixedOfferAmountKrw) : '')
     setModal({ type: 'outreachDetail', itemId })
   }
 
@@ -23046,6 +23150,59 @@ function AppContent() {
                 campaign={activeOutreachDetailCampaign}
                 brief={brandBrief}
               />
+              <details className="outreach-edit-panel">
+                <summary>✏️ 발송 내용·금액 수정</summary>
+                <div className="outreach-edit-fields">
+                  {activeOutreachDetail.messageType === 'paid_seeding_b' && (
+                    <div className="outreach-offer-editor">
+                      <label>
+                        B급 고정 제안 금액 · 원화 기준
+                        <input
+                          inputMode="numeric"
+                          value={outreachOfferAmountDraft}
+                          onChange={(event) => setOutreachOfferAmountDraft(event.target.value)}
+                          placeholder="예: 800000"
+                        />
+                      </label>
+                      <button
+                        className="secondary-button compact-button"
+                        type="button"
+                        onClick={() => applyOutreachFixedOfferAmount(activeOutreachDetail.id)}
+                      >
+                        금액 반영·문구 재생성
+                      </button>
+                      <small>
+                        원화 기준값을 저장하면 해외 발송본은 해당 국가 통화로 환산되고, 한국어 참고본도 함께 재생성됩니다.
+                      </small>
+                    </div>
+                  )}
+                  <label>
+                    실제 발송 제목
+                    <input
+                      value={outreachSubjectDraft}
+                      onChange={(event) => setOutreachSubjectDraft(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    실제 발송 본문
+                    <textarea
+                      rows={12}
+                      value={outreachMessageDraft}
+                      onChange={(event) => setOutreachMessageDraft(event.target.value)}
+                    />
+                  </label>
+                  <small>
+                    본문을 직접 수정하면 실제 발송본에만 반영됩니다. 한국어 화면은 자동 번역본이 아닌 운영자용 템플릿 참고본으로 표시됩니다.
+                  </small>
+                  <button
+                    className="primary-button compact-button"
+                    type="button"
+                    onClick={() => saveOutreachMessageDraft(activeOutreachDetail.id)}
+                  >
+                    수정 내용 저장
+                  </button>
+                </div>
+              </details>
               <div className="outreach-send-card">
                 <div>
                   <strong>다음 액션</strong>
@@ -23891,6 +24048,7 @@ function OutreachMessagePreview({ item, creator, campaign, brief }) {
         item.messageType,
         item.marketCountry,
         'ko',
+        item.commercialTerms,
       )
     : ''
 
@@ -23907,7 +24065,10 @@ function OutreachMessagePreview({ item, creator, campaign, brief }) {
       </div>
       {koreanPreview && (
         <div className="outreach-message-preview korean-reference-preview">
-          <span>운영자용 한국어 참고본 · 실제 발송에서 제외</span>
+          <span>
+            {item.manualEdited ? '운영자용 한국어 템플릿 참고본' : '운영자용 한국어 참고본'}
+            {' · 실제 발송에서 제외'}
+          </span>
           <pre>{koreanPreview}</pre>
         </div>
       )}

@@ -9316,6 +9316,72 @@
   line-height: 1.45;
 }
 
+.outreach-edit-panel {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.outreach-edit-panel summary {
+  padding: 12px 14px;
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.outreach-edit-fields {
+  display: grid;
+  gap: 12px;
+  padding: 0 14px 14px;
+}
+
+.outreach-edit-fields label,
+.outreach-offer-editor {
+  display: grid;
+  gap: 6px;
+  color: var(--text-strong);
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.outreach-edit-fields input,
+.outreach-edit-fields textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface-2);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 13px;
+}
+
+.outreach-edit-fields input {
+  min-height: 38px;
+  padding: 0 10px;
+}
+
+.outreach-edit-fields textarea {
+  padding: 10px;
+  resize: vertical;
+  line-height: 1.55;
+}
+
+.outreach-edit-fields small,
+.outreach-offer-editor small {
+  color: var(--text-soft);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.45;
+}
+
+.outreach-edit-fields > button,
+.outreach-offer-editor > button {
+  justify-self: start;
+}
+
 .korean-reference-preview {
   background: linear-gradient(180deg, rgba(15, 118, 110, 0.06), rgba(255, 255, 255, 0.82));
 }
