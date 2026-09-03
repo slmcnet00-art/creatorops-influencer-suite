@@ -26,8 +26,10 @@ import {
 } from './outreachPolicy.js'
 import {
   buildOutreachSuppressionId,
+  getOutreachBlockReason,
   isValidOutreachEmail,
   normalizeOutreachEmail,
+  normalizeOutreachSuppressionScope,
 } from './outreachSuppression.js'
 
 /* global document */
@@ -2067,9 +2069,12 @@ app.post('/outreach/gmail/send', requireWorkspaceAccess, async (request, respons
       message,
       idempotencyKey: request.body?.idempotencyKey || `single:${campaignId || 'unassigned'}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
     })
-    const suppressedRecipients = await getSuppressedOutreachRecipients(workspaceId, [item.to])
-    if (suppressedRecipients.has(item.to)) {
-      throw httpError(409, 'This recipient has opted out and is blocked from outreach sending.')
+    const recipientBlocks = await getOutreachRecipientBlocks(workspaceId, [item])
+    const blockReason = getOutreachBlockReason(recipientBlocks, item)
+    if (blockReason) {
+      throw httpError(409, blockReason === 'campaign_suppressed'
+        ? 'This recipient is excluded from outreach for this campaign.'
+        : 'This recipient has opted out and is blocked from all outreach sending.')
     }
     const dailyUsage = await getCampaignDailyOutreachUsage(workspaceId, campaignId)
     if (dailyUsage.remaining <= 0) {
@@ -2142,19 +2147,22 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
     }
 
     const items = requestedItems.map((item, index) => normalizeOutreachDeliveryItem(item, index))
-    const suppressedRecipients = await getSuppressedOutreachRecipients(workspaceId, items.map((item) => item.to))
+    const recipientBlocks = await getOutreachRecipientBlocks(workspaceId, items)
     const results = []
     const dailyUsageByCampaign = new Map()
     let lastSendStartedAt = 0
 
     for (let index = 0; index < items.length; index += 1) {
       const item = items[index]
-      if (suppressedRecipients.has(item.to)) {
+      const blockReason = getOutreachBlockReason(recipientBlocks, item)
+      if (blockReason) {
         results.push({
           id: item.id,
           status: 'skipped',
-          reason: 'suppressed',
-          message: 'This recipient has opted out and is blocked from outreach sending.',
+          reason: blockReason,
+          message: blockReason === 'campaign_suppressed'
+            ? 'This recipient is excluded from outreach for this campaign.'
+            : 'This recipient has opted out and is blocked from all outreach sending.',
         })
         continue
       }
@@ -2222,6 +2230,7 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
       sent: results.filter((item) => item.status === 'sent').length,
       skipped: results.filter((item) => item.status === 'skipped').length,
       suppressed: results.filter((item) => item.reason === 'suppressed').length,
+      campaignSuppressed: results.filter((item) => item.reason === 'campaign_suppressed').length,
       failed: results.filter((item) => item.status === 'failed').length,
     }
     await safeWriteAuditLog({
@@ -2255,31 +2264,40 @@ app.post('/outreach/suppressions', requireWorkspaceAccess, async (request, respo
   try {
     const workspaceId = String(request.body?.workspaceId || WORKSPACE_ID).trim()
     const email = normalizeOutreachEmail(request.body?.email)
+    const scope = normalizeOutreachSuppressionScope(request.body?.scope)
+    const campaignId = String(request.body?.campaignId || '').trim()
     const suppressed = request.body?.suppressed !== false
-    const reason = String(request.body?.reason || (suppressed ? 'Recipient opt-out' : 'Manual suppression removal')).trim().slice(0, 500)
+    const reason = String(request.body?.reason || (suppressed ? 'Recipient outreach exclusion' : 'Manual exclusion removal')).trim().slice(0, 500)
     if (workspaceId !== WORKSPACE_ID) throw httpError(403, 'The requested workspace does not match the authenticated workspace.')
     if (!isValidOutreachEmail(email)) throw httpError(400, 'A valid recipient email is required.')
+    if (scope === 'campaign' && !campaignId) throw httpError(400, 'campaignId is required for a campaign suppression.')
 
     const record = await persistOutreachSuppression({
       workspaceId,
       email,
+      scope,
+      campaignId,
       suppressed,
       reason,
       actorId: request.workspaceUser.id,
     })
     await safeWriteAuditLog({
       actorId: request.workspaceUser.id,
-      action: suppressed ? 'outreach.recipient.suppressed' : 'outreach.recipient.unsuppressed',
+      action: `outreach.recipient.${scope}.${suppressed ? 'suppressed' : 'unsuppressed'}`,
       targetType: 'outreach_recipient',
       targetId: record.id,
       metadata: {
         recipientDomain: email.split('@')[1] || '',
+        scope,
+        campaignId: scope === 'campaign' ? campaignId : null,
         reason,
       },
     })
     response.json({
       data: {
         email,
+        scope,
+        campaignId: scope === 'campaign' ? campaignId : null,
         suppressed,
         updatedAt: record.updated_at,
       },
@@ -5116,39 +5134,42 @@ function normalizeOutreachDeliveryItem(item = {}, index = 0) {
   return { id, campaignId, creatorId, to, subject, message, idempotencyKey }
 }
 
-async function getSuppressedOutreachRecipients(workspaceId, recipients = []) {
+async function getOutreachRecipientBlocks(workspaceId, items = []) {
   const supabase = getSupabaseAdminClient()
   if (!supabase) throw httpError(503, 'Supabase is required to enforce recipient suppressions.')
-  const emails = [...new Set(recipients.map(normalizeOutreachEmail).filter(Boolean))]
-  if (!emails.length) return new Set()
+  const emails = [...new Set(items.map((item) => normalizeOutreachEmail(item.to)).filter(Boolean))]
+  if (!emails.length) return []
   const { data, error } = await supabase
     .from('outreach_messages')
-    .select('recipient')
+    .select('recipient,campaign_id,status')
     .eq('workspace_id', workspaceId)
-    .eq('status', 'suppressed')
+    .in('status', ['suppressed', 'campaign_suppressed'])
     .in('recipient', emails)
   if (error) throw error
-  return new Set((data || []).map((row) => normalizeOutreachEmail(row.recipient)).filter(Boolean))
+  return data || []
 }
 
-async function persistOutreachSuppression({ workspaceId, email, suppressed, reason, actorId }) {
+async function persistOutreachSuppression({ workspaceId, email, scope, campaignId, suppressed, reason, actorId }) {
   const supabase = getSupabaseAdminClient()
   if (!supabase) throw httpError(503, 'Supabase is required to persist recipient suppressions.')
   await ensureDataRoomWorkspace(supabase, workspaceId)
   const now = new Date().toISOString()
-  const id = buildOutreachSuppressionId(workspaceId, email)
+  const id = buildOutreachSuppressionId(workspaceId, email, scope, campaignId)
+  const isCampaignScope = scope === 'campaign'
   const row = {
     id,
     workspace_id: workspaceId,
-    campaign_id: null,
+    campaign_id: isCampaignScope ? campaignId : null,
     creator_id: null,
     channel: 'email',
     recipient: email,
     subject: '',
-    message: suppressed ? 'Recipient blocked from future outreach.' : 'Recipient outreach block removed.',
-    status: suppressed ? 'suppressed' : 'unsuppressed',
+    message: suppressed
+      ? isCampaignScope ? 'Recipient excluded from this campaign.' : 'Recipient blocked from all future outreach.'
+      : isCampaignScope ? 'Campaign recipient exclusion removed.' : 'Recipient outreach block removed.',
+    status: suppressed ? isCampaignScope ? 'campaign_suppressed' : 'suppressed' : 'unsuppressed',
     provider_message_id: null,
-    idempotency_key: `suppression:${email}`,
+    idempotency_key: isCampaignScope ? `campaign-suppression:${campaignId}:${email}` : `suppression:${email}`,
     attempt_count: 0,
     last_error: null,
     sent_at: null,
@@ -5156,7 +5177,8 @@ async function persistOutreachSuppression({ workspaceId, email, suppressed, reas
     created_by: actorId,
     metadata: {
       deliveryProvider: 'creatorops',
-      source: 'manual-recipient-suppression',
+      source: isCampaignScope ? 'manual-campaign-exclusion' : 'manual-recipient-suppression',
+      scope,
       reason,
     },
   }

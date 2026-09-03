@@ -127,6 +127,7 @@ const GMAIL_AUTH_STORE_KEY = 'creatorops.gmailAuth.v1'
 const GMAIL_OAUTH_STATE_KEY = 'creatorops.gmailOAuthState.v1'
 const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send'
 const DEFAULT_OUTREACH_MESSAGE_TYPE = 'gifted_seeding'
+const OUTREACH_BLOCKED_STATUSES = new Set(['캠페인 제외', '전체 수신 거부', '수신 거부'])
 const OUTREACH_MESSAGE_TYPES = [
   {
     id: 'gifted_seeding',
@@ -8665,10 +8666,16 @@ function AppContent() {
         helper: '조건 확인 후 섭외 완료',
       },
       {
-        key: '수신 거부',
-        label: '수신 거부',
-        count: searchedCampaignOutreach.filter((item) => item.status === '수신 거부').length,
-        helper: '워크스페이스 전체 발송 차단',
+        key: '캠페인 제외',
+        label: '캠페인 제외',
+        count: searchedCampaignOutreach.filter((item) => item.status === '캠페인 제외').length,
+        helper: '현재 캠페인에서만 발송 차단',
+      },
+      {
+        key: '전체 수신 거부',
+        label: '전체 수신 거부',
+        count: searchedCampaignOutreach.filter((item) => ['전체 수신 거부', '수신 거부'].includes(item.status)).length,
+        helper: '모든 캠페인 이메일 발송 차단',
       },
     ],
     [searchedCampaignOutreach],
@@ -8677,7 +8684,9 @@ function AppContent() {
     () =>
       outreachStatusFilter === '\uC804\uCCB4'
         ? searchedCampaignOutreach
-        : searchedCampaignOutreach.filter((item) => item.status === outreachStatusFilter),
+        : searchedCampaignOutreach.filter((item) => outreachStatusFilter === '전체 수신 거부'
+          ? ['전체 수신 거부', '수신 거부'].includes(item.status)
+          : item.status === outreachStatusFilter),
     [outreachStatusFilter, searchedCampaignOutreach],
   )
   const selectedOutreachItems = useMemo(
@@ -16199,14 +16208,15 @@ function AppContent() {
       return
     }
 
-    const locallySuppressed = selectedEmailOutreachItems.filter((item) => item.status === '수신 거부').length
+    const locallyCampaignExcluded = selectedEmailOutreachItems.filter((item) => item.status === '캠페인 제외').length
+    const locallyGloballySuppressed = selectedEmailOutreachItems.filter((item) => ['전체 수신 거부', '수신 거부'].includes(item.status)).length
     const deliverableItems = selectedEmailOutreachItems.filter(
-      (item) => item.status !== '수신 거부' && !hasDuplicateSentOutreach(item, outreach),
+      (item) => !OUTREACH_BLOCKED_STATUSES.has(item.status) && !hasDuplicateSentOutreach(item, outreach),
     )
-    const locallySkipped = selectedEmailOutreachItems.length - deliverableItems.length - locallySuppressed
+    const locallySkipped = selectedEmailOutreachItems.length - deliverableItems.length - locallyCampaignExcluded - locallyGloballySuppressed
     if (!deliverableItems.length) {
-      showToast(locallySuppressed
-        ? '선택한 이메일이 수신 거부 목록에 있어 발송을 차단했습니다.'
+      showToast(locallyCampaignExcluded || locallyGloballySuppressed
+        ? '선택한 이메일이 캠페인 제외 또는 전체 수신 거부 상태여서 발송을 차단했습니다.'
         : '이미 발송된 동일 캠페인·크리에이터 조합입니다. 중복 발송을 차단했습니다.')
       return
     }
@@ -16215,7 +16225,8 @@ function AppContent() {
     const apiBaseUrl = backendConfig.apiBaseUrl.replace(/\/$/, '')
     let sentIds = []
     let skippedCount = locallySkipped
-    let suppressedCount = locallySuppressed
+    let campaignExcludedCount = locallyCampaignExcluded
+    let globallySuppressedCount = locallyGloballySuppressed
     let failures
 
     try {
@@ -16252,8 +16263,11 @@ function AppContent() {
       )
       if (selectedCampaignUsage) setOutreachDailyUsage(selectedCampaignUsage)
       sentIds = results.filter((item) => item.status === 'sent').map((item) => item.id)
-      suppressedCount += results.filter((item) => item.reason === 'suppressed').length
-      skippedCount += results.filter((item) => item.status === 'skipped' && item.reason !== 'suppressed').length
+      campaignExcludedCount += results.filter((item) => item.reason === 'campaign_suppressed').length
+      globallySuppressedCount += results.filter((item) => item.reason === 'suppressed').length
+      skippedCount += results.filter(
+        (item) => item.status === 'skipped' && !['suppressed', 'campaign_suppressed'].includes(item.reason),
+      ).length
       failures = results.filter((item) => item.status === 'failed')
     } catch (error) {
       failures = [{ message: error instanceof Error ? error.message : 'Gmail 일괄 발송에 실패했습니다.' }]
@@ -16286,23 +16300,31 @@ function AppContent() {
       setSelectedOutreachIds((current) => current.filter((id) => !selectedIds.has(id)))
     }
 
-    const summary = `Gmail 발송 ${sentIds.length}건 완료${skippedCount ? ` · 중복 차단 ${skippedCount}건` : ''}${suppressedCount ? ` · 수신 거부 차단 ${suppressedCount}건` : ''}`
+    const summary = `Gmail 발송 ${sentIds.length}건 완료${skippedCount ? ` · 중복 차단 ${skippedCount}건` : ''}${campaignExcludedCount ? ` · 캠페인 제외 ${campaignExcludedCount}건` : ''}${globallySuppressedCount ? ` · 전체 수신 거부 ${globallySuppressedCount}건` : ''}`
     showToast(failures.length ? `${summary} · 실패 ${failures.length}건: ${failures[0].message}` : summary)
   }
 
-  const setOutreachRecipientSuppression = async (itemId, suppressed) => {
+  const setOutreachRecipientSuppression = async (itemId, suppressed, scope = 'campaign') => {
     const item = activeOutreach.find((candidate) => candidate.id === itemId)
     const creator = creators.find((candidate) => candidate.id === item?.creatorId)
     const email = getCreatorContactEmail(creator).trim().toLowerCase()
+    const isCampaignScope = scope === 'campaign'
+    const blockedStatus = isCampaignScope ? '캠페인 제외' : '전체 수신 거부'
+    const scopeLabel = isCampaignScope ? '이 캠페인' : '모든 캠페인'
     if (!email) {
-      showToast('수신 거부를 관리할 이메일이 없습니다.')
+      showToast('발송 제외를 관리할 이메일이 없습니다.')
       return
     }
     if (!backendConfig.apiBaseUrl || !authSession?.access_token) {
-      showToast('수신 거부 변경에는 CreatorOps 로그인과 API 서버 연결이 필요합니다.')
+      showToast('발송 제외 변경에는 CreatorOps 로그인과 API 서버 연결이 필요합니다.')
       return
     }
-    if (suppressed && !window.confirm(`${email} 주소를 수신 거부로 등록할까요? 모든 캠페인에서 자동 발송이 차단됩니다.`)) return
+    if (suppressed) {
+      const confirmation = isCampaignScope
+        ? `${email} 주소를 이 캠페인 발송 대상에서 제외할까요? 다른 캠페인에서는 계속 발송할 수 있습니다.`
+        : `${email} 주소가 앞으로의 이메일을 명시적으로 거부했나요? 등록하면 모든 캠페인에서 자동 발송이 차단됩니다.`
+      if (!window.confirm(confirmation)) return
+    }
 
     setOutreachSuppressionSaving(true)
     try {
@@ -16315,18 +16337,23 @@ function AppContent() {
         body: JSON.stringify({
           workspaceId: backendConfig.workspaceId,
           email,
+          scope,
+          campaignId: isCampaignScope ? item?.campaignId : '',
           suppressed,
-          reason: suppressed ? '운영자가 인플루언서 수신 거부 응답을 확인함' : '운영자가 수신 거부를 해제함',
+          reason: suppressed
+            ? isCampaignScope ? '운영자가 현재 캠페인 발송 대상에서 제외함' : '수신자가 앞으로의 이메일을 명시적으로 거부함'
+            : isCampaignScope ? '운영자가 캠페인 발송 제외를 해제함' : '운영자가 전체 이메일 수신 거부를 해제함',
         }),
       })
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload?.message || '수신 거부 상태를 저장하지 못했습니다.')
 
       const eventTime = nowLabel()
-      const affectedIds = activeOutreach
+      const affectedIds = (isCampaignScope ? activeOutreach : outreach)
         .filter((entry) => {
           const linkedCreator = creators.find((candidate) => candidate.id === entry.creatorId)
-          return getCreatorContactEmail(linkedCreator).trim().toLowerCase() === email
+          const sameEmail = getCreatorContactEmail(linkedCreator).trim().toLowerCase() === email
+          return sameEmail && (!isCampaignScope || String(entry.campaignId || '') === String(item?.campaignId || ''))
         })
         .map((entry) => entry.id)
       const affectedIdSet = new Set(affectedIds)
@@ -16337,25 +16364,29 @@ function AppContent() {
           if (suppressed) {
             return {
               ...entry,
-              statusBeforeSuppression: entry.status === '수신 거부' ? entry.statusBeforeSuppression : entry.status,
-              status: '수신 거부',
+              statusBeforeSuppression: entry.status === blockedStatus || (!isCampaignScope && entry.status === '수신 거부')
+                ? entry.statusBeforeSuppression
+                : entry.status,
+              status: blockedStatus,
               suppressedAt: eventTime,
+              suppressionScope: scope,
             }
           }
           return {
             ...entry,
             status: entry.statusBeforeSuppression || '승인 대기',
             statusBeforeSuppression: '',
+            suppressionScope: '',
             suppressionRemovedAt: eventTime,
           }
         }),
-      }, 'outreach', suppressed ? `수신 거부 등록 · ${email}` : `수신 거부 해제 · ${email}`))
+      }, 'outreach', suppressed ? `${scopeLabel} 발송 제외 · ${email}` : `${scopeLabel} 발송 제외 해제 · ${email}`))
       if (suppressed) setSelectedOutreachIds((current) => current.filter((id) => !affectedIdSet.has(id)))
       showToast(suppressed
-        ? `${email} 주소를 수신 거부로 등록했습니다. 모든 캠페인 발송에서 차단됩니다.`
-        : `${email} 주소의 수신 거부를 해제했습니다.`)
+        ? `${email} 주소를 ${scopeLabel} 발송 대상에서 제외했습니다.`
+        : `${email} 주소의 ${scopeLabel} 발송 제외를 해제했습니다.`)
     } catch (error) {
-      showToast(error instanceof Error ? error.message : '수신 거부 상태를 저장하지 못했습니다.')
+      showToast(error instanceof Error ? error.message : '발송 제외 상태를 저장하지 못했습니다.')
     } finally {
       setOutreachSuppressionSaving(false)
     }
@@ -21623,7 +21654,7 @@ function AppContent() {
                   ))}
                 </select>
                 <small>
-                  후보별 운영 국가 언어 · 1회 20건 · 10초 간격 · 캠페인별 하루 50건 · 수신 거부 주소 차단
+                  후보별 운영 국가 언어 · 1회 20건 · 10초 간격 · 캠페인별 하루 50건 · 캠페인 제외/전체 수신 거부 차단
                   {outreachDailyUsage && String(outreachDailyUsage.campaignId || '') === String(selectedCampaign?.id || '')
                     ? ` · 오늘 ${outreachDailyUsage.used}/${outreachDailyUsage.limit}건 · ${outreachDailyUsage.remaining}건 남음`
                     : ''}
@@ -23341,7 +23372,15 @@ function AppContent() {
                     <strong>이메일 없음</strong>
                   )}
                   <span>처리 방식</span>
-                  <strong>{activeOutreachDetailEmail ? '이메일 발송 가능' : `${activeOutreachDetailPlan?.shortLabel ?? 'DM'} 작업 대상`}</strong>
+                  <strong>
+                    {activeOutreachDetail.status === '캠페인 제외'
+                      ? '현재 캠페인에서 발송 제외'
+                      : ['전체 수신 거부', '수신 거부'].includes(activeOutreachDetail.status)
+                        ? '모든 캠페인에서 이메일 발송 차단'
+                        : activeOutreachDetailEmail
+                          ? '이메일 발송 가능'
+                          : `${activeOutreachDetailPlan?.shortLabel ?? 'DM'} 작업 대상`}
+                  </strong>
                 </div>
               </div>
               <label className="outreach-detail-type-picker">
@@ -23437,18 +23476,42 @@ function AppContent() {
                     </a>
                   )}
                   {activeOutreachDetailEmail && (
-                    <button
-                      className="secondary-button compact-button"
-                      type="button"
-                      disabled={outreachSuppressionSaving}
-                      onClick={() => setOutreachRecipientSuppression(activeOutreachDetail.id, activeOutreachDetail.status !== '수신 거부')}
-                    >
-                      {outreachSuppressionSaving
-                        ? '저장 중'
-                        : activeOutreachDetail.status === '수신 거부'
-                          ? '수신 거부 해제'
-                          : '수신 거부 등록'}
-                    </button>
+                    <>
+                      {!['전체 수신 거부', '수신 거부'].includes(activeOutreachDetail.status) && (
+                        <button
+                          className="secondary-button compact-button"
+                          type="button"
+                          disabled={outreachSuppressionSaving}
+                          onClick={() => setOutreachRecipientSuppression(
+                            activeOutreachDetail.id,
+                            activeOutreachDetail.status !== '캠페인 제외',
+                            'campaign',
+                          )}
+                        >
+                          {outreachSuppressionSaving
+                            ? '저장 중'
+                            : activeOutreachDetail.status === '캠페인 제외'
+                              ? '캠페인 제외 해제'
+                              : '이 캠페인 발송 제외'}
+                        </button>
+                      )}
+                      <button
+                        className="secondary-button compact-button"
+                        type="button"
+                        disabled={outreachSuppressionSaving}
+                        onClick={() => setOutreachRecipientSuppression(
+                          activeOutreachDetail.id,
+                          !['전체 수신 거부', '수신 거부'].includes(activeOutreachDetail.status),
+                          'workspace',
+                        )}
+                      >
+                        {outreachSuppressionSaving
+                          ? '저장 중'
+                          : ['전체 수신 거부', '수신 거부'].includes(activeOutreachDetail.status)
+                            ? '전체 수신 거부 해제'
+                            : '전체 이메일 수신 거부'}
+                      </button>
+                    </>
                   )}
                   {activeOutreachDetail.status === '승인 대기' && (
                     <button className="primary-button compact-button" type="button" onClick={() => markOutreachSent(activeOutreachDetail.id)}>
@@ -24326,18 +24389,24 @@ function OutreachItem({
   const itemMarket = getCampaignMarketForCountry(campaign, item.marketCountry || creator?.country)
   const contactEmail = getCreatorContactEmail(creator)
   const isEmailChannel = contactPlan.id === 'email'
-  const isSuppressed = item.status === '수신 거부'
+  const isCampaignExcluded = item.status === '캠페인 제외'
+  const isGloballySuppressed = ['전체 수신 거부', '수신 거부'].includes(item.status)
+  const isSuppressed = isCampaignExcluded || isGloballySuppressed
   const canEmailSend = isEmailChannel && Boolean(contactEmail) && !isSuppressed
   const sourceLabel = isAiSource ? 'AI 추천' : item.source ?? '수동'
-  const contactStatusLabel = isSuppressed
-    ? '수신 거부 · 모든 캠페인 자동 발송 차단'
+  const contactStatusLabel = isCampaignExcluded
+    ? '현재 캠페인에서만 자동 발송 차단'
+    : isGloballySuppressed
+      ? '명시적 수신 거부 · 모든 캠페인 자동 발송 차단'
     : canEmailSend
       ? 'Gmail/Outlook 발송 대상'
       : isEmailChannel
         ? '이메일 수집 전 자동 발송 불가'
         : `${contactPlan.shortLabel} 작업 대상`
-  const deliveryReadiness = isSuppressed
-    ? '수신 거부 주소'
+  const deliveryReadiness = isCampaignExcluded
+    ? '캠페인 발송 제외'
+    : isGloballySuppressed
+      ? '전체 수신 거부 주소'
     : canEmailSend
       ? '이메일 자동 발송 가능'
       : isEmailChannel
