@@ -2914,18 +2914,24 @@ function buildTypedProposalMessage(
   const selectedLanguage = languageOverride || market.language
   const language = ['en', 'ja', 'zh-CN'].includes(selectedLanguage) ? selectedLanguage : 'ko'
   const offer = typeCopy[type.id]?.[language] || typeCopy.gifted_seeding[language]
+  const typeEmoji = {
+    gifted_seeding: '🎁',
+    paid_seeding_a: '✨',
+    paid_seeding_b: '🤝',
+    premium_s: '🌟',
+  }[type.id]
 
   if (language === 'en') {
-    return `Hi ${creatorName},\n\nI'm reaching out from ${brand} about ${campaignName}. We enjoyed your content around ${fitReason} and believe your voice would be a strong fit for ${product}.\n\n${offer}${deadline ? ` Our preferred timing is around ${deadline}.` : ''}\n\nIf you're interested, please reply with your preferred content format, available dates, and any questions or rate information relevant to this proposal. We'll send a tailored brief next.\n\nThank you,\n${brand}`
+    return `Hi ${creatorName}! 😊\n\nI'm reaching out from ${brand} about ${campaignName}. We really enjoyed your content around ${fitReason}, and we think your style would be a great fit for ${product}.\n\n${typeEmoji} ${offer}${deadline ? ` Our preferred timing is around ${deadline}.` : ''}\n\nIf this sounds interesting, feel free to reply with your preferred content format, available dates, and any questions or rate information. We'll put together a tailored brief for you. 💌\n\nThank you!\n${brand}`
   }
   if (language === 'ja') {
-    return `${creatorName}様、こんにちは。${brand}より「${campaignName}」についてご連絡いたしました。\n\n${fitReason}に関する投稿を拝見し、${product}との相性が良いと感じています。\n\n${offer}${deadline ? ` 希望時期は${deadline}頃です。` : ''}\n\nご興味がございましたら、ご希望の形式、対応可能な日程、費用に関する情報をお知らせください。詳細ガイドをお送りいたします。\n\nどうぞよろしくお願いいたします。`
+    return `${creatorName}様、こんにちは！😊\n\n${brand}より「${campaignName}」についてご連絡しました。${fitReason}に関する投稿を楽しく拝見し、${product}との相性がとても良いと感じています。\n\n${typeEmoji} ${offer}${deadline ? ` 希望時期は${deadline}頃です。` : ''}\n\nご興味がございましたら、ご希望の形式、対応可能な日程、費用やご質問をお気軽にお知らせください。詳細ガイドをご用意します。💌\n\nどうぞよろしくお願いいたします。`
   }
   if (language === 'zh-CN') {
-    return `${creatorName}，您好！我们是${brand}，想邀请您参与“${campaignName}”。\n\n我们看过您关于${fitReason}的内容，认为您的风格非常适合${product}。\n\n${offer}${deadline ? ` 期望时间为${deadline}前后。` : ''}\n\n如果您感兴趣，请回复偏好的内容形式、可合作时间，以及与本次合作相关的报价或问题。我们将进一步发送定制指南。\n\n谢谢！`
+    return `${creatorName}，您好！😊\n\n我们是${brand}，想邀请您参与“${campaignName}”。我们很喜欢您关于${fitReason}的内容，也觉得您的风格非常适合${product}。\n\n${typeEmoji} ${offer}${deadline ? ` 期望时间为${deadline}前后。` : ''}\n\n如果您感兴趣，欢迎随时回复偏好的内容形式、可合作时间，以及报价或任何问题。我们会为您准备定制指南。💌\n\n谢谢！`
   }
 
-  return `${creatorName}님, 안녕하세요. ${brand}의 ${campaignName} 협업을 제안드리고 싶어 연락드렸습니다.\n\n평소 ${fitReason} 콘텐츠를 인상 깊게 보았고, ${product}의 매력을 크리에이터님만의 방식으로 자연스럽게 전달해주실 수 있다고 생각했습니다.\n\n${offer}${deadline ? ` 희망 일정은 ${deadline} 전후입니다.` : ''}\n\n관심 있으시면 가능한 콘텐츠 형식과 일정, 본 제안에 해당하는 단가 또는 궁금한 점을 회신해주세요. 확인 후 맞춤 가이드를 전달드리겠습니다.\n\n감사합니다.\n${brand} 드림`
+  return `${creatorName}님, 안녕하세요! 😊\n\n${brand}의 ${campaignName} 협업을 제안드리고 싶어 연락드렸어요. 평소 ${fitReason} 콘텐츠를 인상 깊게 보고 있었는데요. ${product}의 매력을 크리에이터님만의 방식으로 자연스럽게 보여주실 수 있을 것 같아 조심스럽게 제안드립니다.\n\n${typeEmoji} ${offer}${deadline ? ` 희망 일정은 ${deadline} 전후예요.` : ''}\n\n관심 있으시면 가능한 콘텐츠 형식과 일정, 해당 제안의 단가나 궁금한 점을 편하게 회신해주세요. 확인하는 대로 맞춤 가이드를 정리해드릴게요. 💌\n\n감사합니다!\n${brand} 드림`
 }
 
 const SHORT_LINK_BASE_URL = 'https://go.creatorops.kr'
@@ -23807,13 +23813,18 @@ function OutreachMessagePreview({ item, creator, campaign, brief }) {
 
   return (
     <div className={`outreach-preview-grid ${koreanPreview ? 'dual-preview' : ''}`}>
+      {koreanPreview && (
+        <div className="outreach-language-send-note">
+          📤 실제 발송 시 한국어 참고본은 제외되고, {market.languageLabel} 발송본만 전송됩니다.
+        </div>
+      )}
       <div className="outreach-message-preview friendly-message-preview">
         <span>실제 발송본 · {market.languageLabel || '한국어'}</span>
         <pre>{item?.message}</pre>
       </div>
       {koreanPreview && (
         <div className="outreach-message-preview korean-reference-preview">
-          <span>운영자용 한국어 참고본 · 메일에 포함되지 않음</span>
+          <span>운영자용 한국어 참고본 · 실제 발송에서 제외</span>
           <pre>{koreanPreview}</pre>
         </div>
       )}

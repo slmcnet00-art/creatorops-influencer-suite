@@ -9304,6 +9304,18 @@
   align-items: start;
 }
 
+.outreach-language-send-note {
+  grid-column: 1 / -1;
+  padding: 10px 12px;
+  border: 1px solid rgba(var(--primary-rgb), 0.22);
+  border-radius: 8px;
+  background: rgba(var(--primary-rgb), 0.08);
+  color: var(--text-strong);
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
 .korean-reference-preview {
   background: linear-gradient(180deg, rgba(15, 118, 110, 0.06), rgba(255, 255, 255, 0.82));
 }
