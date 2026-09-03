@@ -144,7 +144,7 @@ const OUTREACH_MESSAGE_TYPES = [
     id: 'paid_seeding_b',
     label: '유가 시딩 · B급',
     shortLabel: '유가 B',
-    description: '표준 유상 시딩 범위와 일정·단가를 간결하게 확인합니다.',
+    description: '내부 단가 가이드의 확정 금액으로 제안하고 참여 여부만 확인합니다.',
   },
   {
     id: 'premium_s',
@@ -1732,11 +1732,13 @@ function normalizeOutreachItem(item, creators = [], campaigns = []) {
   const contactPlan = buildContactPlan(creator, channelId, item.message, campaign?.name)
   const marketCountry = item.marketCountry || resolveCampaignRecordMarket(campaign, creator?.country, creator?.searchCountry)
   const messageType = getOutreachMessageType(item.messageType || inferOutreachMessageType(creator)).id
+  const commercialTerms = item.commercialTerms || buildOutreachCommercialTerms(messageType, creator, campaign)
 
   return {
     ...item,
     marketCountry,
     messageType,
+    commercialTerms,
     subject: buildOutreachSubject(messageType, campaign, marketCountry),
     channel: contactPlan.id,
     deliveryMode: item.deliveryMode ?? contactPlan.deliveryMode,
@@ -2866,6 +2868,46 @@ function buildOutreachSubject(typeId, campaign, marketCountry = '') {
   return `[${localizedType.ko}] ${campaignName} 협업 제안드립니다`
 }
 
+function buildOutreachCommercialTerms(typeId, creator, campaign) {
+  const messageType = getOutreachMessageType(typeId).id
+  const estimatedGuideAmount = getCreatorRateSummary(creator).estimatedPrice
+  const campaignGuideCap = Number(campaign?.maxCreatorFee || 0)
+  const fixedOfferAmount = campaignGuideCap
+    ? Math.min(estimatedGuideAmount, campaignGuideCap)
+    : estimatedGuideAmount
+  const pricingModes = {
+    gifted_seeding: 'gifted_confirmation',
+    paid_seeding_a: 'negotiated',
+    paid_seeding_b: 'fixed_guide',
+    premium_s: 'managed_negotiation',
+  }
+
+  return {
+    pricingMode: pricingModes[messageType],
+    fixedOfferAmountKrw: messageType === 'paid_seeding_b' ? fixedOfferAmount : 0,
+    guideSource: messageType === 'paid_seeding_b'
+      ? campaignGuideCap
+        ? 'CreatorOps 예상 단가 + 캠페인 최대 단가 가이드'
+        : 'CreatorOps 플랫폼·조회·팔로워·참여율 단가 가이드'
+      : '',
+  }
+}
+
+function formatOutreachOfferAmount(krwValue, campaign, marketCountry, language = 'ko') {
+  const krw = Number(krwValue || 0)
+  if (!krw) return language === 'ko' ? '내부 가이드 금액' : 'the fixed guide fee'
+  const market = getCampaignMarketForCountry(campaign, marketCountry)
+  const locale = { ko: 'ko-KR', en: 'en-US', ja: 'ja-JP', 'zh-CN': 'zh-CN' }[language] || 'en-US'
+  const localAmount = krw / Math.max(Number(market.exchangeRateKrw || 1), 1)
+  const localLabel = new Intl.NumberFormat(locale, {
+    style: 'currency',
+    currency: market.currency || 'KRW',
+    maximumFractionDigits: market.currency === 'JPY' || market.currency === 'KRW' ? 0 : 2,
+  }).format(localAmount)
+  if (language === 'ko' && market.currency !== 'KRW') return `${won(krw)} (약 ${localLabel})`
+  return localLabel
+}
+
 function buildTypedProposalMessage(
   creator,
   brief,
@@ -2884,6 +2926,15 @@ function buildTypedProposalMessage(
   const topics = Array.isArray(creator?.topics) ? creator.topics.slice(0, 3).join(', ') : ''
   const fitReason = topics || `${creator?.platform || '소셜 미디어'} 콘텐츠`
   const deadline = campaign?.deadline || campaign?.recruitmentDeadline || ''
+  const selectedLanguage = languageOverride || market.language
+  const language = ['en', 'ja', 'zh-CN'].includes(selectedLanguage) ? selectedLanguage : 'ko'
+  const commercialTerms = buildOutreachCommercialTerms(type.id, creator, campaign)
+  const fixedOfferLabel = formatOutreachOfferAmount(
+    commercialTerms.fixedOfferAmountKrw,
+    campaign,
+    assignedMarketCountry,
+    language,
+  )
 
   const typeCopy = {
     gifted_seeding: {
@@ -2899,10 +2950,10 @@ function buildTypedProposalMessage(
       'zh-CN': `这是针对核心合作伙伴的付费合作邀请。我们希望结合您的账号优势共创主题内容，并根据形式和使用范围协商报价。`,
     },
     paid_seeding_b: {
-      ko: `${product}을 직접 경험하고 채널 톤으로 소개해주시는 표준 유상 시딩 제안입니다. 원하시는 콘텐츠 형식, 가능한 일정, 기본 희망 단가를 확인한 후 가이드를 맞춰드리겠습니다.`,
-      en: `This is a paid seeding proposal built around an authentic product experience. Please share your preferred format, availability, and standard rate so we can tailor the brief.`,
-      ja: `${product}を実際にご使用いただき、普段の投稿トーンでご紹介いただく有償シーディングのご提案です。ご希望の形式、日程、基本料金をお知らせください。`,
-      'zh-CN': `这是一项基于真实产品体验的标准付费种草合作。请告知您偏好的内容形式、可合作时间和基础报价，我们将相应调整指南。`,
+      ko: `${product}을 직접 경험하고 채널 톤으로 소개해주시는 표준 유상 시딩 제안이에요. 이번 협업은 저희 내부 단가 가이드에 따라 ${fixedOfferLabel}로 제안드리며, 별도의 희망 단가를 요청드리지 않습니다.`,
+      en: `This is a standard paid seeding proposal based on an authentic product experience. Under our internal rate guide, the fixed fee offered for this collaboration is ${fixedOfferLabel}; we are not asking you to submit a separate rate.`,
+      ja: `${product}を実際にご使用いただく標準的な有償シーディングのご提案です。社内単価ガイドに基づく固定ご提案金額は${fixedOfferLabel}で、別途ご希望料金の提出は不要です。`,
+      'zh-CN': `这是一项基于真实产品体验的标准付费种草合作。根据我们的内部价格指南，本次合作的固定报价为${fixedOfferLabel}，无需另行提交期望报价。`,
     },
     premium_s: {
       ko: `${product}의 브랜드 대표 파트너로 모시기 위한 맞춤 제안입니다. 단발성 소개보다 캠페인 핵심 콘텐츠와 장기 파트너십 가능성까지 열어두고, 콘텐츠 구성과 예산을 전담 창구와 함께 협의하고 싶습니다.`,
@@ -2911,8 +2962,6 @@ function buildTypedProposalMessage(
       'zh-CN': `我们希望与您洽谈${product}的定制旗舰合作，涵盖核心活动内容及长期合作可能。我们将由专人协调创意、授权、时间与预算。`,
     },
   }
-  const selectedLanguage = languageOverride || market.language
-  const language = ['en', 'ja', 'zh-CN'].includes(selectedLanguage) ? selectedLanguage : 'ko'
   const offer = typeCopy[type.id]?.[language] || typeCopy.gifted_seeding[language]
   const typeEmoji = {
     gifted_seeding: '🎁',
@@ -2920,18 +2969,44 @@ function buildTypedProposalMessage(
     paid_seeding_b: '🤝',
     premium_s: '🌟',
   }[type.id]
+  const responseCopy = {
+    gifted_seeding: {
+      ko: '관심 있으시면 제품 수령과 협업 가능 여부를 편하게 알려주세요. 확인하는 대로 상세 내용을 전달드릴게요. 💌',
+      en: `If you're interested, just let us know whether you'd be open to receiving the product and reviewing the collaboration details. We'll send the next steps. 💌`,
+      ja: 'ご興味がございましたら、商品のお受け取りとご協業の可否をお気軽にお知らせください。詳細をご案内します。💌',
+      'zh-CN': '如果您感兴趣，请告知我们是否方便收取产品并了解合作详情。我们会发送后续流程。💌',
+    },
+    paid_seeding_a: {
+      ko: '관심 있으시면 선호하는 콘텐츠 형식, 일정, 활용 범위와 희망 단가를 편하게 알려주세요. 조율 가능한 조건으로 맞춤 제안을 정리해드릴게요. 💌',
+      en: `If you're interested, please share your preferred format, availability, usage terms, and rate. We'll shape a negotiable proposal around your guidelines. 💌`,
+      ja: 'ご興味がございましたら、ご希望の形式、日程、使用範囲、ご料金をお知らせください。ご希望に合わせて調整可能なご提案を用意します。💌',
+      'zh-CN': '如果您感兴趣，请告知偏好的内容形式、时间、使用范围和期望报价。我们会按照您的合作指南准备可协商方案。💌',
+    },
+    paid_seeding_b: {
+      ko: `제안드린 ${fixedOfferLabel}의 고정 금액과 일정이 괜찮으시면 참여 가능 여부와 선호하는 콘텐츠 형식만 편하게 알려주세요. 확인 후 상세 가이드를 전달드릴게요. 💌`,
+      en: `If the fixed fee of ${fixedOfferLabel} and the proposed timing work for you, please let us know your availability and preferred content format. We'll send the full brief. 💌`,
+      ja: `固定ご提案金額${fixedOfferLabel}と日程に問題がなければ、ご参加の可否とご希望の形式をお知らせください。詳細ガイドをお送りします。💌`,
+      'zh-CN': `如果您可以接受${fixedOfferLabel}的固定报价和相应时间，请告知参与意向和偏好的内容形式。我们会发送完整指南。💌`,
+    },
+    premium_s: {
+      ko: '관심 있으시면 담당자 또는 매니지먼트 연락처와 패키지 가이드, 가능한 미팅 일정을 알려주세요. 운영 기준에 맞춰 예산과 조건을 협의하겠습니다. 💌',
+      en: `If this is of interest, please share your management contact, partnership deck or package guidelines, and possible meeting times. We'll negotiate scope and budget around your operating terms. 💌`,
+      ja: 'ご興味がございましたら、ご担当者またはマネジメントの連絡先、パッケージガイド、面談可能な日程をお知らせください。ご条件に合わせて範囲とご予算を協議いたします。💌',
+      'zh-CN': '如果您感兴趣，请分享经纪或负责人联系方式、合作套餐指南和可沟通时间。我们将按您的合作条件协商范围与预算。💌',
+    },
+  }[type.id][language]
 
   if (language === 'en') {
-    return `Hi ${creatorName}! 😊\n\nI'm reaching out from ${brand} about ${campaignName}. We really enjoyed your content around ${fitReason}, and we think your style would be a great fit for ${product}.\n\n${typeEmoji} ${offer}${deadline ? ` Our preferred timing is around ${deadline}.` : ''}\n\nIf this sounds interesting, feel free to reply with your preferred content format, available dates, and any questions or rate information. We'll put together a tailored brief for you. 💌\n\nThank you!\n${brand}`
+    return `Hi ${creatorName}! 😊\n\nI'm reaching out from ${brand} about ${campaignName}. We really enjoyed your content around ${fitReason}, and we think your style would be a great fit for ${product}.\n\n${typeEmoji} ${offer}${deadline ? ` Our preferred timing is around ${deadline}.` : ''}\n\n${responseCopy}\n\nThank you!\n${brand}`
   }
   if (language === 'ja') {
-    return `${creatorName}様、こんにちは！😊\n\n${brand}より「${campaignName}」についてご連絡しました。${fitReason}に関する投稿を楽しく拝見し、${product}との相性がとても良いと感じています。\n\n${typeEmoji} ${offer}${deadline ? ` 希望時期は${deadline}頃です。` : ''}\n\nご興味がございましたら、ご希望の形式、対応可能な日程、費用やご質問をお気軽にお知らせください。詳細ガイドをご用意します。💌\n\nどうぞよろしくお願いいたします。`
+    return `${creatorName}様、こんにちは！😊\n\n${brand}より「${campaignName}」についてご連絡しました。${fitReason}に関する投稿を楽しく拝見し、${product}との相性がとても良いと感じています。\n\n${typeEmoji} ${offer}${deadline ? ` 希望時期は${deadline}頃です。` : ''}\n\n${responseCopy}\n\nどうぞよろしくお願いいたします。`
   }
   if (language === 'zh-CN') {
-    return `${creatorName}，您好！😊\n\n我们是${brand}，想邀请您参与“${campaignName}”。我们很喜欢您关于${fitReason}的内容，也觉得您的风格非常适合${product}。\n\n${typeEmoji} ${offer}${deadline ? ` 期望时间为${deadline}前后。` : ''}\n\n如果您感兴趣，欢迎随时回复偏好的内容形式、可合作时间，以及报价或任何问题。我们会为您准备定制指南。💌\n\n谢谢！`
+    return `${creatorName}，您好！😊\n\n我们是${brand}，想邀请您参与“${campaignName}”。我们很喜欢您关于${fitReason}的内容，也觉得您的风格非常适合${product}。\n\n${typeEmoji} ${offer}${deadline ? ` 期望时间为${deadline}前后。` : ''}\n\n${responseCopy}\n\n谢谢！`
   }
 
-  return `${creatorName}님, 안녕하세요! 😊\n\n${brand}의 ${campaignName} 협업을 제안드리고 싶어 연락드렸어요. 평소 ${fitReason} 콘텐츠를 인상 깊게 보고 있었는데요. ${product}의 매력을 크리에이터님만의 방식으로 자연스럽게 보여주실 수 있을 것 같아 조심스럽게 제안드립니다.\n\n${typeEmoji} ${offer}${deadline ? ` 희망 일정은 ${deadline} 전후예요.` : ''}\n\n관심 있으시면 가능한 콘텐츠 형식과 일정, 해당 제안의 단가나 궁금한 점을 편하게 회신해주세요. 확인하는 대로 맞춤 가이드를 정리해드릴게요. 💌\n\n감사합니다!\n${brand} 드림`
+  return `${creatorName}님, 안녕하세요! 😊\n\n${brand}의 ${campaignName} 협업을 제안드리고 싶어 연락드렸어요. 평소 ${fitReason} 콘텐츠를 인상 깊게 보고 있었는데요. ${product}의 매력을 크리에이터님만의 방식으로 자연스럽게 보여주실 수 있을 것 같아 조심스럽게 제안드립니다.\n\n${typeEmoji} ${offer}${deadline ? ` 희망 일정은 ${deadline} 전후예요.` : ''}\n\n${responseCopy}\n\n감사합니다!\n${brand} 드림`
 }
 
 const SHORT_LINK_BASE_URL = 'https://go.creatorops.kr'
@@ -12303,6 +12378,7 @@ function AppContent() {
         }
       : buildRecommendation(creator, campaignBrief, campaign)
     const messageType = inferOutreachMessageType(creator)
+    const commercialTerms = buildOutreachCommercialTerms(messageType, creator, campaign)
     const marketCountry = recommendation.marketCountry || resolveCampaignRecordMarket(campaign, creator.country, creator.searchCountry)
     const message = buildTypedProposalMessage(creator, campaignBrief, campaign, messageType, marketCountry)
     const contactPlan = buildContactPlan(creator, getRecommendedContactChannelId(creator), message, campaign.name)
@@ -12318,6 +12394,7 @@ function AppContent() {
       deliveryMode: contactPlan.deliveryMode,
       complianceNote: contactPlan.notice,
       messageType,
+      commercialTerms,
       subject: buildOutreachSubject(messageType, campaign, marketCountry),
       message,
       reason: recommendation.reasons?.length
@@ -13145,6 +13222,7 @@ function AppContent() {
         ? null
         : buildRecommendation(creator, campaignBrief, campaign)
     const messageType = recommendation.messageType || inferOutreachMessageType(creator)
+    const commercialTerms = buildOutreachCommercialTerms(messageType, creator, campaign)
     const marketCountry = recommendation.marketCountry || fallbackRecommendation?.marketCountry || resolveCampaignRecordMarket(campaign, creator.country, creator.searchCountry)
     const message = buildTypedProposalMessage(creator, campaignBrief, campaign, messageType, marketCountry)
     const contactPlan = buildContactPlan(creator, getRecommendedContactChannelId(creator), message, campaign.name)
@@ -13167,6 +13245,7 @@ function AppContent() {
       deliveryMode: contactPlan.deliveryMode,
       complianceNote: contactPlan.notice,
       messageType,
+      commercialTerms,
       subject: buildOutreachSubject(messageType, campaign, marketCountry),
       message,
       reason: recommendationReasons.join(' / '),
@@ -15228,6 +15307,7 @@ function AppContent() {
     }
     const contactPlan = buildContactPlan(selectedCreator, proposalChannel, proposalText, campaign.name)
     const marketCountry = resolveCampaignRecordMarket(campaign, selectedCreator.country, selectedCreator.searchCountry)
+    const commercialTerms = buildOutreachCommercialTerms(proposalMessageType, selectedCreator, campaign)
     const record = {
       id: createId(),
       creatorId: selectedCreator.id,
@@ -15239,6 +15319,7 @@ function AppContent() {
       deliveryMode: contactPlan.deliveryMode,
       complianceNote: contactPlan.notice,
       messageType: proposalMessageType,
+      commercialTerms,
       subject: buildOutreachSubject(proposalMessageType, campaign, marketCountry),
       message: proposalText,
       reason: '수동 작성 제안 메시지',
@@ -15709,9 +15790,11 @@ function AppContent() {
     const campaign = campaigns.find((candidate) => candidate.id === item.campaignId)
     if (!creator || !campaign) return item
     const campaignBrief = buildCampaignDiscoveryBrief(brandBrief, campaign)
+    const commercialTerms = buildOutreachCommercialTerms(messageType, creator, campaign)
     return {
       ...item,
       messageType,
+      commercialTerms,
       subject: buildOutreachSubject(messageType, campaign, item.marketCountry),
       message: buildTypedProposalMessage(creator, campaignBrief, campaign, messageType, item.marketCountry),
       messageUpdatedAt: nowLabel(),
