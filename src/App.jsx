@@ -16139,6 +16139,10 @@ function AppContent() {
       showToast('선택한 후보 중 확인된 이메일이 없습니다. DM 후보는 복사 또는 채널 열기로 처리해주세요.')
       return
     }
+    if (selectedEmailOutreachItems.length > 20) {
+      showToast('안전 발송을 위해 이메일은 한 번에 최대 20건까지 선택할 수 있습니다.')
+      return
+    }
     if (!backendConfig.apiBaseUrl) {
       showToast('Gmail 발송은 CreatorOps API 서버 연결이 필요합니다.')
       return
