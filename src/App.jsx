@@ -2866,7 +2866,14 @@ function buildOutreachSubject(typeId, campaign, marketCountry = '') {
   return `[${localizedType.ko}] ${campaignName} 협업 제안드립니다`
 }
 
-function buildTypedProposalMessage(creator, brief, campaign, typeId = DEFAULT_OUTREACH_MESSAGE_TYPE, marketCountry = '') {
+function buildTypedProposalMessage(
+  creator,
+  brief,
+  campaign,
+  typeId = DEFAULT_OUTREACH_MESSAGE_TYPE,
+  marketCountry = '',
+  languageOverride = '',
+) {
   const type = getOutreachMessageType(typeId)
   const assignedMarketCountry = marketCountry || resolveCampaignRecordMarket(campaign, creator?.country, creator?.searchCountry)
   const market = getCampaignMarketForCountry(campaign, assignedMarketCountry)
@@ -2904,7 +2911,8 @@ function buildTypedProposalMessage(creator, brief, campaign, typeId = DEFAULT_OU
       'zh-CN': `我们希望与您洽谈${product}的定制旗舰合作，涵盖核心活动内容及长期合作可能。我们将由专人协调创意、授权、时间与预算。`,
     },
   }
-  const language = ['en', 'ja', 'zh-CN'].includes(market.language) ? market.language : 'ko'
+  const selectedLanguage = languageOverride || market.language
+  const language = ['en', 'ja', 'zh-CN'].includes(selectedLanguage) ? selectedLanguage : 'ko'
   const offer = typeCopy[type.id]?.[language] || typeCopy.gifted_seeding[language]
 
   if (language === 'en') {
@@ -22943,10 +22951,12 @@ function AppContent() {
                   {getOutreachMessageType(activeOutreachDetail.messageType).description}
                 </small>
               </label>
-              <div className="outreach-message-preview friendly-message-preview">
-                <span>메시지 미리보기</span>
-                <pre>{activeOutreachDetail.message}</pre>
-              </div>
+              <OutreachMessagePreview
+                item={activeOutreachDetail}
+                creator={activeOutreachDetailCreator}
+                campaign={activeOutreachDetailCampaign}
+                brief={brandBrief}
+              />
               <div className="outreach-send-card">
                 <div>
                   <strong>다음 액션</strong>
@@ -22954,7 +22964,7 @@ function AppContent() {
                 </div>
                 <div className="outreach-detail-actions">
                   <button className="secondary-button compact-button" type="button" onClick={() => copyOutreachMessage(activeOutreachDetail.message)}>
-                    ✨ 메시지 복사
+                    ✨ 실제 발송본 복사
                   </button>
                   {activeOutreachDetailPlan?.url && (
                     <a className="secondary-button compact-button" href={activeOutreachDetailPlan.url} target="_blank" rel="noreferrer">
@@ -23779,6 +23789,35 @@ function CampaignCard({ campaign, creators, kpiSummary, onOpen, onDelete }) {
         <span style={{ width: `${campaign.progress}%` }} />
       </div>
     </article>
+  )
+}
+
+function OutreachMessagePreview({ item, creator, campaign, brief }) {
+  const market = getCampaignMarketForCountry(campaign, item?.marketCountry)
+  const koreanPreview = item && creator && campaign && market.language !== 'ko'
+    ? buildTypedProposalMessage(
+        creator,
+        buildCampaignDiscoveryBrief(brief, campaign),
+        campaign,
+        item.messageType,
+        item.marketCountry,
+        'ko',
+      )
+    : ''
+
+  return (
+    <div className={`outreach-preview-grid ${koreanPreview ? 'dual-preview' : ''}`}>
+      <div className="outreach-message-preview friendly-message-preview">
+        <span>실제 발송본 · {market.languageLabel || '한국어'}</span>
+        <pre>{item?.message}</pre>
+      </div>
+      {koreanPreview && (
+        <div className="outreach-message-preview korean-reference-preview">
+          <span>운영자용 한국어 참고본 · 메일에 포함되지 않음</span>
+          <pre>{koreanPreview}</pre>
+        </div>
+      )}
+    </div>
   )
 }
 
