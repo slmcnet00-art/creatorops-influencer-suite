@@ -8313,6 +8313,44 @@
   line-height: 1.45;
 }
 
+.message-type-picker,
+.outreach-detail-type-picker {
+  display: grid;
+  gap: 5px;
+}
+
+.message-type-picker select,
+.outreach-detail-type-picker select {
+  min-height: 34px;
+  padding: 0 32px 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text-strong);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.outreach-detail-type-picker {
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2);
+}
+
+.outreach-detail-type-picker span {
+  color: var(--text-strong);
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.outreach-detail-type-picker small {
+  color: var(--text-soft);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
 .campaign-market-mode {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));

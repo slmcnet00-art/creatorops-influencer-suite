@@ -125,6 +125,33 @@ const TRACKING_DAILY_REFRESH_KEY = 'creatorops.tracking.lastDailyRefresh'
 const GMAIL_AUTH_STORE_KEY = 'creatorops.gmailAuth.v1'
 const GMAIL_OAUTH_STATE_KEY = 'creatorops.gmailOAuthState.v1'
 const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send'
+const DEFAULT_OUTREACH_MESSAGE_TYPE = 'gifted_seeding'
+const OUTREACH_MESSAGE_TYPES = [
+  {
+    id: 'gifted_seeding',
+    label: '무가 시딩',
+    shortLabel: '무가',
+    description: '제품 제공 기반으로 부담 없이 참여 의사를 확인합니다.',
+  },
+  {
+    id: 'paid_seeding_a',
+    label: '유가 시딩 · A급',
+    shortLabel: '유가 A',
+    description: '핵심 파트너 후보에게 유상 협업 조건과 견적을 함께 확인합니다.',
+  },
+  {
+    id: 'paid_seeding_b',
+    label: '유가 시딩 · B급',
+    shortLabel: '유가 B',
+    description: '표준 유상 시딩 범위와 일정·단가를 간결하게 확인합니다.',
+  },
+  {
+    id: 'premium_s',
+    label: 'S급 대형 크리에이터',
+    shortLabel: 'S급',
+    description: '대형 크리에이터에게 맞춤 캠페인과 장기 파트너십 가능성을 제안합니다.',
+  },
+]
 const YOUTUBE_REVIEW_SNAPSHOT_KEY = 'creatorops.youtubeReviewSnapshot.v1'
 const PRACTICE_TOUR_STORE_KEY = 'creatorops.practiceTour.completed.v1'
 const EXTERNAL_REPORT_PROFILES = [
@@ -1705,6 +1732,7 @@ function normalizeOutreachItem(item, creators = [], campaigns = []) {
 
   return {
     ...item,
+    messageType: getOutreachMessageType(item.messageType || inferOutreachMessageType(creator)).id,
     channel: contactPlan.id,
     deliveryMode: item.deliveryMode ?? contactPlan.deliveryMode,
     complianceNote: item.complianceNote ?? contactPlan.notice,
@@ -2803,6 +2831,77 @@ ${topics || product}に関する投稿を拝見し、${product}の魅力を自�
 3. 이번에는 어렵지만 다음 제안은 받고 싶어요
 
 가능한 콘텐츠 형식, 일정, 희망 단가를 알려주시면 맞춤 제안서와 가이드를 정리해드리겠습니다. 감사합니다!`
+}
+
+function getOutreachMessageType(typeId) {
+  return OUTREACH_MESSAGE_TYPES.find((type) => type.id === typeId) || OUTREACH_MESSAGE_TYPES[0]
+}
+
+function inferOutreachMessageType(creator) {
+  const followers = Number(creator?.followers || 0)
+  if (followers >= 1_000_000) return 'premium_s'
+  if (followers >= 300_000) return 'paid_seeding_a'
+  if (followers >= 100_000) return 'paid_seeding_b'
+  return DEFAULT_OUTREACH_MESSAGE_TYPE
+}
+
+function buildOutreachSubject(typeId, campaign) {
+  const type = getOutreachMessageType(typeId)
+  const campaignName = campaign?.name || '브랜드 캠페인'
+  return `[${type.shortLabel}] ${campaignName} 협업 제안드립니다`
+}
+
+function buildTypedProposalMessage(creator, brief, campaign, typeId = DEFAULT_OUTREACH_MESSAGE_TYPE) {
+  const type = getOutreachMessageType(typeId)
+  const market = normalizeCampaignMarket(campaign)
+  const creatorName = creator?.name || creator?.handle || 'Creator'
+  const brand = brief?.brandName || campaign?.brandName || '저희 브랜드'
+  const campaignName = campaign?.name || `${brief?.product || brand} 캠페인`
+  const product = brief?.product || campaign?.product || '제품'
+  const topics = Array.isArray(creator?.topics) ? creator.topics.slice(0, 3).join(', ') : ''
+  const fitReason = topics || `${creator?.platform || '소셜 미디어'} 콘텐츠`
+  const deadline = campaign?.deadline || campaign?.recruitmentDeadline || ''
+
+  const typeCopy = {
+    gifted_seeding: {
+      ko: `${product}을 제공해드리고 직접 경험하신 뒤 콘텐츠 협업 가능 여부를 먼저 여짙는 무가 시딩 제안입니다. 구체적인 업로드 여부와 형식은 참여 의사를 확인한 후 무리 없이 협의하겠습니다.`,
+      en: `We would love to send you ${product} to try and first confirm whether a gifted-seeding collaboration feels right for you. Any posting format or requirement would be agreed with you in advance.`,
+      ja: `${product}をお送りし、ご使用後にギフティング形式のご協業が可能かまずご相談するご提案です。投稿形式や条件は事前にご相談いたします。`,
+      'zh-CN': `我们希望先向您寄送${product}试用，并了解您是否愿意参与产品赠送型合作。发布形式与具体要求将在您同意后提前协商。`,
+    },
+    paid_seeding_a: {
+      ko: `${product}의 핵심 파트너로 모시고자 하는 유상 협업 제안입니다. 채널의 강점을 살린 메인 콘텐츠를 기대하며, 형식과 사용 범위에 따른 희망 단가를 함께 협의하고 싶습니다.`,
+      en: `This is a paid collaboration proposal for a core campaign partner. We would like to discuss a hero content concept tailored to your channel, together with your rate based on format and usage.`,
+      ja: `${product}の主要パートナーとしての有償コラボご提案です。チャンネルの強みを活かしたメインコンテンツと、形式・使用範囲に応じた費用をご相談できれば幸いです。`,
+      'zh-CN': `这是针对核心合作伙伴的付费合作邀请。我们希望结合您的账号优势共创主题内容，并根据形式和使用范围协商报价。`,
+    },
+    paid_seeding_b: {
+      ko: `${product}을 직접 경험하고 채널 톤으로 소개해주시는 표준 유상 시딩 제안입니다. 원하시는 콘텐츠 형식, 가능한 일정, 기본 희망 단가를 확인한 후 가이드를 맞춰드리겠습니다.`,
+      en: `This is a paid seeding proposal built around an authentic product experience. Please share your preferred format, availability, and standard rate so we can tailor the brief.`,
+      ja: `${product}を実際にご使用いただき、普段の投稿トーンでご紹介いただく有償シーディングのご提案です。ご希望の形式、日程、基本料金をお知らせください。`,
+      'zh-CN': `这是一项基于真实产品体验的标准付费种草合作。请告知您偏好的内容形式、可合作时间和基础报价，我们将相应调整指南。`,
+    },
+    premium_s: {
+      ko: `${product}의 브랜드 대표 파트너로 모시기 위한 맞춤 제안입니다. 단발성 소개보다 캠페인 핵심 콘텐츠와 장기 파트너십 가능성까지 열어두고, 콘텐츠 구성과 예산을 전담 창구와 함께 협의하고 싶습니다.`,
+      en: `We would like to discuss a bespoke flagship partnership for ${product}, with room for both hero campaign content and a longer-term relationship. We can coordinate concept, usage, schedule, and budget through a dedicated contact.`,
+      ja: `${product}のブランド代表パートナーとして、フラッグシップコンテンツから長期的な取り組みまで含めたカスタムご提案です。企画、使用範囲、日程、ご予算を専任担当と調整いたします。`,
+      'zh-CN': `我们希望与您洽谈${product}的定制旗舰合作，涵盖核心活动内容及长期合作可能。我们将由专人协调创意、授权、时间与预算。`,
+    },
+  }
+  const language = ['en', 'ja', 'zh-CN'].includes(market.language) ? market.language : 'ko'
+  const offer = typeCopy[type.id]?.[language] || typeCopy.gifted_seeding[language]
+
+  if (language === 'en') {
+    return `Hi ${creatorName},\n\nI'm reaching out from ${brand} about ${campaignName}. We enjoyed your content around ${fitReason} and believe your voice would be a strong fit for ${product}.\n\n${offer}${deadline ? ` Our preferred timing is around ${deadline}.` : ''}\n\nIf you're interested, please reply with your preferred content format, available dates, and any questions or rate information relevant to this proposal. We'll send a tailored brief next.\n\nThank you,\n${brand}`
+  }
+  if (language === 'ja') {
+    return `${creatorName}様、こんにちは。${brand}より「${campaignName}」についてご連絡いたしました。\n\n${fitReason}に関する投稿を拝見し、${product}との相性が良いと感じています。\n\n${offer}${deadline ? ` 希望時期は${deadline}頃です。` : ''}\n\nご興味がございましたら、ご希望の形式、対応可能な日程、費用に関する情報をお知らせください。詳細ガイドをお送りいたします。\n\nどうぞよろしくお願いいたします。`
+  }
+  if (language === 'zh-CN') {
+    return `${creatorName}，您好！我们是${brand}，想邀请您参与“${campaignName}”。\n\n我们看过您关于${fitReason}的内容，认为您的风格非常适合${product}。\n\n${offer}${deadline ? ` 期望时间为${deadline}前后。` : ''}\n\n如果您感兴趣，请回复偏好的内容形式、可合作时间，以及与本次合作相关的报价或问题。我们将进一步发送定制指南。\n\n谢谢！`
+  }
+
+  return `${creatorName}님, 안녕하세요. ${brand}의 ${campaignName} 협업을 제안드리고 싶어 연락드렸습니다.\n\n평소 ${fitReason} 콘텐츠를 인상 깊게 보았고, ${product}의 매력을 크리에이터님만의 방식으로 자연스럽게 전달해주실 수 있다고 생각했습니다.\n\n${offer}${deadline ? ` 희망 일정은 ${deadline} 전후입니다.` : ''}\n\n관심 있으시면 가능한 콘텐츠 형식과 일정, 본 제안에 해당하는 단가 또는 궁금한 점을 회신해주세요. 확인 후 맞춤 가이드를 전달드리겠습니다.\n\n감사합니다.\n${brand} 드림`
 }
 
 const SHORT_LINK_BASE_URL = 'https://go.creatorops.kr'
@@ -7798,6 +7897,7 @@ function AppContent() {
   const [outreachStatusFilter, setOutreachStatusFilter] = useState('전체')
   const [outreachSearchQuery, setOutreachSearchQuery] = useState('')
   const [outreachResponseNote, setOutreachResponseNote] = useState('')
+  const [bulkOutreachMessageType, setBulkOutreachMessageType] = useState(DEFAULT_OUTREACH_MESSAGE_TYPE)
   const [realDiscoveryDraft, setRealDiscoveryDraft] = useState({
     youtubeApiKey: '',
     googleApiKey: '',
@@ -7809,8 +7909,9 @@ function AppContent() {
     result: null,
   })
   const [proposalText, setProposalText] = useState(
-    buildFriendlyProposalMessage(defaultCreators[0], defaultBrandBrief, defaultCampaigns[0]),
+    buildTypedProposalMessage(defaultCreators[0], defaultBrandBrief, defaultCampaigns[0], inferOutreachMessageType(defaultCreators[0])),
   )
+  const [proposalMessageType, setProposalMessageType] = useState(inferOutreachMessageType(defaultCreators[0]))
   const [proposalChannel, setProposalChannel] = useState(getRecommendedContactChannelId(defaultCreators[0]))
   const [campaignDraft, setCampaignDraft] = useState({
     name: '',
@@ -8330,6 +8431,7 @@ function AppContent() {
         item.status,
         item.channel,
         item.deliveryMode,
+        getOutreachMessageType(item.messageType).label,
         item.source,
         item.reason,
         item.message,
@@ -12170,7 +12272,8 @@ function AppContent() {
           dataContract: evidence.dataContract,
         }
       : buildRecommendation(creator, campaignBrief, campaign)
-    const message = buildFriendlyProposalMessage(creator, campaignBrief, campaign)
+    const messageType = inferOutreachMessageType(creator)
+    const message = buildTypedProposalMessage(creator, campaignBrief, campaign, messageType)
     const contactPlan = buildContactPlan(creator, getRecommendedContactChannelId(creator), message, campaign.name)
 
     return {
@@ -12183,6 +12286,8 @@ function AppContent() {
       channel: contactPlan.id,
       deliveryMode: contactPlan.deliveryMode,
       complianceNote: contactPlan.notice,
+      messageType,
+      subject: buildOutreachSubject(messageType, campaign),
       message,
       reason: recommendation.reasons?.length
         ? recommendation.reasons.join(' / ')
@@ -13008,7 +13113,8 @@ function AppContent() {
       recommendation.scoreBreakdown?.length && recommendation.dataContract
         ? null
         : buildRecommendation(creator, campaignBrief, campaign)
-    const message = recommendation.message || fallbackRecommendation?.message || buildFriendlyProposalMessage(creator, campaignBrief, campaign)
+    const messageType = recommendation.messageType || inferOutreachMessageType(creator)
+    const message = buildTypedProposalMessage(creator, campaignBrief, campaign, messageType)
     const contactPlan = buildContactPlan(creator, getRecommendedContactChannelId(creator), message, campaign.name)
     const recommendationReasons = recommendation.reasons?.length
       ? recommendation.reasons
@@ -13028,6 +13134,8 @@ function AppContent() {
       channel: contactPlan.id,
       deliveryMode: contactPlan.deliveryMode,
       complianceNote: contactPlan.notice,
+      messageType,
+      subject: buildOutreachSubject(messageType, campaign),
       message,
       reason: recommendationReasons.join(' / '),
       score: recommendation.score,
@@ -13160,7 +13268,9 @@ function AppContent() {
       return
     }
     if (selectedCreator && selectedCampaign) {
-      setProposalText(buildFriendlyProposalMessage(selectedCreator, buildCampaignDiscoveryBrief(brandBrief, selectedCampaign), selectedCampaign))
+      const nextMessageType = inferOutreachMessageType(selectedCreator)
+      setProposalMessageType(nextMessageType)
+      setProposalText(buildTypedProposalMessage(selectedCreator, buildCampaignDiscoveryBrief(brandBrief, selectedCampaign), selectedCampaign, nextMessageType))
       setProposalChannel(getRecommendedContactChannelId(selectedCreator))
     }
     setModal({ type: 'proposal' })
@@ -15095,6 +15205,8 @@ function AppContent() {
       channel: contactPlan.id,
       deliveryMode: contactPlan.deliveryMode,
       complianceNote: contactPlan.notice,
+      messageType: proposalMessageType,
+      subject: buildOutreachSubject(proposalMessageType, campaign),
       message: proposalText,
       reason: '수동 작성 제안 메시지',
       createdAt: nowLabel(),
@@ -15559,6 +15671,59 @@ function AppContent() {
     }
   }
 
+  const rebuildOutreachForMessageType = (item, messageType) => {
+    const creator = creators.find((candidate) => candidate.id === item.creatorId)
+    const campaign = campaigns.find((candidate) => candidate.id === item.campaignId)
+    if (!creator || !campaign) return item
+    const campaignBrief = buildCampaignDiscoveryBrief(brandBrief, campaign)
+    return {
+      ...item,
+      messageType,
+      subject: buildOutreachSubject(messageType, campaign),
+      message: buildTypedProposalMessage(creator, campaignBrief, campaign, messageType),
+      messageUpdatedAt: nowLabel(),
+    }
+  }
+
+  const applyMessageTypeToSelectedOutreach = () => {
+    if (!selectedOutreachIds.length) {
+      showToast('메시지 유형을 적용할 후보를 먼저 선택해주세요.')
+      return
+    }
+    const selectedIds = new Set(selectedOutreachIds)
+    const type = getOutreachMessageType(bulkOutreachMessageType)
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          outreach: current.outreach.map((item) =>
+            selectedIds.has(item.id) ? rebuildOutreachForMessageType(item, type.id) : item,
+          ),
+        },
+        'outreach',
+        `선택 메시지 ${selectedIds.size}건에 ${type.label} 템플릿 적용`,
+      ),
+    )
+    showToast(`선택한 ${selectedIds.size}건을 '${type.label}' 메시지로 업데이트했어요.`)
+  }
+
+  const updateOutreachMessageType = (itemId, messageType) => {
+    const type = getOutreachMessageType(messageType)
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          outreach: current.outreach.map((item) =>
+            item.id === itemId ? rebuildOutreachForMessageType(item, type.id) : item,
+          ),
+        },
+        'outreach',
+        `${type.label} 메시지 템플릿 적용`,
+      ),
+    )
+    showToast(`메시지 유형을 '${type.label}'(으)로 바꾸었어요.`)
+  }
+
   const getFreshGmailAccessToken = async () => {
     if (!String(gmailAuth?.scope || '').split(/\s+/).includes(GMAIL_SEND_SCOPE)) {
       throw new Error('Gmail 발송 권한이 없습니다. Gmail을 다시 연결하고 메일 발송 권한을 체크해주세요.')
@@ -15722,7 +15887,7 @@ function AppContent() {
               campaignId: item.campaignId,
               creatorId: item.creatorId,
               to: creator?.contactEmail,
-              subject: `${campaign?.name || '브랜드 캠페인'} 협업 제안드립니다`,
+              subject: item.subject || buildOutreachSubject(item.messageType, campaign),
               message: item.message,
               idempotencyKey: `${item.campaignId}:${item.creatorId}:email`,
             }
@@ -21014,6 +21179,25 @@ function AppContent() {
                   Gmail {gmailConnected ? '연결됨' : '미연결'}
                 </span>
               </div>
+              <label className="message-type-picker">
+                <span>메시지 유형</span>
+                <select
+                  value={bulkOutreachMessageType}
+                  onChange={(event) => setBulkOutreachMessageType(event.target.value)}
+                >
+                  {OUTREACH_MESSAGE_TYPES.map((type) => (
+                    <option key={type.id} value={type.id}>{type.label}</option>
+                  ))}
+                </select>
+              </label>
+              <button
+                className="secondary-button compact-button"
+                type="button"
+                disabled={!selectedOutreachItems.length}
+                onClick={applyMessageTypeToSelectedOutreach}
+              >
+                선택 메시지 적용
+              </button>
               <button
                 className="secondary-button compact-button"
                 type="button"
@@ -21799,6 +21983,27 @@ function AppContent() {
                   <span>{selectedCampaign.name} · {selectedCreator.handle}</span>
                 </div>
               </div>
+              <label>
+                메시지 유형
+                <select
+                  value={proposalMessageType}
+                  onChange={(event) => {
+                    const nextType = event.target.value
+                    setProposalMessageType(nextType)
+                    setProposalText(buildTypedProposalMessage(
+                      selectedCreator,
+                      buildCampaignDiscoveryBrief(brandBrief, selectedCampaign),
+                      selectedCampaign,
+                      nextType,
+                    ))
+                  }}
+                >
+                  {OUTREACH_MESSAGE_TYPES.map((type) => (
+                    <option key={type.id} value={type.id}>{type.label}</option>
+                  ))}
+                </select>
+                <small>{getOutreachMessageType(proposalMessageType).description}</small>
+              </label>
               <label>
                 연락 채널
                 <select value={proposalChannel} onChange={(event) => setProposalChannel(event.target.value)}>
@@ -22700,6 +22905,18 @@ function AppContent() {
                   <strong>{activeOutreachDetailEmail ? '이메일 발송 가능' : `${activeOutreachDetailPlan?.shortLabel ?? 'DM'} 작업 대상`}</strong>
                 </div>
               </div>
+              <label className="outreach-detail-type-picker">
+                <span>발송 메시지 유형</span>
+                <select
+                  value={getOutreachMessageType(activeOutreachDetail.messageType).id}
+                  onChange={(event) => updateOutreachMessageType(activeOutreachDetail.id, event.target.value)}
+                >
+                  {OUTREACH_MESSAGE_TYPES.map((type) => (
+                    <option key={type.id} value={type.id}>{type.label}</option>
+                  ))}
+                </select>
+                <small>{getOutreachMessageType(activeOutreachDetail.messageType).description}</small>
+              </label>
               <div className="outreach-message-preview friendly-message-preview">
                 <span>메시지 미리보기</span>
                 <pre>{activeOutreachDetail.message}</pre>
@@ -23588,6 +23805,7 @@ function OutreachItem({
         <span className={`status-chip ${item.status === '응답' || item.status === '발송 완료' ? 'success-chip' : ''}`}>{item.status}</span>
         <span className={`source-chip ${sourceTone}`}>{sourceLabel}</span>
         <span className={`channel-chip ${contactPlan.tone}`}>{contactPlan.shortLabel}</span>
+        <span className="type-chip">{getOutreachMessageType(item.messageType).shortLabel}</span>
         <strong>{creator?.name ?? '알 수 없는 후보'}</strong>
         <p>{campaign?.name ?? '캠페인 없음'} · {item.createdAt}</p>
         <div className={`message-contact-line ${deliveryTone}`}>
