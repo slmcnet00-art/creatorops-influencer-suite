@@ -8077,6 +8077,7 @@ function AppContent() {
   const [gmailClock, setGmailClock] = useState(() => Date.now())
   const [gmailSending, setGmailSending] = useState(false)
   const [outreachSuppressionSaving, setOutreachSuppressionSaving] = useState(false)
+  const [outreachDailyUsage, setOutreachDailyUsage] = useState(null)
   const [outreachStatusFilter, setOutreachStatusFilter] = useState('전체')
   const [outreachSearchQuery, setOutreachSearchQuery] = useState('')
   const [outreachResponseNote, setOutreachResponseNote] = useState('')
@@ -9056,6 +9057,36 @@ function AppContent() {
     const timer = window.setInterval(() => setGmailClock(Date.now()), 60_000)
     return () => window.clearInterval(timer)
   }, [])
+
+  useEffect(() => {
+    const campaignId = selectedCampaign?.id
+    const accessToken = authSession?.access_token
+    if (!backendConfig.apiBaseUrl || !accessToken || !campaignId) {
+      return undefined
+    }
+    let cancelled = false
+    const params = new URLSearchParams({
+      workspaceId: backendConfig.workspaceId,
+      campaignId: String(campaignId),
+    })
+    fetch(`${backendConfig.apiBaseUrl.replace(/\/$/, '')}/outreach/policy?${params}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+    })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok) throw new Error(payload?.message || '발송 한도를 확인하지 못했습니다.')
+        return payload?.data?.usage || null
+      })
+      .then((usage) => {
+        if (!cancelled) setOutreachDailyUsage(usage)
+      })
+      .catch(() => {
+        if (!cancelled) setOutreachDailyUsage(null)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [authSession?.access_token, backendConfig.apiBaseUrl, backendConfig.workspaceId, selectedCampaign?.id])
 
   useEffect(() => {
     if (!backendConfig.hasSupabase) return undefined
@@ -16129,6 +16160,15 @@ function AppContent() {
       if (!response.ok || !payload.data?.id) {
         throw new Error(payload.message || 'Gmail 테스트 메일을 발송하지 못했습니다.')
       }
+      if (payload.data?.policy) {
+        setOutreachDailyUsage({
+          campaignId: campaign?.id || null,
+          dateKey: payload.data.policy.dateKey,
+          used: payload.data.policy.dailyUsed,
+          limit: payload.data.policy.dailyLimitPerCampaign,
+          remaining: payload.data.policy.dailyRemaining,
+        })
+      }
       showToast(`${recipient}로 ${messageType.label} Gmail 테스트 메일을 보냈습니다.`)
     } catch (error) {
       showToast(error instanceof Error ? error.message : 'Gmail 테스트 메일 발송에 실패했습니다.')
@@ -16207,6 +16247,10 @@ function AppContent() {
       const payload = await response.json().catch(() => ({}))
       if (!response.ok) throw new Error(payload?.message || 'Gmail 일괄 발송에 실패했습니다.')
       const results = Array.isArray(payload?.data?.results) ? payload.data.results : []
+      const selectedCampaignUsage = payload?.data?.policy?.campaignUsage?.find(
+        (usage) => String(usage.campaignId || '') === String(selectedCampaign?.id || ''),
+      )
+      if (selectedCampaignUsage) setOutreachDailyUsage(selectedCampaignUsage)
       sentIds = results.filter((item) => item.status === 'sent').map((item) => item.id)
       suppressedCount += results.filter((item) => item.reason === 'suppressed').length
       skippedCount += results.filter((item) => item.status === 'skipped' && item.reason !== 'suppressed').length
@@ -21578,7 +21622,12 @@ function AppContent() {
                     <option key={type.id} value={type.id}>{type.label}</option>
                   ))}
                 </select>
-                <small>후보별 운영 국가 언어 · 1회 20건 · 10초 간격 · 캠페인별 하루 50건 · 수신 거부 주소 차단</small>
+                <small>
+                  후보별 운영 국가 언어 · 1회 20건 · 10초 간격 · 캠페인별 하루 50건 · 수신 거부 주소 차단
+                  {outreachDailyUsage && String(outreachDailyUsage.campaignId || '') === String(selectedCampaign?.id || '')
+                    ? ` · 오늘 ${outreachDailyUsage.used}/${outreachDailyUsage.limit}건 · ${outreachDailyUsage.remaining}건 남음`
+                    : ''}
+                </small>
               </label>
               <button
                 className="secondary-button compact-button"

@@ -2020,6 +2020,27 @@ app.post('/oauth/google/refresh', requireWorkspaceAccess, async (request, respon
   }
 })
 
+app.get('/outreach/policy', requireWorkspaceAccess, async (request, response, next) => {
+  try {
+    const workspaceId = String(request.query?.workspaceId || WORKSPACE_ID).trim()
+    const campaignId = String(request.query?.campaignId || '').trim()
+    if (workspaceId !== WORKSPACE_ID) throw httpError(403, 'The requested workspace does not match the authenticated workspace.')
+    if (!campaignId) throw httpError(400, 'campaignId is required.')
+    const usage = await getCampaignDailyOutreachUsage(workspaceId, campaignId)
+    response.json({
+      data: {
+        batchLimit: OUTREACH_BATCH_LIMIT,
+        sendIntervalMs: OUTREACH_SEND_INTERVAL_MS,
+        dailyLimitPerCampaign: OUTREACH_DAILY_LIMIT_PER_CAMPAIGN,
+        timeZone: 'Asia/Seoul',
+        usage,
+      },
+    })
+  } catch (error) {
+    next(error)
+  }
+})
+
 app.post('/outreach/gmail/send', requireWorkspaceAccess, async (request, response, next) => {
   const workspaceId = String(request.body?.workspaceId || WORKSPACE_ID).trim()
   if (activeOutreachSendWorkspaces.has(workspaceId)) {

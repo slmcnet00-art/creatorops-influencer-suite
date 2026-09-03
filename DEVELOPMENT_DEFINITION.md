@@ -241,6 +241,7 @@ API 상세 계약은 `API_INTEGRATION_CONTRACT.md`에 별도로 정리되어 있
 | POST `/ai/content-guide` | 구현 | OpenAI 기반 콘텐츠 가이드 생성 |
 | POST `/ai/recommendations/enrich` | 로컬 구현 / 운영 재배포 필요 | 데이터룸 raw/metric으로 이미 점수화된 후보의 추천 사유, 제안각, 친근한 메시지만 OpenAI로 보강 |
 | POST `/outreach/gmail/send` | 구현 | Gmail OAuth 단건 발송, 캠페인별 일일 한도와 수신 거부 검사 |
+| GET `/outreach/policy` | 구현 | 선택 캠페인의 한국시간 기준 오늘 발송량과 남은 한도 조회 |
 | POST `/outreach/gmail/send-batch` | 구현 | 1회 20건, 10초 간격, 캠페인별 하루 50건, 중복·수신 거부 차단 |
 | POST `/outreach/suppressions` | 구현 | 워크스페이스 공통 수신 거부 등록·해제와 감사 로그 저장 |
 
