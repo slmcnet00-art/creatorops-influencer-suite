@@ -16111,6 +16111,8 @@ function AppContent() {
         },
         body: JSON.stringify({
           accessToken: gmailAccessToken,
+          workspaceId: backendConfig.workspaceId,
+          campaignId: campaign?.id || '',
           to: recipient,
           subject,
           message,
@@ -21487,7 +21489,7 @@ function AppContent() {
                     <option key={type.id} value={type.id}>{type.label}</option>
                   ))}
                 </select>
-                <small>후보별 운영 국가에 맞는 언어로 자동 생성</small>
+                <small>후보별 운영 국가 언어 · 1회 20건 · 10초 간격 · 캠페인별 하루 50건</small>
               </label>
               <button
                 className="secondary-button compact-button"

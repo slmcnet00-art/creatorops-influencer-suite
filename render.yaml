@@ -86,6 +86,12 @@ services:
         sync: false
       - key: GOOGLE_OAUTH_REDIRECT_URI
         sync: false
+      - key: OUTREACH_BATCH_LIMIT
+        value: 20
+      - key: OUTREACH_SEND_INTERVAL_MS
+        value: 10000
+      - key: OUTREACH_DAILY_LIMIT_PER_CAMPAIGN
+        value: 50
       - key: CRON_SECRET
         sync: false
       - key: AUTOMATION_TRACKING_LIMIT

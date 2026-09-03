@@ -19,6 +19,11 @@ import {
   AUTOMATED_METRIC_DEFINITIONS,
   normalizeOperationJobName,
 } from './operationsJobs.js'
+import {
+  buildOutreachPolicy,
+  getKstDayWindow,
+  getOutreachDailyRemaining,
+} from './outreachPolicy.js'
 
 /* global document */
 
@@ -35,13 +40,16 @@ const MIN_REFERENCE_KNOWN_VIEWS = 500_000
 const MIN_REFERENCE_QUALITY_SCORE = 45
 const SEARCH_CACHE_TTL_MS = 12 * 60 * 60 * 1000
 const SEARCH_CACHE_STALE_TTL_MS = 7 * 24 * 60 * 60 * 1000
-const OUTREACH_BATCH_LIMIT = 50
-const OUTREACH_SEND_INTERVAL_MS = Math.max(250, Number(process.env.OUTREACH_SEND_INTERVAL_MS || 800))
-const OUTREACH_MAX_ATTEMPTS = 3
+const OUTREACH_POLICY = buildOutreachPolicy(process.env)
+const OUTREACH_BATCH_LIMIT = OUTREACH_POLICY.batchLimit
+const OUTREACH_SEND_INTERVAL_MS = OUTREACH_POLICY.sendIntervalMs
+const OUTREACH_DAILY_LIMIT_PER_CAMPAIGN = OUTREACH_POLICY.dailyLimitPerCampaign
+const OUTREACH_MAX_ATTEMPTS = OUTREACH_POLICY.maxAttempts
 const READINESS_CACHE_TTL_MS = Math.max(60_000, Number(process.env.READINESS_CACHE_TTL_MS || 300_000))
 const WORKSPACE_ID = process.env.WORKSPACE_ID || process.env.VITE_WORKSPACE_ID || 'miping-main'
 const searchCache = new Map()
 const outreachDeliveryMemory = new Map()
+const activeOutreachSendWorkspaces = new Set()
 const aiFeatureConfigMemory = new Map()
 const activeOperationJobs = new Map()
 let readinessProbeCache = { report: null, expiresAt: 0 }
@@ -240,6 +248,9 @@ app.get('/health', (request, response) => {
       gmailAuthUrlReady: Boolean(gmailOAuth?.authUrlReady),
       deliveryLogConfigured: getDataRoomLogStatus().configured,
       batchLimit: OUTREACH_BATCH_LIMIT,
+      sendIntervalMs: OUTREACH_SEND_INTERVAL_MS,
+      dailyLimitPerCampaign: OUTREACH_DAILY_LIMIT_PER_CAMPAIGN,
+      dailyTimeZone: 'Asia/Seoul',
       maxAttempts: OUTREACH_MAX_ATTEMPTS,
     },
   })
@@ -2005,6 +2016,12 @@ app.post('/oauth/google/refresh', requireWorkspaceAccess, async (request, respon
 })
 
 app.post('/outreach/gmail/send', requireWorkspaceAccess, async (request, response, next) => {
+  const workspaceId = String(request.body?.workspaceId || WORKSPACE_ID).trim()
+  if (activeOutreachSendWorkspaces.has(workspaceId)) {
+    next(httpError(409, 'Another outreach send is already running for this workspace.'))
+    return
+  }
+  activeOutreachSendWorkspaces.add(workspaceId)
   try {
     const accessToken = String(request.body?.accessToken || '').trim()
     const to = String(request.body?.to || '').trim()
@@ -2012,16 +2029,44 @@ app.post('/outreach/gmail/send', requireWorkspaceAccess, async (request, respons
     const message = String(request.body?.message || '').trim()
     if (!accessToken) throw httpError(401, 'Google accessToken is required.')
     if (!to || !message) throw httpError(400, 'to and message are required.')
+    if (workspaceId !== WORKSPACE_ID) throw httpError(403, 'The requested workspace does not match the authenticated workspace.')
 
-    const raw = buildGmailRawMessage({ to, subject, message })
-    const payload = await fetchJson('https://gmail.googleapis.com/gmail/v1/users/me/messages/send', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ raw }),
+    const campaignId = String(request.body?.campaignId || '').trim()
+    const item = normalizeOutreachDeliveryItem({
+      id: request.body?.id || `outreach-single-${Date.now()}`,
+      campaignId,
+      creatorId: request.body?.creatorId,
+      to,
+      subject,
+      message,
+      idempotencyKey: request.body?.idempotencyKey || `single:${campaignId || 'unassigned'}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
     })
+    const dailyUsage = await getCampaignDailyOutreachUsage(workspaceId, campaignId)
+    if (dailyUsage.remaining <= 0) {
+      throw httpError(429, `This campaign has reached its daily outreach limit of ${dailyUsage.limit} messages (Asia/Seoul).`)
+    }
+
+    await persistOutreachDelivery(workspaceId, item, { status: 'sending', attemptCount: 0, source: 'single-api' })
+    let payload
+    try {
+      payload = await sendGmailWithRetry(accessToken, item)
+      await persistOutreachDelivery(workspaceId, item, {
+        status: 'sent',
+        attemptCount: payload.attemptCount,
+        providerMessageId: payload.id,
+        sentAt: new Date().toISOString(),
+        lastError: null,
+        source: 'single-api',
+      })
+    } catch (error) {
+      await persistOutreachDelivery(workspaceId, item, {
+        status: 'failed',
+        attemptCount: Number(error?.attemptCount || OUTREACH_MAX_ATTEMPTS),
+        lastError: error instanceof Error ? error.message : 'Gmail send failed.',
+        source: 'single-api',
+      }).catch(() => {})
+      throw error
+    }
     await safeWriteAuditLog({
       actorId: request.workspaceUser.id,
       action: 'outreach.gmail.sent',
@@ -2029,16 +2074,35 @@ app.post('/outreach/gmail/send', requireWorkspaceAccess, async (request, respons
       targetId: payload.id,
       metadata: { recipientDomain: to.split('@')[1] || '', threadId: payload.threadId || null },
     })
-    response.json({ data: { id: payload.id, threadId: payload.threadId } })
+    response.json({
+      data: {
+        id: payload.id,
+        threadId: payload.threadId,
+        policy: {
+          dailyLimitPerCampaign: dailyUsage.limit,
+          dailyUsed: dailyUsage.used + 1,
+          dailyRemaining: getOutreachDailyRemaining(dailyUsage.used + 1, dailyUsage.limit),
+          dateKey: dailyUsage.dateKey,
+          timeZone: 'Asia/Seoul',
+        },
+      },
+    })
   } catch (error) {
     next(error)
+  } finally {
+    activeOutreachSendWorkspaces.delete(workspaceId)
   }
 })
 
 app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, response, next) => {
+  const workspaceId = String(request.body?.workspaceId || WORKSPACE_ID).trim()
+  if (activeOutreachSendWorkspaces.has(workspaceId)) {
+    next(httpError(409, 'Another outreach send is already running for this workspace.'))
+    return
+  }
+  activeOutreachSendWorkspaces.add(workspaceId)
   try {
     const accessToken = String(request.body?.accessToken || '').trim()
-    const workspaceId = String(request.body?.workspaceId || WORKSPACE_ID).trim()
     const requestedItems = Array.isArray(request.body?.items) ? request.body.items : []
     if (!accessToken) throw httpError(401, 'Google accessToken is required.')
     if (workspaceId !== WORKSPACE_ID) throw httpError(403, 'The requested workspace does not match the authenticated workspace.')
@@ -2049,6 +2113,8 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
 
     const items = requestedItems.map((item, index) => normalizeOutreachDeliveryItem(item, index))
     const results = []
+    const dailyUsageByCampaign = new Map()
+    let lastSendStartedAt = 0
 
     for (let index = 0; index < items.length; index += 1) {
       const item = items[index]
@@ -2067,8 +2133,25 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
         continue
       }
 
-      await persistOutreachDelivery(workspaceId, item, { status: 'sending', attemptCount: 0, lastError: null })
+      if (!dailyUsageByCampaign.has(item.campaignId)) {
+        dailyUsageByCampaign.set(item.campaignId, await getCampaignDailyOutreachUsage(workspaceId, item.campaignId))
+      }
+      const dailyUsage = dailyUsageByCampaign.get(item.campaignId)
+      if (dailyUsage.remaining <= 0) {
+        results.push({
+          id: item.id,
+          status: 'failed',
+          reason: 'daily_limit',
+          message: `This campaign has reached its daily outreach limit of ${dailyUsage.limit} messages (Asia/Seoul).`,
+        })
+        continue
+      }
+
       try {
+        const waitMs = Math.max(0, OUTREACH_SEND_INTERVAL_MS - (Date.now() - lastSendStartedAt))
+        if (lastSendStartedAt && waitMs) await delay(waitMs)
+        await persistOutreachDelivery(workspaceId, item, { status: 'sending', attemptCount: 0, lastError: null })
+        lastSendStartedAt = Date.now()
         const payload = await sendGmailWithRetry(accessToken, item)
         const sentAt = new Date().toISOString()
         await persistOutreachDelivery(workspaceId, item, {
@@ -2080,6 +2163,8 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
         })
         outreachDeliveryMemory.set(memoryKey, { status: 'sent', providerMessageId: payload.id, updatedAt: Date.now() })
         results.push({ id: item.id, status: 'sent', providerMessageId: payload.id, threadId: payload.threadId, attemptCount: payload.attemptCount })
+        dailyUsage.used += 1
+        dailyUsage.remaining = getOutreachDailyRemaining(dailyUsage.used, dailyUsage.limit)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Gmail send failed.'
         await persistOutreachDelivery(workspaceId, item, {
@@ -2090,8 +2175,6 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
         outreachDeliveryMemory.set(memoryKey, { status: 'failed', lastError: message, updatedAt: Date.now() })
         results.push({ id: item.id, status: 'failed', message })
       }
-
-      if (index < items.length - 1) await delay(OUTREACH_SEND_INTERVAL_MS)
     }
 
     const summary = {
@@ -2111,10 +2194,19 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
       data: {
         results,
         summary,
+        policy: {
+          batchLimit: OUTREACH_BATCH_LIMIT,
+          sendIntervalMs: OUTREACH_SEND_INTERVAL_MS,
+          dailyLimitPerCampaign: OUTREACH_DAILY_LIMIT_PER_CAMPAIGN,
+          timeZone: 'Asia/Seoul',
+          campaignUsage: [...dailyUsageByCampaign.values()],
+        },
       },
     })
   } catch (error) {
     next(error)
+  } finally {
+    activeOutreachSendWorkspaces.delete(workspaceId)
   }
 })
 
@@ -4945,6 +5037,30 @@ function normalizeOutreachDeliveryItem(item = {}, index = 0) {
   return { id, campaignId, creatorId, to, subject, message, idempotencyKey }
 }
 
+async function getCampaignDailyOutreachUsage(workspaceId, campaignId, now = new Date()) {
+  const supabase = getSupabaseAdminClient()
+  if (!supabase) throw httpError(503, 'Supabase is required to enforce the outreach daily limit.')
+  const window = getKstDayWindow(now)
+  let query = supabase
+    .from('outreach_messages')
+    .select('id', { count: 'exact', head: true })
+    .eq('workspace_id', workspaceId)
+    .eq('status', 'sent')
+    .gte('sent_at', window.startAt)
+    .lt('sent_at', window.endAt)
+  query = campaignId ? query.eq('campaign_id', campaignId) : query.is('campaign_id', null)
+  const { count, error } = await query
+  if (error) throw error
+  const used = Math.max(0, Number(count || 0))
+  return {
+    ...window,
+    campaignId: campaignId || null,
+    used,
+    limit: OUTREACH_DAILY_LIMIT_PER_CAMPAIGN,
+    remaining: getOutreachDailyRemaining(used, OUTREACH_DAILY_LIMIT_PER_CAMPAIGN),
+  }
+}
+
 async function findOutreachDelivery(workspaceId, idempotencyKey) {
   const supabase = getSupabaseAdminClient()
   if (!supabase) return null
@@ -4964,39 +5080,37 @@ async function findOutreachDelivery(workspaceId, idempotencyKey) {
 
 async function persistOutreachDelivery(workspaceId, item, delivery = {}) {
   const supabase = getSupabaseAdminClient()
-  if (!supabase) return
-  try {
-    await ensureDataRoomWorkspace(supabase, workspaceId)
-    const now = new Date().toISOString()
-    const { data: existing } = await supabase
-      .from('outreach_messages')
-      .select('id')
-      .eq('workspace_id', workspaceId)
-      .eq('idempotency_key', item.idempotencyKey)
-      .maybeSingle()
-    const row = {
-      id: existing?.id || item.id,
-      workspace_id: workspaceId,
-      campaign_id: item.campaignId || null,
-      creator_id: item.creatorId || null,
-      channel: 'email',
-      recipient: item.to,
-      subject: item.subject,
-      message: item.message,
-      status: delivery.status || 'review',
-      provider_message_id: delivery.providerMessageId || null,
-      idempotency_key: item.idempotencyKey,
-      attempt_count: Number(delivery.attemptCount || 0),
-      last_error: delivery.lastError || null,
-      sent_at: delivery.sentAt || null,
-      updated_at: now,
-      metadata: { deliveryProvider: 'gmail', source: 'batch-api' },
-    }
-    const { error } = await supabase.from('outreach_messages').upsert(row, { onConflict: 'id' })
-    if (error) console.warn('Outreach delivery persistence failed:', error.message)
-  } catch (error) {
-    console.warn('Outreach delivery persistence failed:', error instanceof Error ? error.message : error)
+  if (!supabase) throw httpError(503, 'Supabase is required to persist outreach delivery.')
+  await ensureDataRoomWorkspace(supabase, workspaceId)
+  const now = new Date().toISOString()
+  const { data: existing, error: existingError } = await supabase
+    .from('outreach_messages')
+    .select('id')
+    .eq('workspace_id', workspaceId)
+    .eq('idempotency_key', item.idempotencyKey)
+    .maybeSingle()
+  if (existingError) throw existingError
+  const row = {
+    id: existing?.id || item.id,
+    workspace_id: workspaceId,
+    campaign_id: item.campaignId || null,
+    creator_id: item.creatorId || null,
+    channel: 'email',
+    recipient: item.to,
+    subject: item.subject,
+    message: item.message,
+    status: delivery.status || 'review',
+    provider_message_id: delivery.providerMessageId || null,
+    idempotency_key: item.idempotencyKey,
+    attempt_count: Number(delivery.attemptCount || 0),
+    last_error: delivery.lastError || null,
+    sent_at: delivery.sentAt || null,
+    updated_at: now,
+    metadata: { deliveryProvider: 'gmail', source: delivery.source || 'batch-api' },
   }
+  const { error } = await supabase.from('outreach_messages').upsert(row, { onConflict: 'id' })
+  if (error) throw error
+  return row
 }
 
 async function sendGmailWithRetry(accessToken, item) {
