@@ -2,8 +2,8 @@ name: CreatorOps Daily Operations
 
 on:
   schedule:
-    # GitHub Actions uses UTC. 18:00 UTC is 03:00 KST on the following day.
-    - cron: '0 18 * * *'
+    # GitHub Actions uses UTC. 15:00 UTC is 00:00 KST on the following day.
+    - cron: '0 15 * * *'
   workflow_dispatch:
 
 concurrency:

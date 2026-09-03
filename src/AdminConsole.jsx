@@ -48,7 +48,7 @@ const defaultAutomations = [
   { id: 'utm', name: 'UTM·숏링크 생성', schedule: '요청 시', enabled: true, status: '정상', lastRun: '-' },
   { id: 'report', name: '지표 재계산·리포트 적재', schedule: '매일 1회', enabled: true, status: '실행 대기', lastRun: '-' },
   { id: 'reference', name: '콘텐츠 성과 자동 수집', schedule: '매일 2회', enabled: true, status: '실행 대기', lastRun: '-' },
-  { id: 'daily', name: '일일 통합 운영 작업', schedule: '매일 03:00', enabled: true, status: '실행 대기', lastRun: '-' },
+  { id: 'daily', name: '일일 통합 운영 작업', schedule: '매일 00:00 KST', enabled: true, status: '실행 대기', lastRun: '-' },
   { id: 'access', name: '회원가입·권한 배정', schedule: '이벤트 발생 시', enabled: true, status: '정상', lastRun: '-' },
 ]
 
@@ -62,10 +62,17 @@ const automationJobMap = {
 }
 
 function mergeAutomations(localAutomations = []) {
-  return defaultAutomations.map((base) => ({
-    ...base,
-    ...(localAutomations.find((item) => item.id === base.id) || {}),
-  }))
+  return defaultAutomations.map((base) => {
+    const saved = localAutomations.find((item) => item.id === base.id) || {}
+    const schedule = base.id === 'daily' && saved.schedule === '매일 03:00'
+      ? base.schedule
+      : saved.schedule
+    return {
+      ...base,
+      ...saved,
+      ...(schedule ? { schedule } : {}),
+    }
+  })
 }
 
 const accountRoles = ['Owner', 'Admin', 'Manager', 'Marketer', 'Analyst', 'Client']
