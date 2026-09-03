@@ -16014,7 +16014,7 @@ function AppContent() {
       const campaign = selectedCampaign || brandCampaigns[0] || defaultCampaigns[0]
       const campaignBrief = buildCampaignDiscoveryBrief(brandBrief, campaign)
       const testCreator = {
-        name: '크리에이터님',
+        name: '크리에이터',
         platform: 'Instagram',
         topics: ['웰니스', '건강한 라이프스타일'],
       }
