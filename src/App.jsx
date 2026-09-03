@@ -16691,7 +16691,7 @@ function AppContent() {
   const isAdminPath = currentPath.startsWith('/admin')
   const isYouTubeApiReviewPath = currentPath === '/youtube-api-review'
 
-  const isAuthPath = currentPath === '/signup' || currentPath === '/login'
+  const isAuthPath = currentPath === '/signup' || currentPath === '/login' || currentPath === '/reset-password'
 
   if (isYouTubeApiReviewPath) {
     return <YouTubeApiReview />
@@ -16700,7 +16700,7 @@ function AppContent() {
   if (isAuthPath) {
     return (
       <AuthPortal
-        initialMode={currentPath === '/signup' ? 'signup' : 'login'}
+        initialMode={currentPath === '/signup' ? 'signup' : currentPath === '/reset-password' ? 'recovery' : 'login'}
         configured={backendConfig.hasSupabase}
         onAuthenticated={setAuthSession}
       />

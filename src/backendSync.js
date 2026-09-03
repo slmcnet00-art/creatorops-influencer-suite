@@ -164,10 +164,20 @@ export async function requestPasswordReset(email) {
   const supabase = getSupabaseClient()
   if (!supabase) throw new Error('Supabase 환경변수가 설정되지 않았습니다.')
   const { error } = await supabase.auth.resetPasswordForEmail(email, {
-    redirectTo: `${getAuthRedirectUrl().replace(/\/$/, '')}/login`,
+    redirectTo: `${getAuthRedirectUrl().replace(/\/$/, '')}/reset-password`,
   })
   if (error) throw error
   return { status: 'sent' }
+}
+
+export async function updateCurrentUserPassword(password) {
+  const supabase = getSupabaseClient()
+  if (!supabase) throw new Error('Supabase 환경변수가 설정되지 않았습니다.')
+  const { error } = await supabase.auth.updateUser({ password })
+  if (error) throw error
+  const { data, error: sessionError } = await supabase.auth.getSession()
+  if (sessionError) throw sessionError
+  return data.session
 }
 
 export async function getCurrentWorkspaceAccess() {

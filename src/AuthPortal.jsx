@@ -5,6 +5,7 @@ import {
   signInWithEmail,
   signInWithPassword,
   signUpWithPassword,
+  updateCurrentUserPassword,
 } from './backendSync'
 import './AuthPortal.css'
 
@@ -15,6 +16,7 @@ function go(path) {
 
 export default function AuthPortal({ initialMode = 'login', configured = true, onAuthenticated }) {
   const [mode, setMode] = useState(initialMode)
+  const isRecovery = mode === 'recovery'
   const [form, setForm] = useState({
     fullName: '',
     companyName: '',
@@ -37,22 +39,26 @@ export default function AuthPortal({ initialMode = 'login', configured = true, o
       setError('인증 서버 설정이 필요합니다. 운영 관리자에게 문의해 주세요.')
       return
     }
-    if (!form.email.trim() || !form.password) {
+    if ((!isRecovery && !form.email.trim()) || !form.password) {
       setError('이메일과 비밀번호를 입력해 주세요.')
       return
     }
-    if (mode === 'signup' && form.password !== form.passwordConfirm) {
+    if ((mode === 'signup' || isRecovery) && form.password !== form.passwordConfirm) {
       setError('비밀번호가 서로 일치하지 않습니다.')
       return
     }
-    if (mode === 'signup' && form.password.length < 8) {
+    if ((mode === 'signup' || isRecovery) && form.password.length < 8) {
       setError('비밀번호는 8자 이상으로 입력해 주세요.')
       return
     }
 
     setBusy(true)
     try {
-      if (mode === 'signup') {
+      if (isRecovery) {
+        const session = await updateCurrentUserPassword(form.password)
+        onAuthenticated?.(session)
+        go('/')
+      } else if (mode === 'signup') {
         const result = await signUpWithPassword({
           email: form.email.trim(),
           password: form.password,
@@ -161,10 +167,14 @@ export default function AuthPortal({ initialMode = 'login', configured = true, o
             </div>
           ) : (
             <>
-              <p className="auth-eyebrow">{mode === 'signup' ? 'CREATE ACCOUNT' : 'WELCOME BACK'}</p>
-              <h2>{mode === 'signup' ? 'CreatorOps 시작하기' : '로그인'}</h2>
+              <p className="auth-eyebrow">
+                {isRecovery ? 'RESET PASSWORD' : mode === 'signup' ? 'CREATE ACCOUNT' : 'WELCOME BACK'}
+              </p>
+              <h2>{isRecovery ? '새 비밀번호 설정' : mode === 'signup' ? 'CreatorOps 시작하기' : '로그인'}</h2>
               <p className="auth-intro">
-                {mode === 'signup'
+                {isRecovery
+                  ? '앞으로 사용할 새 비밀번호를 입력해 주세요.'
+                  : mode === 'signup'
                   ? '계정을 만든 뒤 이메일 인증과 관리자 승인을 완료해 주세요.'
                   : '팀에서 사용하는 업무용 계정으로 로그인하세요.'}
               </p>
@@ -182,31 +192,33 @@ export default function AuthPortal({ initialMode = 'login', configured = true, o
                     </label>
                   </div>
                 )}
+                {!isRecovery && (
+                  <label>
+                    <span>이메일</span>
+                    <input
+                      type="email"
+                      value={form.email}
+                      onChange={update('email')}
+                      autoComplete="email"
+                      placeholder="name@company.com"
+                      required
+                    />
+                  </label>
+                )}
                 <label>
-                  <span>이메일</span>
-                  <input
-                    type="email"
-                    value={form.email}
-                    onChange={update('email')}
-                    autoComplete="email"
-                    placeholder="name@company.com"
-                    required
-                  />
-                </label>
-                <label>
-                  <span>비밀번호</span>
+                  <span>{isRecovery ? '새 비밀번호' : '비밀번호'}</span>
                   <input
                     type="password"
                     value={form.password}
                     onChange={update('password')}
-                    autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                    autoComplete={mode === 'signup' || isRecovery ? 'new-password' : 'current-password'}
                     placeholder="8자 이상"
                     required
                   />
                 </label>
-                {mode === 'signup' && (
+                {(mode === 'signup' || isRecovery) && (
                   <label>
-                    <span>비밀번호 확인</span>
+                    <span>{isRecovery ? '새 비밀번호 확인' : '비밀번호 확인'}</span>
                     <input
                       type="password"
                       value={form.passwordConfirm}
@@ -219,7 +231,7 @@ export default function AuthPortal({ initialMode = 'login', configured = true, o
                 {error && <p className="auth-error">{error}</p>}
                 {message && <p className="auth-message">{message}</p>}
                 <button className="auth-primary" type="submit" disabled={busy}>
-                  {busy ? '처리 중...' : mode === 'signup' ? '계정 만들기' : '로그인'}
+                  {busy ? '처리 중...' : isRecovery ? '비밀번호 변경' : mode === 'signup' ? '계정 만들기' : '로그인'}
                   {!busy && <ArrowRight size={17} />}
                 </button>
               </form>
@@ -234,12 +246,14 @@ export default function AuthPortal({ initialMode = 'login', configured = true, o
                   </button>
                 </div>
               )}
-              <div className="auth-switch">
-                {mode === 'signup' ? '이미 계정이 있나요?' : '처음 사용하시나요?'}
-                <button type="button" onClick={switchMode}>
-                  {mode === 'signup' ? '로그인' : '회원가입'}
-                </button>
-              </div>
+              {!isRecovery && (
+                <div className="auth-switch">
+                  {mode === 'signup' ? '이미 계정이 있나요?' : '처음 사용하시나요?'}
+                  <button type="button" onClick={switchMode}>
+                    {mode === 'signup' ? '로그인' : '회원가입'}
+                  </button>
+                </div>
+              )}
             </>
           )}
         </div>
