@@ -1,0 +1,50 @@
+name: CreatorOps Daily Operations
+
+on:
+  schedule:
+    # GitHub Actions uses UTC. 18:00 UTC is 03:00 KST on the following day.
+    - cron: '0 18 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: creatorops-daily-operations
+  cancel-in-progress: false
+
+jobs:
+  run-daily-operations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      CREATOROPS_API_URL: https://creatorops-suite-api.onrender.com
+      CRON_SECRET: ${{ secrets.CREATOROPS_CRON_SECRET }}
+    steps:
+      - name: Run protected CreatorOps daily operations
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${CRON_SECRET}" ]]; then
+            echo "CREATOROPS_CRON_SECRET is not configured."
+            exit 1
+          fi
+
+          response_file="$(mktemp)"
+          trap 'rm -f "${response_file}"' EXIT
+
+          http_status="$(curl --silent --show-error \
+            --output "${response_file}" \
+            --write-out '%{http_code}' \
+            --request POST \
+            --header "Authorization: Bearer ${CRON_SECRET}" \
+            --header 'Content-Type: application/json' \
+            "${CREATOROPS_API_URL}/jobs/daily-operations")"
+
+          if [[ "${http_status}" -lt 200 || "${http_status}" -ge 300 ]]; then
+            echo "CreatorOps daily operations failed with HTTP ${http_status}."
+            jq -r '.message // "No error message returned."' "${response_file}" || true
+            exit 1
+          fi
+
+          jq -e '.data.run.status == "success"' "${response_file}" >/dev/null
+          jq '{ok: true, run: {id: .data.run.id, jobName: .data.run.jobName, status: .data.run.status, startedAt: .data.run.startedAt, finishedAt: .data.run.finishedAt, result: .data.run.result}}' "${response_file}"
