@@ -136,6 +136,30 @@
   border-color: #126aeb;
 }
 
+.auth-card .auth-consent {
+  display: flex;
+  grid-template-columns: none;
+  align-items: flex-start;
+  gap: 10px;
+  color: #4b5563;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.auth-card .auth-consent input {
+  width: 16px;
+  min-height: 16px;
+  margin: 2px 0 0;
+  flex: 0 0 16px;
+}
+
+.auth-consent a,
+.auth-legal a {
+  color: #126aeb;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .auth-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;

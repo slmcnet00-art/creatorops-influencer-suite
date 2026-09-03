@@ -19,6 +19,7 @@ import {
   AUTOMATED_METRIC_DEFINITIONS,
   normalizeOperationJobName,
 } from './operationsJobs.js'
+import { getYouTubeRetentionCutoff, sanitizeStaleYouTubeApiData } from './youtubeRetention.js'
 import {
   buildOutreachPolicy,
   getKstDayWindow,
@@ -1010,6 +1011,93 @@ function normalizeAutomationSourceType(value) {
   return allowed.has(value) ? value : 'api_direct'
 }
 
+async function runYouTubeRetentionOperation() {
+  const supabase = getSupabaseAdminClient()
+  if (!supabase) throw httpError(503, 'Supabase is required for YouTube API data retention.')
+  const now = new Date()
+  const cutoff = getYouTubeRetentionCutoff(now)
+
+  const deleteOperations = [
+    supabase
+      .from('creator_profile_snapshots')
+      .delete()
+      .eq('workspace_id', WORKSPACE_ID)
+      .ilike('platform', 'youtube')
+      .neq('source_type', 'api_authorized')
+      .lt('collected_at', cutoff)
+      .select('id'),
+    supabase
+      .from('content_metric_snapshots')
+      .delete()
+      .eq('workspace_id', WORKSPACE_ID)
+      .ilike('platform', 'youtube')
+      .neq('source_type', 'api_authorized')
+      .lt('measured_at', cutoff)
+      .select('id'),
+    supabase
+      .from('external_search_events')
+      .delete()
+      .eq('workspace_id', WORKSPACE_ID)
+      .eq('provider', 'youtube-data-api')
+      .lt('created_at', cutoff)
+      .select('id'),
+  ]
+  const deletionResults = await Promise.all(deleteOperations)
+  deletionResults.forEach(({ error }) => {
+    if (error) throw error
+  })
+
+  const [{ data: fullSnapshot, error: fullError }, { data: brandSnapshots, error: brandError }] = await Promise.all([
+    supabase.from('workspace_snapshots').select('payload,updated_at').eq('workspace_id', WORKSPACE_ID).maybeSingle(),
+    supabase.from('brand_scoped_snapshots').select('brand_id,payload,updated_at').eq('workspace_id', WORKSPACE_ID),
+  ])
+  if (fullError) throw fullError
+  if (brandError) throw brandError
+
+  let redactedSnapshotRecords = 0
+  let updatedSnapshots = 0
+  if (fullSnapshot?.payload) {
+    const sanitized = sanitizeStaleYouTubeApiData(fullSnapshot.payload, {
+      now,
+      fallbackTimestamp: fullSnapshot.updated_at,
+    })
+    if (sanitized.changed) {
+      const { error } = await supabase
+        .from('workspace_snapshots')
+        .update({ payload: sanitized.payload, updated_at: now.toISOString() })
+        .eq('workspace_id', WORKSPACE_ID)
+      if (error) throw error
+      redactedSnapshotRecords += sanitized.redacted
+      updatedSnapshots += 1
+    }
+  }
+
+  for (const snapshot of brandSnapshots || []) {
+    const sanitized = sanitizeStaleYouTubeApiData(snapshot.payload || {}, {
+      now,
+      fallbackTimestamp: snapshot.updated_at,
+    })
+    if (!sanitized.changed) continue
+    const { error } = await supabase
+      .from('brand_scoped_snapshots')
+      .update({ payload: sanitized.payload, updated_at: now.toISOString() })
+      .eq('workspace_id', WORKSPACE_ID)
+      .eq('brand_id', snapshot.brand_id)
+    if (error) throw error
+    redactedSnapshotRecords += sanitized.redacted
+    updatedSnapshots += 1
+  }
+
+  return {
+    cutoff,
+    deletedCreatorSnapshots: deletionResults[0].data?.length || 0,
+    deletedContentSnapshots: deletionResults[1].data?.length || 0,
+    deletedSearchEvents: deletionResults[2].data?.length || 0,
+    redactedSnapshotRecords,
+    updatedSnapshots,
+  }
+}
+
 async function runTrackingRefreshOperation() {
   const supabase = getSupabaseAdminClient()
   if (!supabase) throw httpError(503, 'Supabase is required for scheduled tracking refresh.')
@@ -1178,10 +1266,12 @@ async function executeOperationJob(jobName, { actorId = null, trigger = 'manual'
     let result
     if (normalizedJobName === 'tracking-refresh') result = await runTrackingRefreshOperation()
     if (normalizedJobName === 'metric-recalculation') result = await runMetricRecalculationOperation()
+    if (normalizedJobName === 'youtube-retention') result = await runYouTubeRetentionOperation()
     if (normalizedJobName === 'daily-operations') {
+      const youtubeRetention = await runYouTubeRetentionOperation()
       const tracking = await runTrackingRefreshOperation()
       const metrics = await runMetricRecalculationOperation()
-      result = { tracking, metrics }
+      result = { youtubeRetention, tracking, metrics }
     }
     const finishedAt = new Date().toISOString()
     const { error: finishError } = await supabase
@@ -2874,6 +2964,8 @@ function normalizeYouTubeReference(item, channelMap, country) {
     applyIdea: '썸네일 구도, 첫 문장, 댓글을 만든 질문 구조를 캠페인 가이드에 차용',
     channelTitle: snippet.channelTitle || channel.name || '',
     source: 'YouTube Data API search.list + videos.list',
+    sourceProvider: 'youtube-data-api',
+    collectedAt: new Date().toISOString(),
     confidence: 96,
   }
 }

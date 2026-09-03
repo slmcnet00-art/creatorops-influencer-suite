@@ -1,4 +1,4 @@
-export const OPERATION_JOB_KEYS = new Set(['tracking-refresh', 'metric-recalculation', 'daily-operations'])
+export const OPERATION_JOB_KEYS = new Set(['tracking-refresh', 'metric-recalculation', 'youtube-retention', 'daily-operations'])
 
 export const AUTOMATED_METRIC_DEFINITIONS = [
   { id: 'MET-SNS-001', name: '조회수', formula: 'sum(content_metric_snapshots.views)', rawSourceIds: ['RAW-EXT-CONT-001'] },
@@ -42,4 +42,3 @@ export function aggregateOperationalMetrics(contentRows = [], collectionRows = [
     },
   ]
 }
-

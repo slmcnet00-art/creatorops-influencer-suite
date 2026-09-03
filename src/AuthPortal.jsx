@@ -17,6 +17,7 @@ function go(path) {
 export default function AuthPortal({ initialMode = 'login', configured = true, onAuthenticated }) {
   const [mode, setMode] = useState(initialMode)
   const isRecovery = mode === 'recovery'
+  const [legalAccepted, setLegalAccepted] = useState(false)
   const [form, setForm] = useState({
     fullName: '',
     companyName: '',
@@ -41,6 +42,10 @@ export default function AuthPortal({ initialMode = 'login', configured = true, o
     }
     if ((!isRecovery && !form.email.trim()) || !form.password) {
       setError('이메일과 비밀번호를 입력해 주세요.')
+      return
+    }
+    if (mode === 'signup' && !legalAccepted) {
+      setError('서비스 이용약관, YouTube 서비스 약관 및 개인정보처리방침에 동의해 주세요.')
       return
     }
     if ((mode === 'signup' || isRecovery) && form.password !== form.passwordConfirm) {
@@ -127,6 +132,7 @@ export default function AuthPortal({ initialMode = 'login', configured = true, o
     setMode(next)
     setError('')
     setMessage('')
+    setLegalAccepted(false)
     go(`/${next}`)
   }
 
@@ -228,6 +234,21 @@ export default function AuthPortal({ initialMode = 'login', configured = true, o
                     />
                   </label>
                 )}
+                {mode === 'signup' && (
+                  <label className="auth-consent">
+                    <input
+                      type="checkbox"
+                      checked={legalAccepted}
+                      onChange={(event) => setLegalAccepted(event.target.checked)}
+                      required
+                    />
+                    <span>
+                      CreatorOps <a href="/terms" target="_blank" rel="noreferrer">서비스 이용약관</a>,
+                      {' '}<a href="https://www.youtube.com/t/terms" target="_blank" rel="noreferrer">YouTube 서비스 약관</a> 및
+                      {' '}<a href="/privacy" target="_blank" rel="noreferrer">개인정보처리방침</a>을 읽었으며 이에 동의합니다.
+                    </span>
+                  </label>
+                )}
                 {error && <p className="auth-error">{error}</p>}
                 {message && <p className="auth-message">{message}</p>}
                 <button className="auth-primary" type="submit" disabled={busy}>
@@ -257,7 +278,13 @@ export default function AuthPortal({ initialMode = 'login', configured = true, o
             </>
           )}
         </div>
-        <p className="auth-legal">가입하면 서비스 이용약관과 개인정보처리방침에 동의하게 됩니다.</p>
+        <p className="auth-legal">
+          CreatorOps를 사용하면 <a href="https://www.youtube.com/t/terms" target="_blank" rel="noreferrer">YouTube 서비스 약관</a>에 동의하게 됩니다.
+          <br />
+          <a href="/terms" target="_blank" rel="noreferrer">서비스 이용약관</a>
+          {' · '}
+          <a href="/privacy" target="_blank" rel="noreferrer">개인정보처리방침</a>
+        </p>
       </section>
     </main>
   )

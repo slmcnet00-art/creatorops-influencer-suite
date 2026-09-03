@@ -142,6 +142,13 @@
   text-decoration: underline;
 }
 
+.youtube-terms-consent {
+  display: block;
+  color: var(--text-soft);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
 .sidebar-settings-button {
   width: 42px;
   height: 42px;
@@ -6026,6 +6033,22 @@
 .report-summary svg {
   color: var(--primary);
 }
+
+.youtube-data-policy-note {
+  margin: 14px 0;
+  padding: 14px 16px;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 10px;
+  background: #eff6ff;
+  color: #1e3a8a;
+}
+
+.youtube-data-policy-note svg { flex: 0 0 auto; margin-top: 2px; }
+.youtube-data-policy-note strong { display: block; margin-bottom: 4px; font-size: 13px; }
+.youtube-data-policy-note p { margin: 0; color: #334e7d; font-size: 12px; line-height: 1.6; }
 
 .campaign-market-report {
   margin: 0 18px 16px;

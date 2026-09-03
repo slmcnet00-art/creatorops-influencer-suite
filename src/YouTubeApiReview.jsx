@@ -271,17 +271,23 @@ export default function YouTubeApiReview() {
         </div>
         <div className="yt-review-controls">
           <article><RefreshCw size={20} /><div><h3>Refresh</h3><p>Authorized users can request a fresh API snapshot. The latest collection time and source are recorded.</p></div></article>
-          <article><Database size={20} /><div><h3>Purpose-limited storage</h3><p>Public identifiers and metrics are stored only for creator evaluation and campaign reporting.</p></div></article>
+          <article><Database size={20} /><div><h3>30-day retention control</h3><p>Non-Authorized public YouTube API Data is refreshed or deleted within 30 calendar days. Stale values are not displayed until they are collected again.</p></div></article>
           <article><Trash2 size={20} /><div><h3>Deletion</h3><p>Authorized workspace administrators can remove stored creators, content records and associated workflow data.</p></div></article>
           <article><ShieldCheck size={20} /><div><h3>Access control</h3><p>Workspace and brand roles determine which authorized team members can view or manage the collected data.</p></div></article>
+          <article><FileSearch size={20} /><div><h3>User input and exports</h3><p>Search terms and public URLs are used only for read-only retrieval. YouTube API search results cannot be bulk-downloaded or exported to Google Sheets.</p></div></article>
         </div>
       </section>
 
       <footer className="yt-review-footer">
-        <div><strong>CreatorOps</strong><span>YouTube API Services compliance review reference</span></div>
+        <div>
+          <strong>CreatorOps</strong>
+          <span>YouTube API Services compliance review reference</span>
+          <span>By using CreatorOps Influencer Suite, users agree to be bound by the YouTube Terms of Service.</span>
+        </div>
         <div>
           <a href="/privacy" target="_blank" rel="noreferrer">Privacy Policy <ExternalLink size={13} /></a>
           <a href="/terms" target="_blank" rel="noreferrer">Terms of Service <ExternalLink size={13} /></a>
+          <a href="https://www.youtube.com/t/terms" target="_blank" rel="noreferrer">YouTube Terms of Service <ExternalLink size={13} /></a>
         </div>
       </footer>
     </main>

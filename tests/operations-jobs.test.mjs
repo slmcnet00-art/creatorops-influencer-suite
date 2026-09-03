@@ -5,6 +5,7 @@ import { aggregateOperationalMetrics, normalizeOperationJobName } from '../serve
 test('지원하는 운영 작업만 허용한다', () => {
   assert.equal(normalizeOperationJobName('tracking-refresh'), 'tracking-refresh')
   assert.equal(normalizeOperationJobName('metric-recalculation'), 'metric-recalculation')
+  assert.equal(normalizeOperationJobName('youtube-retention'), 'youtube-retention')
   assert.equal(normalizeOperationJobName('unknown-job'), '')
 })
 
@@ -26,4 +27,3 @@ test('콘텐츠 스냅샷과 수집 로그에서 운영 지표를 재계산한�
   assert.equal(metrics.find((item) => item.metricId === 'MET-OPS-001').value, 50)
   assert.deepEqual(metrics.find((item) => item.metricId === 'MET-OPS-001').valueJson, { success: 2, total: 4 })
 })
-

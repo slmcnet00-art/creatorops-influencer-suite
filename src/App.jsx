@@ -5881,6 +5881,7 @@ function buildRealDiscoveryCreator(result, brief, fallbackCategory, index = 0) {
     topics: uniqueList([brief.product, fallbackCategory, ...topicCandidates, result.snippet || '공개 검색']).slice(0, 7),
     sourceUrl: result.profileUrl,
     sourceCollectedAt: collectedAt,
+    sourceCollectedAtIso: new Date().toISOString(),
     sourceNote: verifiedMetrics
       ? `${result.source}로 실제 채널과 공개 통계를 가져왔습니다.`
       : observedMetrics
@@ -11878,6 +11879,8 @@ function AppContent() {
           ? `성과 자동 수집 완료 · ${summary.refreshedPosts || 0}개 콘텐츠`
           : jobName === 'metric-recalculation'
             ? `지표 자동 재계산 완료 · ${summary.calculatedMetrics || 0}개 지표`
+            : jobName === 'youtube-retention'
+              ? `YouTube 30일 보존 정책 실행 완료 · ${summary.deletedSearchEvents || 0}개 검색 로그 삭제`
             : '일일 운영 자동화가 완료됐습니다.',
       )
     } catch (error) {
@@ -12069,6 +12072,7 @@ function AppContent() {
         topics: existingCreator?.topics?.length
           ? existingCreator.topics
           : ['YouTube 공식 API', '공개 채널', '정밀 검증 대상'],
+        sourceCollectedAtIso: new Date().toISOString(),
       }
 
       updateWorkspace((current) => {
@@ -13912,7 +13916,7 @@ function AppContent() {
       '제안 기록 수',
       '견적 기록 수',
     ],
-    ...filteredCreators.map((creator) => {
+    ...filteredCreators.filter((creator) => creator.platform !== 'YouTube').map((creator) => {
       const learnedCreator = getCreatorWithPerformanceLearning(creator)
       const contactPlan = buildContactPlan(learnedCreator)
       const pendingMetrics = hasPendingMetrics(learnedCreator)
@@ -13968,7 +13972,7 @@ function AppContent() {
             })
             .filter(Boolean)
         : sourceType === 'discovery'
-          ? filteredCreators.map((creator) => ({
+          ? filteredCreators.filter((creator) => creator.platform !== 'YouTube').map((creator) => ({
               creator,
               campaign: selectedCampaign,
               note: creator.sourceNote || creator.status || '발굴 후보',
@@ -14073,6 +14077,10 @@ function AppContent() {
   }
 
   const exportAdvertiserListExcel = (sourceType = 'recommendations') => {
+    if (sourceType === 'discovery' && !filteredCreators.some((creator) => creator.platform !== 'YouTube')) {
+      showToast('YouTube API 검색 결과는 일괄 다운로드할 수 없습니다.')
+      return
+    }
     const label = sourceType === 'pool' ? '섭외완료' : sourceType === 'discovery' ? '발굴후보' : 'AI추천'
     exportExcelFile(
       `creatorops-advertiser-shortform-list-${label}.xls`,
@@ -14087,8 +14095,12 @@ function AppContent() {
   }
 
   const exportDiscoveryExcel = () => {
+    if (!filteredCreators.some((creator) => creator.platform !== 'YouTube')) {
+      showToast('YouTube API 검색 결과는 일괄 다운로드할 수 없습니다.')
+      return
+    }
     exportExcelFile('creatorops-creator-discovery.xls', '크리에이터 발굴', getDiscoveryRows())
-    showToast('크리에이터 발굴 리스트를 엑셀로 다운로드했어요.')
+    showToast('YouTube API 결과를 제외한 발굴 리스트를 엑셀로 다운로드했어요.')
   }
 
   const getCandidatePoolRows = () => [
@@ -14272,6 +14284,10 @@ function AppContent() {
   }
 
   const sendDiscoveryToSheets = () => {
+    if (!filteredCreators.some((creator) => creator.platform !== 'YouTube')) {
+      showToast('YouTube API 검색 결과는 Google Sheets로 일괄 전송할 수 없습니다.')
+      return
+    }
     sendRowsToGoogleSheets(getDiscoveryRows(), '크리에이터 발굴')
   }
 
@@ -17610,7 +17626,10 @@ function AppContent() {
             <a href="/privacy" target="_blank" rel="noreferrer">개인정보</a>
             <span>·</span>
             <a href="/terms" target="_blank" rel="noreferrer">약관</a>
+            <span>·</span>
+            <a href="https://www.youtube.com/t/terms" target="_blank" rel="noreferrer">YouTube 약관</a>
           </div>
+          <small className="youtube-terms-consent">CreatorOps를 사용하면 YouTube 서비스 약관에 동의하게 됩니다.</small>
         </div>
       </aside>
 
@@ -18721,31 +18740,35 @@ function AppContent() {
                 <button className="icon-button" type="button" title="필터 저장" onClick={saveFilter}>
                   <SlidersHorizontal size={18} />
                 </button>
-                <button
-                  className="secondary-button compact-button"
-                  type="button"
-                  title="크리에이터 발굴 엑셀 다운로드"
-                  onClick={exportDiscoveryExcel}
-                >
-                  <Download size={16} />
-                  엑셀
-                </button>
-                <button
-                  className="secondary-button compact-button"
-                  type="button"
-                  title="광고주 전달용 숏폼 리스트 다운로드"
-                  onClick={() => exportAdvertiserListExcel('discovery')}
-                >
-                  광고주용
-                </button>
-                <button
-                  className="secondary-button compact-button"
-                  type="button"
-                  title="크리에이터 발굴 Google Sheets로 보내기"
-                  onClick={sendDiscoveryToSheets}
-                >
-                  시트
-                </button>
+                {platform !== 'YouTube' && (
+                  <>
+                    <button
+                      className="secondary-button compact-button"
+                      type="button"
+                      title="YouTube API 결과를 제외한 크리에이터 발굴 엑셀 다운로드"
+                      onClick={exportDiscoveryExcel}
+                    >
+                      <Download size={16} />
+                      엑셀
+                    </button>
+                    <button
+                      className="secondary-button compact-button"
+                      type="button"
+                      title="YouTube API 결과를 제외한 광고주 전달용 숏폼 리스트 다운로드"
+                      onClick={() => exportAdvertiserListExcel('discovery')}
+                    >
+                      광고주용
+                    </button>
+                    <button
+                      className="secondary-button compact-button"
+                      type="button"
+                      title="YouTube API 결과를 제외하고 Google Sheets로 보내기"
+                      onClick={sendDiscoveryToSheets}
+                    >
+                      시트
+                    </button>
+                  </>
+                )}
                 <button className="secondary-button compact-button" type="button" onClick={() => setModal({ type: 'creator' })}>
                   <Plus size={16} />
                   후보 등록
@@ -18812,6 +18835,19 @@ function AppContent() {
                 </button>
               ))}
             </div>
+
+            {(platform === 'YouTube' || platform === '전체') && (
+              <div className="youtube-data-policy-note" role="note">
+                <ShieldCheck size={18} />
+                <div>
+                  <strong>YouTube 공개 데이터 사용 안내</strong>
+                  <p>
+                    입력한 검색어와 공개 채널·영상 URL은 YouTube Data API에서 읽기 전용 공개 정보를 조회하는 데만 사용됩니다.
+                    YouTube에 콘텐츠를 업로드·게시·수정하지 않으며, YouTube API 검색 결과는 엑셀·광고주용 파일·Google Sheets 일괄 내보내기에서 제외됩니다.
+                  </p>
+                </div>
+              </div>
+            )}
 
             <div className="real-discovery-panel">
               <div className="real-discovery-copy">
@@ -18889,7 +18925,7 @@ function AppContent() {
               <div className="performance-filter-heading">
                 <div>
                   <span className="mini-label">발굴 조건</span>
-                  <strong>팔로워·평균 조회수 조건</strong>
+                  <strong>{platform === 'YouTube' ? '구독자·평균 조회수 조건' : '팔로워·평균 조회수 조건'}</strong>
                 </div>
                 <div className="performance-filter-actions">
                   <span>{activeDiscoveryFilterCount > 0 ? `${activeDiscoveryFilterCount}개 조건 적용` : '전체 후보 기준'}</span>
@@ -18903,7 +18939,7 @@ function AppContent() {
               </div>
               <div className="performance-filter-grid">
                 <label>
-                  <span>팔로워 최소</span>
+                  <span>{platform === 'YouTube' ? '구독자 최소' : '팔로워 최소'}</span>
                   <input
                     inputMode="numeric"
                     value={discoveryFilters.minFollowers}
@@ -18912,7 +18948,7 @@ function AppContent() {
                   />
                 </label>
                 <label>
-                  <span>팔로워 최대</span>
+                  <span>{platform === 'YouTube' ? '구독자 최대' : '팔로워 최대'}</span>
                   <input
                     inputMode="numeric"
                     value={discoveryFilters.maxFollowers}
@@ -20230,7 +20266,7 @@ function AppContent() {
                   <p>{item.publishedAt} · 저장 {item.savedAt}</p>
                   <div className="tracked-account-meta">
                     <span>조회 {compactOptionalNumber(item.views)}</span>
-                    <span>팔로워 {item.accountFollowers ? compactNumber(item.accountFollowers) : '-'}</span>
+                    <span>{item.platform === 'YouTube' ? '구독자' : '팔로워'} {item.accountFollowers ? compactNumber(item.accountFollowers) : '-'}</span>
                     <span>폭발 {getReferenceVirality(item) ? `${getReferenceVirality(item).toFixed(1)}x` : '-'}</span>
                     <span>좋아요 {compactOptionalNumber(item.likes, '-')}</span>
                     <span>댓글 {compactOptionalNumber(item.comments, '-')}</span>

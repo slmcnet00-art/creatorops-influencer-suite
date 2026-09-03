@@ -48,6 +48,7 @@ const defaultAutomations = [
   { id: 'utm', name: 'UTM·숏링크 생성', schedule: '요청 시', enabled: true, status: '정상', lastRun: '-' },
   { id: 'report', name: '지표 재계산·리포트 적재', schedule: '매일 1회', enabled: true, status: '실행 대기', lastRun: '-' },
   { id: 'reference', name: '콘텐츠 성과 자동 수집', schedule: '매일 2회', enabled: true, status: '실행 대기', lastRun: '-' },
+  { id: 'youtube-retention', name: 'YouTube API 30일 갱신·삭제', schedule: '매일 00:00 KST', enabled: true, status: '실행 대기', lastRun: '-' },
   { id: 'daily', name: '일일 통합 운영 작업', schedule: '매일 00:00 KST', enabled: true, status: '실행 대기', lastRun: '-' },
   { id: 'access', name: '회원가입·권한 배정', schedule: '이벤트 발생 시', enabled: true, status: '정상', lastRun: '-' },
 ]
@@ -55,6 +56,7 @@ const defaultAutomations = [
 const automationJobMap = {
   report: 'metric-recalculation',
   reference: 'tracking-refresh',
+  'youtube-retention': 'youtube-retention',
   daily: 'daily-operations',
   'metric-recalculation': 'metric-recalculation',
   'tracking-refresh': 'tracking-refresh',
