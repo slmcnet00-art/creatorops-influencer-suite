@@ -1059,7 +1059,6 @@ async function runYouTubeRetentionOperation() {
   if (fullSnapshot?.payload) {
     const sanitized = sanitizeStaleYouTubeApiData(fullSnapshot.payload, {
       now,
-      fallbackTimestamp: fullSnapshot.updated_at,
     })
     if (sanitized.changed) {
       const { error } = await supabase
@@ -1075,7 +1074,6 @@ async function runYouTubeRetentionOperation() {
   for (const snapshot of brandSnapshots || []) {
     const sanitized = sanitizeStaleYouTubeApiData(snapshot.payload || {}, {
       now,
-      fallbackTimestamp: snapshot.updated_at,
     })
     if (!sanitized.changed) continue
     const { error } = await supabase
@@ -1150,7 +1148,7 @@ async function runTrackingRefreshOperation() {
 
   const measuredAt = new Date().toISOString()
   const rawRows = refreshedPosts
-    .filter((post) => post.url || post.contentUrl)
+    .filter((post) => post.status === 'refreshed' && (post.url || post.contentUrl))
     .map((post) => ({
       workspace_id: WORKSPACE_ID,
       brand_id: post.brandId == null ? null : String(post.brandId),
@@ -3918,20 +3916,28 @@ async function refreshTrackedPosts(posts) {
   const safePosts = posts.slice(0, 50)
   return Promise.all(
     safePosts.map(async (post) => {
-      const platform = String(post.platform || '').toLowerCase()
-      if (platform.includes('youtube')) {
-        return fetchYouTubeVideoMetrics(post)
-      }
+      try {
+        const platform = String(post.platform || '').toLowerCase()
+        if (platform.includes('youtube')) {
+          return { ...post, ...(await fetchYouTubeVideoMetrics(post)) }
+        }
 
-      if (isPublicSnapshotEnabled() && (platform.includes('instagram') || platform.includes('tiktok'))) {
-        return fetchPublicContentMetrics(post)
-      }
+        if (isPublicSnapshotEnabled() && (platform.includes('instagram') || platform.includes('tiktok'))) {
+          return { ...post, ...(await fetchPublicContentMetrics(post)) }
+        }
 
-      return {
-        id: post.id,
-        platform: post.platform,
-        status: 'manual_required',
-        message: `${post.platform || 'This platform'} metrics require creator authorization or manual verification.`,
+        return {
+          ...post,
+          status: 'manual_required',
+          message: `${post.platform || 'This platform'} metrics require creator authorization or manual verification.`,
+        }
+      } catch (error) {
+        return {
+          ...post,
+          status: 'refresh_failed',
+          message: error instanceof Error ? error.message : 'The public content refresh failed.',
+          lastRefreshAttemptAt: new Date().toISOString(),
+        }
       }
     }),
   )

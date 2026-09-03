@@ -15,21 +15,37 @@ function parseTimestamp(value) {
   return Number.isFinite(timestamp) ? timestamp : 0
 }
 
-function getRecordTimestamp(record = {}, fallbackTimestamp = '') {
+function getRecordTimestamp(record = {}) {
   return parseTimestamp(
     record.sourceCollectedAtIso ||
     record.collectedAt ||
     record.measuredAt ||
     record.updatedAt ||
-    record.lastChecked ||
-    fallbackTimestamp,
+    record.lastChecked,
   )
 }
 
-function isStaleYouTubeRecord(record, now, fallbackTimestamp) {
-  if (!isYouTube(record?.platform)) return false
-  const timestamp = getRecordTimestamp(record, fallbackTimestamp)
-  return timestamp > 0 && now.getTime() - timestamp >= YOUTUBE_API_DATA_MAX_AGE_MS
+function isYouTubeApiDerivedRecord(record = {}) {
+  if (!isYouTube(record.platform)) return false
+  if (record.sourceType === 'manual' || record.sourceProvider === 'public_profile_entry') return false
+  const sourceText = [
+    record.source,
+    record.sourceName,
+    record.sourceProvider,
+    record.sourceNote,
+    record.snapshotSource,
+  ].filter(Boolean).join(' ')
+  return Boolean(
+    record.verifiedMetrics ||
+    String(record.id || '').startsWith('ytref:') ||
+    /youtube[ _-]?(data[ _-]?)?api|videos\.list|channels\.list|search\.list/i.test(sourceText),
+  )
+}
+
+function isStaleYouTubeRecord(record, now) {
+  if (!isYouTubeApiDerivedRecord(record)) return false
+  const timestamp = getRecordTimestamp(record)
+  return timestamp === 0 || now.getTime() - timestamp >= YOUTUBE_API_DATA_MAX_AGE_MS
 }
 
 function redactStaleCreator(record) {
@@ -86,21 +102,21 @@ function redactStaleTrackedPost(record) {
   }
 }
 
-function sanitizeRecords(records, sanitizer, now, fallbackTimestamp) {
+function sanitizeRecords(records, sanitizer, now) {
   if (!Array.isArray(records)) return { records, changed: false, redacted: 0 }
   let redacted = 0
   const nextRecords = records.map((record) => {
-    if (!isStaleYouTubeRecord(record, now, fallbackTimestamp)) return record
+    if (!isStaleYouTubeRecord(record, now)) return record
     redacted += 1
     return sanitizer(record)
   })
   return { records: nextRecords, changed: redacted > 0, redacted }
 }
 
-export function sanitizeStaleYouTubeApiData(payload = {}, { now = new Date(), fallbackTimestamp = '' } = {}) {
-  const creators = sanitizeRecords(payload.creators, redactStaleCreator, now, fallbackTimestamp)
-  const contentReferences = sanitizeRecords(payload.contentReferences, redactStaleReference, now, fallbackTimestamp)
-  const trackedPosts = sanitizeRecords(payload.trackedPosts, redactStaleTrackedPost, now, fallbackTimestamp)
+export function sanitizeStaleYouTubeApiData(payload = {}, { now = new Date() } = {}) {
+  const creators = sanitizeRecords(payload.creators, redactStaleCreator, now)
+  const contentReferences = sanitizeRecords(payload.contentReferences, redactStaleReference, now)
+  const trackedPosts = sanitizeRecords(payload.trackedPosts, redactStaleTrackedPost, now)
   const redacted = creators.redacted + contentReferences.redacted + trackedPosts.redacted
 
   if (!redacted) return { payload, changed: false, redacted: 0 }

@@ -13,9 +13,9 @@ test('YouTube API 데이터 보존 기준은 30일이다', () => {
 
 test('30일을 넘긴 YouTube API 통계는 식별 URL만 남기고 제거한다', () => {
   const result = sanitizeStaleYouTubeApiData({
-    creators: [{ id: 1, platform: 'YouTube', profileUrl: 'https://youtube.com/@demo', followers: 1000, averageViews: 300, sourceCollectedAtIso: '2026-07-01T00:00:00.000Z' }],
-    contentReferences: [{ id: 2, platform: 'YouTube', url: 'https://youtube.com/watch?v=demo', title: 'Old title', thumbnailUrl: 'https://img.youtube.com/demo.jpg', views: 100, collectedAt: '2026-07-01T00:00:00.000Z' }],
-    trackedPosts: [{ id: 3, platform: 'YouTube', url: 'https://youtube.com/watch?v=tracked', views: 900, lastChecked: '2026-07-01T00:00:00.000Z' }],
+    creators: [{ id: 1, platform: 'YouTube', profileUrl: 'https://youtube.com/@demo', followers: 1000, averageViews: 300, source: 'YouTube Data API', sourceCollectedAtIso: '2026-07-01T00:00:00.000Z' }],
+    contentReferences: [{ id: 'ytref:demo', platform: 'YouTube', url: 'https://youtube.com/watch?v=demo', title: 'Old title', thumbnailUrl: 'https://img.youtube.com/demo.jpg', views: 100, source: 'YouTube Data API videos.list', collectedAt: '2026-07-01T00:00:00.000Z' }],
+    trackedPosts: [{ id: 3, platform: 'YouTube', url: 'https://youtube.com/watch?v=tracked', views: 900, source: 'YouTube Data API videos.list', lastChecked: '2026-07-01T00:00:00.000Z' }],
   }, { now: new Date('2026-09-03T00:00:00.000Z') })
 
   assert.equal(result.changed, true)
@@ -30,11 +30,20 @@ test('30일을 넘긴 YouTube API 통계는 식별 URL만 남기고 제거한다
 test('30일 이내 데이터와 다른 플랫폼 데이터는 유지한다', () => {
   const payload = {
     creators: [
-      { id: 1, platform: 'YouTube', followers: 1000, sourceCollectedAtIso: '2026-08-20T00:00:00.000Z' },
+      { id: 1, platform: 'YouTube', followers: 1000, source: 'YouTube Data API', sourceCollectedAtIso: '2026-08-20T00:00:00.000Z' },
       { id: 2, platform: 'Instagram', followers: 2000, sourceCollectedAtIso: '2026-01-01T00:00:00.000Z' },
     ],
   }
   const result = sanitizeStaleYouTubeApiData(payload, { now: new Date('2026-09-03T00:00:00.000Z') })
   assert.equal(result.changed, false)
   assert.equal(result.payload, payload)
+})
+
+test('사용자가 직접 입력한 YouTube 수치는 API 보존 정책으로 삭제하지 않는다', () => {
+  const payload = {
+    creators: [{ id: 1, platform: 'YouTube', followers: 1000, sourceType: 'manual', sourceCollectedAtIso: '2026-01-01T00:00:00.000Z' }],
+  }
+  const result = sanitizeStaleYouTubeApiData(payload, { now: new Date('2026-09-03T00:00:00.000Z') })
+  assert.equal(result.changed, false)
+  assert.equal(result.payload.creators[0].followers, 1000)
 })
