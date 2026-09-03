@@ -2982,6 +2982,9 @@ function buildTypedProposalMessage(
     },
   }
   const offer = typeCopy[type.id]?.[language] || typeCopy.gifted_seeding[language]
+  const formatEmailParagraph = (value) => String(value || '')
+    .replace(/([.!?])\s+(?=\S)/g, '$1\n')
+    .replace(/([。！？])(?=\S)/g, '$1\n')
   const typeEmoji = {
     gifted_seeding: '🎁',
     paid_seeding_a: '✨',
@@ -3016,16 +3019,71 @@ function buildTypedProposalMessage(
   }[type.id][language]
 
   if (language === 'en') {
-    return `Hi ${creatorName}! 😊\n\nI'm reaching out from ${brand} about ${campaignName}. We really enjoyed your content around ${fitReason}, and we think your style would be a great fit for ${product}.\n\n${typeEmoji} ${offer}${deadline ? ` Our preferred timing is around ${deadline}.` : ''}\n\n${responseCopy}\n\nThank you!\n${brand}`
+    return [
+      `Hi ${creatorName}! 😊`,
+      '',
+      `I'm reaching out from ${brand} about ${campaignName}.`,
+      `We really enjoyed your content around ${fitReason}.`,
+      `We think your style would be a great fit for ${product}.`,
+      '',
+      `${typeEmoji} ${formatEmailParagraph(offer)}`,
+      ...(deadline ? [`Our preferred timing is around ${deadline}.`] : []),
+      '',
+      formatEmailParagraph(responseCopy),
+      '',
+      'Thank you!',
+      brand,
+    ].join('\n')
   }
   if (language === 'ja') {
-    return `${creatorName}様、こんにちは！😊\n\n${brand}より「${campaignName}」についてご連絡しました。${fitReason}に関する投稿を楽しく拝見し、${product}との相性がとても良いと感じています。\n\n${typeEmoji} ${offer}${deadline ? ` 希望時期は${deadline}頃です。` : ''}\n\n${responseCopy}\n\nどうぞよろしくお願いいたします。`
+    return [
+      `${creatorName}様、こんにちは！😊`,
+      '',
+      `${brand}より「${campaignName}」についてご連絡しました。`,
+      `${fitReason}に関する投稿を楽しく拝見しています。`,
+      `${product}との相性がとても良いと感じています。`,
+      '',
+      `${typeEmoji} ${formatEmailParagraph(offer)}`,
+      ...(deadline ? [`希望時期は${deadline}頃です。`] : []),
+      '',
+      formatEmailParagraph(responseCopy),
+      '',
+      'どうぞよろしくお願いいたします。',
+    ].join('\n')
   }
   if (language === 'zh-CN') {
-    return `${creatorName}，您好！😊\n\n我们是${brand}，想邀请您参与“${campaignName}”。我们很喜欢您关于${fitReason}的内容，也觉得您的风格非常适合${product}。\n\n${typeEmoji} ${offer}${deadline ? ` 期望时间为${deadline}前后。` : ''}\n\n${responseCopy}\n\n谢谢！`
+    return [
+      `${creatorName}，您好！😊`,
+      '',
+      `我们是${brand}，想邀请您参与“${campaignName}”。`,
+      `我们很喜欢您关于${fitReason}的内容。`,
+      `也觉得您的风格非常适合${product}。`,
+      '',
+      `${typeEmoji} ${formatEmailParagraph(offer)}`,
+      ...(deadline ? [`期望时间为${deadline}前后。`] : []),
+      '',
+      formatEmailParagraph(responseCopy),
+      '',
+      '谢谢！',
+    ].join('\n')
   }
 
-  return `${creatorName}님, 안녕하세요! 😊\n\n${brand}의 ${campaignName} 협업을 제안드리고 싶어 연락드렸어요. 평소 ${fitReason} 콘텐츠를 인상 깊게 보고 있었는데요. ${product}의 매력을 크리에이터님만의 방식으로 자연스럽게 보여주실 수 있을 것 같아 조심스럽게 제안드립니다.\n\n${typeEmoji} ${offer}${deadline ? ` 희망 일정은 ${deadline} 전후예요.` : ''}\n\n${responseCopy}\n\n감사합니다!\n${brand} 드림`
+  return [
+    `${creatorName}님, 안녕하세요! 😊`,
+    '',
+    `${brand}의 ${campaignName} 협업을 제안드리고 싶어 연락드렸어요.`,
+    `평소 ${fitReason} 콘텐츠를 인상 깊게 보고 있었는데요.`,
+    `${product}의 매력을 크리에이터님만의 방식으로`,
+    '자연스럽게 보여주실 수 있을 것 같아 조심스럽게 제안드립니다.',
+    '',
+    `${typeEmoji} ${formatEmailParagraph(offer)}`,
+    ...(deadline ? [`희망 일정은 ${deadline} 전후예요.`] : []),
+    '',
+    formatEmailParagraph(responseCopy),
+    '',
+    '감사합니다!',
+    `${brand} 드림`,
+  ].join('\n')
 }
 
 const SHORT_LINK_BASE_URL = 'https://go.creatorops.kr'
