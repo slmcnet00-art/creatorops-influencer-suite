@@ -15608,6 +15608,51 @@ function AppContent() {
     showToast('Gmail 연결을 해제했습니다.')
   }
 
+  const sendGmailConnectionTest = async () => {
+    const recipient = String(authSession?.user?.email || '').trim()
+    if (!recipient) {
+      showToast('Gmail 테스트 발송에는 로그인한 CreatorOps 이메일이 필요합니다.')
+      return
+    }
+    if (!gmailConnected && !gmailAuth?.refreshToken) {
+      showToast('먼저 Gmail을 연결해주세요.')
+      return
+    }
+
+    setGmailSending(true)
+    try {
+      const gmailAccessToken = await getFreshGmailAccessToken()
+      const apiBaseUrl = backendConfig.apiBaseUrl.replace(/\/$/, '')
+      const response = await fetch(apiBaseUrl + '/outreach/gmail/send', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${authSession.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          accessToken: gmailAccessToken,
+          to: recipient,
+          subject: '[CreatorOps] Gmail API 연결 테스트',
+          message: [
+            'CreatorOps Gmail API 연결이 정상적으로 작동합니다.',
+            '',
+            `워크스페이스: ${backendConfig.workspaceId}`,
+            `확인 시각: ${new Date().toLocaleString('ko-KR')}`,
+          ].join('\n'),
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok || !payload.data?.id) {
+        throw new Error(payload.message || 'Gmail 테스트 메일을 발송하지 못했습니다.')
+      }
+      showToast(`${recipient}로 Gmail 연결 테스트 메일을 보냈습니다.`)
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : 'Gmail 테스트 메일 발송에 실패했습니다.')
+    } finally {
+      setGmailSending(false)
+    }
+  }
+
   const sendSelectedOutreachEmails = async () => {
     if (!selectedOutreachItems.length) {
       showToast('먼저 발송할 메시지를 선택해주세요.')
@@ -20957,6 +21002,17 @@ function AppContent() {
               >
                 {gmailConnected ? 'Gmail 해제' : 'Gmail 연결'}
               </button>
+              {gmailConnected && (
+                <button
+                  className="secondary-button compact-button"
+                  type="button"
+                  disabled={gmailSending}
+                  onClick={sendGmailConnectionTest}
+                >
+                  <Send size={15} />
+                  Gmail 연결 테스트
+                </button>
+              )}
               <button
                 className="primary-button compact-button"
                 type="button"
