@@ -3,6 +3,7 @@ import test from 'node:test'
 import {
   CAMPAIGN_MARKET_MODES,
   buildCampaignMarkets,
+  getCampaignMarketForCountry,
   getCampaignMarketCountries,
   isMultiMarketCampaign,
   normalizeCampaignMarket,
@@ -29,6 +30,26 @@ test('글로벌 캠페인은 선택 순서와 국가별 통화·언어를 보존
   assert.deepEqual(markets.map((market) => market.currency), ['USD', 'JPY', 'EUR'])
   assert.equal(markets[0].language, 'en')
   assert.equal(isMultiMarketCampaign(campaign), true)
+  assert.equal(getCampaignMarketForCountry(campaign, 'JP').language, 'ja')
+  assert.equal(getCampaignMarketForCountry(campaign, 'EU').language, 'en')
+})
+
+test('다국가 캠페인은 대표 언어가 아니라 레코드 운영 국가의 언어를 사용한다', () => {
+  const campaign = {
+    marketMode: CAMPAIGN_MARKET_MODES.multi,
+    outputLanguage: 'ko',
+    markets: [
+      { country: 'KR', language: 'ko' },
+      { country: 'US', language: 'en' },
+      { country: 'JP', language: 'ja' },
+      { country: 'CN', language: 'zh-CN' },
+    ],
+  }
+
+  assert.equal(getCampaignMarketForCountry(campaign, 'KR').language, 'ko')
+  assert.equal(getCampaignMarketForCountry(campaign, 'US').language, 'en')
+  assert.equal(getCampaignMarketForCountry(campaign, 'JP').language, 'ja')
+  assert.equal(getCampaignMarketForCountry(campaign, 'CN').language, 'zh-CN')
 })
 
 test('마켓 재구성은 기존 국가별 환율 설정을 유지한다', () => {

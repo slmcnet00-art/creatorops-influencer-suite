@@ -62,6 +62,7 @@ import {
   MARKET_OPTIONS,
   buildCampaignMarkets,
   formatDualCurrency,
+  getCampaignMarketForCountry,
   getCampaignMarketCountries,
   getLanguageInstruction,
   getMarketConfig,
@@ -1729,10 +1730,14 @@ function normalizeOutreachItem(item, creators = [], campaigns = []) {
   const campaign = campaigns.find((campaignItem) => campaignItem.id === item.campaignId)
   const channelId = item.channel ?? item.contactChannel ?? getRecommendedContactChannelId(creator)
   const contactPlan = buildContactPlan(creator, channelId, item.message, campaign?.name)
+  const marketCountry = item.marketCountry || resolveCampaignRecordMarket(campaign, creator?.country, creator?.searchCountry)
+  const messageType = getOutreachMessageType(item.messageType || inferOutreachMessageType(creator)).id
 
   return {
     ...item,
-    messageType: getOutreachMessageType(item.messageType || inferOutreachMessageType(creator)).id,
+    marketCountry,
+    messageType,
+    subject: buildOutreachSubject(messageType, campaign, marketCountry),
     channel: contactPlan.id,
     deliveryMode: item.deliveryMode ?? contactPlan.deliveryMode,
     complianceNote: item.complianceNote ?? contactPlan.notice,
@@ -2845,15 +2850,26 @@ function inferOutreachMessageType(creator) {
   return DEFAULT_OUTREACH_MESSAGE_TYPE
 }
 
-function buildOutreachSubject(typeId, campaign) {
+function buildOutreachSubject(typeId, campaign, marketCountry = '') {
   const type = getOutreachMessageType(typeId)
+  const market = getCampaignMarketForCountry(campaign, marketCountry)
   const campaignName = campaign?.name || '브랜드 캠페인'
-  return `[${type.shortLabel}] ${campaignName} 협업 제안드립니다`
+  const localizedType = {
+    ko: type.shortLabel,
+    en: { gifted_seeding: 'Gifted', paid_seeding_a: 'Paid A', paid_seeding_b: 'Paid B', premium_s: 'Premium' }[type.id],
+    ja: { gifted_seeding: 'ギフティング', paid_seeding_a: '有償 A', paid_seeding_b: '有償 B', premium_s: 'Sクラス' }[type.id],
+    'zh-CN': { gifted_seeding: '赠送合作', paid_seeding_a: '付费 A', paid_seeding_b: '付费 B', premium_s: 'S级' }[type.id],
+  }
+  if (market.language === 'en') return `[${localizedType.en}] Collaboration proposal for ${campaignName}`
+  if (market.language === 'ja') return `【${localizedType.ja}】${campaignName} コラボレーションのご提案`
+  if (market.language === 'zh-CN') return `【${localizedType['zh-CN']}】${campaignName}合作邀请`
+  return `[${localizedType.ko}] ${campaignName} 협업 제안드립니다`
 }
 
-function buildTypedProposalMessage(creator, brief, campaign, typeId = DEFAULT_OUTREACH_MESSAGE_TYPE) {
+function buildTypedProposalMessage(creator, brief, campaign, typeId = DEFAULT_OUTREACH_MESSAGE_TYPE, marketCountry = '') {
   const type = getOutreachMessageType(typeId)
-  const market = normalizeCampaignMarket(campaign)
+  const assignedMarketCountry = marketCountry || resolveCampaignRecordMarket(campaign, creator?.country, creator?.searchCountry)
+  const market = getCampaignMarketForCountry(campaign, assignedMarketCountry)
   const creatorName = creator?.name || creator?.handle || 'Creator'
   const brand = brief?.brandName || campaign?.brandName || '저희 브랜드'
   const campaignName = campaign?.name || `${brief?.product || brand} 캠페인`
@@ -12273,21 +12289,22 @@ function AppContent() {
         }
       : buildRecommendation(creator, campaignBrief, campaign)
     const messageType = inferOutreachMessageType(creator)
-    const message = buildTypedProposalMessage(creator, campaignBrief, campaign, messageType)
+    const marketCountry = recommendation.marketCountry || resolveCampaignRecordMarket(campaign, creator.country, creator.searchCountry)
+    const message = buildTypedProposalMessage(creator, campaignBrief, campaign, messageType, marketCountry)
     const contactPlan = buildContactPlan(creator, getRecommendedContactChannelId(creator), message, campaign.name)
 
     return {
       id: createId() + creator.id,
       creatorId: creator.id,
       campaignId: campaign.id,
-      marketCountry: recommendation.marketCountry || resolveCampaignRecordMarket(campaign, creator.country, creator.searchCountry),
+      marketCountry,
       source,
       status: '승인 대기',
       channel: contactPlan.id,
       deliveryMode: contactPlan.deliveryMode,
       complianceNote: contactPlan.notice,
       messageType,
-      subject: buildOutreachSubject(messageType, campaign),
+      subject: buildOutreachSubject(messageType, campaign, marketCountry),
       message,
       reason: recommendation.reasons?.length
         ? recommendation.reasons.join(' / ')
@@ -13114,7 +13131,8 @@ function AppContent() {
         ? null
         : buildRecommendation(creator, campaignBrief, campaign)
     const messageType = recommendation.messageType || inferOutreachMessageType(creator)
-    const message = buildTypedProposalMessage(creator, campaignBrief, campaign, messageType)
+    const marketCountry = recommendation.marketCountry || fallbackRecommendation?.marketCountry || resolveCampaignRecordMarket(campaign, creator.country, creator.searchCountry)
+    const message = buildTypedProposalMessage(creator, campaignBrief, campaign, messageType, marketCountry)
     const contactPlan = buildContactPlan(creator, getRecommendedContactChannelId(creator), message, campaign.name)
     const recommendationReasons = recommendation.reasons?.length
       ? recommendation.reasons
@@ -13128,14 +13146,14 @@ function AppContent() {
       id: createId() + creator.id,
       creatorId: creator.id,
       campaignId: campaign.id,
-      marketCountry: recommendation.marketCountry || fallbackRecommendation?.marketCountry || resolveCampaignRecordMarket(campaign, creator.country, creator.searchCountry),
+      marketCountry,
       source: '자동',
       status: '승인 대기',
       channel: contactPlan.id,
       deliveryMode: contactPlan.deliveryMode,
       complianceNote: contactPlan.notice,
       messageType,
-      subject: buildOutreachSubject(messageType, campaign),
+      subject: buildOutreachSubject(messageType, campaign, marketCountry),
       message,
       reason: recommendationReasons.join(' / '),
       score: recommendation.score,
@@ -15195,18 +15213,19 @@ function AppContent() {
       return
     }
     const contactPlan = buildContactPlan(selectedCreator, proposalChannel, proposalText, campaign.name)
+    const marketCountry = resolveCampaignRecordMarket(campaign, selectedCreator.country, selectedCreator.searchCountry)
     const record = {
       id: createId(),
       creatorId: selectedCreator.id,
       campaignId: campaign.id,
-      marketCountry: resolveCampaignRecordMarket(campaign, selectedCreator.country, selectedCreator.searchCountry),
+      marketCountry,
       source: '수동',
       status: '승인 대기',
       channel: contactPlan.id,
       deliveryMode: contactPlan.deliveryMode,
       complianceNote: contactPlan.notice,
       messageType: proposalMessageType,
-      subject: buildOutreachSubject(proposalMessageType, campaign),
+      subject: buildOutreachSubject(proposalMessageType, campaign, marketCountry),
       message: proposalText,
       reason: '수동 작성 제안 메시지',
       createdAt: nowLabel(),
@@ -15679,8 +15698,8 @@ function AppContent() {
     return {
       ...item,
       messageType,
-      subject: buildOutreachSubject(messageType, campaign),
-      message: buildTypedProposalMessage(creator, campaignBrief, campaign, messageType),
+      subject: buildOutreachSubject(messageType, campaign, item.marketCountry),
+      message: buildTypedProposalMessage(creator, campaignBrief, campaign, messageType, item.marketCountry),
       messageUpdatedAt: nowLabel(),
     }
   }
@@ -15887,7 +15906,7 @@ function AppContent() {
               campaignId: item.campaignId,
               creatorId: item.creatorId,
               to: creator?.contactEmail,
-              subject: item.subject || buildOutreachSubject(item.messageType, campaign),
+              subject: item.subject || buildOutreachSubject(item.messageType, campaign, item.marketCountry),
               message: item.message,
               idempotencyKey: `${item.campaignId}:${item.creatorId}:email`,
             }
@@ -21189,6 +21208,7 @@ function AppContent() {
                     <option key={type.id} value={type.id}>{type.label}</option>
                   ))}
                 </select>
+                <small>후보별 운영 국가에 맞는 언어로 자동 생성</small>
               </label>
               <button
                 className="secondary-button compact-button"
@@ -22915,7 +22935,13 @@ function AppContent() {
                     <option key={type.id} value={type.id}>{type.label}</option>
                   ))}
                 </select>
-                <small>{getOutreachMessageType(activeOutreachDetail.messageType).description}</small>
+                <small>
+                  {getCampaignMarketForCountry(activeOutreachDetailCampaign, activeOutreachDetail.marketCountry).countryLabel}
+                  {' · '}
+                  {getCampaignMarketForCountry(activeOutreachDetailCampaign, activeOutreachDetail.marketCountry).languageLabel}
+                  {' · '}
+                  {getOutreachMessageType(activeOutreachDetail.messageType).description}
+                </small>
               </label>
               <div className="outreach-message-preview friendly-message-preview">
                 <span>메시지 미리보기</span>
@@ -23771,6 +23797,7 @@ function OutreachItem({
   const isAiSource = item.source === '자동' || item.source === 'AI 추천'
   const sourceTone = isAiSource ? 'auto-source' : item.source === '대량 섭외' ? 'bulk-source' : 'manual-source'
   const contactPlan = buildContactPlan(creator, item.channel, item.message, campaign?.name)
+  const itemMarket = getCampaignMarketForCountry(campaign, item.marketCountry || creator?.country)
   const contactEmail = getCreatorContactEmail(creator)
   const isEmailChannel = contactPlan.id === 'email'
   const canEmailSend = isEmailChannel && Boolean(contactEmail)
@@ -23806,6 +23833,7 @@ function OutreachItem({
         <span className={`source-chip ${sourceTone}`}>{sourceLabel}</span>
         <span className={`channel-chip ${contactPlan.tone}`}>{contactPlan.shortLabel}</span>
         <span className="type-chip">{getOutreachMessageType(item.messageType).shortLabel}</span>
+        <span className="type-chip">{itemMarket.countryLabel} · {itemMarket.languageLabel}</span>
         <strong>{creator?.name ?? '알 수 없는 후보'}</strong>
         <p>{campaign?.name ?? '캠페인 없음'} · {item.createdAt}</p>
         <div className={`message-contact-line ${deliveryTone}`}>

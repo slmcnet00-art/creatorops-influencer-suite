@@ -8332,6 +8332,13 @@
   font-weight: 700;
 }
 
+.message-type-picker small {
+  max-width: 210px;
+  color: var(--text-soft);
+  font-size: 10px;
+  line-height: 1.3;
+}
+
 .outreach-detail-type-picker {
   padding: 12px 14px;
   border: 1px solid var(--border);

@@ -94,6 +94,24 @@ export function normalizeCampaignMarket(campaign = {}) {
   }
 }
 
+export function getCampaignMarketForCountry(campaign = {}, country = '') {
+  const markets = normalizeCampaignMarkets(campaign)
+  const resolvedCountry = resolveCampaignMarketCountry(campaign, country)
+  const matched = markets.find((market) => market.country === resolvedCountry) || getMarketConfig(resolvedCountry)
+  const isSingleMarket = markets.length <= 1 && campaign.marketMode !== CAMPAIGN_MARKET_MODES.multi
+  const language = isSingleMarket && campaign.outputLanguage
+    ? campaign.outputLanguage
+    : matched.language || getMarketConfig(resolvedCountry).language
+
+  return {
+    ...matched,
+    country: resolvedCountry,
+    countryLabel: matched.label || getMarketConfig(resolvedCountry).label,
+    language,
+    languageLabel: LANGUAGE_OPTIONS.find((item) => item.value === language)?.label || matched.languageLabel,
+  }
+}
+
 export function formatDualCurrency(krwValue, campaign = {}) {
   const krw = Number(krwValue || 0)
   if (!krw) return '산정 전'
