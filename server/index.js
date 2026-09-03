@@ -24,6 +24,11 @@ import {
   getKstDayWindow,
   getOutreachDailyRemaining,
 } from './outreachPolicy.js'
+import {
+  buildOutreachSuppressionId,
+  isValidOutreachEmail,
+  normalizeOutreachEmail,
+} from './outreachSuppression.js'
 
 /* global document */
 
@@ -2041,6 +2046,10 @@ app.post('/outreach/gmail/send', requireWorkspaceAccess, async (request, respons
       message,
       idempotencyKey: request.body?.idempotencyKey || `single:${campaignId || 'unassigned'}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
     })
+    const suppressedRecipients = await getSuppressedOutreachRecipients(workspaceId, [item.to])
+    if (suppressedRecipients.has(item.to)) {
+      throw httpError(409, 'This recipient has opted out and is blocked from outreach sending.')
+    }
     const dailyUsage = await getCampaignDailyOutreachUsage(workspaceId, campaignId)
     if (dailyUsage.remaining <= 0) {
       throw httpError(429, `This campaign has reached its daily outreach limit of ${dailyUsage.limit} messages (Asia/Seoul).`)
@@ -2112,12 +2121,22 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
     }
 
     const items = requestedItems.map((item, index) => normalizeOutreachDeliveryItem(item, index))
+    const suppressedRecipients = await getSuppressedOutreachRecipients(workspaceId, items.map((item) => item.to))
     const results = []
     const dailyUsageByCampaign = new Map()
     let lastSendStartedAt = 0
 
     for (let index = 0; index < items.length; index += 1) {
       const item = items[index]
+      if (suppressedRecipients.has(item.to)) {
+        results.push({
+          id: item.id,
+          status: 'skipped',
+          reason: 'suppressed',
+          message: 'This recipient has opted out and is blocked from outreach sending.',
+        })
+        continue
+      }
       const memoryKey = `${workspaceId}:${item.idempotencyKey}`
       const memoryEntry = outreachDeliveryMemory.get(memoryKey)
       if (memoryEntry?.status === 'sending' || memoryEntry?.status === 'sent') {
@@ -2181,6 +2200,7 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
       requested: items.length,
       sent: results.filter((item) => item.status === 'sent').length,
       skipped: results.filter((item) => item.status === 'skipped').length,
+      suppressed: results.filter((item) => item.reason === 'suppressed').length,
       failed: results.filter((item) => item.status === 'failed').length,
     }
     await safeWriteAuditLog({
@@ -2207,6 +2227,44 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
     next(error)
   } finally {
     activeOutreachSendWorkspaces.delete(workspaceId)
+  }
+})
+
+app.post('/outreach/suppressions', requireWorkspaceAccess, async (request, response, next) => {
+  try {
+    const workspaceId = String(request.body?.workspaceId || WORKSPACE_ID).trim()
+    const email = normalizeOutreachEmail(request.body?.email)
+    const suppressed = request.body?.suppressed !== false
+    const reason = String(request.body?.reason || (suppressed ? 'Recipient opt-out' : 'Manual suppression removal')).trim().slice(0, 500)
+    if (workspaceId !== WORKSPACE_ID) throw httpError(403, 'The requested workspace does not match the authenticated workspace.')
+    if (!isValidOutreachEmail(email)) throw httpError(400, 'A valid recipient email is required.')
+
+    const record = await persistOutreachSuppression({
+      workspaceId,
+      email,
+      suppressed,
+      reason,
+      actorId: request.workspaceUser.id,
+    })
+    await safeWriteAuditLog({
+      actorId: request.workspaceUser.id,
+      action: suppressed ? 'outreach.recipient.suppressed' : 'outreach.recipient.unsuppressed',
+      targetType: 'outreach_recipient',
+      targetId: record.id,
+      metadata: {
+        recipientDomain: email.split('@')[1] || '',
+        reason,
+      },
+    })
+    response.json({
+      data: {
+        email,
+        suppressed,
+        updatedAt: record.updated_at,
+      },
+    })
+  } catch (error) {
+    next(error)
   }
 })
 
@@ -5029,12 +5087,61 @@ function normalizeOutreachDeliveryItem(item = {}, index = 0) {
   const id = String(item.id || `outreach-${Date.now()}-${index}`).trim()
   const campaignId = String(item.campaignId || '').trim()
   const creatorId = String(item.creatorId || '').trim()
-  const to = String(item.to || '').trim().toLowerCase()
+  const to = normalizeOutreachEmail(item.to)
   const subject = String(item.subject || 'CreatorOps collaboration proposal').trim()
   const message = String(item.message || '').trim()
   if (!to || !message) throw httpError(400, `items[${index}] requires to and message.`)
   const idempotencyKey = String(item.idempotencyKey || `${campaignId || 'campaign'}:${creatorId || to}:email`).trim()
   return { id, campaignId, creatorId, to, subject, message, idempotencyKey }
+}
+
+async function getSuppressedOutreachRecipients(workspaceId, recipients = []) {
+  const supabase = getSupabaseAdminClient()
+  if (!supabase) throw httpError(503, 'Supabase is required to enforce recipient suppressions.')
+  const emails = [...new Set(recipients.map(normalizeOutreachEmail).filter(Boolean))]
+  if (!emails.length) return new Set()
+  const { data, error } = await supabase
+    .from('outreach_messages')
+    .select('recipient')
+    .eq('workspace_id', workspaceId)
+    .eq('status', 'suppressed')
+    .in('recipient', emails)
+  if (error) throw error
+  return new Set((data || []).map((row) => normalizeOutreachEmail(row.recipient)).filter(Boolean))
+}
+
+async function persistOutreachSuppression({ workspaceId, email, suppressed, reason, actorId }) {
+  const supabase = getSupabaseAdminClient()
+  if (!supabase) throw httpError(503, 'Supabase is required to persist recipient suppressions.')
+  await ensureDataRoomWorkspace(supabase, workspaceId)
+  const now = new Date().toISOString()
+  const id = buildOutreachSuppressionId(workspaceId, email)
+  const row = {
+    id,
+    workspace_id: workspaceId,
+    campaign_id: null,
+    creator_id: null,
+    channel: 'email',
+    recipient: email,
+    subject: '',
+    message: suppressed ? 'Recipient blocked from future outreach.' : 'Recipient outreach block removed.',
+    status: suppressed ? 'suppressed' : 'unsuppressed',
+    provider_message_id: null,
+    idempotency_key: `suppression:${email}`,
+    attempt_count: 0,
+    last_error: null,
+    sent_at: null,
+    updated_at: now,
+    created_by: actorId,
+    metadata: {
+      deliveryProvider: 'creatorops',
+      source: 'manual-recipient-suppression',
+      reason,
+    },
+  }
+  const { error } = await supabase.from('outreach_messages').upsert(row, { onConflict: 'id' })
+  if (error) throw error
+  return row
 }
 
 async function getCampaignDailyOutreachUsage(workspaceId, campaignId, now = new Date()) {

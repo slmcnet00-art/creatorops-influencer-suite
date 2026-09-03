@@ -295,8 +295,15 @@ Response:
 
 ### POST `/outreach/gmail/send`
 
-Gmail 발송용 예약 엔드포인트입니다. 현재는 OAuth 토큰 저장소가 없으면 `501`을 반환합니다.
-실제 자동 발송은 사용자별 OAuth 동의, 수신 거부, 중복 발송 방지, 발송량 제한 로그가 연결된 뒤 활성화합니다.
+Gmail OAuth 발송 엔드포인트입니다. 단건도 선택한 캠페인의 일일 한도에 포함되며 수신 거부 주소는 발송 전에 차단합니다.
+
+### POST `/outreach/gmail/send-batch`
+
+검토가 끝난 이메일을 한 번에 최대 20건 발송합니다. 실제 공급자 호출은 10초 간격으로 실행하며, 한국시간 날짜 기준 캠페인별 하루 50건까지만 허용합니다. 중복과 수신 거부 항목은 결과의 `reason`으로 구분합니다.
+
+### POST `/outreach/suppressions`
+
+`email`, `suppressed`, `reason`을 받아 워크스페이스 공통 수신 거부 상태를 등록하거나 해제합니다. 등록된 주소는 캠페인이 달라도 Gmail 단건·일괄 발송에서 차단되며 변경은 감사 로그에 기록합니다.
 
 ## Production Priority
 

@@ -8076,6 +8076,7 @@ function AppContent() {
   })
   const [gmailClock, setGmailClock] = useState(() => Date.now())
   const [gmailSending, setGmailSending] = useState(false)
+  const [outreachSuppressionSaving, setOutreachSuppressionSaving] = useState(false)
   const [outreachStatusFilter, setOutreachStatusFilter] = useState('전체')
   const [outreachSearchQuery, setOutreachSearchQuery] = useState('')
   const [outreachResponseNote, setOutreachResponseNote] = useState('')
@@ -8661,6 +8662,12 @@ function AppContent() {
         label: '응답',
         count: searchedCampaignOutreach.filter((item) => item.status === '응답').length,
         helper: '조건 확인 후 섭외 완료',
+      },
+      {
+        key: '수신 거부',
+        label: '수신 거부',
+        count: searchedCampaignOutreach.filter((item) => item.status === '수신 거부').length,
+        helper: '워크스페이스 전체 발송 차단',
       },
     ],
     [searchedCampaignOutreach],
@@ -16152,10 +16159,15 @@ function AppContent() {
       return
     }
 
-    const deliverableItems = selectedEmailOutreachItems.filter((item) => !hasDuplicateSentOutreach(item, outreach))
-    const locallySkipped = selectedEmailOutreachItems.length - deliverableItems.length
+    const locallySuppressed = selectedEmailOutreachItems.filter((item) => item.status === '수신 거부').length
+    const deliverableItems = selectedEmailOutreachItems.filter(
+      (item) => item.status !== '수신 거부' && !hasDuplicateSentOutreach(item, outreach),
+    )
+    const locallySkipped = selectedEmailOutreachItems.length - deliverableItems.length - locallySuppressed
     if (!deliverableItems.length) {
-      showToast('이미 발송된 동일 캠페인·크리에이터 조합입니다. 중복 발송을 차단했습니다.')
+      showToast(locallySuppressed
+        ? '선택한 이메일이 수신 거부 목록에 있어 발송을 차단했습니다.'
+        : '이미 발송된 동일 캠페인·크리에이터 조합입니다. 중복 발송을 차단했습니다.')
       return
     }
 
@@ -16163,6 +16175,7 @@ function AppContent() {
     const apiBaseUrl = backendConfig.apiBaseUrl.replace(/\/$/, '')
     let sentIds = []
     let skippedCount = locallySkipped
+    let suppressedCount = locallySuppressed
     let failures
 
     try {
@@ -16195,7 +16208,8 @@ function AppContent() {
       if (!response.ok) throw new Error(payload?.message || 'Gmail 일괄 발송에 실패했습니다.')
       const results = Array.isArray(payload?.data?.results) ? payload.data.results : []
       sentIds = results.filter((item) => item.status === 'sent').map((item) => item.id)
-      skippedCount += results.filter((item) => item.status === 'skipped').length
+      suppressedCount += results.filter((item) => item.reason === 'suppressed').length
+      skippedCount += results.filter((item) => item.status === 'skipped' && item.reason !== 'suppressed').length
       failures = results.filter((item) => item.status === 'failed')
     } catch (error) {
       failures = [{ message: error instanceof Error ? error.message : 'Gmail 일괄 발송에 실패했습니다.' }]
@@ -16228,8 +16242,79 @@ function AppContent() {
       setSelectedOutreachIds((current) => current.filter((id) => !selectedIds.has(id)))
     }
 
-    const summary = `Gmail 발송 ${sentIds.length}건 완료${skippedCount ? ` · 중복 차단 ${skippedCount}건` : ''}`
+    const summary = `Gmail 발송 ${sentIds.length}건 완료${skippedCount ? ` · 중복 차단 ${skippedCount}건` : ''}${suppressedCount ? ` · 수신 거부 차단 ${suppressedCount}건` : ''}`
     showToast(failures.length ? `${summary} · 실패 ${failures.length}건: ${failures[0].message}` : summary)
+  }
+
+  const setOutreachRecipientSuppression = async (itemId, suppressed) => {
+    const item = activeOutreach.find((candidate) => candidate.id === itemId)
+    const creator = creators.find((candidate) => candidate.id === item?.creatorId)
+    const email = getCreatorContactEmail(creator).trim().toLowerCase()
+    if (!email) {
+      showToast('수신 거부를 관리할 이메일이 없습니다.')
+      return
+    }
+    if (!backendConfig.apiBaseUrl || !authSession?.access_token) {
+      showToast('수신 거부 변경에는 CreatorOps 로그인과 API 서버 연결이 필요합니다.')
+      return
+    }
+    if (suppressed && !window.confirm(`${email} 주소를 수신 거부로 등록할까요? 모든 캠페인에서 자동 발송이 차단됩니다.`)) return
+
+    setOutreachSuppressionSaving(true)
+    try {
+      const response = await fetch(`${backendConfig.apiBaseUrl.replace(/\/$/, '')}/outreach/suppressions`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${authSession.access_token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          workspaceId: backendConfig.workspaceId,
+          email,
+          suppressed,
+          reason: suppressed ? '운영자가 인플루언서 수신 거부 응답을 확인함' : '운영자가 수신 거부를 해제함',
+        }),
+      })
+      const payload = await response.json().catch(() => ({}))
+      if (!response.ok) throw new Error(payload?.message || '수신 거부 상태를 저장하지 못했습니다.')
+
+      const eventTime = nowLabel()
+      const affectedIds = activeOutreach
+        .filter((entry) => {
+          const linkedCreator = creators.find((candidate) => candidate.id === entry.creatorId)
+          return getCreatorContactEmail(linkedCreator).trim().toLowerCase() === email
+        })
+        .map((entry) => entry.id)
+      const affectedIdSet = new Set(affectedIds)
+      updateWorkspace((current) => appendActivity({
+        ...current,
+        outreach: current.outreach.map((entry) => {
+          if (!affectedIdSet.has(entry.id)) return entry
+          if (suppressed) {
+            return {
+              ...entry,
+              statusBeforeSuppression: entry.status === '수신 거부' ? entry.statusBeforeSuppression : entry.status,
+              status: '수신 거부',
+              suppressedAt: eventTime,
+            }
+          }
+          return {
+            ...entry,
+            status: entry.statusBeforeSuppression || '승인 대기',
+            statusBeforeSuppression: '',
+            suppressionRemovedAt: eventTime,
+          }
+        }),
+      }, 'outreach', suppressed ? `수신 거부 등록 · ${email}` : `수신 거부 해제 · ${email}`))
+      if (suppressed) setSelectedOutreachIds((current) => current.filter((id) => !affectedIdSet.has(id)))
+      showToast(suppressed
+        ? `${email} 주소를 수신 거부로 등록했습니다. 모든 캠페인 발송에서 차단됩니다.`
+        : `${email} 주소의 수신 거부를 해제했습니다.`)
+    } catch (error) {
+      showToast(error instanceof Error ? error.message : '수신 거부 상태를 저장하지 못했습니다.')
+    } finally {
+      setOutreachSuppressionSaving(false)
+    }
   }
   const markOutreachSent = (itemId) => {
     updateWorkspace((current) =>
@@ -21493,7 +21578,7 @@ function AppContent() {
                     <option key={type.id} value={type.id}>{type.label}</option>
                   ))}
                 </select>
-                <small>후보별 운영 국가 언어 · 1회 20건 · 10초 간격 · 캠페인별 하루 50건</small>
+                <small>후보별 운영 국가 언어 · 1회 20건 · 10초 간격 · 캠페인별 하루 50건 · 수신 거부 주소 차단</small>
               </label>
               <button
                 className="secondary-button compact-button"
@@ -23302,6 +23387,20 @@ function AppContent() {
                       채널 열기
                     </a>
                   )}
+                  {activeOutreachDetailEmail && (
+                    <button
+                      className="secondary-button compact-button"
+                      type="button"
+                      disabled={outreachSuppressionSaving}
+                      onClick={() => setOutreachRecipientSuppression(activeOutreachDetail.id, activeOutreachDetail.status !== '수신 거부')}
+                    >
+                      {outreachSuppressionSaving
+                        ? '저장 중'
+                        : activeOutreachDetail.status === '수신 거부'
+                          ? '수신 거부 해제'
+                          : '수신 거부 등록'}
+                    </button>
+                  )}
                   {activeOutreachDetail.status === '승인 대기' && (
                     <button className="primary-button compact-button" type="button" onClick={() => markOutreachSent(activeOutreachDetail.id)}>
                       📩 발송 완료
@@ -24178,19 +24277,24 @@ function OutreachItem({
   const itemMarket = getCampaignMarketForCountry(campaign, item.marketCountry || creator?.country)
   const contactEmail = getCreatorContactEmail(creator)
   const isEmailChannel = contactPlan.id === 'email'
-  const canEmailSend = isEmailChannel && Boolean(contactEmail)
+  const isSuppressed = item.status === '수신 거부'
+  const canEmailSend = isEmailChannel && Boolean(contactEmail) && !isSuppressed
   const sourceLabel = isAiSource ? 'AI 추천' : item.source ?? '수동'
-  const contactStatusLabel = canEmailSend
-    ? 'Gmail/Outlook 발송 대상'
-    : isEmailChannel
-      ? '이메일 수집 전 자동 발송 불가'
-      : `${contactPlan.shortLabel} 작업 대상`
-  const deliveryReadiness = canEmailSend
-    ? '이메일 자동 발송 가능'
-    : isEmailChannel
-      ? '이메일 수집 필요 · 자동 발송 불가'
-      : `${contactPlan.shortLabel} 수동 작업`
-  const deliveryTone = canEmailSend ? 'ready' : isEmailChannel ? 'missing' : 'manual'
+  const contactStatusLabel = isSuppressed
+    ? '수신 거부 · 모든 캠페인 자동 발송 차단'
+    : canEmailSend
+      ? 'Gmail/Outlook 발송 대상'
+      : isEmailChannel
+        ? '이메일 수집 전 자동 발송 불가'
+        : `${contactPlan.shortLabel} 작업 대상`
+  const deliveryReadiness = isSuppressed
+    ? '수신 거부 주소'
+    : canEmailSend
+      ? '이메일 자동 발송 가능'
+      : isEmailChannel
+        ? '이메일 수집 필요 · 자동 발송 불가'
+        : `${contactPlan.shortLabel} 수동 작업`
+  const deliveryTone = isSuppressed ? 'missing' : canEmailSend ? 'ready' : isEmailChannel ? 'missing' : 'manual'
   const reasonParts = String(item.reason || '')
     .split('/')
     .map((part) => part.trim())
@@ -24203,7 +24307,7 @@ function OutreachItem({
     <article className="record-item">
       {onToggleSelect && (
         <label className="record-select" aria-label={`${creator?.name ?? '메시지'} 선택`}>
-          <input type="checkbox" checked={selected} onChange={onToggleSelect} />
+          <input type="checkbox" checked={selected} disabled={isSuppressed} onChange={onToggleSelect} />
         </label>
       )}
       <div>
