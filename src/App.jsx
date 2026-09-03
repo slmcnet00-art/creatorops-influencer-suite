@@ -2856,16 +2856,34 @@ function buildOutreachSubject(typeId, campaign, marketCountry = '') {
   const type = getOutreachMessageType(typeId)
   const market = getCampaignMarketForCountry(campaign, marketCountry)
   const campaignName = campaign?.name || '브랜드 캠페인'
-  const localizedType = {
-    ko: type.shortLabel,
-    en: { gifted_seeding: 'Gifted', paid_seeding_a: 'Paid A', paid_seeding_b: 'Paid B', premium_s: 'Premium' }[type.id],
-    ja: { gifted_seeding: 'ギフティング', paid_seeding_a: '有償 A', paid_seeding_b: '有償 B', premium_s: 'Sクラス' }[type.id],
-    'zh-CN': { gifted_seeding: '赠送合作', paid_seeding_a: '付费 A', paid_seeding_b: '付费 B', premium_s: 'S级' }[type.id],
+  const subjectByType = {
+    gifted_seeding: {
+      ko: `[${campaignName}] 제품 체험 및 콘텐츠 협업 제안드려요 🎁`,
+      en: `${campaignName} | Gifted product collaboration invitation 🎁`,
+      ja: `【${campaignName}】商品体験・コンテンツコラボのご提案 🎁`,
+      'zh-CN': `【${campaignName}】产品体验与内容合作邀请 🎁`,
+    },
+    paid_seeding_a: {
+      ko: `[${campaignName}] 유상 콘텐츠 협업을 제안드립니다 ✨`,
+      en: `${campaignName} | Paid content collaboration proposal ✨`,
+      ja: `【${campaignName}】有償コンテンツコラボのご提案 ✨`,
+      'zh-CN': `【${campaignName}】付费内容合作邀请 ✨`,
+    },
+    paid_seeding_b: {
+      ko: `[${campaignName}] 유상 콘텐츠 협업을 제안드립니다 ✨`,
+      en: `${campaignName} | Paid content collaboration proposal ✨`,
+      ja: `【${campaignName}】有償コンテンツコラボのご提案 ✨`,
+      'zh-CN': `【${campaignName}】付费内容合作邀请 ✨`,
+    },
+    premium_s: {
+      ko: `[${campaignName}] 브랜드 파트너십을 제안드립니다 🌟`,
+      en: `${campaignName} | Brand partnership proposal 🌟`,
+      ja: `【${campaignName}】ブランドパートナーシップのご提案 🌟`,
+      'zh-CN': `【${campaignName}】品牌合作伙伴邀请 🌟`,
+    },
   }
-  if (market.language === 'en') return `[${localizedType.en}] Collaboration proposal for ${campaignName}`
-  if (market.language === 'ja') return `【${localizedType.ja}】${campaignName} コラボレーションのご提案`
-  if (market.language === 'zh-CN') return `【${localizedType['zh-CN']}】${campaignName}合作邀请`
-  return `[${localizedType.ko}] ${campaignName} 협업 제안드립니다`
+  const language = ['en', 'ja', 'zh-CN'].includes(market.language) ? market.language : 'ko'
+  return subjectByType[type.id]?.[language] || subjectByType.gifted_seeding[language]
 }
 
 function buildOutreachCommercialTerms(typeId, creator, campaign) {
@@ -16019,7 +16037,7 @@ function AppContent() {
         topics: ['웰니스', '건강한 라이프스타일'],
       }
       const marketCountry = resolveCampaignRecordMarket(campaign, '한국', '한국')
-      const subject = `[CreatorOps 실제 발송 테스트 · ${messageType.shortLabel}] ${buildOutreachSubject(messageType.id, campaign, marketCountry)}`
+      const subject = `[CreatorOps 실제 발송 테스트] ${buildOutreachSubject(messageType.id, campaign, marketCountry)}`
       const message = [
         buildTypedProposalMessage(testCreator, campaignBrief, campaign, messageType.id, marketCountry, 'ko'),
         '',
