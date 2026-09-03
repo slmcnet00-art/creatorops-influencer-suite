@@ -124,6 +124,7 @@ const STORE_KEY = 'creatorops.workspace.v2'
 const TRACKING_DAILY_REFRESH_KEY = 'creatorops.tracking.lastDailyRefresh'
 const GMAIL_AUTH_STORE_KEY = 'creatorops.gmailAuth.v1'
 const GMAIL_OAUTH_STATE_KEY = 'creatorops.gmailOAuthState.v1'
+const GMAIL_SEND_SCOPE = 'https://www.googleapis.com/auth/gmail.send'
 const YOUTUBE_REVIEW_SNAPSHOT_KEY = 'creatorops.youtubeReviewSnapshot.v1'
 const PRACTICE_TOUR_STORE_KEY = 'creatorops.practiceTour.completed.v1'
 const EXTERNAL_REPORT_PROFILES = [
@@ -8410,7 +8411,11 @@ function AppContent() {
     () => selectedOutreachItems.filter((item) => hasDuplicateSentOutreach(item, outreach)).length,
     [outreach, selectedOutreachItems],
   )
-  const gmailConnected = Boolean(gmailAuth?.accessToken && Number(gmailAuth.expiresAt || 0) > gmailClock + 30_000)
+  const gmailConnected = Boolean(
+    gmailAuth?.accessToken &&
+      String(gmailAuth?.scope || '').split(/\s+/).includes(GMAIL_SEND_SCOPE) &&
+      Number(gmailAuth.expiresAt || 0) > gmailClock + 30_000,
+  )
   const allOutreachSelected =
     filteredCampaignOutreach.length > 0 &&
     filteredCampaignOutreach.every((item) => selectedOutreachIds.includes(item.id))
@@ -11118,6 +11123,9 @@ function AppContent() {
           scope: payload.data?.scope || '',
         }
         if (!nextAuth.accessToken) throw new Error('Gmail access token이 비어 있습니다.')
+        if (!String(nextAuth.scope).split(/\s+/).includes(GMAIL_SEND_SCOPE)) {
+          throw new Error('Gmail 메일 발송 권한이 승인되지 않았습니다. 다시 연결하고 Gmail 발송 권한을 체크해주세요.')
+        }
         if (cancelled) return
         window.localStorage.setItem(GMAIL_AUTH_STORE_KEY, JSON.stringify(nextAuth))
         setGmailAuth(nextAuth)
@@ -15552,6 +15560,9 @@ function AppContent() {
   }
 
   const getFreshGmailAccessToken = async () => {
+    if (!String(gmailAuth?.scope || '').split(/\s+/).includes(GMAIL_SEND_SCOPE)) {
+      throw new Error('Gmail 발송 권한이 없습니다. Gmail을 다시 연결하고 메일 발송 권한을 체크해주세요.')
+    }
     if (gmailAuth?.accessToken && Number(gmailAuth.expiresAt || 0) > gmailClock + 30_000) return gmailAuth.accessToken
     if (!gmailAuth?.refreshToken) throw new Error('Gmail 승인이 만료되었습니다. Gmail을 다시 연결해주세요.')
     if (!authSession?.access_token) throw new Error('Gmail 토큰 갱신 전에 CreatorOps 계정 로그인이 필요합니다.')
