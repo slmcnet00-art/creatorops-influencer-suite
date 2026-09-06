@@ -18,6 +18,7 @@
     "production:check": "node scripts/check-production.mjs",
     "test:readiness": "node --test tests/readiness.test.mjs",
     "test:permissions": "node --test tests/access-control.test.mjs",
+    "test:brand-permissions:remote": "node scripts/test-brand-permissions.mjs",
     "render:create-api": "node scripts/render-create-api.mjs",
     "render:sync-env": "node scripts/render-sync-env.mjs",
     "learning:sync-drive": "node scripts/sync-drive-learning.mjs",
