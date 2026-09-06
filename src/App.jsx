@@ -73,6 +73,10 @@ import {
 } from './marketLocalization'
 import { getAiOutputPolicyState } from './aiPolicyVersions'
 import {
+  buildReusableTemplateLearningMaterials,
+  getApprovedContentTemplates,
+} from './contentTemplateLibrary'
+import {
   getBackendConfig,
   getAuthSession,
   getCurrentWorkspaceAccess,
@@ -10206,9 +10210,35 @@ function AppContent() {
           b.views - a.views,
       )
   }, [contentTemplates, creators, selectedCampaign?.id, selectedCampaignTrackedPosts])
+  const approvedWinningTemplates = useMemo(
+    () => getApprovedContentTemplates(contentTemplates, activeBrand.id),
+    [activeBrand.id, contentTemplates],
+  )
+  const approvedWinningTemplateMaterials = useMemo(
+    () => buildReusableTemplateLearningMaterials(approvedWinningTemplates, activeBrand.id),
+    [activeBrand.id, approvedWinningTemplates],
+  )
+  const ownedWinningTemplates = useMemo(
+    () => approvedWinningTemplates.filter((template) => template.sourceType === 'owned_campaign'),
+    [approvedWinningTemplates],
+  )
   const externalReferenceTemplates = useMemo(
-    () => contentTemplates.filter((template) => template.sourceType !== 'owned_campaign'),
-    [contentTemplates],
+    () => approvedWinningTemplates.filter((template) => template.sourceType !== 'owned_campaign'),
+    [approvedWinningTemplates],
+  )
+  const winningTemplateRows = useMemo(
+    () => approvedWinningTemplates.map((template) => {
+      const sourceCampaign = campaigns.find((campaign) => String(campaign.id) === String(template.campaignId))
+      const sourceReference = contentReferences.find((reference) => String(reference.id) === String(template.referenceId))
+      return {
+        ...template,
+        sourceLabel: template.sourceType === 'owned_campaign'
+          ? `우리 캠페인 · ${sourceCampaign?.name || '캠페인 미확인'}`
+          : '외부 레퍼런스 승인',
+        sourceUrl: template.performanceSnapshot?.contentUrl || sourceReference?.url || '',
+      }
+    }),
+    [approvedWinningTemplates, campaigns, contentReferences],
   )
   const visibleWorkflowSignals = useMemo(
     () =>
@@ -14619,7 +14649,15 @@ function AppContent() {
 
   const generateCampaignStrategyForDetail = async (campaign) => {
     if (!campaign) return
-    const campaignBrief = buildCampaignBriefFromCampaign(campaign)
+    const baseCampaignBrief = buildCampaignBriefFromCampaign(campaign)
+    const campaignBrief = {
+      ...baseCampaignBrief,
+      learningMaterials: [
+        ...approvedWinningTemplateMaterials,
+        ...getLearningMaterials(baseCampaignBrief),
+      ],
+    }
+    const appliedTemplateIds = approvedWinningTemplates.map((template) => String(template.id))
     const localStrategy = buildInfluencerStrategy({
       brand: activeBrand,
       brief: campaignBrief,
@@ -14663,12 +14701,23 @@ function AppContent() {
       }
     }
     const generatedAt = nowLabel()
+    if (appliedTemplateIds.length) sourceRawIds = uniqueList([...sourceRawIds, 'RAW-INT-TEMPLATE-001'])
     const strategyInputRaw = campaign.strategyInputRaw || buildCampaignStrategyInputRaw(campaign, campaignBrief)
 
     updateWorkspace((current) =>
       appendActivity(
         {
           ...current,
+          contentTemplates: (current.contentTemplates ?? []).map((template) =>
+            appliedTemplateIds.includes(String(template.id))
+              ? {
+                  ...template,
+                  reuseCount: Number(template.reuseCount || 0) + 1,
+                  lastUsedAt: generatedAt,
+                  updatedAt: generatedAt,
+                }
+              : template,
+          ),
           campaigns: current.campaigns.map((item) =>
             item.id === campaign.id
               ? {
@@ -14692,6 +14741,7 @@ function AppContent() {
                     strategyPolicyVersion: policyVersion || 'strategy-director-v2.3-local',
                     strategyPolicyFeatureKey: policyFeatureKey,
                     strategyEngine: engine,
+                    strategyTemplateIds: appliedTemplateIds,
                   },
                 }
               : item,
@@ -14725,7 +14775,22 @@ function AppContent() {
 
   const generateCampaignGuideForDetail = async (campaign) => {
     if (!campaign) return
-    const campaignBrief = buildCampaignBriefFromCampaign(campaign)
+    const baseCampaignBrief = buildCampaignBriefFromCampaign(campaign)
+    const campaignBrief = {
+      ...baseCampaignBrief,
+      learningMaterials: [
+        ...approvedWinningTemplateMaterials,
+        ...getLearningMaterials(baseCampaignBrief),
+      ],
+    }
+    const appliedTemplateIds = approvedWinningTemplates.map((template) => String(template.id))
+    const reusableTemplateReferences = approvedWinningTemplateMaterials.map((material) => ({
+      title: material.title,
+      source: material.sourceName,
+      structure: material.doSay,
+      performanceReason: material.summary,
+      reuseRule: material.dontSay,
+    }))
     const localGuide = buildInfluencerContentGuide({
       brand: activeBrand,
       brief: campaignBrief,
@@ -14749,7 +14814,10 @@ function AppContent() {
             campaign,
             seedingType: campaign.guideSeedType || '무가시딩',
             channel: campaign.guideChannel || 'Instagram Reels',
-            references: Array.isArray(campaign.guideReferences) ? campaign.guideReferences : [],
+            references: [
+              ...(Array.isArray(campaign.guideReferences) ? campaign.guideReferences : []),
+              ...reusableTemplateReferences,
+            ],
             draftGuide: localGuide,
           }),
         })
@@ -14767,12 +14835,23 @@ function AppContent() {
       }
     }
     const generatedAt = nowLabel()
+    if (appliedTemplateIds.length) sourceRawIds = uniqueList([...sourceRawIds, 'RAW-INT-TEMPLATE-001'])
     const strategyInputRaw = campaign.strategyInputRaw || buildCampaignStrategyInputRaw(campaign, campaignBrief)
 
     updateWorkspace((current) =>
       appendActivity(
         {
           ...current,
+          contentTemplates: (current.contentTemplates ?? []).map((template) =>
+            appliedTemplateIds.includes(String(template.id))
+              ? {
+                  ...template,
+                  reuseCount: Number(template.reuseCount || 0) + 1,
+                  lastUsedAt: generatedAt,
+                  updatedAt: generatedAt,
+                }
+              : template,
+          ),
           campaigns: current.campaigns.map((item) =>
             item.id === campaign.id
               ? {
@@ -14792,6 +14871,7 @@ function AppContent() {
                     guidePolicyVersion: policyVersion || 'strategy-director-v2.3-local',
                     guidePolicyFeatureKey: policyFeatureKey,
                     guideEngine: engine,
+                    guideTemplateIds: appliedTemplateIds,
                   },
                 }
               : item,
@@ -19659,15 +19739,17 @@ function AppContent() {
         )}
 
         {visibleSection === 'references' && (
-        <section className={`panel reference-board-panel ${referenceMode === 'brand' ? 'brand-mode' : 'content-mode'}`}>
+        <section className={`panel reference-board-panel ${referenceMode === 'brand' ? 'brand-mode' : referenceMode === 'winning' ? 'winning-mode' : 'content-mode'}`}>
           <div className="panel-heading">
             <div>
-              <span className="mini-label">콘텐츠 레퍼런스</span>
-              <h2>인기 콘텐츠 레퍼런스</h2>
+              <span className="mini-label">{referenceMode === 'winning' ? '승인 자산' : '콘텐츠 레퍼런스'}</span>
+              <h2>{referenceMode === 'winning' ? '위닝 소재 저장소' : '인기 콘텐츠 레퍼런스'}</h2>
             </div>
             <div className="panel-heading-actions">
               <span className="result-count">
-                영상 {referenceTotals.videos} · 이미지 {referenceTotals.images}
+                {referenceMode === 'winning'
+                  ? `승인 ${approvedWinningTemplates.length} · 자사 성과 ${ownedWinningTemplates.length}`
+                  : `영상 ${referenceTotals.videos} · 이미지 ${referenceTotals.images}`}
               </span>
             </div>
           </div>
@@ -19698,6 +19780,18 @@ function AppContent() {
               <Video size={17} />
               <span>콘텐츠 레퍼런스 찾기</span>
               <small>콘텐츠 검색·저장</small>
+            </button>
+            <button
+              className={referenceMode === 'winning' ? 'active' : ''}
+              type="button"
+              onClick={() => {
+                setReferenceMode('winning')
+                setReferenceSearchResults([])
+              }}
+            >
+              <TrendingUp size={17} />
+              <span>위닝 소재 저장소</span>
+              <small>승인 구조·성과 근거</small>
             </button>
           </div>
 
@@ -19959,6 +20053,8 @@ function AppContent() {
             </div>
           )}
 
+          {referenceMode !== 'winning' && (
+          <>
           <div className="reference-country-tabs" aria-label="레퍼런스 국가 빠른 필터">
             {referenceCountryOptions.map((countryOption) => (
               <button
@@ -20316,6 +20412,92 @@ function AppContent() {
               pageSize={referencePageSize}
               onPageChange={setReferencePage}
             />
+          )}
+          </>
+          )}
+
+          {referenceMode === 'winning' && (
+            <div className="winning-template-library">
+              <div className="winning-template-summary">
+                <article>
+                  <span>전체 승인</span>
+                  <strong>{winningTemplateRows.length}</strong>
+                  <small>{activeBrand.name}에서 다음 생성에 사용</small>
+                </article>
+                <article>
+                  <span>우리 캠페인 위닝</span>
+                  <strong>{ownedWinningTemplates.length}</strong>
+                  <small>실제 추적 성과로 승인</small>
+                </article>
+                <article>
+                  <span>외부 레퍼런스</span>
+                  <strong>{externalReferenceTemplates.length}</strong>
+                  <small>분석 후 구조 차용 승인</small>
+                </article>
+              </div>
+
+              <div className="winning-template-policy">
+                <div>
+                  <strong>다음 전략·가이드 생성에 자동 반영됩니다.</strong>
+                  <p>원본 영상이나 문장을 복제하지 않고 후킹, 전개, 증거 장치, CTA 구조만 현재 브랜드와 캠페인에 맞게 변형합니다.</p>
+                </div>
+                <button className="primary-button compact-button" type="button" onClick={() => jumpTo('campaigns')}>
+                  캠페인에서 적용
+                </button>
+              </div>
+
+              {winningTemplateRows.length ? (
+                <div className="winning-template-grid">
+                  {winningTemplateRows.map((template) => (
+                    <article className="winning-template-card" key={template.id}>
+                      <div className="winning-template-card-head">
+                        <div>
+                          <span className={`status-badge ${template.sourceType === 'owned_campaign' ? 'success' : 'warning'}`}>
+                            {template.sourceType === 'owned_campaign' ? '우리 성과' : '외부 레퍼런스'}
+                          </span>
+                          <strong>{template.name}</strong>
+                          <small>{template.sourceLabel} · {template.platform || '플랫폼 미확인'}</small>
+                        </div>
+                        <span className="winning-reuse-count">{Number(template.reuseCount || 0)}회 적용</span>
+                      </div>
+
+                      {template.performanceSnapshot && (
+                        <div className="winning-template-metrics">
+                          <span>조회 <strong>{compactNumber(template.performanceSnapshot.views)}</strong></span>
+                          <span>폭발 <strong>{template.performanceSnapshot.viralRatio ? `${Number(template.performanceSnapshot.viralRatio).toFixed(1)}x` : '-'}</strong></span>
+                          <span>참여율 <strong>{percent(template.performanceSnapshot.engagementRate)}</strong></span>
+                          <span>전환 <strong>{compactNumber(template.performanceSnapshot.conversions)}</strong></span>
+                        </div>
+                      )}
+
+                      <div className="winning-template-detail">
+                        <span>성과·승인 근거</span>
+                        <p>{template.performanceReason || '레퍼런스 분석 후 재사용이 승인된 구조입니다.'}</p>
+                      </div>
+                      <div className="winning-template-detail">
+                        <span>재사용 구조</span>
+                        <p>{template.structure || '후킹 → 사용 장면 → 근거 제시 → CTA'}</p>
+                      </div>
+
+                      <div className="winning-template-card-actions">
+                        <span>{template.lastUsedAt ? `최근 적용 ${template.lastUsedAt}` : '다음 생성부터 적용'}</span>
+                        {template.sourceUrl ? (
+                          <a className="secondary-button compact-button" href={template.sourceUrl} target="_blank" rel="noreferrer">
+                            원본 보기
+                          </a>
+                        ) : null}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state compact-empty winning-template-empty">
+                  <TrendingUp size={23} />
+                  <strong>아직 승인된 위닝 소재가 없습니다.</strong>
+                  <p>리포트에서 성과가 확인된 콘텐츠를 승인하거나, 콘텐츠 레퍼런스를 분석해 가이드 차용하면 이곳에 모입니다.</p>
+                </div>
+              )}
+            </div>
           )}
 
           {referenceMode === 'content' && (
