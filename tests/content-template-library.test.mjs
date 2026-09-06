@@ -4,6 +4,7 @@ import {
   buildReusableTemplateLearningMaterial,
   buildReusableTemplateLearningMaterials,
   getApprovedContentTemplates,
+  getCampaignContentTemplates,
   getYouTubeThumbnailUrl,
 } from '../src/contentTemplateLibrary.js'
 
@@ -41,6 +42,12 @@ test('위닝 소재를 전략과 가이드가 읽는 학습자료로 변환한�
 
 test('승인된 템플릿만 학습자료 목록에 포함한다', () => {
   assert.equal(buildReusableTemplateLearningMaterials(templates, 1).length, 2)
+})
+
+test('캠페인에 선택 연결한 승인 소재만 생성 입력으로 반환한다', () => {
+  assert.deepEqual(getCampaignContentTemplates(templates, 1, ['old']).map((item) => item.id), ['old'])
+  assert.deepEqual(getCampaignContentTemplates(templates, 1, ['draft', 'other']).map((item) => item.id), [])
+  assert.deepEqual(getCampaignContentTemplates(templates, 1, []).map((item) => item.id), [])
 })
 
 test('YouTube 원본 URL에서 변경되지 않은 공식 썸네일 주소를 만든다', () => {

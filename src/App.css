@@ -12345,6 +12345,38 @@
   line-height: 1.55;
 }
 
+.winning-template-apply-controls {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.winning-template-apply-controls label {
+  display: grid;
+  gap: 5px;
+}
+
+.winning-template-apply-controls label > span {
+  color: var(--text-soft);
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.winning-template-apply-controls select {
+  min-width: 190px;
+  min-height: 34px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 0 30px 0 10px;
+}
+
 .winning-template-grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -12440,6 +12472,29 @@
   border-radius: 999px;
   background: rgba(var(--primary-rgb), 0.08);
   color: var(--accent);
+}
+
+.winning-template-card-controls {
+  display: grid;
+  justify-items: end;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.winning-template-select {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.winning-template-select input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--primary);
 }
 
 .winning-template-metrics {
@@ -14368,6 +14423,15 @@
   .winning-template-policy {
     align-items: stretch;
     flex-direction: column;
+  }
+
+  .winning-template-apply-controls {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .winning-template-apply-controls select {
+    width: 100%;
   }
 
   .winning-template-metrics {

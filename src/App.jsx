@@ -75,6 +75,7 @@ import { getAiOutputPolicyState } from './aiPolicyVersions'
 import {
   buildReusableTemplateLearningMaterials,
   getApprovedContentTemplates,
+  getCampaignContentTemplates,
   getYouTubeThumbnailUrl,
 } from './contentTemplateLibrary'
 import {
@@ -8268,6 +8269,11 @@ function AppContent() {
   const [referenceSearchResults, setReferenceSearchResults] = useState([])
   const [isReferenceManualFormOpen, setIsReferenceManualFormOpen] = useState(false)
   const [referenceGuideUsage, setReferenceGuideUsage] = useState(null)
+  const [winningTemplateSelection, setWinningTemplateSelection] = useState({
+    campaignId: '',
+    templateIds: [],
+    initialized: false,
+  })
   const [creatorGroupQuery, setCreatorGroupQuery] = useState('')
   const [creatorGroupTypeFilter, setCreatorGroupTypeFilter] = useState('전체')
   const [selectedCreatorGroupId, setSelectedCreatorGroupId] = useState(defaultCreatorGroups[0]?.id ?? '')
@@ -10215,10 +10221,6 @@ function AppContent() {
     () => getApprovedContentTemplates(contentTemplates, activeBrand.id),
     [activeBrand.id, contentTemplates],
   )
-  const approvedWinningTemplateMaterials = useMemo(
-    () => buildReusableTemplateLearningMaterials(approvedWinningTemplates, activeBrand.id),
-    [activeBrand.id, approvedWinningTemplates],
-  )
   const ownedWinningTemplates = useMemo(
     () => approvedWinningTemplates.filter((template) => template.sourceType === 'owned_campaign'),
     [approvedWinningTemplates],
@@ -10248,6 +10250,18 @@ function AppContent() {
     }),
     [approvedWinningTemplates, campaigns, contentReferences, trackedPosts],
   )
+  const winningTargetCampaign =
+    brandCampaigns.find((campaign) => String(campaign.id) === String(winningTemplateSelection.campaignId)) ||
+    brandCampaigns.find((campaign) => String(campaign.id) === String(selectedCampaign?.id)) ||
+    brandCampaigns[0]
+  const winningTargetCampaignId = String(winningTargetCampaign?.id || '')
+  const availableWinningTemplateIds = new Set(approvedWinningTemplates.map((template) => String(template.id)))
+  const selectedWinningTemplateIds = (
+    winningTemplateSelection.initialized &&
+    String(winningTemplateSelection.campaignId) === winningTargetCampaignId
+      ? winningTemplateSelection.templateIds
+      : winningTargetCampaign?.reuseTemplateIds || []
+  ).map(String).filter((templateId) => availableWinningTemplateIds.has(templateId))
   const visibleWorkflowSignals = useMemo(
     () =>
       workflowSignals
@@ -14658,14 +14672,16 @@ function AppContent() {
   const generateCampaignStrategyForDetail = async (campaign) => {
     if (!campaign) return
     const baseCampaignBrief = buildCampaignBriefFromCampaign(campaign)
+    const campaignWinningTemplates = getCampaignContentTemplates(contentTemplates, activeBrand.id, campaign.reuseTemplateIds)
+    const campaignWinningTemplateMaterials = buildReusableTemplateLearningMaterials(campaignWinningTemplates, activeBrand.id)
     const campaignBrief = {
       ...baseCampaignBrief,
       learningMaterials: [
-        ...approvedWinningTemplateMaterials,
+        ...campaignWinningTemplateMaterials,
         ...getLearningMaterials(baseCampaignBrief),
       ],
     }
-    const appliedTemplateIds = approvedWinningTemplates.map((template) => String(template.id))
+    const appliedTemplateIds = campaignWinningTemplates.map((template) => String(template.id))
     const localStrategy = buildInfluencerStrategy({
       brand: activeBrand,
       brief: campaignBrief,
@@ -14784,15 +14800,17 @@ function AppContent() {
   const generateCampaignGuideForDetail = async (campaign) => {
     if (!campaign) return
     const baseCampaignBrief = buildCampaignBriefFromCampaign(campaign)
+    const campaignWinningTemplates = getCampaignContentTemplates(contentTemplates, activeBrand.id, campaign.reuseTemplateIds)
+    const campaignWinningTemplateMaterials = buildReusableTemplateLearningMaterials(campaignWinningTemplates, activeBrand.id)
     const campaignBrief = {
       ...baseCampaignBrief,
       learningMaterials: [
-        ...approvedWinningTemplateMaterials,
+        ...campaignWinningTemplateMaterials,
         ...getLearningMaterials(baseCampaignBrief),
       ],
     }
-    const appliedTemplateIds = approvedWinningTemplates.map((template) => String(template.id))
-    const reusableTemplateReferences = approvedWinningTemplateMaterials.map((material) => ({
+    const appliedTemplateIds = campaignWinningTemplates.map((template) => String(template.id))
+    const reusableTemplateReferences = campaignWinningTemplateMaterials.map((material) => ({
       title: material.title,
       source: material.sourceName,
       structure: material.doSay,
@@ -17250,6 +17268,53 @@ function AppContent() {
       material,
     })
     showToast('제작 레퍼런스 분석을 열었어요. 괜찮으면 AI 가이드 참고자료로 저장하세요.')
+  }
+
+  const toggleWinningTemplateSelection = (templateId) => {
+    const normalizedTemplateId = String(templateId)
+    setWinningTemplateSelection({
+      campaignId: winningTargetCampaignId,
+      templateIds: selectedWinningTemplateIds.includes(normalizedTemplateId)
+        ? selectedWinningTemplateIds.filter((item) => item !== normalizedTemplateId)
+        : [...selectedWinningTemplateIds, normalizedTemplateId],
+      initialized: true,
+    })
+  }
+
+  const connectWinningTemplatesToCampaign = () => {
+    const targetCampaign = brandCampaigns.find(
+      (campaign) => String(campaign.id) === String(winningTargetCampaignId),
+    )
+    if (!targetCampaign) {
+      showToast('적용할 캠페인을 선택해주세요.')
+      return
+    }
+
+    const availableTemplateIds = new Set(approvedWinningTemplates.map((template) => String(template.id)))
+    const nextTemplateIds = uniqueList(
+      selectedWinningTemplateIds.filter((templateId) => availableTemplateIds.has(String(templateId))),
+    )
+    const updatedAt = nowLabel()
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          campaigns: current.campaigns.map((campaign) =>
+            String(campaign.id) === String(targetCampaign.id)
+              ? {
+                  ...campaign,
+                  reuseTemplateIds: nextTemplateIds,
+                  reuseTemplatesUpdatedAt: updatedAt,
+                }
+              : campaign,
+          ),
+        },
+        'campaign',
+        `${targetCampaign.name} 위닝 소재 ${nextTemplateIds.length}개 연결`,
+      ),
+    )
+    setSelectedCampaignId(targetCampaign.id)
+    showToast(`${targetCampaign.name}에 위닝 소재 ${nextTemplateIds.length}개를 연결했어요. 전략 또는 가이드를 재생성하면 반영됩니다.`)
   }
 
   const borrowReferenceForGuide = () => {
@@ -20447,12 +20512,54 @@ function AppContent() {
 
               <div className="winning-template-policy">
                 <div>
-                  <strong>다음 전략·가이드 생성에 자동 반영됩니다.</strong>
-                  <p>원본 영상이나 문장을 복제하지 않고 후킹, 전개, 증거 장치, CTA 구조만 현재 브랜드와 캠페인에 맞게 변형합니다.</p>
+                  <strong>캠페인별로 사용할 소재를 선택합니다.</strong>
+                  <p>선택한 소재만 다음 전략·가이드 생성에 반영되며, 원본이 아니라 후킹·전개·증거·CTA 구조를 변형합니다.</p>
                 </div>
-                <button className="primary-button compact-button" type="button" onClick={() => jumpTo('campaigns')}>
-                  캠페인에서 적용
-                </button>
+                <div className="winning-template-apply-controls">
+                  <label>
+                    <span>적용 캠페인</span>
+                    <select
+                      value={winningTargetCampaignId}
+                      onChange={(event) => {
+                        const nextCampaignId = event.target.value
+                        const nextCampaign = brandCampaigns.find((campaign) => String(campaign.id) === nextCampaignId)
+                        setWinningTemplateSelection({
+                          campaignId: nextCampaignId,
+                          templateIds: (nextCampaign?.reuseTemplateIds || []).map(String),
+                          initialized: true,
+                        })
+                      }}
+                    >
+                      {brandCampaigns.map((campaign) => (
+                        <option value={String(campaign.id)} key={campaign.id}>{campaign.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    className="secondary-button compact-button"
+                    type="button"
+                    disabled={!approvedWinningTemplates.length}
+                    onClick={() => setWinningTemplateSelection({
+                      campaignId: winningTargetCampaignId,
+                      templateIds: selectedWinningTemplateIds.length === approvedWinningTemplates.length
+                        ? []
+                        : approvedWinningTemplates.map((template) => String(template.id)),
+                      initialized: true,
+                    })}
+                  >
+                    {selectedWinningTemplateIds.length === approvedWinningTemplates.length && approvedWinningTemplates.length
+                      ? '전체 해제'
+                      : '전체 선택'}
+                  </button>
+                  <button
+                    className="primary-button compact-button"
+                    type="button"
+                    disabled={!winningTargetCampaignId}
+                    onClick={connectWinningTemplatesToCampaign}
+                  >
+                    선택 {selectedWinningTemplateIds.length}개 연결
+                  </button>
+                </div>
               </div>
 
               {winningTemplateRows.length ? (
@@ -20490,7 +20597,17 @@ function AppContent() {
                           <strong>{template.name}</strong>
                           <small>{template.sourceLabel} · {template.platform || '플랫폼 미확인'}</small>
                         </div>
-                        <span className="winning-reuse-count">{Number(template.reuseCount || 0)}회 적용</span>
+                        <div className="winning-template-card-controls">
+                          <span className="winning-reuse-count">{Number(template.reuseCount || 0)}회 적용</span>
+                          <label className="winning-template-select">
+                            <input
+                              type="checkbox"
+                              checked={selectedWinningTemplateIds.includes(String(template.id))}
+                              onChange={() => toggleWinningTemplateSelection(template.id)}
+                            />
+                            <span>선택</span>
+                          </label>
+                        </div>
                       </div>
 
                       {template.performanceSnapshot && (

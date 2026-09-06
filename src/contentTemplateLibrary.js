@@ -41,6 +41,12 @@ export function buildReusableTemplateLearningMaterials(templates = [], brandId =
   return getApprovedContentTemplates(templates, brandId).map(buildReusableTemplateLearningMaterial)
 }
 
+export function getCampaignContentTemplates(templates = [], brandId = '', templateIds = []) {
+  const selectedIds = new Set((Array.isArray(templateIds) ? templateIds : []).map(normalizeId))
+  if (!selectedIds.size) return []
+  return getApprovedContentTemplates(templates, brandId).filter((template) => selectedIds.has(normalizeId(template.id)))
+}
+
 export function getYouTubeThumbnailUrl(value = '') {
   try {
     const url = new URL(String(value))
