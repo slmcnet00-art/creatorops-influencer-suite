@@ -75,6 +75,7 @@ import { getAiOutputPolicyState } from './aiPolicyVersions'
 import {
   buildReusableTemplateLearningMaterials,
   getApprovedContentTemplates,
+  getYouTubeThumbnailUrl,
 } from './contentTemplateLibrary'
 import {
   getBackendConfig,
@@ -10230,15 +10231,22 @@ function AppContent() {
     () => approvedWinningTemplates.map((template) => {
       const sourceCampaign = campaigns.find((campaign) => String(campaign.id) === String(template.campaignId))
       const sourceReference = contentReferences.find((reference) => String(reference.id) === String(template.referenceId))
+      const sourceTrackedPost = trackedPosts.find((post) => String(post.id) === String(template.sourceContentId))
+      const sourceUrl = template.performanceSnapshot?.contentUrl || sourceTrackedPost?.url || sourceReference?.url || ''
       return {
         ...template,
         sourceLabel: template.sourceType === 'owned_campaign'
           ? `우리 캠페인 · ${sourceCampaign?.name || '캠페인 미확인'}`
           : '외부 레퍼런스 승인',
-        sourceUrl: template.performanceSnapshot?.contentUrl || sourceReference?.url || '',
+        sourceUrl,
+        thumbnailUrl:
+          template.thumbnailUrl ||
+          sourceTrackedPost?.thumbnailUrl ||
+          sourceReference?.thumbnailUrl ||
+          getYouTubeThumbnailUrl(sourceUrl),
       }
     }),
-    [approvedWinningTemplates, campaigns, contentReferences],
+    [approvedWinningTemplates, campaigns, contentReferences, trackedPosts],
   )
   const visibleWorkflowSignals = useMemo(
     () =>
@@ -17316,6 +17324,7 @@ function AppContent() {
       sourceContentId: content.id,
       name: content.title || `${content.creatorName} 성과 콘텐츠`,
       platform: content.platform || '',
+      thumbnailUrl: content.thumbnailUrl || getYouTubeThumbnailUrl(content.url),
       status: 'approved',
       structure: [
         content.structureAnalysis?.hook,
@@ -20450,6 +20459,29 @@ function AppContent() {
                 <div className="winning-template-grid">
                   {winningTemplateRows.map((template) => (
                     <article className="winning-template-card" key={template.id}>
+                      {template.thumbnailUrl ? (
+                        template.sourceUrl ? (
+                          <a
+                            className="winning-template-media"
+                            href={template.sourceUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label={`${template.name} 원본 영상 열기`}
+                          >
+                            <img src={template.thumbnailUrl} alt={`${template.name} 썸네일`} />
+                            <span aria-hidden="true"><Play size={27} fill="currentColor" /></span>
+                          </a>
+                        ) : (
+                          <div className="winning-template-media">
+                            <img src={template.thumbnailUrl} alt={`${template.name} 썸네일`} />
+                          </div>
+                        )
+                      ) : (
+                        <div className="winning-template-media winning-template-media-empty">
+                          <Video size={25} />
+                          <span>썸네일 없음</span>
+                        </div>
+                      )}
                       <div className="winning-template-card-head">
                         <div>
                           <span className={`status-badge ${template.sourceType === 'owned_campaign' ? 'success' : 'warning'}`}>

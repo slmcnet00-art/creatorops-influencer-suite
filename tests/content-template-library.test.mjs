@@ -4,6 +4,7 @@ import {
   buildReusableTemplateLearningMaterial,
   buildReusableTemplateLearningMaterials,
   getApprovedContentTemplates,
+  getYouTubeThumbnailUrl,
 } from '../src/contentTemplateLibrary.js'
 
 const templates = [
@@ -40,4 +41,16 @@ test('위닝 소재를 전략과 가이드가 읽는 학습자료로 변환한�
 
 test('승인된 템플릿만 학습자료 목록에 포함한다', () => {
   assert.equal(buildReusableTemplateLearningMaterials(templates, 1).length, 2)
+})
+
+test('YouTube 원본 URL에서 변경되지 않은 공식 썸네일 주소를 만든다', () => {
+  assert.equal(
+    getYouTubeThumbnailUrl('https://www.youtube.com/watch?v=abcdefghijk'),
+    'https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg',
+  )
+  assert.equal(
+    getYouTubeThumbnailUrl('https://youtu.be/abcdefghijk'),
+    'https://i.ytimg.com/vi/abcdefghijk/hqdefault.jpg',
+  )
+  assert.equal(getYouTubeThumbnailUrl('https://example.com/video'), '')
 })

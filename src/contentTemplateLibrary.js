@@ -40,3 +40,19 @@ export function buildReusableTemplateLearningMaterial(template = {}) {
 export function buildReusableTemplateLearningMaterials(templates = [], brandId = '') {
   return getApprovedContentTemplates(templates, brandId).map(buildReusableTemplateLearningMaterial)
 }
+
+export function getYouTubeThumbnailUrl(value = '') {
+  try {
+    const url = new URL(String(value))
+    const hostname = url.hostname.replace(/^www\./, '').toLowerCase()
+    let videoId = ''
+    if (hostname === 'youtu.be') videoId = url.pathname.split('/').filter(Boolean)[0] || ''
+    if (hostname.endsWith('youtube.com')) {
+      videoId = url.searchParams.get('v') || url.pathname.match(/^\/(?:shorts|embed)\/([^/?#]+)/i)?.[1] || ''
+    }
+    if (!/^[\w-]{6,}$/.test(videoId)) return ''
+    return `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`
+  } catch {
+    return ''
+  }
+}
