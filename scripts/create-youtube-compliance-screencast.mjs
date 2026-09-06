@@ -1,5 +1,6 @@
 import { chromium } from 'playwright'
 import { execFileSync } from 'node:child_process'
+import ffmpeg from 'ffmpeg-static'
 import { mkdirSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
@@ -7,7 +8,6 @@ const root = resolve(process.cwd())
 const outputDir = join(root, 'youtube-compliance-review-20260827')
 const rawDir = join(outputDir, 'raw')
 const appBaseUrl = process.env.REVIEW_BASE_URL || 'http://127.0.0.1:5173'
-const ffmpeg = join(root, 'node_modules', 'ffmpeg-static', 'ffmpeg.exe')
 const rawVideo = join(outputDir, 'creatorops-youtube-api-field-display-raw.webm')
 const finalVideo = join(outputDir, 'CreatorOps-YouTube-API-Field-Display-HD.mp4')
 
