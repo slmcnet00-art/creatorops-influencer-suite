@@ -1,5 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { campaignTypeOptions, isGroupBuyingCampaign, normalizeCampaignType } from './campaignTypes.js'
+import { campaignTypeOptions, isGroupBuyingCampaign, normalizeCampaignType, normalizeContentFormats, contentFormatSummary } from './campaignTypes.js'
+import ContentFormatSelector from './ContentFormatSelector.jsx'
 import {
   ArrowRight,
   ArrowUpRight,
@@ -1496,6 +1497,7 @@ function normalizeCampaign(campaign, brands) {
     ...campaign,
     brandId: inferBrandIdForCampaign(campaign, brands),
     campaignType: normalizeCampaignType(campaign.campaignType ?? fallback?.campaignType),
+    contentFormats: normalizeContentFormats(campaign.contentFormats),
     mission: campaign.mission ?? fallback?.mission ?? '브랜드 브리프에 맞춘 콘텐츠 미션',
     reward: campaign.reward ?? fallback?.reward ?? '제품 제공 + 협의 리워드',
     approvalFlow: campaign.approvalFlow ?? fallback?.approvalFlow ?? '브리프 전달 → 콘텐츠 검수 → 게시 확인 → 성과 리포트',
@@ -3371,6 +3373,7 @@ function buildInfluencerContentGuide({ brand, brief, campaign, creators = [] }) 
 - 제품/서비스: ${brief.product || '-'}
 - 협업 유형: ${seedType}
 - 권장 채널: ${channel}
+- 콘텐츠 형식: ${contentFormatSummary(campaign.contentFormats)}
 - 캠페인 유형: ${getStrategyProblemType(campaign, brief)}
 - 캠페인 목표: ${campaign.objective || brief.goal || '-'}
 - KPI: ${campaign.kpiGoal || '조회수, 댓글, 저장/공유, 전환 링크 클릭, 구매/문의'}
@@ -3516,6 +3519,7 @@ function buildCreatorSpecificContentGuide({ brand, brief, campaign, creator, com
 - 제품/서비스: ${brief.product || campaign?.product || '-'}
 - 협업 유형: ${campaign?.guideSeedType || '무가시딩'}
 - 권장 채널: ${platform}
+- 콘텐츠 형식: ${contentFormatSummary(campaign?.contentFormats)}
 - 업로드 일정: ${campaign?.uploadDueDate || campaign?.deadline || '협의'}
 
 ## 1-1. 개인 추적 숏링크
@@ -4579,6 +4583,7 @@ function buildInfluencerStrategy({ brand, brief, campaign, creators = [], recomm
     `타깃: ${personaText}`,
     `목표: ${campaignGoal}`,
     `우선 채널: ${selectedPlatforms.join(', ')}`,
+    `콘텐츠 형식: ${contentFormatSummary(campaign?.contentFormats)} · 선택 형식에 맞춰 제출물을 협의`,
     `목표 후보 수: ${targetCount}명`,
     materialDigest.sourceNames.length ? `첨부 학습자료 ${materialDigest.sourceNames.length}건 반영` : '첨부 학습자료 없음',
   ]
@@ -14362,6 +14367,7 @@ function AppContent() {
     product: campaign.product || '',
     objective: campaign.objective || '브랜드 인지도',
     campaignType: normalizeCampaignType(campaign.campaignType),
+    contentFormats: normalizeContentFormats(campaign.contentFormats),
     targetPersona: campaign.targetPersona || '',
     searchKeywords: campaign.searchKeywords || '',
     exclusionKeywords: campaign.exclusionKeywords || '',
@@ -14429,6 +14435,7 @@ function AppContent() {
       product: campaignEditDraft.product || activeCampaignForModal.product,
       objective: campaignEditDraft.objective,
       campaignType: normalizeCampaignType(campaignEditDraft.campaignType),
+      contentFormats: normalizeContentFormats(campaignEditDraft.contentFormats),
       targetPersona: campaignEditDraft.targetPersona,
       searchKeywords: campaignEditDraft.searchKeywords,
       exclusionKeywords: campaignEditDraft.exclusionKeywords,
@@ -14559,6 +14566,7 @@ function AppContent() {
     product: campaign.product || campaignBrief.product || '',
     objective: campaign.objective || campaignBrief.goal || '',
     campaignType: normalizeCampaignType(campaign.campaignType),
+    contentFormats: normalizeContentFormats(campaign.contentFormats),
     targetPersona: campaign.targetPersona || campaignBrief.persona || '',
     keywords: campaign.searchKeywords || campaignBrief.keywords || '',
     strategyKeywords: campaignBrief.strategyKeywords || '',
@@ -15175,6 +15183,7 @@ function AppContent() {
       product: campaignBrief.product,
       objective: campaignDraft.objective,
       campaignType: normalizeCampaignType(campaignDraft.campaignType),
+      contentFormats: normalizeContentFormats(campaignDraft.contentFormats),
       targetPersona: campaignBrief.persona,
       searchKeywords: campaignBrief.keywords,
       exclusionKeywords: campaignBrief.exclusions,
@@ -15227,6 +15236,7 @@ function AppContent() {
           product: campaignBrief.product,
           objective: campaignDraft.objective,
           campaignType: normalizeCampaignType(campaignDraft.campaignType),
+          contentFormats: normalizeContentFormats(campaignDraft.contentFormats),
           targetPersona: campaignBrief.persona,
           searchKeywords: campaignBrief.keywords,
           exclusionKeywords: campaignBrief.exclusions,
@@ -20471,6 +20481,7 @@ function AppContent() {
                   <div>
                     <span className="mini-label">캠페인 상세</span>
                     <strong>{activeCampaignForModal.name}</strong>
+                    <p>{normalizeCampaignType(activeCampaignForModal.campaignType)} · 콘텐츠 형식: {contentFormatSummary(activeCampaignForModal.contentFormats)}</p>
                     <p>{activeCampaignForModal.objective} · {getCampaignMarketSummary(activeCampaignForModal)} · {activeCampaignForModal.owner} · 마감 {activeCampaignForModal.deadline ?? '미정'}</p>
                   </div>
                   <div className="campaign-detail-page-actions">
@@ -20532,6 +20543,19 @@ function AppContent() {
                         <input value={campaignEditDraft.searchKeywords} onChange={(event) => updateCampaignEditField('searchKeywords', event.target.value)} />
                       </label>
                     </div>
+                    <label>
+                      캠페인 타입
+                      <select value={campaignEditDraft.campaignType} onChange={(event) => updateCampaignEditField('campaignType', event.target.value)}>
+                        {campaignEditDraft.campaignType === 'UGC/숏폼' && (
+                          <option value="UGC/숏폼" disabled hidden>기존 분류 · 캠페인 타입을 다시 선택하세요</option>
+                        )}
+                        {campaignTypeOptions.map((option) => <option key={option}>{option}</option>)}
+                      </select>
+                    </label>
+                    <ContentFormatSelector
+                      value={campaignEditDraft.contentFormats}
+                      onChange={(contentFormats) => updateCampaignEditField('contentFormats', contentFormats)}
+                    />
                     <div className="campaign-market-mode compact" role="group" aria-label="캠페인 국가 운영 방식 수정">
                       <button
                         className={campaignEditDraft.marketMode === CAMPAIGN_MARKET_MODES.single ? 'active' : ''}
@@ -21916,6 +21940,10 @@ function AppContent() {
                     </select>
                   </label>
                 </div>
+                <ContentFormatSelector
+                  value={campaignDraft.contentFormats}
+                  onChange={(contentFormats) => setCampaignDraft((current) => ({ ...current, contentFormats }))}
+                />
                 <div className="campaign-market-mode" role="group" aria-label="캠페인 국가 운영 방식">
                   <button
                     className={campaignDraft.marketMode === CAMPAIGN_MARKET_MODES.single ? 'active' : ''}
@@ -22892,6 +22920,7 @@ function AppContent() {
                 <div className="campaign-badges">
                   <span className="status-chip">{activeCampaignForModal.status}</span>
                   <span className="type-chip">{normalizeCampaignType(activeCampaignForModal.campaignType)}</span>
+                  <span className="type-chip">콘텐츠 형식: {contentFormatSummary(activeCampaignForModal.contentFormats)}</span>
                 </div>
                 <h3>{activeCampaignForModal.name}</h3>
                 <p>{activeCampaignForModal.objective}</p>
@@ -22949,6 +22978,9 @@ function AppContent() {
                     <label>
                       캠페인 타입
                       <select value={campaignEditDraft.campaignType} onChange={(event) => updateCampaignEditField('campaignType', event.target.value)}>
+                        {campaignEditDraft.campaignType === 'UGC/숏폼' && (
+                          <option value="UGC/숏폼" disabled hidden>기존 분류 · 캠페인 타입을 다시 선택하세요</option>
+                        )}
                         {campaignTypeOptions.map((option) => (
                           <option key={option}>{option}</option>
                         ))}
@@ -22959,6 +22991,10 @@ function AppContent() {
                     이번 캠페인 타깃
                     <input value={campaignEditDraft.targetPersona} onChange={(event) => updateCampaignEditField('targetPersona', event.target.value)} />
                   </label>
+                  <ContentFormatSelector
+                    value={campaignEditDraft.contentFormats}
+                    onChange={(contentFormats) => updateCampaignEditField('contentFormats', contentFormats)}
+                  />
                   <div className="modal-two-col">
                     <label>
                       검색 키워드
@@ -24321,6 +24357,7 @@ function CampaignCard({ campaign, creators, kpiSummary, onOpen, onDelete }) {
           <div className="campaign-badges">
             <span className="status-chip">{campaign.status}</span>
             <span className="type-chip">{normalizeCampaignType(campaign.campaignType)}</span>
+            <span className="type-chip">콘텐츠 형식: {contentFormatSummary(campaign.contentFormats)}</span>
           </div>
           <h3>{campaign.name}</h3>
           <p>
