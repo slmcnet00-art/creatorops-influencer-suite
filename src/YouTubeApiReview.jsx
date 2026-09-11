@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { audienceLabel, YOUTUBE_INPUT_NOTICE_EN } from './platformAudience'
 import {
   ArrowRight,
   BarChart3,
@@ -179,7 +180,7 @@ export default function YouTubeApiReview() {
           <div className="yt-review-demo-control">
             <div className="yt-review-control-icon"><FileSearch size={23} /></div>
             <h3>1. Enter a public YouTube video URL</h3>
-            <p>The server extracts the video ID and requests only the documented public resource parts.</p>
+            <p>{YOUTUBE_INPUT_NOTICE_EN}</p>
             <label htmlFor="youtube-review-url">Public YouTube video URL</label>
             <div className="yt-review-input-row">
               <input
@@ -246,7 +247,7 @@ export default function YouTubeApiReview() {
                   <img src={result.channel.thumbnail} alt="YouTube channel thumbnail returned by the API" />
                   <div><span>CHANNEL RESOURCE</span><strong>{result.channel.title}</strong><small>{result.channel.id}</small></div>
                   <div className="yt-review-channel-stats">
-                    <b>{formatNumber(result.channel.subscribers)}</b><span>subscribers</span>
+                    <b>{formatNumber(result.channel.subscribers)}</b><span>{audienceLabel('YouTube')}</span>
                     <b>{formatNumber(result.channel.videos)}</b><span>videos</span>
                   </div>
                 </div>
