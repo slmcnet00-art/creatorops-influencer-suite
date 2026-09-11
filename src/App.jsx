@@ -39,6 +39,7 @@ import {
   X,
 } from 'lucide-react'
 import './App.css'
+import { REVIEW_INPUT_NOTICE } from './youtubeReviewCopy'
 import {
   CREATOROPS_LEARNING_ROOT_URL,
   CREATOROPS_STRATEGY_UPLOAD_URL,
@@ -18607,7 +18608,7 @@ function AppContent() {
                   })
                 )}
               </div>
-              <aside className="recommendation-detail-panel" aria-label="AI 추천 후보 상세">
+              <aside className="recommendation-detail-panel" aria-label="AI 추천 후보 상세" data-review-platform={selectedRecommendationCreator?.platform}>
                 {selectedRecommendationCreator && selectedRecommendationDetail ? (
                   <>
                     <div className="recommendation-detail-header">
@@ -18922,7 +18923,7 @@ function AppContent() {
             </div>
 
             <div className="performance-filter-panel">
-              <div className="performance-filter-heading">
+              <div className="performance-filter-heading" data-review-platform={platform}>
                 <div>
                   <span className="mini-label">발굴 조건</span>
                   <strong>{platform === 'YouTube' ? '구독자·평균 조회수 조건' : '팔로워·평균 조회수 조건'}</strong>
@@ -18937,7 +18938,7 @@ function AppContent() {
                   </button>
                 </div>
               </div>
-              <div className="performance-filter-grid">
+              <div className="performance-filter-grid" data-review-platform={platform}>
                 <label>
                   <span>{platform === 'YouTube' ? '구독자 최소' : '팔로워 최소'}</span>
                   <input
@@ -19100,7 +19101,7 @@ function AppContent() {
           </section>
 
           {selectedCreator && (
-            <aside className="panel profile-panel">
+            <aside className="panel profile-panel" data-review-platform={selectedCreator.platform}>
               <div className="profile-header">
                 <img src={selectedCreator.avatar} alt="" />
                 <button
@@ -19975,6 +19976,12 @@ function AppContent() {
             ))}
           </div>
 
+          {youtubeEnglishReviewMode && (
+            <div className="youtube-data-policy-note" role="note" data-review-no-translate="true">
+              <ShieldCheck size={18} />
+              <div><strong>YouTube public data notice</strong><p>{REVIEW_INPUT_NOTICE}</p></div>
+            </div>
+          )}
           <form className="reference-search-bar" onSubmit={applyReferenceSearch}>
             <label>
               <Search size={17} />
@@ -20218,7 +20225,7 @@ function AppContent() {
 
           <div className="reference-list">
             {paginatedReferences.map((item, index) => (
-              <article className="reference-card" key={item.id}>
+              <article className="reference-card" key={item.id} data-review-platform={item.platform}>
                 {(() => {
                   const isTemporarySearchResult = Boolean(item.searchOnly)
                   const isSavedByUrl = savedProductionReferences.some(
@@ -24107,7 +24114,7 @@ function RecommendationCard({
   })
 
   return (
-    <article className={`recommendation-card ${active ? 'active' : ''} ${checked ? 'selected' : ''}`}>
+    <article className={`recommendation-card ${active ? 'active' : ''} ${checked ? 'selected' : ''}`} data-review-platform={creator.platform}>
       <div className="recommendation-top">
         <label className="recommendation-check" aria-label={`${creator.name} 선택`}>
           <input type="checkbox" checked={checked} onChange={onToggle} />
