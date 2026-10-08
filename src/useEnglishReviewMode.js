@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { reviewAudienceText, REVIEW_INPUT_NOTICE } from './youtubeReviewCopy'
 
 const exactTranslations = new Map([
   ['운영 CRM', 'Operations CRM'],
@@ -361,6 +362,7 @@ const phraseTranslations = [
 ]
 
 const attributeNames = ['placeholder', 'title', 'aria-label']
+const originalReviewText = new WeakMap()
 
 function translateValue(value) {
   if (!value || !/[가-힣]/.test(value)) return value
@@ -394,7 +396,11 @@ function translateTree(root) {
 
   textNodes.forEach((node) => {
     if (node.parentElement?.closest('script, style, textarea, [data-review-no-translate]')) return
-    const translated = translateValue(node.nodeValue)
+    const previous = originalReviewText.get(node)
+    const source = previous?.output === node.nodeValue ? previous.source : node.nodeValue
+    const platform = node.parentElement?.closest('[data-review-platform]')?.getAttribute('data-review-platform')
+    const translated = reviewAudienceText(translateValue(source), platform)
+    originalReviewText.set(node, { source, output: translated })
     if (translated !== node.nodeValue) node.nodeValue = translated
   })
 
@@ -404,7 +410,7 @@ function translateTree(root) {
     attributeNames.forEach((attributeName) => {
       const current = element.getAttribute?.(attributeName)
       if (!current) return
-      const translated = translateValue(current)
+      const translated = reviewAudienceText(translateValue(current), element.closest('[data-review-platform]')?.getAttribute('data-review-platform'))
       if (translated !== current) element.setAttribute(attributeName, translated)
     })
   })
@@ -447,6 +453,13 @@ export function useEnglishReviewMode(enabled) {
     const applyTranslations = () => {
       scheduled = false
       translateTree(document.body)
+      document.querySelectorAll('.youtube-data-policy-note').forEach(note => {
+        note.dataset.reviewNoTranslate = 'true'
+        const heading = note.querySelector('strong')
+        const paragraph = note.querySelector('p')
+        if (heading && heading.textContent !== 'YouTube public data notice') heading.textContent = 'YouTube public data notice'
+        if (paragraph && paragraph.textContent !== REVIEW_INPUT_NOTICE) paragraph.textContent = REVIEW_INPUT_NOTICE
+      })
       document.body.dataset.youtubeReviewMode = 'ready'
     }
     const scheduleTranslations = () => {
