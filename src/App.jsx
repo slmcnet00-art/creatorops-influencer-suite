@@ -41,6 +41,7 @@ import {
   X,
 } from 'lucide-react'
 import './App.css'
+import { audienceLabel, audienceGroupLabel, YOUTUBE_INPUT_NOTICE_EN } from './platformAudience'
 import {
   CREATOROPS_LEARNING_ROOT_URL,
   CREATOROPS_STRATEGY_UPLOAD_URL,
@@ -3660,7 +3661,7 @@ function buildRecommendation(creator, brief, campaign) {
   const reasons = [
     pendingMetrics
       ? '실제 프로필 URL은 확보했지만 평균 조회/팔로워 수치 검증 후 추천 우선순위를 확정'
-      : `평균 조회 ${compactNumber(averageViews)} · 팔로워 대비 조회 ${virality.toFixed(1)}x · 성과 점수 ${performanceScore}점`,
+      : `평균 조회 ${compactNumber(averageViews)} · ${audienceLabel(creator.platform)} 대비 조회 ${virality.toFixed(1)}x · 성과 점수 ${performanceScore}점`,
     pendingMetrics
       ? ''
       : `예상 뷰 효율 ${costPerView ? `약 ${won(costPerView)}/view` : '단가 확인 필요'} · 참여율 ${percent(creator.engagement)}`,
@@ -3832,7 +3833,7 @@ function getRecommendationDecisionDetail(creator, decision = '', rawCount = 0, m
   }
 
   if (decisionText.includes('검증')) {
-    if (pendingMetrics) return `팔로워/조회수 수집 후 발송 · raw ${rawCount}개`
+    if (pendingMetrics) return `${audienceLabel(creator.platform)}/조회수 수집 후 발송 · raw ${rawCount}개`
     if (creator.needsVerification) return '프로필 원천 재확인 후 제안'
     if (dataQuality.score < recommendationPolicy.minimumDataQualityScore) {
       return `데이터 품질 ${dataQuality.score}점 · 원천 보강 필요`
@@ -3841,7 +3842,7 @@ function getRecommendationDecisionDetail(creator, decision = '', rawCount = 0, m
   }
 
   if (!pendingMetrics && followers > 0 && followers < recommendationPolicy.minimumFollowers && !hasStrongActualPerformance) {
-    return `팔로워 ${compactNumber(followers)} · 최소 ${compactNumber(recommendationPolicy.minimumFollowers)} 미만`
+    return `${audienceLabel(creator.platform)} ${compactNumber(followers)} · 최소 ${compactNumber(recommendationPolicy.minimumFollowers)} 미만`
   }
 
   if (decisionText.includes('보류')) {
@@ -3856,7 +3857,7 @@ function getRecommendationDecisionDetail(creator, decision = '', rawCount = 0, m
   }
 
   if (!pendingMetrics) {
-    return `후보 유지 · 평균 조회 ${compactNumber(averageViews)} · 팔로워 대비 ${virality.toFixed(1)}x`
+    return `후보 유지 · 평균 조회 ${compactNumber(averageViews)} · ${audienceLabel(creator.platform)} 대비 ${virality.toFixed(1)}x`
   }
 
   return `수치 검증 대기 · raw ${rawCount}개 · 지표 ${metricCount}개 연결`
@@ -3885,8 +3886,8 @@ function getCreatorDataQuality(creator) {
   const flags = [
     creator.platform === 'YouTube' ? '공식 API 연결 가능' : '공개 프로필 수집',
     creator.metricSources?.length ? '수집 출처 보유' : '출처 보강 필요',
-    creator.needsVerification ? '팔로워/조회 검증 대기' : '핵심 지표 입력됨',
-    Number(creator.fakeRisk || 0) >= 10 ? '가짜 팔로워 위험 점검' : '위험 낮음',
+    creator.needsVerification ? `${audienceLabel(creator.platform)}/조회 검증 대기` : '핵심 지표 입력됨',
+    Number(creator.fakeRisk || 0) >= 10 ? `가짜 ${audienceLabel(creator.platform)} 위험 점검` : '위험 낮음',
   ]
 
   return { score, level, tone, flags }
@@ -3902,9 +3903,9 @@ function getReferenceVirality(reference) {
 function getReferencePerformanceLabel(reference) {
   const views = Number(reference?.views || 0)
   const virality = getReferenceVirality(reference)
-  if (views >= 500000 && virality >= 2) return `조회 ${compactNumber(views)} · 팔로워 대비 ${virality.toFixed(1)}x 터진 콘텐츠`
+  if (views >= 500000 && virality >= 2) return `조회 ${compactNumber(views)} · ${audienceLabel(reference.platform)} 대비 ${virality.toFixed(1)}x 터진 콘텐츠`
   if (views >= 500000) return `조회 ${compactNumber(views)} 이상 고조회 레퍼런스`
-  if (virality >= 2) return `팔로워 대비 ${virality.toFixed(1)}x 반응 레퍼런스`
+  if (virality >= 2) return `${audienceLabel(reference.platform)} 대비 ${virality.toFixed(1)}x 반응 레퍼런스`
   return '공개 반응 기반 제작 레퍼런스'
 }
 
@@ -18819,7 +18820,7 @@ function AppContent() {
                     </div>
 
                     <div className="recommendation-detail-stats">
-                      <Stat label="팔로워" value={displayMetric(selectedRecommendationCreator.followers)} />
+                      <Stat label={audienceLabel(selectedRecommendationCreator.platform)} value={displayMetric(selectedRecommendationCreator.followers)} />
                       <Stat
                         label="평균 조회"
                         value={hasPendingMetrics(selectedRecommendationCreator) ? '수집 필요' : displayMetric(selectedRecommendationCreator.averageViews)}
@@ -18837,7 +18838,7 @@ function AppContent() {
                     </div>
                     <div className="creator-rate-toolbar">
                       <span>
-                        팔로워·평균 조회수·참여율·플랫폼 기준 예상 {formatDualCurrency(getCreatorRateSummary(selectedRecommendationCreator).estimatedPrice, selectedCampaign)}
+                        {audienceLabel(selectedRecommendationCreator.platform)}·평균 조회수·참여율·플랫폼 기준 예상 {formatDualCurrency(getCreatorRateSummary(selectedRecommendationCreator).estimatedPrice, selectedCampaign)}
                       </span>
                       <button
                         className="secondary-button compact-button"
@@ -19005,10 +19006,9 @@ function AppContent() {
               <div className="youtube-data-policy-note" role="note">
                 <ShieldCheck size={18} />
                 <div>
-                  <strong>YouTube 공개 데이터 사용 안내</strong>
+                  <strong>{youtubeEnglishReviewMode ? 'YouTube public data notice' : 'YouTube 공개 데이터 사용 안내'}</strong>
                   <p>
-                    입력한 검색어와 공개 채널·영상 URL은 YouTube Data API에서 읽기 전용 공개 정보를 조회하는 데만 사용됩니다.
-                    YouTube에 콘텐츠를 업로드·게시·수정하지 않으며, YouTube API 검색 결과는 엑셀·광고주용 파일·Google Sheets 일괄 내보내기에서 제외됩니다.
+                    {youtubeEnglishReviewMode ? YOUTUBE_INPUT_NOTICE_EN : '입력한 검색어와 공개 채널·영상 URL은 YouTube Data API에서 읽기 전용 공개 정보를 조회하는 데만 사용됩니다. YouTube에 콘텐츠를 업로드·게시·수정·삭제하지 않으며, YouTube API 검색 결과는 엑셀·광고주용 파일·Google Sheets 일괄 내보내기에서 제외됩니다.'}
                   </p>
                 </div>
               </div>
@@ -19090,7 +19090,7 @@ function AppContent() {
               <div className="performance-filter-heading">
                 <div>
                   <span className="mini-label">발굴 조건</span>
-                  <strong>{platform === 'YouTube' ? '구독자·평균 조회수 조건' : '팔로워·평균 조회수 조건'}</strong>
+                  <strong>{audienceLabel(platform)}·평균 조회수 조건</strong>
                 </div>
                 <div className="performance-filter-actions">
                   <span>{activeDiscoveryFilterCount > 0 ? `${activeDiscoveryFilterCount}개 조건 적용` : '전체 후보 기준'}</span>
@@ -19104,7 +19104,7 @@ function AppContent() {
               </div>
               <div className="performance-filter-grid">
                 <label>
-                  <span>{platform === 'YouTube' ? '구독자 최소' : '팔로워 최소'}</span>
+                  <span>{audienceLabel(platform)} 최소</span>
                   <input
                     inputMode="numeric"
                     value={discoveryFilters.minFollowers}
@@ -19113,7 +19113,7 @@ function AppContent() {
                   />
                 </label>
                 <label>
-                  <span>{platform === 'YouTube' ? '구독자 최대' : '팔로워 최대'}</span>
+                  <span>{audienceLabel(platform)} 최대</span>
                   <input
                     inputMode="numeric"
                     value={discoveryFilters.maxFollowers}
@@ -19299,7 +19299,7 @@ function AppContent() {
               </div>
 
               <div className="profile-stats">
-                <Stat label="팔로워" value={displayMetric(selectedCreator.followers)} />
+                <Stat label={audienceLabel(selectedCreator.platform)} value={displayMetric(selectedCreator.followers)} />
                 <Stat label="평균 조회" value={displayMetric(selectedCreator.averageViews)} />
                 <Stat label="참여율" value={hasPendingMetrics(selectedCreator) ? '수집 필요' : percent(selectedCreator.engagement)} />
                 <Stat
@@ -19311,7 +19311,7 @@ function AppContent() {
               </div>
               <div className="creator-rate-toolbar">
                 <span>
-                  팔로워·평균 조회수·참여율·플랫폼 기준 예상 {formatDualCurrency(getCreatorRateSummary(selectedCreator).estimatedPrice, selectedCampaign)}
+                  {audienceLabel(selectedCreator.platform)}·평균 조회수·참여율·플랫폼 기준 예상 {formatDualCurrency(getCreatorRateSummary(selectedCreator).estimatedPrice, selectedCampaign)}
                 </span>
                 <button
                   className="secondary-button compact-button"
@@ -19327,7 +19327,7 @@ function AppContent() {
                   <ShieldCheck size={18} />
                   <div>
                     <strong>브랜드 안정성 {selectedCreator.brandSafety}</strong>
-                    <span>가짜 팔로워 위험 {selectedCreator.fakeRisk}%</span>
+                    <span>가짜 {audienceLabel(selectedCreator.platform)} 위험 {selectedCreator.fakeRisk}%</span>
                   </div>
                 </div>
                 <p>{selectedCreator.audience}</p>
@@ -19352,7 +19352,7 @@ function AppContent() {
                 {selectedSourceEvidence.slice(0, 4).map((source) => (
                   <article className="source-ledger-row" key={source.metric}>
                     <div>
-                      <strong>{source.metric}</strong>
+                      <strong>{['팔로워', 'followers', 'Followers', '구독자', 'subscribers'].includes(source.metric) ? audienceLabel(selectedCreator.platform) : source.metric}</strong>
                       <span>{source.source}</span>
                     </div>
                     <div className="source-ledger-meta">
@@ -19601,7 +19601,7 @@ function AppContent() {
           <div className="creator-group-summary">
             <Stat label="후보 그룹" value={`${creatorGroupSummary.groups}개`} />
             <Stat label="누적 멤버" value={`${creatorGroupSummary.creators}명`} />
-            <Stat label="총 팔로워" value={compactNumber(creatorGroupSummary.avgFollowers)} />
+            <Stat label="총 Subscribers / 팔로워" value={compactNumber(creatorGroupSummary.avgFollowers)} />
             <Stat label="총 평균 조회" value={compactNumber(creatorGroupSummary.avgViews)} />
             <Stat label="평균 단가" value={creatorGroupSummary.avgPrice ? won(creatorGroupSummary.avgPrice) : '산정 전'} />
           </div>
@@ -19674,7 +19674,7 @@ function AppContent() {
                     </div>
                     <div className="creator-group-metrics">
                       <span>멤버 {groupCreators.length}명</span>
-                      <span>팔로워 {compactNumber(groupFollowers)}</span>
+                      <span>{audienceGroupLabel(groupCreators)} {compactNumber(groupFollowers)}</span>
                       <span>평균조회 {compactNumber(groupViews)}</span>
                       <span>평균단가 {groupPriceStats.average ? won(groupPriceStats.average) : '산정 전'}</span>
                     </div>
@@ -19783,7 +19783,7 @@ function AppContent() {
                         </div>
                         <div>
                           <strong>{compactNumber(creator.followers)}</strong>
-                          <span>팔로워</span>
+                          <span>{audienceLabel(creator.platform)}</span>
                         </div>
                         <div>
                           <strong>{compactNumber(creator.avgViews || creator.averageViews)}</strong>
@@ -20156,6 +20156,13 @@ function AppContent() {
             ))}
           </div>
 
+          <div className="youtube-data-policy-note" role="note">
+            <ShieldCheck size={18} />
+            <div>
+              <strong>{youtubeEnglishReviewMode ? 'YouTube public data notice' : 'YouTube 공개 데이터 사용 안내'}</strong>
+              <p>{youtubeEnglishReviewMode ? YOUTUBE_INPUT_NOTICE_EN : 'YouTube 검색어와 공개 URL은 읽기 전용 공개 정보 조회에만 사용됩니다. YouTube에 콘텐츠를 업로드·게시·수정·삭제하지 않으며, YouTube API 검색 결과의 일괄 내보내기는 제공하지 않습니다.'}</p>
+            </div>
+          </div>
           <form className="reference-search-bar" onSubmit={applyReferenceSearch}>
             <label>
               <Search size={17} />
@@ -20261,7 +20268,7 @@ function AppContent() {
                   />
                 </label>
                 <label>
-                  <span>계정 팔로워</span>
+                  <span>계정 {audienceLabel(referenceDraft.platform)}</span>
                   <input
                     inputMode="numeric"
                     value={referenceDraft.accountFollowers}
@@ -20447,7 +20454,7 @@ function AppContent() {
                   <p>{item.publishedAt} · 저장 {item.savedAt}</p>
                   <div className="tracked-account-meta">
                     <span>조회 {compactOptionalNumber(item.views)}</span>
-                    <span>{item.platform === 'YouTube' ? '구독자' : '팔로워'} {item.accountFollowers ? compactNumber(item.accountFollowers) : '-'}</span>
+                    <span>{audienceLabel(item.platform)} {item.accountFollowers ? compactNumber(item.accountFollowers) : '-'}</span>
                     <span>폭발 {getReferenceVirality(item) ? `${getReferenceVirality(item).toFixed(1)}x` : '-'}</span>
                     <span>좋아요 {compactOptionalNumber(item.likes, '-')}</span>
                     <span>댓글 {compactOptionalNumber(item.comments, '-')}</span>
@@ -21731,7 +21738,7 @@ function AppContent() {
                         </p>
                         <div className="owned-learning-metrics">
                           <span>조회 <strong>{compactNumber(content.views)}</strong></span>
-                          <span>팔로워 대비 <strong>{content.followers ? `${content.viralRatio.toFixed(1)}x` : '-'}</strong></span>
+                          <span>{audienceLabel(content.platform)} 대비 <strong>{content.followers ? `${content.viralRatio.toFixed(1)}x` : '-'}</strong></span>
                           <span>참여율 <strong>{percent(content.engagementRate)}</strong></span>
                           <span>전환 <strong>{compactNumber(content.conversions)}</strong></span>
                         </div>
@@ -21879,7 +21886,7 @@ function AppContent() {
                       <strong>{row.creatorName || '크리에이터명 없음'}</strong>
                       <span>{row.region || '-'} / {row.language || '-'}</span>
                     </div>
-                    <span>팔로워 {compactNumber(row.followers)}</span>
+                    <span>{audienceLabel(row.platform)} {compactNumber(row.followers)}</span>
                     <span>평균 조회 {compactNumber(row.averageViews)}</span>
                     <span>총 조회 {compactNumber(row.totalViews)}</span>
                     <span>참여율 {percent(row.engagementRate)}</span>
@@ -21901,7 +21908,7 @@ function AppContent() {
                     <strong>{row.title}</strong>
                     <p>{row.creatorName || '크리에이터 미확인'} / {row.handle || '핸들 미확인'} / {row.publishedAt || '게시일 미확인'}</p>
                     <div className="tracked-account-meta">
-                      <span>팔로워 {row.followers ? compactNumber(row.followers) : '-'}</span>
+                      <span>{audienceLabel(row.platform)} {row.followers ? compactNumber(row.followers) : '-'}</span>
                       <span>국가 {row.country || '-'}</span>
                       <span>언어 {row.language || '-'}</span>
                       <span>{row.sheetName || row.sourceName}</span>
@@ -22739,7 +22746,7 @@ function AppContent() {
               </div>
               <div className="modal-two-col">
                 <label>
-                  팔로워
+                  {audienceLabel(creatorDraft.platform)}
                   <input
                     inputMode="numeric"
                     value={creatorDraft.followers}
@@ -22818,7 +22825,7 @@ function AppContent() {
                   <span>자동 계산 예상 단가</span>
                   <strong>{formatDualCurrency(rate.estimatedPrice, selectedCampaign)}</strong>
                   <small>
-                    {rateCreator.platform} · 팔로워 {displayMetric(rate.factors.followers)} · 평균 조회 {displayMetric(rate.factors.averageViews)} · 참여율 {percent(rate.factors.engagement)}
+                    {rateCreator.platform} · {audienceLabel(rateCreator.platform)} {displayMetric(rate.factors.followers)} · 평균 조회 {displayMetric(rate.factors.averageViews)} · 참여율 {percent(rate.factors.engagement)}
                   </small>
                 </div>
                 <label>
@@ -22968,7 +22975,7 @@ function AppContent() {
                   <UsersRound size={18} />
                   <div>
                     <strong>{trackingDraft.creatorName || '자동 인식 크리에이터'}</strong>
-                    <span>{[trackingDraft.creatorHandle, trackingDraft.creatorFollowers ? `팔로워 ${displayMetric(Number(trackingDraft.creatorFollowers))}` : '', trackingDraft.snapshotCheckedAt].filter(Boolean).join(' / ')}</span>
+                    <span>{[trackingDraft.creatorHandle, trackingDraft.creatorFollowers ? `${audienceLabel(trackingDraft.platform)} ${displayMetric(Number(trackingDraft.creatorFollowers))}` : '', trackingDraft.snapshotCheckedAt].filter(Boolean).join(' / ')}</span>
                   </div>
                 </div>
               )}
@@ -24457,7 +24464,7 @@ function RecommendationCard({
   const recommendationCriteria = [
     { label: '\uD50C\uB7AB\uD3FC', value: creator.platform || '-' },
     { label: '\uAD6D\uAC00', value: creator.country || '-' },
-    { label: '\uD314\uB85C\uC6CC', value: displayMetric(creator.followers) },
+    { label: audienceLabel(creator.platform), value: displayMetric(creator.followers) },
     { label: '\uD3C9\uADE0 \uC870\uD68C', value: pendingMetrics ? '\uC218\uC9D1 \uD544\uC694' : displayMetric(creator.averageViews) },
     { label: '\uCC38\uC5EC\uC728', value: pendingMetrics ? '\uC218\uC9D1 \uD544\uC694' : percent(creator.engagement), tone: 'primary' },
     { label: creatorRate.label, value: estimatedPriceLabel, tone: creatorPrice ? 'primary' : undefined },
@@ -24498,7 +24505,7 @@ function RecommendationCard({
       <div className="recommendation-fit-strip">
         <span>브랜드 핏 {creator.fit ?? recommendation.score}</span>
         <span>안전성 {creator.brandSafety ?? '-'}</span>
-        <span>가짜 팔로워 위험 {creator.fakeRisk ?? '-'}%</span>
+        <span>가짜 {audienceLabel(creator.platform)} 위험 {creator.fakeRisk ?? '-'}%</span>
         <span>{creator.status ?? '검토 대기'}</span>
       </div>
       <div className="recommendation-basis-summary" aria-label="AI 추천 요약">
@@ -24823,7 +24830,7 @@ function OutreachItem({
     .map((part) => part.trim())
     .filter(Boolean)
   const metricLine = creator
-    ? `${creator.platform} · 팔로워 ${compactNumber(creator.followers)} · 평균 조회 ${compactNumber(creator.averageViews)} · 매칭 ${creator.fit ?? '-'}점`
+    ? `${creator.platform} · ${audienceLabel(creator.platform)} ${compactNumber(creator.followers)} · 평균 조회 ${compactNumber(creator.averageViews)} · 매칭 ${creator.fit ?? '-'}점`
     : '후보 지표 확인 필요'
 
   return (
@@ -24890,7 +24897,7 @@ function FulfillmentItem({ item, creator, campaign, onAdvance }) {
   const statusDone = item.deliveryStatus === '발송 완료' || item.deliveryStatus === '정산 완료'
   const isSettled = item.deliveryStatus === '정산 완료'
   const creatorProof = creator
-    ? `${compactNumber(creator.followers)} 팔로워 · 평균 조회 ${compactNumber(creator.averageViews)} · 참여율 ${percent(creator.engagement)} · 브랜드 적합성 ${creator.fit}점`
+    ? `${compactNumber(creator.followers)} ${audienceLabel(creator.platform)} · 평균 조회 ${compactNumber(creator.averageViews)} · 참여율 ${percent(creator.engagement)} · 브랜드 적합성 ${creator.fit}점`
     : '크리에이터 지표를 연결하면 자동 표시됩니다.'
 
   return (
@@ -24950,7 +24957,7 @@ function PoolItem({ item, creator, campaign }) {
   const sourceTone = item.source === '자동' ? 'auto-source' : item.source === '대량 섭외' ? 'bulk-source' : 'manual-source'
   const creatorRate = getCreatorRateSummary(creator)
   const confirmMetrics = [
-    ['팔로워', compactNumber(creator.followers)],
+    [audienceLabel(creator.platform), compactNumber(creator.followers)],
     ['평균 조회', compactNumber(creator.averageViews)],
     ['참여율', percent(creator.engagement)],
     [creatorRate.label, creatorRate.effectivePrice ? won(creatorRate.effectivePrice) : '산정 전'],
@@ -24993,13 +25000,13 @@ function PoolItem({ item, creator, campaign }) {
         </div>
         <div>
           <span>컨펌 포인트</span>
-          <strong>{compactNumber(creator.followers)} 팔로워 / 평균 조회 {compactNumber(creator.averageViews)}</strong>
+          <strong>{compactNumber(creator.followers)} {audienceLabel(creator.platform)} / 평균 조회 {compactNumber(creator.averageViews)}</strong>
           <p>{item.note}</p>
         </div>
         <div>
           <span>브랜드 적합성</span>
           <strong>매칭 {creator.fit ?? '-'}점 · 세이프티 {creator.brandSafety ?? '-'}점</strong>
-          <p>{creator.audience ?? '오디언스 미입력'} · 가짜 팔로워 위험 {creator.fakeRisk ?? '-'}% · {topics}</p>
+          <p>{creator.audience ?? '오디언스 미입력'} · 가짜 {audienceLabel(creator.platform)} 위험 {creator.fakeRisk ?? '-'}% · {topics}</p>
         </div>
       </div>
     </article>
@@ -25075,7 +25082,7 @@ function ClientApprovalBoard({
                 <em>{poolItem.status}</em>
               </div>
               <div className="client-metric-list">
-                <span><b>팔로워</b>{creator ? compactNumber(creator.followers) : '-'}</span>
+                <span><b>{audienceLabel(creator?.platform)}</b>{creator ? compactNumber(creator.followers) : '-'}</span>
                 <span><b>평균 조회</b>{creator ? compactNumber(creator.averageViews) : '-'}</span>
                 <span><b>참여율</b>{creator ? percent(creator.engagement) : '-'}</span>
                 <span><b>데이터</b>{quality.score}</span>
@@ -25087,7 +25094,7 @@ function ClientApprovalBoard({
                     {creatorRate?.effectivePrice ? formatDualCurrency(creatorRate.effectivePrice, campaign) : '산정 전'}
                   </span>
                   <span>브랜드 핏 {creator?.fit ?? '-'}점</span>
-                  <span>가짜 팔로워 위험 {creator?.fakeRisk ?? '-'}%</span>
+                  <span>가짜 {audienceLabel(creator?.platform)} 위험 {creator?.fakeRisk ?? '-'}%</span>
                 </div>
                 <p>{poolItem.note || creator?.sourceNote || '브랜드 적합도, 콘텐츠 톤, 최근 성과 기준으로 컨펌 검토가 필요합니다.'}</p>
                 {creator && onEditCreatorRate ? (
