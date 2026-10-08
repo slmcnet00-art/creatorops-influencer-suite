@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { reviewAudienceText, REVIEW_INPUT_NOTICE } from './youtubeReviewCopy'
 
 const exactTranslations = new Map([
   ['운영 CRM', 'Operations CRM'],
@@ -126,6 +127,10 @@ const exactTranslations = new Map([
   ['예시 보기', 'Show sample candidates'],
   ['발굴 조건', 'Discovery criteria'],
   ['팔로워·평균 조회수 조건', 'Follower and average-view criteria'],
+  ['Subscribers·평균 조회수 조건', 'Subscribers and average-view criteria'],
+  ['Subscribers 최소', 'Minimum Subscribers'],
+  ['Subscribers 최대', 'Maximum Subscribers'],
+  ['가짜 Subscribers 위험', 'Fake subscriber risk'],
   ['팔로워 최소', 'Minimum followers'],
   ['팔로워 최대', 'Maximum followers'],
   ['구독자·평균 조회수 조건', 'Subscriber and average-view criteria'],
@@ -357,6 +362,7 @@ const phraseTranslations = [
 ]
 
 const attributeNames = ['placeholder', 'title', 'aria-label']
+const originalReviewText = new WeakMap()
 
 function translateValue(value) {
   if (!value || !/[가-힣]/.test(value)) return value
@@ -390,7 +396,11 @@ function translateTree(root) {
 
   textNodes.forEach((node) => {
     if (node.parentElement?.closest('script, style, textarea, [data-review-no-translate]')) return
-    const translated = translateValue(node.nodeValue)
+    const previous = originalReviewText.get(node)
+    const source = previous?.output === node.nodeValue ? previous.source : node.nodeValue
+    const platform = node.parentElement?.closest('[data-review-platform]')?.getAttribute('data-review-platform')
+    const translated = reviewAudienceText(translateValue(source), platform)
+    originalReviewText.set(node, { source, output: translated })
     if (translated !== node.nodeValue) node.nodeValue = translated
   })
 
@@ -400,7 +410,7 @@ function translateTree(root) {
     attributeNames.forEach((attributeName) => {
       const current = element.getAttribute?.(attributeName)
       if (!current) return
-      const translated = translateValue(current)
+      const translated = reviewAudienceText(translateValue(current), element.closest('[data-review-platform]')?.getAttribute('data-review-platform'))
       if (translated !== current) element.setAttribute(attributeName, translated)
     })
   })
@@ -443,6 +453,13 @@ export function useEnglishReviewMode(enabled) {
     const applyTranslations = () => {
       scheduled = false
       translateTree(document.body)
+      document.querySelectorAll('.youtube-data-policy-note').forEach(note => {
+        note.dataset.reviewNoTranslate = 'true'
+        const heading = note.querySelector('strong')
+        const paragraph = note.querySelector('p')
+        if (heading && heading.textContent !== 'YouTube public data notice') heading.textContent = 'YouTube public data notice'
+        if (paragraph && paragraph.textContent !== REVIEW_INPUT_NOTICE) paragraph.textContent = REVIEW_INPUT_NOTICE
+      })
       document.body.dataset.youtubeReviewMode = 'ready'
     }
     const scheduleTranslations = () => {

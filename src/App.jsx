@@ -1,4 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { campaignTypeOptions, isGroupBuyingCampaign, normalizeCampaignType, normalizeContentFormats, contentFormatSummary } from './campaignTypes.js'
+import ContentFormatSelector from './ContentFormatSelector.jsx'
 import {
   ArrowRight,
   ArrowUpRight,
@@ -39,6 +41,7 @@ import {
   X,
 } from 'lucide-react'
 import './App.css'
+import { audienceLabel, audienceGroupLabel, YOUTUBE_INPUT_NOTICE_EN } from './platformAudience'
 import {
   CREATOROPS_LEARNING_ROOT_URL,
   CREATOROPS_STRATEGY_UPLOAD_URL,
@@ -72,6 +75,12 @@ import {
   resolveCampaignMarketCountry,
 } from './marketLocalization'
 import { getAiOutputPolicyState } from './aiPolicyVersions'
+import {
+  buildReusableTemplateLearningMaterials,
+  getApprovedContentTemplates,
+  getCampaignContentTemplates,
+  getYouTubeThumbnailUrl,
+} from './contentTemplateLibrary'
 import {
   getBackendConfig,
   getAuthSession,
@@ -814,7 +823,7 @@ const defaultCampaigns = [
     revenue: 61100000,
     deadline: '오늘',
     objective: '공동구매 전환',
-    campaignType: '틱톡 공동구매 셀러',
+    campaignType: '공동구매',
     mission: '틱톡 셀러 공동구매 숏폼 1건 + 라이브/댓글 구매 유도 + 고정 링크 운영',
     reward: '제품 패키지 + 판매 커미션 + 우수 셀러 보너스',
     approvalFlow: '셀러 대량 섭외 → 샘플 발송 → 판매 스크립트 검수 → 콘텐츠/라이브 추적',
@@ -1428,7 +1437,6 @@ function getCampaignMarketSummary(campaign = {}) {
 }
 
 const campaignStatuses = ['섭외', '콘텐츠 제작', '라이브', '리포트', '완료']
-const campaignTypeOptions = ['제안형', '공개모집', '앰배서더', '커머스/제휴', 'UGC/숏폼', '틱톡 공동구매 셀러']
 
 function normalizeBrand(brand, index = 0) {
   const fallback = defaultBrands[index] ?? defaultBrands[0]
@@ -1495,7 +1503,8 @@ function normalizeCampaign(campaign, brands) {
   return {
     ...campaign,
     brandId: inferBrandIdForCampaign(campaign, brands),
-    campaignType: campaign.campaignType ?? fallback?.campaignType ?? '제안형',
+    campaignType: normalizeCampaignType(campaign.campaignType ?? fallback?.campaignType),
+    contentFormats: normalizeContentFormats(campaign.contentFormats),
     mission: campaign.mission ?? fallback?.mission ?? '브랜드 브리프에 맞춘 콘텐츠 미션',
     reward: campaign.reward ?? fallback?.reward ?? '제품 제공 + 협의 리워드',
     approvalFlow: campaign.approvalFlow ?? fallback?.approvalFlow ?? '브리프 전달 → 콘텐츠 검수 → 게시 확인 → 성과 리포트',
@@ -3371,6 +3380,7 @@ function buildInfluencerContentGuide({ brand, brief, campaign, creators = [] }) 
 - 제품/서비스: ${brief.product || '-'}
 - 협업 유형: ${seedType}
 - 권장 채널: ${channel}
+- 콘텐츠 형식: ${contentFormatSummary(campaign.contentFormats)}
 - 캠페인 유형: ${getStrategyProblemType(campaign, brief)}
 - 캠페인 목표: ${campaign.objective || brief.goal || '-'}
 - KPI: ${campaign.kpiGoal || '조회수, 댓글, 저장/공유, 전환 링크 클릭, 구매/문의'}
@@ -3516,6 +3526,7 @@ function buildCreatorSpecificContentGuide({ brand, brief, campaign, creator, com
 - 제품/서비스: ${brief.product || campaign?.product || '-'}
 - 협업 유형: ${campaign?.guideSeedType || '무가시딩'}
 - 권장 채널: ${platform}
+- 콘텐츠 형식: ${contentFormatSummary(campaign?.contentFormats)}
 - 업로드 일정: ${campaign?.uploadDueDate || campaign?.deadline || '협의'}
 
 ## 1-1. 개인 추적 숏링크
@@ -3650,7 +3661,7 @@ function buildRecommendation(creator, brief, campaign) {
   const reasons = [
     pendingMetrics
       ? '실제 프로필 URL은 확보했지만 평균 조회/팔로워 수치 검증 후 추천 우선순위를 확정'
-      : `평균 조회 ${compactNumber(averageViews)} · 팔로워 대비 조회 ${virality.toFixed(1)}x · 성과 점수 ${performanceScore}점`,
+      : `평균 조회 ${compactNumber(averageViews)} · ${audienceLabel(creator.platform)} 대비 조회 ${virality.toFixed(1)}x · 성과 점수 ${performanceScore}점`,
     pendingMetrics
       ? ''
       : `예상 뷰 효율 ${costPerView ? `약 ${won(costPerView)}/view` : '단가 확인 필요'} · 참여율 ${percent(creator.engagement)}`,
@@ -3822,7 +3833,7 @@ function getRecommendationDecisionDetail(creator, decision = '', rawCount = 0, m
   }
 
   if (decisionText.includes('검증')) {
-    if (pendingMetrics) return `팔로워/조회수 수집 후 발송 · raw ${rawCount}개`
+    if (pendingMetrics) return `${audienceLabel(creator.platform)}/조회수 수집 후 발송 · raw ${rawCount}개`
     if (creator.needsVerification) return '프로필 원천 재확인 후 제안'
     if (dataQuality.score < recommendationPolicy.minimumDataQualityScore) {
       return `데이터 품질 ${dataQuality.score}점 · 원천 보강 필요`
@@ -3831,7 +3842,7 @@ function getRecommendationDecisionDetail(creator, decision = '', rawCount = 0, m
   }
 
   if (!pendingMetrics && followers > 0 && followers < recommendationPolicy.minimumFollowers && !hasStrongActualPerformance) {
-    return `팔로워 ${compactNumber(followers)} · 최소 ${compactNumber(recommendationPolicy.minimumFollowers)} 미만`
+    return `${audienceLabel(creator.platform)} ${compactNumber(followers)} · 최소 ${compactNumber(recommendationPolicy.minimumFollowers)} 미만`
   }
 
   if (decisionText.includes('보류')) {
@@ -3846,7 +3857,7 @@ function getRecommendationDecisionDetail(creator, decision = '', rawCount = 0, m
   }
 
   if (!pendingMetrics) {
-    return `후보 유지 · 평균 조회 ${compactNumber(averageViews)} · 팔로워 대비 ${virality.toFixed(1)}x`
+    return `후보 유지 · 평균 조회 ${compactNumber(averageViews)} · ${audienceLabel(creator.platform)} 대비 ${virality.toFixed(1)}x`
   }
 
   return `수치 검증 대기 · raw ${rawCount}개 · 지표 ${metricCount}개 연결`
@@ -3875,8 +3886,8 @@ function getCreatorDataQuality(creator) {
   const flags = [
     creator.platform === 'YouTube' ? '공식 API 연결 가능' : '공개 프로필 수집',
     creator.metricSources?.length ? '수집 출처 보유' : '출처 보강 필요',
-    creator.needsVerification ? '팔로워/조회 검증 대기' : '핵심 지표 입력됨',
-    Number(creator.fakeRisk || 0) >= 10 ? '가짜 팔로워 위험 점검' : '위험 낮음',
+    creator.needsVerification ? `${audienceLabel(creator.platform)}/조회 검증 대기` : '핵심 지표 입력됨',
+    Number(creator.fakeRisk || 0) >= 10 ? `가짜 ${audienceLabel(creator.platform)} 위험 점검` : '위험 낮음',
   ]
 
   return { score, level, tone, flags }
@@ -3892,9 +3903,9 @@ function getReferenceVirality(reference) {
 function getReferencePerformanceLabel(reference) {
   const views = Number(reference?.views || 0)
   const virality = getReferenceVirality(reference)
-  if (views >= 500000 && virality >= 2) return `조회 ${compactNumber(views)} · 팔로워 대비 ${virality.toFixed(1)}x 터진 콘텐츠`
+  if (views >= 500000 && virality >= 2) return `조회 ${compactNumber(views)} · ${audienceLabel(reference.platform)} 대비 ${virality.toFixed(1)}x 터진 콘텐츠`
   if (views >= 500000) return `조회 ${compactNumber(views)} 이상 고조회 레퍼런스`
-  if (virality >= 2) return `팔로워 대비 ${virality.toFixed(1)}x 반응 레퍼런스`
+  if (virality >= 2) return `${audienceLabel(reference.platform)} 대비 ${virality.toFixed(1)}x 반응 레퍼런스`
   return '공개 반응 기반 제작 레퍼런스'
 }
 
@@ -4485,12 +4496,13 @@ function buildStrategyExperimentRows({ productText, personaText, hookRows = [], 
 }
 
 function buildInfluencerStrategy({ brand, brief, campaign, creators = [], recommendations = [], learningMaterials = [] }) {
-  const selectedPlatforms = (brief.platforms?.length ? brief.platforms : ['Instagram', 'TikTok']).filter(Boolean)
+  const selectedPlatforms = [...new Set((brief.platforms?.length ? brief.platforms : ['Instagram', 'TikTok'])
+    .filter(Boolean).map((platform) => platform === 'TikTok 셀러' ? 'TikTok' : platform))]
   const selectedCategories = (brief.categories?.length ? brief.categories : ['리뷰']).filter((item) => item !== '전체')
   const realCreators = creators.filter((creator) => !isExampleCreator(creator))
   const matchedCreators = realCreators.filter((creator) => matchesBriefPlatform(creator, selectedPlatforms))
   const materialDigest = buildLearningMaterialDigest(learningMaterials.length ? learningMaterials : getLearningMaterials(brief))
-  const sellerMode = selectedPlatforms.includes('TikTok 셀러') || campaign?.campaignType?.includes('셀러')
+  const sellerMode = isGroupBuyingCampaign(campaign?.campaignType) || brief.platforms?.includes('TikTok 셀러')
   const campaignGoal = campaign?.kpiGoal || brief.goal || '조회수와 전환을 함께 보는 캠페인'
   const budget = Number(campaign?.budget || 0)
   const maxCreatorFee = Number(brief.maxPrice || 0)
@@ -4511,7 +4523,7 @@ function buildInfluencerStrategy({ brand, brief, campaign, creators = [], recomm
     .filter(Boolean)
     .slice(0, 4)
   const forbidden = keywordList(brief.exclusions).slice(0, 5)
-  const primaryPlatform = sellerMode ? 'TikTok 셀러' : selectedPlatforms[0] ?? 'Instagram'
+  const primaryPlatform = selectedPlatforms[0] ?? 'Instagram'
   const productText = brief.product || '제품'
   const personaText = brief.persona || '핵심 고객'
   const strategyType = sellerMode
@@ -4522,7 +4534,7 @@ function buildInfluencerStrategy({ brand, brief, campaign, creators = [], recomm
 
   const castingMix = [
     sellerMode
-      ? `TikTok 공동구매 셀러 ${Math.max(10, Number(campaign?.sellerRecruitTarget || 20))}명: 구매 링크/코드 운영 가능 여부를 우선 필터링`
+      ? `${primaryPlatform} 공동구매 파트너 ${Math.max(10, Number(campaign?.sellerRecruitTarget || 20))}명: 구매 링크/코드 운영 가능 여부를 우선 확인`
       : `${primaryPlatform} 메인 크리에이터 ${Math.min(estimatedSlots, 5)}명: 첫 주 Anchor 콘텐츠와 신뢰 증명 담당`,
     `마이크로/미드 인플루언서 ${Math.max(4, Math.min(12, estimatedSlots * 2))}명: 댓글 질문, 저장/공유, 사용 상황 확산 담당`,
     `${selectedCategories.slice(0, 3).join(', ') || '브랜드 핏'} 카테고리 후보: 페르소나 적합성과 과거 콘텐츠 톤을 우선 검수`,
@@ -4578,6 +4590,7 @@ function buildInfluencerStrategy({ brand, brief, campaign, creators = [], recomm
     `타깃: ${personaText}`,
     `목표: ${campaignGoal}`,
     `우선 채널: ${selectedPlatforms.join(', ')}`,
+    `콘텐츠 형식: ${contentFormatSummary(campaign?.contentFormats)} · 선택 형식에 맞춰 제출물을 협의`,
     `목표 후보 수: ${targetCount}명`,
     materialDigest.sourceNames.length ? `첨부 학습자료 ${materialDigest.sourceNames.length}건 반영` : '첨부 학습자료 없음',
   ]
@@ -5346,7 +5359,7 @@ function buildAutoBriefSetup(rawText) {
   const persona = categories.includes('펫')
     ? '반려견 이동, 여행, 차량 이동, 펫 라이프 콘텐츠를 신뢰감 있게 설명할 수 있는 펫 채널/펫스타그램 운영자'
     : `${product} 사용 맥락을 실제 경험처럼 설명할 수 있는 크리에이터`
-  const campaignType = text.includes('공동구매') ? '커머스/제휴' : '제안형'
+  const campaignType = text.includes('공동구매') ? '공동구매' : '제안형'
   const objective = priceMatch || text.includes('환불') || text.includes('구매') ? '구매 전환' : '브랜드 인지도'
 
   return {
@@ -8263,6 +8276,11 @@ function AppContent() {
   const [referenceSearchResults, setReferenceSearchResults] = useState([])
   const [isReferenceManualFormOpen, setIsReferenceManualFormOpen] = useState(false)
   const [referenceGuideUsage, setReferenceGuideUsage] = useState(null)
+  const [winningTemplateSelection, setWinningTemplateSelection] = useState({
+    campaignId: '',
+    templateIds: [],
+    initialized: false,
+  })
   const [creatorGroupQuery, setCreatorGroupQuery] = useState('')
   const [creatorGroupTypeFilter, setCreatorGroupTypeFilter] = useState('전체')
   const [selectedCreatorGroupId, setSelectedCreatorGroupId] = useState(defaultCreatorGroups[0]?.id ?? '')
@@ -10206,10 +10224,51 @@ function AppContent() {
           b.views - a.views,
       )
   }, [contentTemplates, creators, selectedCampaign?.id, selectedCampaignTrackedPosts])
-  const externalReferenceTemplates = useMemo(
-    () => contentTemplates.filter((template) => template.sourceType !== 'owned_campaign'),
-    [contentTemplates],
+  const approvedWinningTemplates = useMemo(
+    () => getApprovedContentTemplates(contentTemplates, activeBrand.id),
+    [activeBrand.id, contentTemplates],
   )
+  const ownedWinningTemplates = useMemo(
+    () => approvedWinningTemplates.filter((template) => template.sourceType === 'owned_campaign'),
+    [approvedWinningTemplates],
+  )
+  const externalReferenceTemplates = useMemo(
+    () => approvedWinningTemplates.filter((template) => template.sourceType !== 'owned_campaign'),
+    [approvedWinningTemplates],
+  )
+  const winningTemplateRows = useMemo(
+    () => approvedWinningTemplates.map((template) => {
+      const sourceCampaign = campaigns.find((campaign) => String(campaign.id) === String(template.campaignId))
+      const sourceReference = contentReferences.find((reference) => String(reference.id) === String(template.referenceId))
+      const sourceTrackedPost = trackedPosts.find((post) => String(post.id) === String(template.sourceContentId))
+      const sourceUrl = template.performanceSnapshot?.contentUrl || sourceTrackedPost?.url || sourceReference?.url || ''
+      return {
+        ...template,
+        sourceLabel: template.sourceType === 'owned_campaign'
+          ? `우리 캠페인 · ${sourceCampaign?.name || '캠페인 미확인'}`
+          : '외부 레퍼런스 승인',
+        sourceUrl,
+        thumbnailUrl:
+          template.thumbnailUrl ||
+          sourceTrackedPost?.thumbnailUrl ||
+          sourceReference?.thumbnailUrl ||
+          getYouTubeThumbnailUrl(sourceUrl),
+      }
+    }),
+    [approvedWinningTemplates, campaigns, contentReferences, trackedPosts],
+  )
+  const winningTargetCampaign =
+    brandCampaigns.find((campaign) => String(campaign.id) === String(winningTemplateSelection.campaignId)) ||
+    brandCampaigns.find((campaign) => String(campaign.id) === String(selectedCampaign?.id)) ||
+    brandCampaigns[0]
+  const winningTargetCampaignId = String(winningTargetCampaign?.id || '')
+  const availableWinningTemplateIds = new Set(approvedWinningTemplates.map((template) => String(template.id)))
+  const selectedWinningTemplateIds = (
+    winningTemplateSelection.initialized &&
+    String(winningTemplateSelection.campaignId) === winningTargetCampaignId
+      ? winningTemplateSelection.templateIds
+      : winningTargetCampaign?.reuseTemplateIds || []
+  ).map(String).filter((templateId) => availableWinningTemplateIds.has(templateId))
   const visibleWorkflowSignals = useMemo(
     () =>
       workflowSignals
@@ -14360,7 +14419,8 @@ function AppContent() {
     name: campaign.name || '',
     product: campaign.product || '',
     objective: campaign.objective || '브랜드 인지도',
-    campaignType: campaign.campaignType || '제안형',
+    campaignType: normalizeCampaignType(campaign.campaignType),
+    contentFormats: normalizeContentFormats(campaign.contentFormats),
     targetPersona: campaign.targetPersona || '',
     searchKeywords: campaign.searchKeywords || '',
     exclusionKeywords: campaign.exclusionKeywords || '',
@@ -14427,7 +14487,8 @@ function AppContent() {
       name: campaignEditDraft.name || activeCampaignForModal.name,
       product: campaignEditDraft.product || activeCampaignForModal.product,
       objective: campaignEditDraft.objective,
-      campaignType: campaignEditDraft.campaignType,
+      campaignType: normalizeCampaignType(campaignEditDraft.campaignType),
+      contentFormats: normalizeContentFormats(campaignEditDraft.contentFormats),
       targetPersona: campaignEditDraft.targetPersona,
       searchKeywords: campaignEditDraft.searchKeywords,
       exclusionKeywords: campaignEditDraft.exclusionKeywords,
@@ -14557,7 +14618,8 @@ function AppContent() {
     localizationInstruction: getLanguageInstruction(campaign),
     product: campaign.product || campaignBrief.product || '',
     objective: campaign.objective || campaignBrief.goal || '',
-    campaignType: campaign.campaignType || '제안형',
+    campaignType: normalizeCampaignType(campaign.campaignType),
+    contentFormats: normalizeContentFormats(campaign.contentFormats),
     targetPersona: campaign.targetPersona || campaignBrief.persona || '',
     keywords: campaign.searchKeywords || campaignBrief.keywords || '',
     strategyKeywords: campaignBrief.strategyKeywords || '',
@@ -14619,7 +14681,17 @@ function AppContent() {
 
   const generateCampaignStrategyForDetail = async (campaign) => {
     if (!campaign) return
-    const campaignBrief = buildCampaignBriefFromCampaign(campaign)
+    const baseCampaignBrief = buildCampaignBriefFromCampaign(campaign)
+    const campaignWinningTemplates = getCampaignContentTemplates(contentTemplates, activeBrand.id, campaign.reuseTemplateIds)
+    const campaignWinningTemplateMaterials = buildReusableTemplateLearningMaterials(campaignWinningTemplates, activeBrand.id)
+    const campaignBrief = {
+      ...baseCampaignBrief,
+      learningMaterials: [
+        ...campaignWinningTemplateMaterials,
+        ...getLearningMaterials(baseCampaignBrief),
+      ],
+    }
+    const appliedTemplateIds = campaignWinningTemplates.map((template) => String(template.id))
     const localStrategy = buildInfluencerStrategy({
       brand: activeBrand,
       brief: campaignBrief,
@@ -14663,12 +14735,23 @@ function AppContent() {
       }
     }
     const generatedAt = nowLabel()
+    if (appliedTemplateIds.length) sourceRawIds = uniqueList([...sourceRawIds, 'RAW-INT-TEMPLATE-001'])
     const strategyInputRaw = campaign.strategyInputRaw || buildCampaignStrategyInputRaw(campaign, campaignBrief)
 
     updateWorkspace((current) =>
       appendActivity(
         {
           ...current,
+          contentTemplates: (current.contentTemplates ?? []).map((template) =>
+            appliedTemplateIds.includes(String(template.id))
+              ? {
+                  ...template,
+                  reuseCount: Number(template.reuseCount || 0) + 1,
+                  lastUsedAt: generatedAt,
+                  updatedAt: generatedAt,
+                }
+              : template,
+          ),
           campaigns: current.campaigns.map((item) =>
             item.id === campaign.id
               ? {
@@ -14692,6 +14775,7 @@ function AppContent() {
                     strategyPolicyVersion: policyVersion || 'strategy-director-v2.3-local',
                     strategyPolicyFeatureKey: policyFeatureKey,
                     strategyEngine: engine,
+                    strategyTemplateIds: appliedTemplateIds,
                   },
                 }
               : item,
@@ -14725,7 +14809,24 @@ function AppContent() {
 
   const generateCampaignGuideForDetail = async (campaign) => {
     if (!campaign) return
-    const campaignBrief = buildCampaignBriefFromCampaign(campaign)
+    const baseCampaignBrief = buildCampaignBriefFromCampaign(campaign)
+    const campaignWinningTemplates = getCampaignContentTemplates(contentTemplates, activeBrand.id, campaign.reuseTemplateIds)
+    const campaignWinningTemplateMaterials = buildReusableTemplateLearningMaterials(campaignWinningTemplates, activeBrand.id)
+    const campaignBrief = {
+      ...baseCampaignBrief,
+      learningMaterials: [
+        ...campaignWinningTemplateMaterials,
+        ...getLearningMaterials(baseCampaignBrief),
+      ],
+    }
+    const appliedTemplateIds = campaignWinningTemplates.map((template) => String(template.id))
+    const reusableTemplateReferences = campaignWinningTemplateMaterials.map((material) => ({
+      title: material.title,
+      source: material.sourceName,
+      structure: material.doSay,
+      performanceReason: material.summary,
+      reuseRule: material.dontSay,
+    }))
     const localGuide = buildInfluencerContentGuide({
       brand: activeBrand,
       brief: campaignBrief,
@@ -14749,7 +14850,10 @@ function AppContent() {
             campaign,
             seedingType: campaign.guideSeedType || '무가시딩',
             channel: campaign.guideChannel || 'Instagram Reels',
-            references: Array.isArray(campaign.guideReferences) ? campaign.guideReferences : [],
+            references: [
+              ...(Array.isArray(campaign.guideReferences) ? campaign.guideReferences : []),
+              ...reusableTemplateReferences,
+            ],
             draftGuide: localGuide,
           }),
         })
@@ -14767,12 +14871,23 @@ function AppContent() {
       }
     }
     const generatedAt = nowLabel()
+    if (appliedTemplateIds.length) sourceRawIds = uniqueList([...sourceRawIds, 'RAW-INT-TEMPLATE-001'])
     const strategyInputRaw = campaign.strategyInputRaw || buildCampaignStrategyInputRaw(campaign, campaignBrief)
 
     updateWorkspace((current) =>
       appendActivity(
         {
           ...current,
+          contentTemplates: (current.contentTemplates ?? []).map((template) =>
+            appliedTemplateIds.includes(String(template.id))
+              ? {
+                  ...template,
+                  reuseCount: Number(template.reuseCount || 0) + 1,
+                  lastUsedAt: generatedAt,
+                  updatedAt: generatedAt,
+                }
+              : template,
+          ),
           campaigns: current.campaigns.map((item) =>
             item.id === campaign.id
               ? {
@@ -14792,6 +14907,7 @@ function AppContent() {
                     guidePolicyVersion: policyVersion || 'strategy-director-v2.3-local',
                     guidePolicyFeatureKey: policyFeatureKey,
                     guideEngine: engine,
+                    guideTemplateIds: appliedTemplateIds,
                   },
                 }
               : item,
@@ -15173,7 +15289,8 @@ function AppContent() {
       },
       product: campaignBrief.product,
       objective: campaignDraft.objective,
-      campaignType: campaignDraft.campaignType || '제안형',
+      campaignType: normalizeCampaignType(campaignDraft.campaignType),
+      contentFormats: normalizeContentFormats(campaignDraft.contentFormats),
       targetPersona: campaignBrief.persona,
       searchKeywords: campaignBrief.keywords,
       exclusionKeywords: campaignBrief.exclusions,
@@ -15225,7 +15342,8 @@ function AppContent() {
           budget,
           product: campaignBrief.product,
           objective: campaignDraft.objective,
-          campaignType: campaignDraft.campaignType || '제안형',
+          campaignType: normalizeCampaignType(campaignDraft.campaignType),
+          contentFormats: normalizeContentFormats(campaignDraft.contentFormats),
           targetPersona: campaignBrief.persona,
           searchKeywords: campaignBrief.keywords,
           exclusionKeywords: campaignBrief.exclusions,
@@ -17164,6 +17282,53 @@ function AppContent() {
     showToast('제작 레퍼런스 분석을 열었어요. 괜찮으면 AI 가이드 참고자료로 저장하세요.')
   }
 
+  const toggleWinningTemplateSelection = (templateId) => {
+    const normalizedTemplateId = String(templateId)
+    setWinningTemplateSelection({
+      campaignId: winningTargetCampaignId,
+      templateIds: selectedWinningTemplateIds.includes(normalizedTemplateId)
+        ? selectedWinningTemplateIds.filter((item) => item !== normalizedTemplateId)
+        : [...selectedWinningTemplateIds, normalizedTemplateId],
+      initialized: true,
+    })
+  }
+
+  const connectWinningTemplatesToCampaign = () => {
+    const targetCampaign = brandCampaigns.find(
+      (campaign) => String(campaign.id) === String(winningTargetCampaignId),
+    )
+    if (!targetCampaign) {
+      showToast('적용할 캠페인을 선택해주세요.')
+      return
+    }
+
+    const availableTemplateIds = new Set(approvedWinningTemplates.map((template) => String(template.id)))
+    const nextTemplateIds = uniqueList(
+      selectedWinningTemplateIds.filter((templateId) => availableTemplateIds.has(String(templateId))),
+    )
+    const updatedAt = nowLabel()
+    updateWorkspace((current) =>
+      appendActivity(
+        {
+          ...current,
+          campaigns: current.campaigns.map((campaign) =>
+            String(campaign.id) === String(targetCampaign.id)
+              ? {
+                  ...campaign,
+                  reuseTemplateIds: nextTemplateIds,
+                  reuseTemplatesUpdatedAt: updatedAt,
+                }
+              : campaign,
+          ),
+        },
+        'campaign',
+        `${targetCampaign.name} 위닝 소재 ${nextTemplateIds.length}개 연결`,
+      ),
+    )
+    setSelectedCampaignId(targetCampaign.id)
+    showToast(`${targetCampaign.name}에 위닝 소재 ${nextTemplateIds.length}개를 연결했어요. 전략 또는 가이드를 재생성하면 반영됩니다.`)
+  }
+
   const borrowReferenceForGuide = () => {
     if (!referenceGuideUsage) return
 
@@ -17236,6 +17401,7 @@ function AppContent() {
       sourceContentId: content.id,
       name: content.title || `${content.creatorName} 성과 콘텐츠`,
       platform: content.platform || '',
+      thumbnailUrl: content.thumbnailUrl || getYouTubeThumbnailUrl(content.url),
       status: 'approved',
       structure: [
         content.structureAnalysis?.hook,
@@ -18607,7 +18773,7 @@ function AppContent() {
                   })
                 )}
               </div>
-              <aside className="recommendation-detail-panel" aria-label="AI 추천 후보 상세">
+              <aside className="recommendation-detail-panel" aria-label="AI 추천 후보 상세" data-review-platform={selectedRecommendationCreator?.platform}>
                 {selectedRecommendationCreator && selectedRecommendationDetail ? (
                   <>
                     <div className="recommendation-detail-header">
@@ -18654,7 +18820,7 @@ function AppContent() {
                     </div>
 
                     <div className="recommendation-detail-stats">
-                      <Stat label="팔로워" value={displayMetric(selectedRecommendationCreator.followers)} />
+                      <Stat label={audienceLabel(selectedRecommendationCreator.platform)} value={displayMetric(selectedRecommendationCreator.followers)} />
                       <Stat
                         label="평균 조회"
                         value={hasPendingMetrics(selectedRecommendationCreator) ? '수집 필요' : displayMetric(selectedRecommendationCreator.averageViews)}
@@ -18672,7 +18838,7 @@ function AppContent() {
                     </div>
                     <div className="creator-rate-toolbar">
                       <span>
-                        팔로워·평균 조회수·참여율·플랫폼 기준 예상 {formatDualCurrency(getCreatorRateSummary(selectedRecommendationCreator).estimatedPrice, selectedCampaign)}
+                        {audienceLabel(selectedRecommendationCreator.platform)}·평균 조회수·참여율·플랫폼 기준 예상 {formatDualCurrency(getCreatorRateSummary(selectedRecommendationCreator).estimatedPrice, selectedCampaign)}
                       </span>
                       <button
                         className="secondary-button compact-button"
@@ -18840,10 +19006,9 @@ function AppContent() {
               <div className="youtube-data-policy-note" role="note">
                 <ShieldCheck size={18} />
                 <div>
-                  <strong>YouTube 공개 데이터 사용 안내</strong>
+                  <strong>{youtubeEnglishReviewMode ? 'YouTube public data notice' : 'YouTube 공개 데이터 사용 안내'}</strong>
                   <p>
-                    입력한 검색어와 공개 채널·영상 URL은 YouTube Data API에서 읽기 전용 공개 정보를 조회하는 데만 사용됩니다.
-                    YouTube에 콘텐츠를 업로드·게시·수정하지 않으며, YouTube API 검색 결과는 엑셀·광고주용 파일·Google Sheets 일괄 내보내기에서 제외됩니다.
+                    {youtubeEnglishReviewMode ? YOUTUBE_INPUT_NOTICE_EN : '입력한 검색어와 공개 채널·영상 URL은 YouTube Data API에서 읽기 전용 공개 정보를 조회하는 데만 사용됩니다. YouTube에 콘텐츠를 업로드·게시·수정·삭제하지 않으며, YouTube API 검색 결과는 엑셀·광고주용 파일·Google Sheets 일괄 내보내기에서 제외됩니다.'}
                   </p>
                 </div>
               </div>
@@ -18922,10 +19087,10 @@ function AppContent() {
             </div>
 
             <div className="performance-filter-panel">
-              <div className="performance-filter-heading">
+              <div className="performance-filter-heading" data-review-platform={platform}>
                 <div>
                   <span className="mini-label">발굴 조건</span>
-                  <strong>{platform === 'YouTube' ? '구독자·평균 조회수 조건' : '팔로워·평균 조회수 조건'}</strong>
+                  <strong>{audienceLabel(platform)}·평균 조회수 조건</strong>
                 </div>
                 <div className="performance-filter-actions">
                   <span>{activeDiscoveryFilterCount > 0 ? `${activeDiscoveryFilterCount}개 조건 적용` : '전체 후보 기준'}</span>
@@ -18937,9 +19102,9 @@ function AppContent() {
                   </button>
                 </div>
               </div>
-              <div className="performance-filter-grid">
+              <div className="performance-filter-grid" data-review-platform={platform}>
                 <label>
-                  <span>{platform === 'YouTube' ? '구독자 최소' : '팔로워 최소'}</span>
+                  <span>{audienceLabel(platform)} 최소</span>
                   <input
                     inputMode="numeric"
                     value={discoveryFilters.minFollowers}
@@ -18948,7 +19113,7 @@ function AppContent() {
                   />
                 </label>
                 <label>
-                  <span>{platform === 'YouTube' ? '구독자 최대' : '팔로워 최대'}</span>
+                  <span>{audienceLabel(platform)} 최대</span>
                   <input
                     inputMode="numeric"
                     value={discoveryFilters.maxFollowers}
@@ -19100,7 +19265,7 @@ function AppContent() {
           </section>
 
           {selectedCreator && (
-            <aside className="panel profile-panel">
+            <aside className="panel profile-panel" data-review-platform={selectedCreator.platform}>
               <div className="profile-header">
                 <img src={selectedCreator.avatar} alt="" />
                 <button
@@ -19134,7 +19299,7 @@ function AppContent() {
               </div>
 
               <div className="profile-stats">
-                <Stat label="팔로워" value={displayMetric(selectedCreator.followers)} />
+                <Stat label={audienceLabel(selectedCreator.platform)} value={displayMetric(selectedCreator.followers)} />
                 <Stat label="평균 조회" value={displayMetric(selectedCreator.averageViews)} />
                 <Stat label="참여율" value={hasPendingMetrics(selectedCreator) ? '수집 필요' : percent(selectedCreator.engagement)} />
                 <Stat
@@ -19146,7 +19311,7 @@ function AppContent() {
               </div>
               <div className="creator-rate-toolbar">
                 <span>
-                  팔로워·평균 조회수·참여율·플랫폼 기준 예상 {formatDualCurrency(getCreatorRateSummary(selectedCreator).estimatedPrice, selectedCampaign)}
+                  {audienceLabel(selectedCreator.platform)}·평균 조회수·참여율·플랫폼 기준 예상 {formatDualCurrency(getCreatorRateSummary(selectedCreator).estimatedPrice, selectedCampaign)}
                 </span>
                 <button
                   className="secondary-button compact-button"
@@ -19162,7 +19327,7 @@ function AppContent() {
                   <ShieldCheck size={18} />
                   <div>
                     <strong>브랜드 안정성 {selectedCreator.brandSafety}</strong>
-                    <span>가짜 팔로워 위험 {selectedCreator.fakeRisk}%</span>
+                    <span>가짜 {audienceLabel(selectedCreator.platform)} 위험 {selectedCreator.fakeRisk}%</span>
                   </div>
                 </div>
                 <p>{selectedCreator.audience}</p>
@@ -19187,7 +19352,7 @@ function AppContent() {
                 {selectedSourceEvidence.slice(0, 4).map((source) => (
                   <article className="source-ledger-row" key={source.metric}>
                     <div>
-                      <strong>{source.metric}</strong>
+                      <strong>{['팔로워', 'followers', 'Followers', '구독자', 'subscribers'].includes(source.metric) ? audienceLabel(selectedCreator.platform) : source.metric}</strong>
                       <span>{source.source}</span>
                     </div>
                     <div className="source-ledger-meta">
@@ -19436,7 +19601,7 @@ function AppContent() {
           <div className="creator-group-summary">
             <Stat label="후보 그룹" value={`${creatorGroupSummary.groups}개`} />
             <Stat label="누적 멤버" value={`${creatorGroupSummary.creators}명`} />
-            <Stat label="총 팔로워" value={compactNumber(creatorGroupSummary.avgFollowers)} />
+            <Stat label="총 Subscribers / 팔로워" value={compactNumber(creatorGroupSummary.avgFollowers)} />
             <Stat label="총 평균 조회" value={compactNumber(creatorGroupSummary.avgViews)} />
             <Stat label="평균 단가" value={creatorGroupSummary.avgPrice ? won(creatorGroupSummary.avgPrice) : '산정 전'} />
           </div>
@@ -19509,7 +19674,7 @@ function AppContent() {
                     </div>
                     <div className="creator-group-metrics">
                       <span>멤버 {groupCreators.length}명</span>
-                      <span>팔로워 {compactNumber(groupFollowers)}</span>
+                      <span>{audienceGroupLabel(groupCreators)} {compactNumber(groupFollowers)}</span>
                       <span>평균조회 {compactNumber(groupViews)}</span>
                       <span>평균단가 {groupPriceStats.average ? won(groupPriceStats.average) : '산정 전'}</span>
                     </div>
@@ -19618,7 +19783,7 @@ function AppContent() {
                         </div>
                         <div>
                           <strong>{compactNumber(creator.followers)}</strong>
-                          <span>팔로워</span>
+                          <span>{audienceLabel(creator.platform)}</span>
                         </div>
                         <div>
                           <strong>{compactNumber(creator.avgViews || creator.averageViews)}</strong>
@@ -19659,15 +19824,17 @@ function AppContent() {
         )}
 
         {visibleSection === 'references' && (
-        <section className={`panel reference-board-panel ${referenceMode === 'brand' ? 'brand-mode' : 'content-mode'}`}>
+        <section className={`panel reference-board-panel ${referenceMode === 'brand' ? 'brand-mode' : referenceMode === 'winning' ? 'winning-mode' : 'content-mode'}`}>
           <div className="panel-heading">
             <div>
-              <span className="mini-label">콘텐츠 레퍼런스</span>
-              <h2>인기 콘텐츠 레퍼런스</h2>
+              <span className="mini-label">{referenceMode === 'winning' ? '승인 자산' : '콘텐츠 레퍼런스'}</span>
+              <h2>{referenceMode === 'winning' ? '위닝 소재 저장소' : '인기 콘텐츠 레퍼런스'}</h2>
             </div>
             <div className="panel-heading-actions">
               <span className="result-count">
-                영상 {referenceTotals.videos} · 이미지 {referenceTotals.images}
+                {referenceMode === 'winning'
+                  ? `승인 ${approvedWinningTemplates.length} · 자사 성과 ${ownedWinningTemplates.length}`
+                  : `영상 ${referenceTotals.videos} · 이미지 ${referenceTotals.images}`}
               </span>
             </div>
           </div>
@@ -19698,6 +19865,18 @@ function AppContent() {
               <Video size={17} />
               <span>콘텐츠 레퍼런스 찾기</span>
               <small>콘텐츠 검색·저장</small>
+            </button>
+            <button
+              className={referenceMode === 'winning' ? 'active' : ''}
+              type="button"
+              onClick={() => {
+                setReferenceMode('winning')
+                setReferenceSearchResults([])
+              }}
+            >
+              <TrendingUp size={17} />
+              <span>위닝 소재 저장소</span>
+              <small>승인 구조·성과 근거</small>
             </button>
           </div>
 
@@ -19959,6 +20138,8 @@ function AppContent() {
             </div>
           )}
 
+          {referenceMode !== 'winning' && (
+          <>
           <div className="reference-country-tabs" aria-label="레퍼런스 국가 빠른 필터">
             {referenceCountryOptions.map((countryOption) => (
               <button
@@ -19975,6 +20156,13 @@ function AppContent() {
             ))}
           </div>
 
+          <div className="youtube-data-policy-note" role="note">
+            <ShieldCheck size={18} />
+            <div>
+              <strong>{youtubeEnglishReviewMode ? 'YouTube public data notice' : 'YouTube 공개 데이터 사용 안내'}</strong>
+              <p>{youtubeEnglishReviewMode ? YOUTUBE_INPUT_NOTICE_EN : 'YouTube 검색어와 공개 URL은 읽기 전용 공개 정보 조회에만 사용됩니다. YouTube에 콘텐츠를 업로드·게시·수정·삭제하지 않으며, YouTube API 검색 결과의 일괄 내보내기는 제공하지 않습니다.'}</p>
+            </div>
+          </div>
           <form className="reference-search-bar" onSubmit={applyReferenceSearch}>
             <label>
               <Search size={17} />
@@ -20080,7 +20268,7 @@ function AppContent() {
                   />
                 </label>
                 <label>
-                  <span>계정 팔로워</span>
+                  <span>계정 {audienceLabel(referenceDraft.platform)}</span>
                   <input
                     inputMode="numeric"
                     value={referenceDraft.accountFollowers}
@@ -20218,7 +20406,7 @@ function AppContent() {
 
           <div className="reference-list">
             {paginatedReferences.map((item, index) => (
-              <article className="reference-card" key={item.id}>
+              <article className="reference-card" key={item.id} data-review-platform={item.platform}>
                 {(() => {
                   const isTemporarySearchResult = Boolean(item.searchOnly)
                   const isSavedByUrl = savedProductionReferences.some(
@@ -20266,7 +20454,7 @@ function AppContent() {
                   <p>{item.publishedAt} · 저장 {item.savedAt}</p>
                   <div className="tracked-account-meta">
                     <span>조회 {compactOptionalNumber(item.views)}</span>
-                    <span>{item.platform === 'YouTube' ? '구독자' : '팔로워'} {item.accountFollowers ? compactNumber(item.accountFollowers) : '-'}</span>
+                    <span>{audienceLabel(item.platform)} {item.accountFollowers ? compactNumber(item.accountFollowers) : '-'}</span>
                     <span>폭발 {getReferenceVirality(item) ? `${getReferenceVirality(item).toFixed(1)}x` : '-'}</span>
                     <span>좋아요 {compactOptionalNumber(item.likes, '-')}</span>
                     <span>댓글 {compactOptionalNumber(item.comments, '-')}</span>
@@ -20316,6 +20504,167 @@ function AppContent() {
               pageSize={referencePageSize}
               onPageChange={setReferencePage}
             />
+          )}
+          </>
+          )}
+
+          {referenceMode === 'winning' && (
+            <div className="winning-template-library">
+              <div className="winning-template-summary">
+                <article>
+                  <span>전체 승인</span>
+                  <strong>{winningTemplateRows.length}</strong>
+                  <small>{activeBrand.name}에서 다음 생성에 사용</small>
+                </article>
+                <article>
+                  <span>우리 캠페인 위닝</span>
+                  <strong>{ownedWinningTemplates.length}</strong>
+                  <small>실제 추적 성과로 승인</small>
+                </article>
+                <article>
+                  <span>외부 레퍼런스</span>
+                  <strong>{externalReferenceTemplates.length}</strong>
+                  <small>분석 후 구조 차용 승인</small>
+                </article>
+              </div>
+
+              <div className="winning-template-policy">
+                <div>
+                  <strong>캠페인별로 사용할 소재를 선택합니다.</strong>
+                  <p>선택한 소재만 다음 전략·가이드 생성에 반영되며, 원본이 아니라 후킹·전개·증거·CTA 구조를 변형합니다.</p>
+                </div>
+                <div className="winning-template-apply-controls">
+                  <label>
+                    <span>적용 캠페인</span>
+                    <select
+                      value={winningTargetCampaignId}
+                      onChange={(event) => {
+                        const nextCampaignId = event.target.value
+                        const nextCampaign = brandCampaigns.find((campaign) => String(campaign.id) === nextCampaignId)
+                        setWinningTemplateSelection({
+                          campaignId: nextCampaignId,
+                          templateIds: (nextCampaign?.reuseTemplateIds || []).map(String),
+                          initialized: true,
+                        })
+                      }}
+                    >
+                      {brandCampaigns.map((campaign) => (
+                        <option value={String(campaign.id)} key={campaign.id}>{campaign.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <button
+                    className="secondary-button compact-button"
+                    type="button"
+                    disabled={!approvedWinningTemplates.length}
+                    onClick={() => setWinningTemplateSelection({
+                      campaignId: winningTargetCampaignId,
+                      templateIds: selectedWinningTemplateIds.length === approvedWinningTemplates.length
+                        ? []
+                        : approvedWinningTemplates.map((template) => String(template.id)),
+                      initialized: true,
+                    })}
+                  >
+                    {selectedWinningTemplateIds.length === approvedWinningTemplates.length && approvedWinningTemplates.length
+                      ? '전체 해제'
+                      : '전체 선택'}
+                  </button>
+                  <button
+                    className="primary-button compact-button"
+                    type="button"
+                    disabled={!winningTargetCampaignId}
+                    onClick={connectWinningTemplatesToCampaign}
+                  >
+                    선택 {selectedWinningTemplateIds.length}개 연결
+                  </button>
+                </div>
+              </div>
+
+              {winningTemplateRows.length ? (
+                <div className="winning-template-grid">
+                  {winningTemplateRows.map((template) => (
+                    <article className="winning-template-card" key={template.id}>
+                      {template.thumbnailUrl ? (
+                        template.sourceUrl ? (
+                          <a
+                            className="winning-template-media"
+                            href={template.sourceUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            aria-label={`${template.name} 원본 영상 열기`}
+                          >
+                            <img src={template.thumbnailUrl} alt={`${template.name} 썸네일`} />
+                            <span aria-hidden="true"><Play size={27} fill="currentColor" /></span>
+                          </a>
+                        ) : (
+                          <div className="winning-template-media">
+                            <img src={template.thumbnailUrl} alt={`${template.name} 썸네일`} />
+                          </div>
+                        )
+                      ) : (
+                        <div className="winning-template-media winning-template-media-empty">
+                          <Video size={25} />
+                          <span>썸네일 없음</span>
+                        </div>
+                      )}
+                      <div className="winning-template-card-head">
+                        <div>
+                          <span className={`status-badge ${template.sourceType === 'owned_campaign' ? 'success' : 'warning'}`}>
+                            {template.sourceType === 'owned_campaign' ? '우리 성과' : '외부 레퍼런스'}
+                          </span>
+                          <strong>{template.name}</strong>
+                          <small>{template.sourceLabel} · {template.platform || '플랫폼 미확인'}</small>
+                        </div>
+                        <div className="winning-template-card-controls">
+                          <span className="winning-reuse-count">{Number(template.reuseCount || 0)}회 적용</span>
+                          <label className="winning-template-select">
+                            <input
+                              type="checkbox"
+                              checked={selectedWinningTemplateIds.includes(String(template.id))}
+                              onChange={() => toggleWinningTemplateSelection(template.id)}
+                            />
+                            <span>선택</span>
+                          </label>
+                        </div>
+                      </div>
+
+                      {template.performanceSnapshot && (
+                        <div className="winning-template-metrics">
+                          <span>조회 <strong>{compactNumber(template.performanceSnapshot.views)}</strong></span>
+                          <span>폭발 <strong>{template.performanceSnapshot.viralRatio ? `${Number(template.performanceSnapshot.viralRatio).toFixed(1)}x` : '-'}</strong></span>
+                          <span>참여율 <strong>{percent(template.performanceSnapshot.engagementRate)}</strong></span>
+                          <span>전환 <strong>{compactNumber(template.performanceSnapshot.conversions)}</strong></span>
+                        </div>
+                      )}
+
+                      <div className="winning-template-detail">
+                        <span>성과·승인 근거</span>
+                        <p>{template.performanceReason || '레퍼런스 분석 후 재사용이 승인된 구조입니다.'}</p>
+                      </div>
+                      <div className="winning-template-detail">
+                        <span>재사용 구조</span>
+                        <p>{template.structure || '후킹 → 사용 장면 → 근거 제시 → CTA'}</p>
+                      </div>
+
+                      <div className="winning-template-card-actions">
+                        <span>{template.lastUsedAt ? `최근 적용 ${template.lastUsedAt}` : '다음 생성부터 적용'}</span>
+                        {template.sourceUrl ? (
+                          <a className="secondary-button compact-button" href={template.sourceUrl} target="_blank" rel="noreferrer">
+                            원본 보기
+                          </a>
+                        ) : null}
+                      </div>
+                    </article>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state compact-empty winning-template-empty">
+                  <TrendingUp size={23} />
+                  <strong>아직 승인된 위닝 소재가 없습니다.</strong>
+                  <p>리포트에서 성과가 확인된 콘텐츠를 승인하거나, 콘텐츠 레퍼런스를 분석해 가이드 차용하면 이곳에 모입니다.</p>
+                </div>
+              )}
+            </div>
           )}
 
           {referenceMode === 'content' && (
@@ -20470,6 +20819,7 @@ function AppContent() {
                   <div>
                     <span className="mini-label">캠페인 상세</span>
                     <strong>{activeCampaignForModal.name}</strong>
+                    <p>{normalizeCampaignType(activeCampaignForModal.campaignType)} · 콘텐츠 형식: {contentFormatSummary(activeCampaignForModal.contentFormats)}</p>
                     <p>{activeCampaignForModal.objective} · {getCampaignMarketSummary(activeCampaignForModal)} · {activeCampaignForModal.owner} · 마감 {activeCampaignForModal.deadline ?? '미정'}</p>
                   </div>
                   <div className="campaign-detail-page-actions">
@@ -20531,6 +20881,19 @@ function AppContent() {
                         <input value={campaignEditDraft.searchKeywords} onChange={(event) => updateCampaignEditField('searchKeywords', event.target.value)} />
                       </label>
                     </div>
+                    <label>
+                      캠페인 타입
+                      <select value={campaignEditDraft.campaignType} onChange={(event) => updateCampaignEditField('campaignType', event.target.value)}>
+                        {campaignEditDraft.campaignType === 'UGC/숏폼' && (
+                          <option value="UGC/숏폼" disabled hidden>기존 분류 · 캠페인 타입을 다시 선택하세요</option>
+                        )}
+                        {campaignTypeOptions.map((option) => <option key={option}>{option}</option>)}
+                      </select>
+                    </label>
+                    <ContentFormatSelector
+                      value={campaignEditDraft.contentFormats}
+                      onChange={(contentFormats) => updateCampaignEditField('contentFormats', contentFormats)}
+                    />
                     <div className="campaign-market-mode compact" role="group" aria-label="캠페인 국가 운영 방식 수정">
                       <button
                         className={campaignEditDraft.marketMode === CAMPAIGN_MARKET_MODES.single ? 'active' : ''}
@@ -21375,7 +21738,7 @@ function AppContent() {
                         </p>
                         <div className="owned-learning-metrics">
                           <span>조회 <strong>{compactNumber(content.views)}</strong></span>
-                          <span>팔로워 대비 <strong>{content.followers ? `${content.viralRatio.toFixed(1)}x` : '-'}</strong></span>
+                          <span>{audienceLabel(content.platform)} 대비 <strong>{content.followers ? `${content.viralRatio.toFixed(1)}x` : '-'}</strong></span>
                           <span>참여율 <strong>{percent(content.engagementRate)}</strong></span>
                           <span>전환 <strong>{compactNumber(content.conversions)}</strong></span>
                         </div>
@@ -21523,7 +21886,7 @@ function AppContent() {
                       <strong>{row.creatorName || '크리에이터명 없음'}</strong>
                       <span>{row.region || '-'} / {row.language || '-'}</span>
                     </div>
-                    <span>팔로워 {compactNumber(row.followers)}</span>
+                    <span>{audienceLabel(row.platform)} {compactNumber(row.followers)}</span>
                     <span>평균 조회 {compactNumber(row.averageViews)}</span>
                     <span>총 조회 {compactNumber(row.totalViews)}</span>
                     <span>참여율 {percent(row.engagementRate)}</span>
@@ -21545,7 +21908,7 @@ function AppContent() {
                     <strong>{row.title}</strong>
                     <p>{row.creatorName || '크리에이터 미확인'} / {row.handle || '핸들 미확인'} / {row.publishedAt || '게시일 미확인'}</p>
                     <div className="tracked-account-meta">
-                      <span>팔로워 {row.followers ? compactNumber(row.followers) : '-'}</span>
+                      <span>{audienceLabel(row.platform)} {row.followers ? compactNumber(row.followers) : '-'}</span>
                       <span>국가 {row.country || '-'}</span>
                       <span>언어 {row.language || '-'}</span>
                       <span>{row.sheetName || row.sourceName}</span>
@@ -21915,6 +22278,10 @@ function AppContent() {
                     </select>
                   </label>
                 </div>
+                <ContentFormatSelector
+                  value={campaignDraft.contentFormats}
+                  onChange={(contentFormats) => setCampaignDraft((current) => ({ ...current, contentFormats }))}
+                />
                 <div className="campaign-market-mode" role="group" aria-label="캠페인 국가 운영 방식">
                   <button
                     className={campaignDraft.marketMode === CAMPAIGN_MARKET_MODES.single ? 'active' : ''}
@@ -22379,7 +22746,7 @@ function AppContent() {
               </div>
               <div className="modal-two-col">
                 <label>
-                  팔로워
+                  {audienceLabel(creatorDraft.platform)}
                   <input
                     inputMode="numeric"
                     value={creatorDraft.followers}
@@ -22458,7 +22825,7 @@ function AppContent() {
                   <span>자동 계산 예상 단가</span>
                   <strong>{formatDualCurrency(rate.estimatedPrice, selectedCampaign)}</strong>
                   <small>
-                    {rateCreator.platform} · 팔로워 {displayMetric(rate.factors.followers)} · 평균 조회 {displayMetric(rate.factors.averageViews)} · 참여율 {percent(rate.factors.engagement)}
+                    {rateCreator.platform} · {audienceLabel(rateCreator.platform)} {displayMetric(rate.factors.followers)} · 평균 조회 {displayMetric(rate.factors.averageViews)} · 참여율 {percent(rate.factors.engagement)}
                   </small>
                 </div>
                 <label>
@@ -22608,7 +22975,7 @@ function AppContent() {
                   <UsersRound size={18} />
                   <div>
                     <strong>{trackingDraft.creatorName || '자동 인식 크리에이터'}</strong>
-                    <span>{[trackingDraft.creatorHandle, trackingDraft.creatorFollowers ? `팔로워 ${displayMetric(Number(trackingDraft.creatorFollowers))}` : '', trackingDraft.snapshotCheckedAt].filter(Boolean).join(' / ')}</span>
+                    <span>{[trackingDraft.creatorHandle, trackingDraft.creatorFollowers ? `${audienceLabel(trackingDraft.platform)} ${displayMetric(Number(trackingDraft.creatorFollowers))}` : '', trackingDraft.snapshotCheckedAt].filter(Boolean).join(' / ')}</span>
                   </div>
                 </div>
               )}
@@ -22890,7 +23257,8 @@ function AppContent() {
               <div className="campaign-detail">
                 <div className="campaign-badges">
                   <span className="status-chip">{activeCampaignForModal.status}</span>
-                  <span className="type-chip">{activeCampaignForModal.campaignType ?? '제안형'}</span>
+                  <span className="type-chip">{normalizeCampaignType(activeCampaignForModal.campaignType)}</span>
+                  <span className="type-chip">콘텐츠 형식: {contentFormatSummary(activeCampaignForModal.contentFormats)}</span>
                 </div>
                 <h3>{activeCampaignForModal.name}</h3>
                 <p>{activeCampaignForModal.objective}</p>
@@ -22948,6 +23316,9 @@ function AppContent() {
                     <label>
                       캠페인 타입
                       <select value={campaignEditDraft.campaignType} onChange={(event) => updateCampaignEditField('campaignType', event.target.value)}>
+                        {campaignEditDraft.campaignType === 'UGC/숏폼' && (
+                          <option value="UGC/숏폼" disabled hidden>기존 분류 · 캠페인 타입을 다시 선택하세요</option>
+                        )}
                         {campaignTypeOptions.map((option) => (
                           <option key={option}>{option}</option>
                         ))}
@@ -22958,6 +23329,10 @@ function AppContent() {
                     이번 캠페인 타깃
                     <input value={campaignEditDraft.targetPersona} onChange={(event) => updateCampaignEditField('targetPersona', event.target.value)} />
                   </label>
+                  <ContentFormatSelector
+                    value={campaignEditDraft.contentFormats}
+                    onChange={(contentFormats) => updateCampaignEditField('contentFormats', contentFormats)}
+                  />
                   <div className="modal-two-col">
                     <label>
                       검색 키워드
@@ -24089,7 +24464,7 @@ function RecommendationCard({
   const recommendationCriteria = [
     { label: '\uD50C\uB7AB\uD3FC', value: creator.platform || '-' },
     { label: '\uAD6D\uAC00', value: creator.country || '-' },
-    { label: '\uD314\uB85C\uC6CC', value: displayMetric(creator.followers) },
+    { label: audienceLabel(creator.platform), value: displayMetric(creator.followers) },
     { label: '\uD3C9\uADE0 \uC870\uD68C', value: pendingMetrics ? '\uC218\uC9D1 \uD544\uC694' : displayMetric(creator.averageViews) },
     { label: '\uCC38\uC5EC\uC728', value: pendingMetrics ? '\uC218\uC9D1 \uD544\uC694' : percent(creator.engagement), tone: 'primary' },
     { label: creatorRate.label, value: estimatedPriceLabel, tone: creatorPrice ? 'primary' : undefined },
@@ -24107,7 +24482,7 @@ function RecommendationCard({
   })
 
   return (
-    <article className={`recommendation-card ${active ? 'active' : ''} ${checked ? 'selected' : ''}`}>
+    <article className={`recommendation-card ${active ? 'active' : ''} ${checked ? 'selected' : ''}`} data-review-platform={creator.platform}>
       <div className="recommendation-top">
         <label className="recommendation-check" aria-label={`${creator.name} 선택`}>
           <input type="checkbox" checked={checked} onChange={onToggle} />
@@ -24130,7 +24505,7 @@ function RecommendationCard({
       <div className="recommendation-fit-strip">
         <span>브랜드 핏 {creator.fit ?? recommendation.score}</span>
         <span>안전성 {creator.brandSafety ?? '-'}</span>
-        <span>가짜 팔로워 위험 {creator.fakeRisk ?? '-'}%</span>
+        <span>가짜 {audienceLabel(creator.platform)} 위험 {creator.fakeRisk ?? '-'}%</span>
         <span>{creator.status ?? '검토 대기'}</span>
       </div>
       <div className="recommendation-basis-summary" aria-label="AI 추천 요약">
@@ -24319,7 +24694,8 @@ function CampaignCard({ campaign, creators, kpiSummary, onOpen, onDelete }) {
         <div>
           <div className="campaign-badges">
             <span className="status-chip">{campaign.status}</span>
-            <span className="type-chip">{campaign.campaignType ?? '제안형'}</span>
+            <span className="type-chip">{normalizeCampaignType(campaign.campaignType)}</span>
+            <span className="type-chip">콘텐츠 형식: {contentFormatSummary(campaign.contentFormats)}</span>
           </div>
           <h3>{campaign.name}</h3>
           <p>
@@ -24454,7 +24830,7 @@ function OutreachItem({
     .map((part) => part.trim())
     .filter(Boolean)
   const metricLine = creator
-    ? `${creator.platform} · 팔로워 ${compactNumber(creator.followers)} · 평균 조회 ${compactNumber(creator.averageViews)} · 매칭 ${creator.fit ?? '-'}점`
+    ? `${creator.platform} · ${audienceLabel(creator.platform)} ${compactNumber(creator.followers)} · 평균 조회 ${compactNumber(creator.averageViews)} · 매칭 ${creator.fit ?? '-'}점`
     : '후보 지표 확인 필요'
 
   return (
@@ -24521,7 +24897,7 @@ function FulfillmentItem({ item, creator, campaign, onAdvance }) {
   const statusDone = item.deliveryStatus === '발송 완료' || item.deliveryStatus === '정산 완료'
   const isSettled = item.deliveryStatus === '정산 완료'
   const creatorProof = creator
-    ? `${compactNumber(creator.followers)} 팔로워 · 평균 조회 ${compactNumber(creator.averageViews)} · 참여율 ${percent(creator.engagement)} · 브랜드 적합성 ${creator.fit}점`
+    ? `${compactNumber(creator.followers)} ${audienceLabel(creator.platform)} · 평균 조회 ${compactNumber(creator.averageViews)} · 참여율 ${percent(creator.engagement)} · 브랜드 적합성 ${creator.fit}점`
     : '크리에이터 지표를 연결하면 자동 표시됩니다.'
 
   return (
@@ -24581,7 +24957,7 @@ function PoolItem({ item, creator, campaign }) {
   const sourceTone = item.source === '자동' ? 'auto-source' : item.source === '대량 섭외' ? 'bulk-source' : 'manual-source'
   const creatorRate = getCreatorRateSummary(creator)
   const confirmMetrics = [
-    ['팔로워', compactNumber(creator.followers)],
+    [audienceLabel(creator.platform), compactNumber(creator.followers)],
     ['평균 조회', compactNumber(creator.averageViews)],
     ['참여율', percent(creator.engagement)],
     [creatorRate.label, creatorRate.effectivePrice ? won(creatorRate.effectivePrice) : '산정 전'],
@@ -24624,13 +25000,13 @@ function PoolItem({ item, creator, campaign }) {
         </div>
         <div>
           <span>컨펌 포인트</span>
-          <strong>{compactNumber(creator.followers)} 팔로워 / 평균 조회 {compactNumber(creator.averageViews)}</strong>
+          <strong>{compactNumber(creator.followers)} {audienceLabel(creator.platform)} / 평균 조회 {compactNumber(creator.averageViews)}</strong>
           <p>{item.note}</p>
         </div>
         <div>
           <span>브랜드 적합성</span>
           <strong>매칭 {creator.fit ?? '-'}점 · 세이프티 {creator.brandSafety ?? '-'}점</strong>
-          <p>{creator.audience ?? '오디언스 미입력'} · 가짜 팔로워 위험 {creator.fakeRisk ?? '-'}% · {topics}</p>
+          <p>{creator.audience ?? '오디언스 미입력'} · 가짜 {audienceLabel(creator.platform)} 위험 {creator.fakeRisk ?? '-'}% · {topics}</p>
         </div>
       </div>
     </article>
@@ -24706,7 +25082,7 @@ function ClientApprovalBoard({
                 <em>{poolItem.status}</em>
               </div>
               <div className="client-metric-list">
-                <span><b>팔로워</b>{creator ? compactNumber(creator.followers) : '-'}</span>
+                <span><b>{audienceLabel(creator?.platform)}</b>{creator ? compactNumber(creator.followers) : '-'}</span>
                 <span><b>평균 조회</b>{creator ? compactNumber(creator.averageViews) : '-'}</span>
                 <span><b>참여율</b>{creator ? percent(creator.engagement) : '-'}</span>
                 <span><b>데이터</b>{quality.score}</span>
@@ -24718,7 +25094,7 @@ function ClientApprovalBoard({
                     {creatorRate?.effectivePrice ? formatDualCurrency(creatorRate.effectivePrice, campaign) : '산정 전'}
                   </span>
                   <span>브랜드 핏 {creator?.fit ?? '-'}점</span>
-                  <span>가짜 팔로워 위험 {creator?.fakeRisk ?? '-'}%</span>
+                  <span>가짜 {audienceLabel(creator?.platform)} 위험 {creator?.fakeRisk ?? '-'}%</span>
                 </div>
                 <p>{poolItem.note || creator?.sourceNote || '브랜드 적합도, 콘텐츠 톤, 최근 성과 기준으로 컨펌 검토가 필요합니다.'}</p>
                 {creator && onEditCreatorRate ? (
