@@ -4890,6 +4890,7 @@ function buildOutreachMessagePrompt(creator = {}, brand = {}, campaign = {}) {
   const language = resolveCampaignLanguage(campaign)
   return [
     `Write a warm, sincere influencer collaboration proposal message in ${language.label}.`,
+    'Respect campaign.contentFormats as the selected deliverable formats, separate from campaign type and platform. If empty, leave formats for agreement.',
     'The goal is to receive a reply. Make it sound like a real brand manager wrote a polite first DM or email, not a stiff sales script.',
     'Include:',
     '- one specific compliment that suggests the creator content was actually reviewed',
@@ -4912,6 +4913,7 @@ function buildCampaignStrategyPrompt({
   const language = resolveCampaignLanguage(campaign)
   return [
     'Create an execution-ready influencer campaign strategy in Korean.',
+    'Respect all campaign.contentFormats selections as the deliverable formats, independently of campaign type and platform. Adapt conflicting draft deliverables to these formats. If empty, leave formats for agreement.',
     `The target market is ${campaign.targetCountry || 'KR'}. Keep internal strategy explanations in Korean, but write every creator-facing message, hook, caption, and example in ${language.label}.`,
     'Improve the supplied deterministic draft without deleting useful details. Use only supplied facts and administrator knowledge.',
     'Required sections:',
@@ -4940,6 +4942,7 @@ function buildContentGuidePrompt({ brand = {}, campaign = {}, seedingType = '', 
   const language = resolveCampaignLanguage(campaign)
   return [
     `Write an influencer content guide in ${language.label} for direct delivery to creators.`,
+    'Respect all campaign.contentFormats selections as the deliverable formats, independently of campaign type and platform. Adapt conflicting draft deliverables to these formats. If empty, leave formats for agreement.',
     'Use a document structure that a brand manager can share immediately, while making the shooting direction concrete and creator-friendly.',
     'Required sections:',
     '1. Campaign goal and one-message',

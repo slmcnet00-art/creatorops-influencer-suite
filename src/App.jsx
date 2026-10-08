@@ -1,4 +1,6 @@
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { campaignTypeOptions, isGroupBuyingCampaign, normalizeCampaignType, normalizeContentFormats, contentFormatSummary } from './campaignTypes.js'
+import ContentFormatSelector from './ContentFormatSelector.jsx'
 import {
   ArrowRight,
   ArrowUpRight,
@@ -820,7 +822,7 @@ const defaultCampaigns = [
     revenue: 61100000,
     deadline: '오늘',
     objective: '공동구매 전환',
-    campaignType: '틱톡 공동구매 셀러',
+    campaignType: '공동구매',
     mission: '틱톡 셀러 공동구매 숏폼 1건 + 라이브/댓글 구매 유도 + 고정 링크 운영',
     reward: '제품 패키지 + 판매 커미션 + 우수 셀러 보너스',
     approvalFlow: '셀러 대량 섭외 → 샘플 발송 → 판매 스크립트 검수 → 콘텐츠/라이브 추적',
@@ -1434,7 +1436,6 @@ function getCampaignMarketSummary(campaign = {}) {
 }
 
 const campaignStatuses = ['섭외', '콘텐츠 제작', '라이브', '리포트', '완료']
-const campaignTypeOptions = ['제안형', '공개모집', '앰배서더', '커머스/제휴', 'UGC/숏폼', '틱톡 공동구매 셀러']
 
 function normalizeBrand(brand, index = 0) {
   const fallback = defaultBrands[index] ?? defaultBrands[0]
@@ -1501,7 +1502,8 @@ function normalizeCampaign(campaign, brands) {
   return {
     ...campaign,
     brandId: inferBrandIdForCampaign(campaign, brands),
-    campaignType: campaign.campaignType ?? fallback?.campaignType ?? '제안형',
+    campaignType: normalizeCampaignType(campaign.campaignType ?? fallback?.campaignType),
+    contentFormats: normalizeContentFormats(campaign.contentFormats),
     mission: campaign.mission ?? fallback?.mission ?? '브랜드 브리프에 맞춘 콘텐츠 미션',
     reward: campaign.reward ?? fallback?.reward ?? '제품 제공 + 협의 리워드',
     approvalFlow: campaign.approvalFlow ?? fallback?.approvalFlow ?? '브리프 전달 → 콘텐츠 검수 → 게시 확인 → 성과 리포트',
@@ -3377,6 +3379,7 @@ function buildInfluencerContentGuide({ brand, brief, campaign, creators = [] }) 
 - 제품/서비스: ${brief.product || '-'}
 - 협업 유형: ${seedType}
 - 권장 채널: ${channel}
+- 콘텐츠 형식: ${contentFormatSummary(campaign.contentFormats)}
 - 캠페인 유형: ${getStrategyProblemType(campaign, brief)}
 - 캠페인 목표: ${campaign.objective || brief.goal || '-'}
 - KPI: ${campaign.kpiGoal || '조회수, 댓글, 저장/공유, 전환 링크 클릭, 구매/문의'}
@@ -3522,6 +3525,7 @@ function buildCreatorSpecificContentGuide({ brand, brief, campaign, creator, com
 - 제품/서비스: ${brief.product || campaign?.product || '-'}
 - 협업 유형: ${campaign?.guideSeedType || '무가시딩'}
 - 권장 채널: ${platform}
+- 콘텐츠 형식: ${contentFormatSummary(campaign?.contentFormats)}
 - 업로드 일정: ${campaign?.uploadDueDate || campaign?.deadline || '협의'}
 
 ## 1-1. 개인 추적 숏링크
@@ -4491,12 +4495,13 @@ function buildStrategyExperimentRows({ productText, personaText, hookRows = [], 
 }
 
 function buildInfluencerStrategy({ brand, brief, campaign, creators = [], recommendations = [], learningMaterials = [] }) {
-  const selectedPlatforms = (brief.platforms?.length ? brief.platforms : ['Instagram', 'TikTok']).filter(Boolean)
+  const selectedPlatforms = [...new Set((brief.platforms?.length ? brief.platforms : ['Instagram', 'TikTok'])
+    .filter(Boolean).map((platform) => platform === 'TikTok 셀러' ? 'TikTok' : platform))]
   const selectedCategories = (brief.categories?.length ? brief.categories : ['리뷰']).filter((item) => item !== '전체')
   const realCreators = creators.filter((creator) => !isExampleCreator(creator))
   const matchedCreators = realCreators.filter((creator) => matchesBriefPlatform(creator, selectedPlatforms))
   const materialDigest = buildLearningMaterialDigest(learningMaterials.length ? learningMaterials : getLearningMaterials(brief))
-  const sellerMode = selectedPlatforms.includes('TikTok 셀러') || campaign?.campaignType?.includes('셀러')
+  const sellerMode = isGroupBuyingCampaign(campaign?.campaignType) || brief.platforms?.includes('TikTok 셀러')
   const campaignGoal = campaign?.kpiGoal || brief.goal || '조회수와 전환을 함께 보는 캠페인'
   const budget = Number(campaign?.budget || 0)
   const maxCreatorFee = Number(brief.maxPrice || 0)
@@ -4517,7 +4522,7 @@ function buildInfluencerStrategy({ brand, brief, campaign, creators = [], recomm
     .filter(Boolean)
     .slice(0, 4)
   const forbidden = keywordList(brief.exclusions).slice(0, 5)
-  const primaryPlatform = sellerMode ? 'TikTok 셀러' : selectedPlatforms[0] ?? 'Instagram'
+  const primaryPlatform = selectedPlatforms[0] ?? 'Instagram'
   const productText = brief.product || '제품'
   const personaText = brief.persona || '핵심 고객'
   const strategyType = sellerMode
@@ -4528,7 +4533,7 @@ function buildInfluencerStrategy({ brand, brief, campaign, creators = [], recomm
 
   const castingMix = [
     sellerMode
-      ? `TikTok 공동구매 셀러 ${Math.max(10, Number(campaign?.sellerRecruitTarget || 20))}명: 구매 링크/코드 운영 가능 여부를 우선 필터링`
+      ? `${primaryPlatform} 공동구매 파트너 ${Math.max(10, Number(campaign?.sellerRecruitTarget || 20))}명: 구매 링크/코드 운영 가능 여부를 우선 확인`
       : `${primaryPlatform} 메인 크리에이터 ${Math.min(estimatedSlots, 5)}명: 첫 주 Anchor 콘텐츠와 신뢰 증명 담당`,
     `마이크로/미드 인플루언서 ${Math.max(4, Math.min(12, estimatedSlots * 2))}명: 댓글 질문, 저장/공유, 사용 상황 확산 담당`,
     `${selectedCategories.slice(0, 3).join(', ') || '브랜드 핏'} 카테고리 후보: 페르소나 적합성과 과거 콘텐츠 톤을 우선 검수`,
@@ -4584,6 +4589,7 @@ function buildInfluencerStrategy({ brand, brief, campaign, creators = [], recomm
     `타깃: ${personaText}`,
     `목표: ${campaignGoal}`,
     `우선 채널: ${selectedPlatforms.join(', ')}`,
+    `콘텐츠 형식: ${contentFormatSummary(campaign?.contentFormats)} · 선택 형식에 맞춰 제출물을 협의`,
     `목표 후보 수: ${targetCount}명`,
     materialDigest.sourceNames.length ? `첨부 학습자료 ${materialDigest.sourceNames.length}건 반영` : '첨부 학습자료 없음',
   ]
@@ -5352,7 +5358,7 @@ function buildAutoBriefSetup(rawText) {
   const persona = categories.includes('펫')
     ? '반려견 이동, 여행, 차량 이동, 펫 라이프 콘텐츠를 신뢰감 있게 설명할 수 있는 펫 채널/펫스타그램 운영자'
     : `${product} 사용 맥락을 실제 경험처럼 설명할 수 있는 크리에이터`
-  const campaignType = text.includes('공동구매') ? '커머스/제휴' : '제안형'
+  const campaignType = text.includes('공동구매') ? '공동구매' : '제안형'
   const objective = priceMatch || text.includes('환불') || text.includes('구매') ? '구매 전환' : '브랜드 인지도'
 
   return {
@@ -14412,7 +14418,8 @@ function AppContent() {
     name: campaign.name || '',
     product: campaign.product || '',
     objective: campaign.objective || '브랜드 인지도',
-    campaignType: campaign.campaignType || '제안형',
+    campaignType: normalizeCampaignType(campaign.campaignType),
+    contentFormats: normalizeContentFormats(campaign.contentFormats),
     targetPersona: campaign.targetPersona || '',
     searchKeywords: campaign.searchKeywords || '',
     exclusionKeywords: campaign.exclusionKeywords || '',
@@ -14479,7 +14486,8 @@ function AppContent() {
       name: campaignEditDraft.name || activeCampaignForModal.name,
       product: campaignEditDraft.product || activeCampaignForModal.product,
       objective: campaignEditDraft.objective,
-      campaignType: campaignEditDraft.campaignType,
+      campaignType: normalizeCampaignType(campaignEditDraft.campaignType),
+      contentFormats: normalizeContentFormats(campaignEditDraft.contentFormats),
       targetPersona: campaignEditDraft.targetPersona,
       searchKeywords: campaignEditDraft.searchKeywords,
       exclusionKeywords: campaignEditDraft.exclusionKeywords,
@@ -14609,7 +14617,8 @@ function AppContent() {
     localizationInstruction: getLanguageInstruction(campaign),
     product: campaign.product || campaignBrief.product || '',
     objective: campaign.objective || campaignBrief.goal || '',
-    campaignType: campaign.campaignType || '제안형',
+    campaignType: normalizeCampaignType(campaign.campaignType),
+    contentFormats: normalizeContentFormats(campaign.contentFormats),
     targetPersona: campaign.targetPersona || campaignBrief.persona || '',
     keywords: campaign.searchKeywords || campaignBrief.keywords || '',
     strategyKeywords: campaignBrief.strategyKeywords || '',
@@ -15279,7 +15288,8 @@ function AppContent() {
       },
       product: campaignBrief.product,
       objective: campaignDraft.objective,
-      campaignType: campaignDraft.campaignType || '제안형',
+      campaignType: normalizeCampaignType(campaignDraft.campaignType),
+      contentFormats: normalizeContentFormats(campaignDraft.contentFormats),
       targetPersona: campaignBrief.persona,
       searchKeywords: campaignBrief.keywords,
       exclusionKeywords: campaignBrief.exclusions,
@@ -15331,7 +15341,8 @@ function AppContent() {
           budget,
           product: campaignBrief.product,
           objective: campaignDraft.objective,
-          campaignType: campaignDraft.campaignType || '제안형',
+          campaignType: normalizeCampaignType(campaignDraft.campaignType),
+          contentFormats: normalizeContentFormats(campaignDraft.contentFormats),
           targetPersona: campaignBrief.persona,
           searchKeywords: campaignBrief.keywords,
           exclusionKeywords: campaignBrief.exclusions,
@@ -20801,6 +20812,7 @@ function AppContent() {
                   <div>
                     <span className="mini-label">캠페인 상세</span>
                     <strong>{activeCampaignForModal.name}</strong>
+                    <p>{normalizeCampaignType(activeCampaignForModal.campaignType)} · 콘텐츠 형식: {contentFormatSummary(activeCampaignForModal.contentFormats)}</p>
                     <p>{activeCampaignForModal.objective} · {getCampaignMarketSummary(activeCampaignForModal)} · {activeCampaignForModal.owner} · 마감 {activeCampaignForModal.deadline ?? '미정'}</p>
                   </div>
                   <div className="campaign-detail-page-actions">
@@ -20862,6 +20874,19 @@ function AppContent() {
                         <input value={campaignEditDraft.searchKeywords} onChange={(event) => updateCampaignEditField('searchKeywords', event.target.value)} />
                       </label>
                     </div>
+                    <label>
+                      캠페인 타입
+                      <select value={campaignEditDraft.campaignType} onChange={(event) => updateCampaignEditField('campaignType', event.target.value)}>
+                        {campaignEditDraft.campaignType === 'UGC/숏폼' && (
+                          <option value="UGC/숏폼" disabled hidden>기존 분류 · 캠페인 타입을 다시 선택하세요</option>
+                        )}
+                        {campaignTypeOptions.map((option) => <option key={option}>{option}</option>)}
+                      </select>
+                    </label>
+                    <ContentFormatSelector
+                      value={campaignEditDraft.contentFormats}
+                      onChange={(contentFormats) => updateCampaignEditField('contentFormats', contentFormats)}
+                    />
                     <div className="campaign-market-mode compact" role="group" aria-label="캠페인 국가 운영 방식 수정">
                       <button
                         className={campaignEditDraft.marketMode === CAMPAIGN_MARKET_MODES.single ? 'active' : ''}
@@ -22246,6 +22271,10 @@ function AppContent() {
                     </select>
                   </label>
                 </div>
+                <ContentFormatSelector
+                  value={campaignDraft.contentFormats}
+                  onChange={(contentFormats) => setCampaignDraft((current) => ({ ...current, contentFormats }))}
+                />
                 <div className="campaign-market-mode" role="group" aria-label="캠페인 국가 운영 방식">
                   <button
                     className={campaignDraft.marketMode === CAMPAIGN_MARKET_MODES.single ? 'active' : ''}
@@ -23221,7 +23250,8 @@ function AppContent() {
               <div className="campaign-detail">
                 <div className="campaign-badges">
                   <span className="status-chip">{activeCampaignForModal.status}</span>
-                  <span className="type-chip">{activeCampaignForModal.campaignType ?? '제안형'}</span>
+                  <span className="type-chip">{normalizeCampaignType(activeCampaignForModal.campaignType)}</span>
+                  <span className="type-chip">콘텐츠 형식: {contentFormatSummary(activeCampaignForModal.contentFormats)}</span>
                 </div>
                 <h3>{activeCampaignForModal.name}</h3>
                 <p>{activeCampaignForModal.objective}</p>
@@ -23279,6 +23309,9 @@ function AppContent() {
                     <label>
                       캠페인 타입
                       <select value={campaignEditDraft.campaignType} onChange={(event) => updateCampaignEditField('campaignType', event.target.value)}>
+                        {campaignEditDraft.campaignType === 'UGC/숏폼' && (
+                          <option value="UGC/숏폼" disabled hidden>기존 분류 · 캠페인 타입을 다시 선택하세요</option>
+                        )}
                         {campaignTypeOptions.map((option) => (
                           <option key={option}>{option}</option>
                         ))}
@@ -23289,6 +23322,10 @@ function AppContent() {
                     이번 캠페인 타깃
                     <input value={campaignEditDraft.targetPersona} onChange={(event) => updateCampaignEditField('targetPersona', event.target.value)} />
                   </label>
+                  <ContentFormatSelector
+                    value={campaignEditDraft.contentFormats}
+                    onChange={(contentFormats) => updateCampaignEditField('contentFormats', contentFormats)}
+                  />
                   <div className="modal-two-col">
                     <label>
                       검색 키워드
@@ -24650,7 +24687,8 @@ function CampaignCard({ campaign, creators, kpiSummary, onOpen, onDelete }) {
         <div>
           <div className="campaign-badges">
             <span className="status-chip">{campaign.status}</span>
-            <span className="type-chip">{campaign.campaignType ?? '제안형'}</span>
+            <span className="type-chip">{normalizeCampaignType(campaign.campaignType)}</span>
+            <span className="type-chip">콘텐츠 형식: {contentFormatSummary(campaign.contentFormats)}</span>
           </div>
           <h3>{campaign.name}</h3>
           <p>
