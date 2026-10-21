@@ -1,4 +1,5 @@
 import { config as loadEnv } from 'dotenv'
+import {registerOsLearningBridge} from './osLearningBridge.js'
 import cors from 'cors'
 import express from 'express'
 import JSZip from 'jszip'
@@ -108,6 +109,7 @@ app.use(cors({
   },
 }))
 app.use(express.json({ limit: '5mb' }))
+registerOsLearningBridge(app,{loadActiveConfigs:()=>getAiFeatureConfigs({strict:true})})
 
 const DISCOVERY_STOP_WORDS = new Set([
   'creator', 'creators', 'influencer', 'influencers', 'review', 'reviews', 'campaign', 'product', 'service', 'brand', 'official', 'profile', 'video', 'content', 'channel', 'shorts', 'reels', 'tiktok', 'instagram', 'youtube',
@@ -848,7 +850,7 @@ function normalizeAiFeatureConfig(featureKey, value = {}) {
   }
 }
 
-async function getAiFeatureConfigs() {
+async function getAiFeatureConfigs({strict=false} = {}) {
   const supabase = getSupabaseAdminClient()
   if (supabase) {
     const { data, error } = await supabase
@@ -856,13 +858,16 @@ async function getAiFeatureConfigs() {
       .select('settings')
       .eq('id', WORKSPACE_ID)
       .maybeSingle()
+    if (error && strict) throw httpError(503, 'Active learning source is unavailable.')
     if (!error) {
       const stored = data?.settings?.aiFeatureConfigs || {}
+      if (strict) aiFeatureConfigMemory.clear()
       Object.entries(stored).forEach(([key, value]) => {
         if (AI_FEATURE_KEYS.has(key)) aiFeatureConfigMemory.set(key, normalizeAiFeatureConfig(key, value))
       })
     }
   }
+  if (!supabase && strict) throw httpError(503, 'Persistent learning source is required.')
   return [...aiFeatureConfigMemory.values()]
 }
 
