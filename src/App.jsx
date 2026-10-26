@@ -41,6 +41,7 @@ import {
   X,
 } from 'lucide-react'
 import './App.css'
+import { aggregateEngagement, getAverageViews, getActualRevenue, getActualSpend } from './performanceMetrics.js'
 import { audienceLabel, audienceGroupLabel, YOUTUBE_INPUT_NOTICE_EN } from './platformAudience'
 import {
   CREATOROPS_LEARNING_ROOT_URL,
@@ -83,6 +84,7 @@ import {
 } from './contentTemplateLibrary'
 import {
   getBackendConfig,
+  getAuthenticatedApiHeaders,
   getAuthSession,
   getCurrentWorkspaceAccess,
   importExternalReport,
@@ -2339,13 +2341,13 @@ function inferCampaignTargets(campaign = {}, fallback = {}) {
   }
 }
 
-function getCampaignKpiSummary(campaign, posts = [], recruitedPool = []) {
+function getCampaignKpiSummary(campaign, posts = [], recruitedPool = [], events = []) {
   const campaignPosts = posts.filter((post) => post.campaignId === campaign.id)
   const campaignPool = recruitedPool.filter((item) => item.campaignId === campaign.id)
   const actualViews = campaignPosts.reduce((sum, post) => sum + Number(post.views || 0), 0)
   const actualConversions = campaignPosts.reduce((sum, post) => sum + Number(post.conversions || 0), 0)
   const actualOrders = Number(campaign.orders || campaign.actualOrders || 0)
-  const actualRevenue = Number(campaign.revenue || 0)
+  const actualRevenue = getActualRevenue(campaign, events)
   const actualRecruited = campaignPool.length
   const metrics = [
     {
@@ -8048,6 +8050,7 @@ function AppContent() {
   const [authEmail, setAuthEmail] = useState('')
   const [cloudWorkspaceLoaded, setCloudWorkspaceLoaded] = useState(!backendConfig.hasSupabase)
   const cloudVersionRef = useRef('')
+  const cloudConflictRef = useRef(false)
   const skipNextCloudSaveRef = useRef(false)
   const brandCloudVersionsRef = useRef({})
   const brandCloudSignatureRef = useRef('')
@@ -8970,7 +8973,7 @@ function AppContent() {
           groups: groupSummary.groups + 1,
           creators: groupSummary.creators + groupCreators.length,
           avgFollowers: groupSummary.avgFollowers + groupCreators.reduce((sum, creator) => sum + Number(creator.followers || 0), 0),
-          avgViews: groupSummary.avgViews + groupCreators.reduce((sum, creator) => sum + Number(creator.avgViews || 0), 0),
+          avgViews: groupSummary.avgViews + groupCreators.reduce((sum, creator) => sum + getAverageViews(creator), 0),
           totalPrice: groupSummary.totalPrice + priceStats.total,
           pricedCreators: groupSummary.pricedCreators + priceStats.pricedCount,
         }
@@ -9477,8 +9480,8 @@ function AppContent() {
       let cost = fulfillmentRows.reduce((sum, record) => sum + Number(record.paymentAmount || 0), 0) +
         operationRows.reduce((sum, record) => sum + Number(record.actualCost || 0), 0)
       if (marketRows.length === 1) {
-        cost = Math.max(cost, Number(selectedCampaign.spend || 0))
-        if (!revenue) revenue = Number(selectedCampaign.revenue || 0)
+        cost = Math.max(cost, Number(selectedCampaign.actualSpend || 0))
+        revenue = getActualRevenue(selectedCampaign, campaignConversions)
       }
 
       return {
@@ -9598,10 +9601,7 @@ function AppContent() {
     [reportVideoRows],
   )
   const reportAverageEngagement = useMemo(
-    () =>
-      reportVideoRows.length
-        ? reportVideoRows.reduce((sum, row) => sum + Number(row.engagementRate || 0), 0) / reportVideoRows.length
-        : 0,
+    () => aggregateEngagement(reportVideoRows),
     [reportVideoRows],
   )
   const reportUploadedCreatorCount = useMemo(
@@ -9666,8 +9666,8 @@ function AppContent() {
 
   const campaignKpiSummaries = useMemo(
     () =>
-      brandCampaigns.map((campaign) => getCampaignKpiSummary(campaign, activeTrackedPosts, activeRecruitedPool)),
-    [activeRecruitedPool, activeTrackedPosts, brandCampaigns],
+      brandCampaigns.map((campaign) => getCampaignKpiSummary(campaign, activeTrackedPosts, activeRecruitedPool, conversionEvents)),
+    [activeRecruitedPool, activeTrackedPosts, brandCampaigns, conversionEvents],
   )
 
   const selectedCampaignKpi = useMemo(
@@ -9695,8 +9695,8 @@ function AppContent() {
       filteredCreators.reduce((sum, creator) => sum + creator.engagement, 0) /
       Math.max(filteredCreators.length, 1)
     const budget = brandCampaigns.reduce((sum, campaign) => sum + campaign.budget, 0)
-    const revenue = brandCampaigns.reduce((sum, campaign) => sum + campaign.revenue, 0)
-    const spend = brandCampaigns.reduce((sum, campaign) => sum + campaign.spend, 0)
+    const revenue = brandCampaigns.reduce((sum, campaign) => sum + getActualRevenue(campaign, conversionEvents), 0)
+    const spend = brandCampaigns.reduce((sum, campaign) => sum + getActualSpend(campaign, fulfillmentRecords, creatorOperations), 0)
 
     return {
       reach,
@@ -9705,9 +9705,9 @@ function AppContent() {
       budget,
       spend,
       revenue,
-      roi: revenue / Math.max(spend, 1),
+      roi: spend > 0 ? revenue / spend : 0,
     }
-  }, [brandCampaigns, filteredCreators])
+  }, [brandCampaigns, conversionEvents, creatorOperations, fulfillmentRecords, filteredCreators])
 
   const scoreBands = useMemo(
     () => [
@@ -11293,6 +11293,7 @@ function AppContent() {
 
     return watchCloudWorkspace(
       (event) => {
+        if (cloudConflictRef.current) return
         if (event.status !== 'updated' || !event.workspace) return
         if (event.updatedAt === cloudVersionRef.current) return
 
@@ -11319,6 +11320,7 @@ function AppContent() {
     }
 
     const timeout = window.setTimeout(async () => {
+      if (cloudConflictRef.current) return
       try {
         const result = await saveCloudWorkspace(workspace, { expectedUpdatedAt: cloudVersionRef.current })
         if (result.status === 'auth_required' || result.status === 'forbidden') {
@@ -11330,18 +11332,17 @@ function AppContent() {
           })
           return
         }
-        if (result.status === 'conflict' && result.workspace) {
-          cloudVersionRef.current = result.updatedAt || ''
-          skipNextCloudSaveRef.current = true
-          setWorkspace(normalizeWorkspace(result.workspace))
+        if (result.status === 'conflict') {
+          cloudConflictRef.current = true
           setCloudSyncStatus({
-            mode: 'cloud',
-            label: '다른 기기의 최신 변경사항을 반영했습니다',
-            detail: '동시에 저장된 이전 화면의 변경은 덮어쓰지 않았습니다.',
+            mode: 'conflict',
+            label: '동시 수정 충돌 — 내 변경사항은 보존됨',
+            detail: '자동 저장을 중지했습니다. 설정에서 내 변경사항을 다운로드한 후 최신 데이터를 다시 불러와 병합해주세요.',
             updatedAt: result.updatedAt || '',
           })
           return
         }
+        if (cloudConflictRef.current) return
         cloudVersionRef.current = result.updatedAt || cloudVersionRef.current
         setCloudSyncStatus((current) => ({
           ...current,
@@ -11407,6 +11408,7 @@ function AppContent() {
 
     const stopWatching = watchBrandCloudWorkspaces(
       (event) => {
+        if (cloudConflictRef.current) return
         if (event.status !== 'updated' || !Array.isArray(event.snapshots)) return
         if (event.version === brandCloudSignatureRef.current) return
         brandCloudSignatureRef.current = event.version || ''
@@ -11439,19 +11441,18 @@ function AppContent() {
     }
 
     const timeout = window.setTimeout(async () => {
+      if (cloudConflictRef.current) return
+      try {
       const payload = buildBrandScopedWorkspace(workspace, brandId)
       const result = await saveBrandCloudWorkspace(brandId, payload, {
         expectedUpdatedAt: brandCloudVersionsRef.current[String(brandId)] || '',
       })
-      if (result.status === 'conflict' && result.payload) {
-        brandCloudVersionsRef.current[String(brandId)] = result.updatedAt || ''
-        skipNextBrandCloudSaveRef.current = true
-        setWorkspace((current) =>
-          mergeBrandCloudWorkspaces(current, [{ brand_id: brandId, payload: result.payload, updated_at: result.updatedAt }]),
-        )
-        showToast('다른 컴퓨터의 최신 브랜드 데이터를 반영했습니다.')
+      if (result.status === 'conflict') {
+        cloudConflictRef.current = true
+        setCloudSyncStatus({ mode: 'conflict', label: '브랜드 동시 수정 충돌 — 내 변경사항은 보존됨', detail: '자동 저장을 중지했습니다. 내 변경사항을 다운로드하고 최신 데이터를 다시 불러와 병합해주세요.', updatedAt: result.updatedAt || '' })
         return
       }
+      if (cloudConflictRef.current) return
       if (result.status === 'saved') {
         brandCloudVersionsRef.current[String(brandId)] = result.updatedAt || ''
         setCloudSyncStatus((current) => ({
@@ -11461,6 +11462,9 @@ function AppContent() {
           detail: '후보, 그룹, 메시지, 섭외 및 콘텐츠 추적 데이터가 팀 DB에 저장되었습니다.',
           updatedAt: result.updatedAt || new Date().toISOString(),
         }))
+      }
+      } catch (error) {
+        setCloudSyncStatus({ mode: 'error', label: '브랜드 저장 실패', detail: error.message || '네트워크와 저장 권한을 확인해주세요.', updatedAt: '' })
       }
     }, 1000)
 
@@ -11624,14 +11628,23 @@ function AppContent() {
   }
 
   const syncWorkspaceNow = async () => {
+    if (cloudConflictRef.current) {
+      showToast('동시 수정 충돌입니다. 내 변경사항을 다운로드한 후 최신 데이터를 불러와주세요.')
+      return
+    }
     if (!backendConfig.hasSupabase) {
       showToast('팀 공유 DB 환경변수를 설정하면 운영 데이터를 저장할 수 있어요.')
       return
     }
 
     try {
-      const result = await saveCloudWorkspace(workspace)
-      if (result.status === 'auth_required') {
+      const result = await saveCloudWorkspace(workspace, { expectedUpdatedAt: cloudVersionRef.current })
+      if (result.status === 'conflict') {
+        cloudConflictRef.current = true
+        setCloudSyncStatus({ mode: 'conflict', label: '동시 수정 충돌 — 내 변경사항은 보존됨', detail: '내 변경사항을 다운로드한 후 최신 데이터를 불러와주세요.', updatedAt: result.updatedAt || '' })
+        return
+      }
+      if (result.status === 'auth_required' || result.status === 'forbidden') {
         setCloudSyncStatus({
           mode: 'auth',
           label: '팀 공유 DB 로그인 필요',
@@ -11641,6 +11654,8 @@ function AppContent() {
         showToast('팀 공유 DB에 저장하려면 먼저 로그인하세요.')
         return
       }
+      if (result.status !== 'saved') throw new Error(result.message || '공유 저장을 확인하지 못했습니다.')
+      cloudVersionRef.current = result.updatedAt || cloudVersionRef.current
       setCloudSyncStatus({
         mode: 'cloud',
         label: '팀 공유 DB 수동 저장됨',
@@ -13238,7 +13253,7 @@ function AppContent() {
     try {
       const response = await fetch(`${apiBaseUrl}/ai/recommendations/enrich`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: await getAuthenticatedApiHeaders(),
         body: JSON.stringify({
           brand: activeBrand,
           campaign: {
@@ -14711,7 +14726,7 @@ function AppContent() {
       try {
         const response = await fetch(`${apiBaseUrl}/ai/campaign-strategy`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: await getAuthenticatedApiHeaders(),
           body: JSON.stringify({
             brand: activeBrand,
             campaign,
@@ -14844,7 +14859,7 @@ function AppContent() {
       try {
         const response = await fetch(`${apiBaseUrl}/ai/content-guide`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: await getAuthenticatedApiHeaders(),
           body: JSON.stringify({
             brand: activeBrand,
             campaign,
@@ -15225,15 +15240,11 @@ function AppContent() {
         if (item.id !== campaignId) return item
         const statusIndex = campaignStatuses.indexOf(item.status)
         const nextStatus = campaignStatuses[Math.min(statusIndex + 1, campaignStatuses.length - 1)]
-        const nextSpend = Math.min(item.budget, item.spend + Math.round(item.budget * 0.15))
 
         return {
           ...item,
           status: nextStatus,
           progress: Math.min(item.progress + 14, 100),
-          spend: nextSpend,
-          revenue: item.revenue + Math.round(item.budget * 0.22),
-          stages: item.stages.map((stage, index) => stage + (index === statusIndex ? 8 : 3)),
         }
       })
 
@@ -15278,8 +15289,10 @@ function AppContent() {
       owner: activeBrand.owner || activeBrand.name,
       status: '섭외',
       budget,
-      spend: Math.min(Math.round(estimatedCost * 0.15), budget),
-      revenue: Math.round(budget * 0.85),
+      spend: 0,
+      revenue: 0,
+      plannedCreatorCost: estimatedCost,
+      performanceSource: 'unreported',
       deadline: campaignDraft.recruitEndDate || campaignDraft.deadline || '일정 미정',
       schedule: {
         recruitStart: campaignDraft.recruitStartDate,
@@ -16293,7 +16306,8 @@ function AppContent() {
         body: JSON.stringify({
           accessToken: gmailAccessToken,
           workspaceId: backendConfig.workspaceId,
-          campaignId: campaign?.id || '',
+          campaignId: '',
+          connectionTest: true,
           to: recipient,
           subject,
           message,
@@ -16742,7 +16756,7 @@ function AppContent() {
       ...selectedCandidatePoolIds,
     ]
     const fallbackCreatorIds = [...creators]
-      .sort((a, b) => Number(b.avgViews || 0) - Number(a.avgViews || 0))
+      .sort((a, b) => getAverageViews(b) - getAverageViews(a))
       .slice(0, 6)
       .map((creator) => creator.id)
     const creatorIds = Array.from(new Set(seedCreatorIds.length ? seedCreatorIds : fallbackCreatorIds)).slice(0, 50)
@@ -17549,10 +17563,7 @@ function AppContent() {
     }),
     { views: 0, likes: 0, comments: 0, shares: 0 },
   )
-  const campaignModalAverageEngagement = campaignModalTrackedTotals.views
-    ? (campaignModalTrackedTotals.likes + campaignModalTrackedTotals.comments + campaignModalTrackedTotals.shares) /
-      campaignModalTrackedTotals.views
-    : 0
+  const campaignModalAverageEngagement = aggregateEngagement(campaignModalTrackedPosts)
   const campaignModalKpi = campaignKpiSummaries.find((summary) => summary.campaignId === activeCampaignForModal?.id)
   const campaignModalGuideCreators = activeCampaignForModal ? getCampaignGuideCreators(activeCampaignForModal) : []
   const campaignModalIndividualGuideCount = activeCampaignForModal
@@ -17932,6 +17943,7 @@ function AppContent() {
                     <RefreshCw size={16} />
                     지금 공유 DB 저장
                   </button>
+                  {cloudSyncStatus.mode === 'conflict' && <button className="secondary-button compact-button" type="button" onClick={() => exportFile('creatorops-unsaved-changes.json', 'application/json', JSON.stringify(workspace, null, 2))}>내 변경사항 다운로드</button>}
                 </div>
               </div>
               <div className={`sync-status-card ${cloudSyncStatus.mode}`}>
@@ -19634,7 +19646,7 @@ function AppContent() {
               visibleCreatorGroups.map((group) => {
                 const groupCreators = getCreatorsByIds(creators, group.creatorIds || [])
                 const platforms = Array.from(new Set(groupCreators.map((creator) => creator.platform).filter(Boolean))).slice(0, 3)
-                const groupViews = groupCreators.reduce((sum, creator) => sum + Number(creator.avgViews || 0), 0)
+                const groupViews = groupCreators.reduce((sum, creator) => sum + getAverageViews(creator), 0)
                 const groupFollowers = groupCreators.reduce((sum, creator) => sum + Number(creator.followers || 0), 0)
                 const groupPriceStats = getCreatorGroupPriceStats(groupCreators)
                 const active = selectedCreatorGroup?.id === group.id
@@ -19786,7 +19798,7 @@ function AppContent() {
                           <span>{audienceLabel(creator.platform)}</span>
                         </div>
                         <div>
-                          <strong>{compactNumber(creator.avgViews || creator.averageViews)}</strong>
+                          <strong>{compactNumber(getAverageViews(creator))}</strong>
                           <span>평균조회</span>
                         </div>
                         <div>
@@ -21034,7 +21046,7 @@ function AppContent() {
                   <div className="campaign-stat-strip core">
                     <Stat label="진행률" value={`${activeCampaignForModal.progress}%`} />
                     <Stat label="예산" value={won(activeCampaignForModal.budget)} />
-                    <Stat label="집행" value={won(activeCampaignForModal.spend)} />
+                    <Stat label="집행" value={won(getActualSpend(activeCampaignForModal, fulfillmentRecords, creatorOperations))} />
                     <Stat label="예상 매출" value={won(activeCampaignForModal.revenue)} />
                   </div>
                 </div>
@@ -21476,7 +21488,7 @@ function AppContent() {
                 brandCampaigns.map((campaign) => (
                   <CampaignCard
                     key={campaign.id}
-                    campaign={campaign}
+                    campaign={{ ...campaign, spend: getActualSpend(campaign, fulfillmentRecords, creatorOperations) }}
                     creators={getCreatorsByIds(creators, campaign.creatorIds)}
                     kpiSummary={campaignKpiSummaries.find((summary) => summary.campaignId === campaign.id)}
                     onOpen={() => openCampaign(campaign)}
@@ -21539,7 +21551,7 @@ function AppContent() {
             <div className="report-summary">
               <div>
                 <span className="mini-label">선택 캠페인 매출</span>
-                <strong>{won(selectedCampaign?.revenue ?? 0)}</strong>
+                <strong>{won(campaignMarketPerformance.total?.revenue ?? 0)}</strong>
               </div>
               <BarChart3 size={24} />
             </div>
@@ -23459,7 +23471,7 @@ function AppContent() {
               )}
               <div className="modal-grid">
                 <Stat label="예산" value={won(activeCampaignForModal.budget)} />
-                <Stat label="집행" value={won(activeCampaignForModal.spend)} />
+                <Stat label="집행" value={won(getActualSpend(activeCampaignForModal, fulfillmentRecords, creatorOperations))} />
                 <Stat label="예상 매출" value={won(activeCampaignForModal.revenue)} />
                 <Stat label="진행률" value={`${activeCampaignForModal.progress}%`} />
                 <Stat label={'AI \uCD94\uCC9C \uBAA9\uD45C'} value={`${getCampaignRecommendationTarget(activeCampaignForModal)}\uBA85`} />

@@ -1,5 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import { canReadFullWorkspace, canWriteBrandWorkspace, canWriteFullWorkspace } from './workspacePermissions'
+import { compareAndSwapSnapshot } from './snapshotConcurrency.js'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -7,6 +8,14 @@ const WORKSPACE_ID = import.meta.env.VITE_WORKSPACE_ID || 'miping-main'
 const APP_URL = import.meta.env.VITE_APP_URL || 'https://creatorops-influencer-suite.onrender.com'
 
 let supabaseClient
+
+export async function getAuthenticatedApiHeaders() {
+  const client = getSupabaseClient()
+  if (!client) throw new Error('운영 API를 사용하려면 로그인 설정이 필요합니다.')
+  const { data, error } = await client.auth.getSession()
+  if (error || !data?.session?.access_token) throw new Error('먼저 CreatorOps 계정으로 로그인해주세요.')
+  return { 'Content-Type': 'application/json', Authorization: `Bearer ${data.session.access_token}` }
+}
 
 function getAuthRedirectUrl() {
   const origin = window.location.origin
@@ -637,22 +646,9 @@ export async function saveCloudWorkspace(workspace, options = {}) {
     }
   }
 
-  const updatedAt = new Date().toISOString()
-
-  const { data: saved, error } = await supabase
-    .from('workspace_snapshots')
-    .upsert(
-      {
-        workspace_id: WORKSPACE_ID,
-        payload: workspace,
-        updated_at: updatedAt,
-      },
-      { onConflict: 'workspace_id' },
-    )
-    .select('updated_at')
-    .single()
-
-  if (error) throw error
+  const saved = await compareAndSwapSnapshot(supabase, 'workspace_snapshots', { workspace_id: WORKSPACE_ID }, workspace, expectedUpdatedAt)
+  if (saved.status === 'conflict') return { ...saved, workspace: saved.payload, message: 'A newer workspace version exists. Review your local changes before retrying.' }
+  const updatedAt = saved.updatedAt
 
   let dataRoomRawSync
   let creatorOperationsSync
@@ -677,7 +673,7 @@ export async function saveCloudWorkspace(workspace, options = {}) {
     }
   }
 
-  return { status: 'saved', updatedAt: saved?.updated_at || updatedAt, dataRoomRawSync, creatorOperationsSync }
+  return { status: 'saved', updatedAt, dataRoomRawSync, creatorOperationsSync }
 }
 
 export function watchCloudWorkspace(callback, options = {}) {
@@ -769,18 +765,8 @@ export async function saveBrandCloudWorkspace(brandId, payload, options = {}) {
     }
   }
 
-  const updatedAt = new Date().toISOString()
-  const { data: saved, error } = await supabase
-    .from('brand_scoped_snapshots')
-    .upsert(
-      { workspace_id: WORKSPACE_ID, brand_id: brandId, payload, updated_at: updatedAt },
-      { onConflict: 'workspace_id,brand_id' },
-    )
-    .select('updated_at')
-    .single()
-  if (error) throw error
-
-  return { status: 'saved', brandId, updatedAt: saved?.updated_at || updatedAt }
+  const saved = await compareAndSwapSnapshot(supabase, 'brand_scoped_snapshots', { workspace_id: WORKSPACE_ID, brand_id: brandId }, payload, expectedUpdatedAt)
+  return { ...saved, brandId }
 }
 
 export function watchBrandCloudWorkspaces(callback, options = {}) {
