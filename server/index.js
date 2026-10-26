@@ -2189,6 +2189,7 @@ app.post('/outreach/gmail/send', requireWorkspaceAccess, async (request, respons
       idempotencyKey: request.body?.idempotencyKey || `single:${createHash('sha256').update(JSON.stringify([campaignId, normalizeOutreachEmail(to), subject, message])).digest('hex')}`,
     })
     if (request.body?.connectionTest === true) {
+      if (campaignId) throw httpError(400, 'Connection tests cannot be attributed to a campaign.')
       if (normalizeOutreachEmail(to) !== normalizeOutreachEmail(request.workspaceUser.email)) throw httpError(403, 'Connection tests may only send to the authenticated account.')
     } else {
       await assertOutreachCampaigns(request, [item])
