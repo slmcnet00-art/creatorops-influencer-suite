@@ -2219,7 +2219,7 @@ function buildCreatorPerformanceLearningMap(creators = [], trackedPosts = [], re
     const saves = Number(row.saves || row.collects || 0)
     const conversions = Number(row.conversions || row.orders || 0)
     const interactions = likes + comments + shares + saves
-    const engagementRate = Number(row.engagementRate || 0) || (views ? (interactions / views) * 100 : 0)
+    const engagementRate = aggregateEngagement([{ ...row, views, likes, comments, shares, saves }])
     const previous = aggregateByCreatorId.get(matchedCreatorId) || {
       posts: 0,
       views: 0,
@@ -2230,7 +2230,7 @@ function buildCreatorPerformanceLearningMap(creators = [], trackedPosts = [], re
       conversions: 0,
       topViews: 0,
       topPost: null,
-      engagementRateSum: 0,
+      engagementInteractions: 0,
       sourceRawIds: new Set(),
     }
 
@@ -2252,7 +2252,7 @@ function buildCreatorPerformanceLearningMap(creators = [], trackedPosts = [], re
         engagementRate,
       }
     }
-    previous.engagementRateSum += engagementRate
+    previous.engagementInteractions += interactions || (engagementRate / 100 * views)
     if (row.rawSourceId) previous.sourceRawIds.add(row.rawSourceId)
     aggregateByCreatorId.set(matchedCreatorId, previous)
   })
@@ -2271,7 +2271,7 @@ function buildCreatorPerformanceLearningMap(creators = [], trackedPosts = [], re
         shares: summary.shares,
         saves: summary.saves,
         conversions: summary.conversions,
-        engagementRate: summary.posts ? summary.engagementRateSum / summary.posts : 0,
+        engagementRate: summary.views ? summary.engagementInteractions / summary.views * 100 : 0,
         conversionRate: summary.views ? (summary.conversions / summary.views) * 100 : 0,
         sourceRawIds: Array.from(summary.sourceRawIds),
       },
@@ -8050,6 +8050,7 @@ function AppContent() {
   const [authEmail, setAuthEmail] = useState('')
   const [cloudWorkspaceLoaded, setCloudWorkspaceLoaded] = useState(!backendConfig.hasSupabase)
   const cloudVersionRef = useRef('')
+  const cloudHydratedUserRef = useRef('')
   const cloudConflictRef = useRef(false)
   const skipNextCloudSaveRef = useRef(false)
   const brandCloudVersionsRef = useRef({})
@@ -10151,9 +10152,10 @@ function AppContent() {
       .sort((a, b) => b.score - a.score || b.learning.topViews - a.learning.topViews)
     const postCount = entries.reduce((sum, item) => sum + Number(item.learning.posts || 0), 0)
     const views = entries.reduce((sum, item) => sum + Number(item.learning.views || 0), 0)
-    const avgEngagement = entries.length
-      ? entries.reduce((sum, item) => sum + Number(item.learning.engagementRate || 0), 0) / entries.length
-      : 0
+    const avgEngagement = aggregateEngagement(entries.map(({ learning }) => ({
+      views: learning.views,
+      engagementRate: learning.engagementRate,
+    })))
     const sourceRawIds = uniqueList(entries.flatMap((item) => item.learning.sourceRawIds || []))
 
     return {
@@ -11239,6 +11241,9 @@ function AppContent() {
 
     async function hydrateCloudWorkspace() {
       if (!backendConfig.hasSupabase) return
+      cloudHydratedUserRef.current = ''
+      setCloudWorkspaceLoaded(false)
+      if (!authSession?.user?.id) return
 
       try {
         const result = await loadCloudWorkspace()
@@ -11252,6 +11257,7 @@ function AppContent() {
             updatedAt: '',
           })
         } else if (result.workspace) {
+          cloudHydratedUserRef.current = authSession.user.id
           cloudVersionRef.current = result.updatedAt || ''
           skipNextCloudSaveRef.current = true
           setWorkspace(normalizeWorkspace(result.workspace))
@@ -11262,6 +11268,8 @@ function AppContent() {
             updatedAt: result.updatedAt || '',
           })
         } else {
+          cloudHydratedUserRef.current = authSession.user.id
+          cloudVersionRef.current = ''
           setCloudSyncStatus({
             mode: 'cloud',
             label: '팀 공유 DB 준비됨',
@@ -11270,6 +11278,7 @@ function AppContent() {
           })
         }
       } catch (error) {
+        if (cancelled) return
         setCloudSyncStatus({
           mode: 'error',
           label: '클라우드 동기화 오류',
@@ -11277,7 +11286,7 @@ function AppContent() {
           updatedAt: '',
         })
       } finally {
-        if (!cancelled) setCloudWorkspaceLoaded(true)
+        if (!cancelled) setCloudWorkspaceLoaded(cloudHydratedUserRef.current === authSession?.user?.id)
       }
     }
 
@@ -11286,10 +11295,11 @@ function AppContent() {
     return () => {
       cancelled = true
     }
-  }, [backendConfig.hasSupabase, backendConfig.workspaceId, setWorkspace])
+  }, [authSession?.user?.id, backendConfig.hasSupabase, backendConfig.workspaceId, setWorkspace])
 
   useEffect(() => {
     if (!backendConfig.hasSupabase || !cloudWorkspaceLoaded || !authSession || !canManagePermissions) return undefined
+    if (cloudHydratedUserRef.current !== authSession.user?.id) return undefined
 
     return watchCloudWorkspace(
       (event) => {
@@ -11314,13 +11324,14 @@ function AppContent() {
 
   useEffect(() => {
     if (!backendConfig.hasSupabase || !cloudWorkspaceLoaded || !authSession || !canManagePermissions) return undefined
+    if (cloudHydratedUserRef.current !== authSession.user?.id) return undefined
     if (skipNextCloudSaveRef.current) {
       skipNextCloudSaveRef.current = false
       return undefined
     }
 
     const timeout = window.setTimeout(async () => {
-      if (cloudConflictRef.current) return
+      if (cloudConflictRef.current || cloudHydratedUserRef.current !== authSession?.user?.id) return
       try {
         const result = await saveCloudWorkspace(workspace, { expectedUpdatedAt: cloudVersionRef.current })
         if (result.status === 'auth_required' || result.status === 'forbidden') {
@@ -11366,6 +11377,7 @@ function AppContent() {
 
   useEffect(() => {
     if (!backendConfig.hasSupabase || !cloudWorkspaceLoaded || !authSession || !workspaceAccess) return undefined
+    if (cloudHydratedUserRef.current !== authSession.user?.id) return undefined
     let cancelled = false
     const hydrationScope = `${authSession.user?.id || authSession.user?.email || 'member'}:${backendConfig.workspaceId}`
 
@@ -11429,6 +11441,7 @@ function AppContent() {
 
   useEffect(() => {
     if (!backendConfig.hasSupabase || !cloudWorkspaceLoaded || !authSession || !workspaceAccess) return undefined
+    if (cloudHydratedUserRef.current !== authSession.user?.id) return undefined
     const hydrationScope = `${authSession.user?.id || authSession.user?.email || 'member'}:${backendConfig.workspaceId}`
     if (brandCloudHydratedScope !== hydrationScope) return undefined
     const brandId = workspace.activeBrandId
@@ -11441,7 +11454,7 @@ function AppContent() {
     }
 
     const timeout = window.setTimeout(async () => {
-      if (cloudConflictRef.current) return
+      if (cloudConflictRef.current || cloudHydratedUserRef.current !== authSession?.user?.id) return
       try {
       const payload = buildBrandScopedWorkspace(workspace, brandId)
       const result = await saveBrandCloudWorkspace(brandId, payload, {
@@ -11628,6 +11641,10 @@ function AppContent() {
   }
 
   const syncWorkspaceNow = async () => {
+    if (backendConfig.hasSupabase && (!authSession?.user?.id || cloudHydratedUserRef.current !== authSession.user.id)) {
+      showToast('로그인 후 공유 DB 데이터를 불러온 다음 저장해주세요.')
+      return
+    }
     if (cloudConflictRef.current) {
       showToast('동시 수정 충돌입니다. 내 변경사항을 다운로드한 후 최신 데이터를 불러와주세요.')
       return
@@ -21857,7 +21874,7 @@ function AppContent() {
                   <span>학습 콘텐츠 <strong>{recommendationLearningSummary.postCount}건</strong></span>
                   <span>누적 조회 <strong>{compactNumber(recommendationLearningSummary.views)}</strong></span>
                   <span>평균 조회 <strong>{compactNumber(recommendationLearningSummary.averageViews)}</strong></span>
-                  <span>평균 참여율 <strong>{percent(recommendationLearningSummary.avgEngagement)}</strong></span>
+                  <span>브랜드 전체 참여율 · 조회수 가중 <strong>{percent(recommendationLearningSummary.avgEngagement)}</strong></span>
                 </div>
                 {recommendationLearningSummary.topEntries.length > 0 && (
                   <div className="report-learning-creators">
