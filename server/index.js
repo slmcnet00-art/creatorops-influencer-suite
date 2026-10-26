@@ -8,6 +8,9 @@ import { existsSync } from 'node:fs'
 import { isIP } from 'node:net'
 import { inflateRawSync } from 'node:zlib'
 import { createClient } from '@supabase/supabase-js'
+import { assertOutreachRole, assertCampaignScope } from './outreachAccess.js'
+import { claimDelivery, isDefinitiveDeliveryFailure, outreachDeliveryId } from './outreachDelivery.js'
+import { createHash } from 'node:crypto'
 import { readSheet as readNodeSheet } from 'read-excel-file/node'
 import {
   buildReadinessReport,
@@ -72,6 +75,7 @@ const AI_FEATURE_KEYS = new Set([
 ])
 let tiktokCommercialTokenCache = { token: '', expiresAt: 0 }
 let supabaseAdminClient
+let publicReviewBudget = { day: '', used: 0 }
 const allowedOrigins = (process.env.CORS_ORIGIN || 'http://localhost:5173,http://127.0.0.1:5173')
   .split(',')
   .map((origin) => origin.trim())
@@ -109,6 +113,8 @@ app.use(cors({
   },
 }))
 app.use(express.json({ limit: '5mb' }))
+const PROTECTED_API_PATHS = ['/youtube/channel', '/discovery/youtube/search', '/discovery/google-profiles/search', '/references/search', '/ai/outreach-message', '/ai/content-guide', '/ai/campaign-strategy', '/ai/recommendations/enrich', '/public/profile-snapshot', '/tracking/refresh']
+app.use(PROTECTED_API_PATHS, requireWorkspaceAccess)
 registerOsLearningBridge(app,{loadActiveConfigs:()=>getAiFeatureConfigs({strict:true})})
 
 const DISCOVERY_STOP_WORDS = new Set([
@@ -952,11 +958,30 @@ async function requireWorkspaceAccess(request, _response, next) {
       .maybeSingle()
     if (membershipError) throw membershipError
     if (!membership) throw httpError(403, 'Active workspace access is required.')
-    request.workspaceUser = { id: user.id, role: membership.role }
+    request.workspaceUser = { id: user.id, role: membership.role, email: user.email }
     next()
   } catch (error) {
     next(error)
   }
+}
+
+async function assertOutreachCampaigns(request, items) {
+  assertOutreachRole(request.workspaceUser)
+  const supabase = getSupabaseAdminClient()
+  const { data: memberships, error: membershipError } = await supabase.from('brand_memberships').select('brand_id,role').eq('workspace_id', WORKSPACE_ID).eq('user_id', request.workspaceUser.id).eq('status', 'active').in('role', ['Admin', 'Manager', 'Marketer'])
+  if (membershipError) throw membershipError
+  const user = { ...request.workspaceUser, brandIds: (memberships || []).map(row => row.brand_id) }
+  const { data: scoped, error: scopedError } = await supabase.from('brand_scoped_snapshots').select('brand_id,payload').eq('workspace_id', WORKSPACE_ID)
+  if (scopedError) throw scopedError
+  const { data: full, error: fullError } = await supabase.from('workspace_snapshots').select('payload').eq('workspace_id', WORKSPACE_ID).maybeSingle()
+  if (fullError) throw fullError
+  // Brand snapshots are the newest authoritative copy, including deletions.
+  const scopedBrands = new Set((scoped || []).map(row => String(row.brand_id)))
+  const campaigns = [
+    ...(scoped || []).flatMap(row => (row.payload?.campaigns || []).map(campaign => ({ ...campaign, brandId: row.brand_id }))),
+    ...(full?.payload?.campaigns || []).filter(campaign => !scopedBrands.has(String(campaign.brandId))),
+  ]
+  for (const item of items) assertCampaignScope(user, campaigns.find(campaign => String(campaign.id) === String(item.campaignId)))
 }
 
 async function writeAuditLog({ actorId = null, action, targetType = null, targetId = null, metadata = {} }) {
@@ -2144,6 +2169,7 @@ app.post('/outreach/gmail/send', requireWorkspaceAccess, async (request, respons
   }
   activeOutreachSendWorkspaces.add(workspaceId)
   try {
+    assertOutreachRole(request.workspaceUser)
     const accessToken = String(request.body?.accessToken || '').trim()
     const to = String(request.body?.to || '').trim()
     const subject = String(request.body?.subject || 'CreatorOps collaboration proposal').trim()
@@ -2160,8 +2186,14 @@ app.post('/outreach/gmail/send', requireWorkspaceAccess, async (request, respons
       to,
       subject,
       message,
-      idempotencyKey: request.body?.idempotencyKey || `single:${campaignId || 'unassigned'}:${Date.now()}:${Math.random().toString(36).slice(2)}`,
+      idempotencyKey: request.body?.idempotencyKey || `single:${createHash('sha256').update(JSON.stringify([campaignId, normalizeOutreachEmail(to), subject, message])).digest('hex')}`,
     })
+    if (request.body?.connectionTest === true) {
+      if (campaignId) throw httpError(400, 'Connection tests cannot be attributed to a campaign.')
+      if (normalizeOutreachEmail(to) !== normalizeOutreachEmail(request.workspaceUser.email)) throw httpError(403, 'Connection tests may only send to the authenticated account.')
+    } else {
+      await assertOutreachCampaigns(request, [item])
+    }
     const recipientBlocks = await getOutreachRecipientBlocks(workspaceId, [item])
     const blockReason = getOutreachBlockReason(recipientBlocks, item)
     if (blockReason) {
@@ -2174,7 +2206,19 @@ app.post('/outreach/gmail/send', requireWorkspaceAccess, async (request, respons
       throw httpError(429, `This campaign has reached its daily outreach limit of ${dailyUsage.limit} messages (Asia/Seoul).`)
     }
 
-    await persistOutreachDelivery(workspaceId, item, { status: 'sending', attemptCount: 0, source: 'single-api' })
+    const previous = await findOutreachDelivery(workspaceId, item.idempotencyKey)
+    if (previous?.status === 'sent' || previous?.status === 'sending') {
+      if (previous.status === 'sent') { response.json({ data: { id: previous.provider_message_id, duplicate: true } }); return }
+      throw httpError(409, 'This delivery is already pending and will not be sent twice.')
+    }
+    const claim = await claimOutreachDelivery(workspaceId, item)
+    if (!claim.claimed) {
+      if (claim.existing?.status === 'sent') {
+        response.json({ data: { id: claim.existing.provider_message_id, duplicate: true } })
+        return
+      }
+      throw httpError(409, 'This delivery is already pending or requires manual review. It will not be sent twice.')
+    }
     let payload
     try {
       payload = await sendGmailWithRetry(accessToken, item)
@@ -2185,13 +2229,14 @@ app.post('/outreach/gmail/send', requireWorkspaceAccess, async (request, respons
         sentAt: new Date().toISOString(),
         lastError: null,
         source: 'single-api',
-      })
+      }).catch(error => { error.deliveryAccepted = true; throw error })
     } catch (error) {
-      await persistOutreachDelivery(workspaceId, item, {
+      if (isDefinitiveDeliveryFailure(error)) await persistOutreachDelivery(workspaceId, item, {
         status: 'failed',
         attemptCount: Number(error?.attemptCount || OUTREACH_MAX_ATTEMPTS),
         lastError: error instanceof Error ? error.message : 'Gmail send failed.',
         source: 'single-api',
+        retrySafe: true,
       }).catch(() => {})
       throw error
     }
@@ -2230,6 +2275,7 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
   }
   activeOutreachSendWorkspaces.add(workspaceId)
   try {
+    assertOutreachRole(request.workspaceUser)
     const accessToken = String(request.body?.accessToken || '').trim()
     const requestedItems = Array.isArray(request.body?.items) ? request.body.items : []
     if (!accessToken) throw httpError(401, 'Google accessToken is required.')
@@ -2240,6 +2286,7 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
     }
 
     const items = requestedItems.map((item, index) => normalizeOutreachDeliveryItem(item, index))
+    await assertOutreachCampaigns(request, items)
     const recipientBlocks = await getOutreachRecipientBlocks(workspaceId, items)
     const results = []
     const dailyUsageByCampaign = new Map()
@@ -2266,7 +2313,6 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
         continue
       }
 
-      outreachDeliveryMemory.set(memoryKey, { status: 'sending', updatedAt: Date.now() })
       const existing = await findOutreachDelivery(workspaceId, item.idempotencyKey)
       if (existing?.status === 'sending' || existing?.status === 'sent') {
         outreachDeliveryMemory.set(memoryKey, existing)
@@ -2291,7 +2337,12 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
       try {
         const waitMs = Math.max(0, OUTREACH_SEND_INTERVAL_MS - (Date.now() - lastSendStartedAt))
         if (lastSendStartedAt && waitMs) await delay(waitMs)
-        await persistOutreachDelivery(workspaceId, item, { status: 'sending', attemptCount: 0, lastError: null })
+        const claim = await claimOutreachDelivery(workspaceId, item)
+        if (!claim.claimed) {
+          results.push({ id: item.id, status: 'skipped', reason: 'duplicate', message: 'Delivery is pending, completed, or requires manual review.' })
+          continue
+        }
+        outreachDeliveryMemory.set(memoryKey, { status: 'sending', updatedAt: Date.now() })
         lastSendStartedAt = Date.now()
         const payload = await sendGmailWithRetry(accessToken, item)
         const sentAt = new Date().toISOString()
@@ -2301,17 +2352,18 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
           providerMessageId: payload.id,
           sentAt,
           lastError: null,
-        })
+        }).catch(error => { error.deliveryAccepted = true; throw error })
         outreachDeliveryMemory.set(memoryKey, { status: 'sent', providerMessageId: payload.id, updatedAt: Date.now() })
         results.push({ id: item.id, status: 'sent', providerMessageId: payload.id, threadId: payload.threadId, attemptCount: payload.attemptCount })
         dailyUsage.used += 1
         dailyUsage.remaining = getOutreachDailyRemaining(dailyUsage.used, dailyUsage.limit)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Gmail send failed.'
-        await persistOutreachDelivery(workspaceId, item, {
+        if (isDefinitiveDeliveryFailure(error)) await persistOutreachDelivery(workspaceId, item, {
           status: 'failed',
           attemptCount: Number(error?.attemptCount || OUTREACH_MAX_ATTEMPTS),
           lastError: message,
+          retrySafe: true,
         })
         outreachDeliveryMemory.set(memoryKey, { status: 'failed', lastError: message, updatedAt: Date.now() })
         results.push({ id: item.id, status: 'failed', message })
@@ -2355,6 +2407,7 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
 
 app.post('/outreach/suppressions', requireWorkspaceAccess, async (request, response, next) => {
   try {
+    assertOutreachRole(request.workspaceUser)
     const workspaceId = String(request.body?.workspaceId || WORKSPACE_ID).trim()
     const email = normalizeOutreachEmail(request.body?.email)
     const scope = normalizeOutreachSuppressionScope(request.body?.scope)
@@ -2364,6 +2417,8 @@ app.post('/outreach/suppressions', requireWorkspaceAccess, async (request, respo
     if (workspaceId !== WORKSPACE_ID) throw httpError(403, 'The requested workspace does not match the authenticated workspace.')
     if (!isValidOutreachEmail(email)) throw httpError(400, 'A valid recipient email is required.')
     if (scope === 'campaign' && !campaignId) throw httpError(400, 'campaignId is required for a campaign suppression.')
+    if (scope === 'campaign') await assertOutreachCampaigns(request, [{ campaignId }])
+    else if (!FULL_WORKSPACE_ROLES.has(request.workspaceUser.role)) throw httpError(403, 'Only administrators can change workspace-wide opt-outs.')
 
     const record = await persistOutreachSuppression({
       workspaceId,
@@ -2407,6 +2462,10 @@ app.post('/youtube/compliance-demo', async (request, response, next) => {
 
   try {
     if (!videoId) throw httpError(400, 'A valid YouTube video URL or video ID is required.')
+    const day = new Date().toISOString().slice(0, 10)
+    if (publicReviewBudget.day !== day) publicReviewBudget = { day, used: 0 }
+    if (publicReviewBudget.used >= 100) throw httpError(429, 'Public review demonstration daily limit reached. Please use the authenticated client.')
+    publicReviewBudget.used += 1
 
     const key = requireEnv('YOUTUBE_DATA_API_KEY')
     const videoParams = new URLSearchParams({
@@ -5275,13 +5334,11 @@ async function persistOutreachSuppression({ workspaceId, email, scope, campaignI
       : isCampaignScope ? 'Campaign recipient exclusion removed.' : 'Recipient outreach block removed.',
     status: suppressed ? isCampaignScope ? 'campaign_suppressed' : 'suppressed' : 'unsuppressed',
     provider_message_id: null,
-    idempotency_key: isCampaignScope ? `campaign-suppression:${campaignId}:${email}` : `suppression:${email}`,
-    attempt_count: 0,
-    last_error: null,
     sent_at: null,
     updated_at: now,
     created_by: actorId,
     metadata: {
+      idempotencyKey: isCampaignScope ? `campaign-suppression:${campaignId}:${email}` : `suppression:${email}`,
       deliveryProvider: 'creatorops',
       source: isCampaignScope ? 'manual-campaign-exclusion' : 'manual-recipient-suppression',
       scope,
@@ -5320,18 +5377,33 @@ async function getCampaignDailyOutreachUsage(workspaceId, campaignId, now = new 
 async function findOutreachDelivery(workspaceId, idempotencyKey) {
   const supabase = getSupabaseAdminClient()
   if (!supabase) return null
+  const current = await supabase.from('outreach_messages').select('id,status,provider_message_id,metadata').eq('workspace_id', workspaceId).eq('id', outreachDeliveryId(workspaceId, idempotencyKey)).maybeSingle()
+  if (current.error) throw current.error
+  if (current.data) return current.data
   const { data, error } = await supabase
     .from('outreach_messages')
-    .select('id,status,provider_message_id,attempt_count,last_error')
+    .select('id,status,provider_message_id,metadata')
     .eq('workspace_id', workspaceId)
     .eq('idempotency_key', idempotencyKey)
     .in('status', ['sending', 'sent'])
     .maybeSingle()
   if (error) {
-    console.warn('Outreach duplicate lookup failed:', error.message)
-    return null
+    if (['42703', 'PGRST204'].includes(error.code)) return null
+    throw error
   }
   return data
+}
+
+async function claimOutreachDelivery(workspaceId, item) {
+  const supabase = getSupabaseAdminClient()
+  if (!supabase) throw httpError(503, 'Durable delivery storage is required.')
+  return claimDelivery(supabase, {
+    id: outreachDeliveryId(workspaceId, item.idempotencyKey),
+    workspace_id: workspaceId, campaign_id: item.campaignId || null, creator_id: item.creatorId || null,
+    channel: 'email', recipient: item.to, subject: item.subject, message: item.message,
+    status: 'sending', idempotency_key: item.idempotencyKey, attempt_count: 0,
+    updated_at: new Date().toISOString(), metadata: { deliveryProvider: 'gmail', retrySafe: false },
+  })
 }
 
 async function persistOutreachDelivery(workspaceId, item, delivery = {}) {
@@ -5343,11 +5415,11 @@ async function persistOutreachDelivery(workspaceId, item, delivery = {}) {
     .from('outreach_messages')
     .select('id')
     .eq('workspace_id', workspaceId)
-    .eq('idempotency_key', item.idempotencyKey)
+    .eq('id', outreachDeliveryId(workspaceId, item.idempotencyKey))
     .maybeSingle()
   if (existingError) throw existingError
   const row = {
-    id: existing?.id || item.id,
+    id: existing?.id || outreachDeliveryId(workspaceId, item.idempotencyKey),
     workspace_id: workspaceId,
     campaign_id: item.campaignId || null,
     creator_id: item.creatorId || null,
@@ -5357,12 +5429,9 @@ async function persistOutreachDelivery(workspaceId, item, delivery = {}) {
     message: item.message,
     status: delivery.status || 'review',
     provider_message_id: delivery.providerMessageId || null,
-    idempotency_key: item.idempotencyKey,
-    attempt_count: Number(delivery.attemptCount || 0),
-    last_error: delivery.lastError || null,
     sent_at: delivery.sentAt || null,
     updated_at: now,
-    metadata: { deliveryProvider: 'gmail', source: delivery.source || 'batch-api' },
+    metadata: { deliveryProvider: 'gmail', source: delivery.source || 'batch-api', retrySafe: delivery.retrySafe === true, idempotencyKey: item.idempotencyKey, attemptCount: Number(delivery.attemptCount || 0), lastError: delivery.lastError || null },
   }
   const { error } = await supabase.from('outreach_messages').upsert(row, { onConflict: 'id' })
   if (error) throw error
@@ -5382,7 +5451,7 @@ async function sendGmailWithRetry(accessToken, item) {
       return { ...payload, attemptCount: attempt }
     } catch (error) {
       lastError = error
-      const retryable = error?.status === 429 || Number(error?.status || 0) >= 500
+      const retryable = error?.status === 429
       if (!retryable || attempt === OUTREACH_MAX_ATTEMPTS) break
       await delay(500 * (2 ** (attempt - 1)))
     }

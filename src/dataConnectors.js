@@ -1,3 +1,5 @@
+import { getAuthenticatedApiHeaders } from './backendSync'
+
 export const competitorDataBlueprints = [
   {
     name: 'Modash',
@@ -68,9 +70,7 @@ async function callCreatorOpsApi(path, body) {
   try {
     response = await fetch(`${CREATOROPS_API_BASE_URL.replace(/\/$/, '')}${path}`, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
+      headers: await getAuthenticatedApiHeaders(),
       body: JSON.stringify(body),
       signal: controller.signal,
     })
