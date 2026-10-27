@@ -20,3 +20,7 @@
 
 .decision-memory textarea { width: 100%; box-sizing: border-box; min-width: 0; padding: 12px; border: 1px solid #dce2ec; border-radius: 9px; font: inherit; resize: vertical; background: white; color: inherit; }
 .decision-memory form { margin-top: 20px; }
+
+.decision-memory .admin-section-heading { flex-wrap: wrap; gap: 12px; }
+.decision-memory .admin-section-heading > div { flex: 1 1 250px; min-width: 0; }
+.decision-memory .admin-section-heading > button { flex-shrink: 0; white-space: nowrap; }
