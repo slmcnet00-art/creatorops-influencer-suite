@@ -11,6 +11,7 @@
 - [업무 흐름](./CREATOROPS_WORKFLOW.md): 캠페인부터 리포트까지의 운영 절차
 - [데이터 아키텍처](./DATA_ARCHITECTURE.md): raw 데이터, 계산지표, 데이터룸 구조
 - [API 연동 계약](./API_INTEGRATION_CONTRACT.md): 프론트와 API 서버의 요청·응답 규칙
+- [회사 OS 연동 절차](./docs/company-os-integration.txt) 및 [OpenAPI 명세](./docs/company-os-openapi.json): 캠페인·보고서·알림 API와 관리자 LLM Ops
 
 기능을 변경할 때는 `제품 기준서 -> 데이터 아키텍처/API 계약 -> 기능정의서/업무 흐름 -> 구현` 순서로 갱신합니다.
 

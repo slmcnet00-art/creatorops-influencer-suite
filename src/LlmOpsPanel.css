@@ -1,0 +1,17 @@
+.llm-filters,.llm-pricing {display:flex;gap:12px;flex-wrap:wrap;align-items:end;margin:18px 0}
+.llm-filters label,.llm-pricing label {display:grid;gap:6px;font-size:13px;min-width:140px;max-width:100%}
+.llm-ops input,.llm-ops select {min-width:0;border:1px solid #d8dde6;border-radius:8px;padding:10px;background:#fff;box-sizing:border-box;max-width:100%}
+.llm-cards {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+.llm-cards article {padding:16px;border:1px solid #e2e5ec;border-radius:10px;display:grid;gap:10px;overflow-wrap:anywhere}
+.llm-cards span,.llm-cards small,.llm-note {color:#606c80;font-size:12px;line-height:1.6}
+.llm-cards strong {font-size:20px}
+.llm-table-scroll {overflow:auto;max-width:100%}
+.llm-ops table {width:100%;border-collapse:collapse;font-size:13px;text-align:left}
+.llm-ops th,.llm-ops td {padding:12px;border-bottom:1px solid #e5e7eb;white-space:nowrap}
+.llm-ops td small {display:block;margin-top:6px;color:#64748b}
+.llm-detail pre {max-height:360px;overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;background:#f7f8fa;padding:16px;border:1px solid #e1e4eb;border-radius:8px;font-size:13px;line-height:1.7}
+.llm-error {color:#b42318;background:#fff0ee;padding:14px;border-radius:8px}
+.llm-notice {background:#eff6ff;padding:14px;border-radius:8px}
+.llm-ops .admin-secondary {display:inline-flex;gap:6px;align-items:center;justify-content:center;min-height:38px}
+@media(max-width:900px){.llm-cards {grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:500px){.llm-cards {grid-template-columns:1fr}.llm-pricing label {width:100%}}

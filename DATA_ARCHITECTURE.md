@@ -235,6 +235,15 @@ audit_log
 13. 팀원 역할에 따라 조회/수정/다운로드 권한을 제한하고 감사 로그를 남긴다.
 14. 콘텐츠 업로드 후 성과를 추적하고 실제 결과를 다음 추천 모델에 반영한다.
 
+## Company OS / LLM Ops storage (2026-10-27)
+
+- Campaign API mutations use existing `brand_scoped_snapshots` and atomic `updated_at` comparison; unrelated brand payload fields remain intact.
+- `ai_generation_runs(run_type=llm-call)` is the persistent raw source for new server AI calls. Policy version, prompt hash, timing, provider token usage and pricing snapshot are recorded; inputs/outputs use AES-256-GCM with a server-only key.
+- Raw catalog `RAW-INT-LLM-BUNDLE-001` includes this storage. LLM Ops aggregates query metadata without loading encrypted bodies; full detail requires administrator authorization. Unknown usage/cost stays unknown.
+- Daily retention operations clear original input/output after 30 days while retaining usage metadata. Existing uninstrumented calls are not backfilled.
+- Webhook subscription is stored under `workspaces.settings.osWebhook`; durable retries use `job_runs(job_name=os-webhook-delivery)`. Receivers deduplicate signed event IDs.
+- Per-model rates use `workspaces.settings.llmOpsPricing`. Settings updates compare the workspace version to preserve concurrent policy/integration changes. No new DB tables or broader member policies are introduced.
+
 ## TikTok Commercial Content API Update
 
 - TikTok Commercial Content API is connected to the content reference search flow.

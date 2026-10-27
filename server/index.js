@@ -1,5 +1,9 @@
 import { config as loadEnv } from 'dotenv'
 import {registerOsLearningBridge} from './osLearningBridge.js'
+import { createCompanyOs } from './companyOs.js'
+import { createLlmOps } from './llmOps.js'
+import { createOsWebhooks } from './osWebhooks.js'
+import { matchesSecret, updateSettings } from './integrationStore.js'
 import cors from 'cors'
 import express from 'express'
 import JSZip from 'jszip'
@@ -116,6 +120,22 @@ app.use(express.json({ limit: '5mb' }))
 const PROTECTED_API_PATHS = ['/youtube/channel', '/discovery/youtube/search', '/discovery/google-profiles/search', '/references/search', '/ai/outreach-message', '/ai/content-guide', '/ai/campaign-strategy', '/ai/recommendations/enrich', '/public/profile-snapshot', '/tracking/refresh']
 app.use(PROTECTED_API_PATHS, requireWorkspaceAccess)
 registerOsLearningBridge(app,{loadActiveConfigs:()=>getAiFeatureConfigs({strict:true})})
+const osWebhooks = createOsWebhooks({ getClient: getSupabaseAdminClient, workspaceId: WORKSPACE_ID, audit: safeWriteAuditLog })
+const companyOs = createCompanyOs({ getClient: getSupabaseAdminClient, workspaceId: WORKSPACE_ID,
+  requireAdmin: requireAdminWorkspaceAccess, publish: osWebhooks.publish, audit: safeWriteAuditLog })
+companyOs.register(app)
+osWebhooks.register(app, companyOs.access)
+osWebhooks.start()
+const llmOps = createLlmOps({ getClient: getSupabaseAdminClient, workspaceId: WORKSPACE_ID, publish: osWebhooks.publish, audit: safeWriteAuditLog,
+  validateOutput(feature, text) {
+    if (feature === 'creator-recommendation') {
+      const parsed = parseAiJsonObject(text)
+      if (!Array.isArray(parsed.items)) throw httpError(502, 'The model returned no recommendation items array.')
+    }
+  },
+})
+llmOps.register(app, requireAdminWorkspaceAccess, requestOpenAIText)
+llmOps.startRetention()
 
 const DISCOVERY_STOP_WORDS = new Set([
   'creator', 'creators', 'influencer', 'influencers', 'review', 'reviews', 'campaign', 'product', 'service', 'brand', 'official', 'profile', 'video', 'content', 'channel', 'shorts', 'reels', 'tiktok', 'instagram', 'youtube',
@@ -879,29 +899,12 @@ async function getAiFeatureConfigs({strict=false} = {}) {
 
 async function saveAiFeatureConfig(featureKey, value) {
   const config = normalizeAiFeatureConfig(featureKey, value)
-  aiFeatureConfigMemory.set(featureKey, config)
   const supabase = getSupabaseAdminClient()
-  if (!supabase) return config
+  if (!supabase) { aiFeatureConfigMemory.set(featureKey, config); return config }
 
   await ensureDataRoomWorkspace(supabase)
-  const { data, error: readError } = await supabase
-    .from('workspaces')
-    .select('settings')
-    .eq('id', WORKSPACE_ID)
-    .maybeSingle()
-  if (readError) throw readError
-  const settings = data?.settings && typeof data.settings === 'object' ? data.settings : {}
-  const aiFeatureConfigs = settings.aiFeatureConfigs && typeof settings.aiFeatureConfigs === 'object'
-    ? settings.aiFeatureConfigs
-    : {}
-  const { error } = await supabase
-    .from('workspaces')
-    .update({
-      settings: { ...settings, aiFeatureConfigs: { ...aiFeatureConfigs, [featureKey]: config } },
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', WORKSPACE_ID)
-  if (error) throw error
+  await updateSettings(supabase, WORKSPACE_ID, settings => ({ ...settings, aiFeatureConfigs: { ...settings.aiFeatureConfigs, [featureKey]: config } }))
+  aiFeatureConfigMemory.set(featureKey, config)
   return config
 }
 
@@ -944,6 +947,10 @@ async function requireWorkspaceAccess(request, _response, next) {
     const authorization = String(request.headers.authorization || '')
     const accessToken = authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim()
     if (!accessToken) throw httpError(401, 'Workspace authentication is required.')
+    if (PROTECTED_API_PATHS.includes(request.originalUrl.split('?')[0]) && matchesSecret(accessToken, process.env.CREATOROPS_OS_API_TOKEN)) {
+      request.workspaceUser = { id: null, role: 'OSService', email: '' }
+      return next()
+    }
     const supabase = getSupabaseAdminClient()
     if (!supabase) throw httpError(503, 'Workspace authentication is not configured.')
     const { data: userData, error: userError } = await supabase.auth.getUser(accessToken)
@@ -1294,9 +1301,9 @@ async function executeOperationJob(jobName, { actorId = null, trigger = 'manual'
     let result
     if (normalizedJobName === 'tracking-refresh') result = await runTrackingRefreshOperation()
     if (normalizedJobName === 'metric-recalculation') result = await runMetricRecalculationOperation()
-    if (normalizedJobName === 'youtube-retention') result = await runYouTubeRetentionOperation()
+    if (normalizedJobName === 'youtube-retention') result = { ...(await runYouTubeRetentionOperation()), llmInputRetention: await llmOps.purgeExpired() }
     if (normalizedJobName === 'daily-operations') {
-      const youtubeRetention = await runYouTubeRetentionOperation()
+      const youtubeRetention = { ...(await runYouTubeRetentionOperation()), llmInputRetention: await llmOps.purgeExpired() }
       const tracking = await runTrackingRefreshOperation()
       const metrics = await runMetricRecalculationOperation()
       result = { youtubeRetention, tracking, metrics }
@@ -1314,7 +1321,8 @@ async function executeOperationJob(jobName, { actorId = null, trigger = 'manual'
       targetId: run.id,
       metadata: { jobName: normalizedJobName, trigger, result, startedAt, finishedAt },
     })
-    return { id: run.id, jobName: normalizedJobName, status: 'success', startedAt: run.started_at || startedAt, finishedAt, result }
+    const webhook = await osWebhooks.publish('operation.completed', { runId: run.id, jobName: normalizedJobName, status: 'success' }).catch(() => ({ queued: false }))
+    return { id: run.id, jobName: normalizedJobName, status: 'success', startedAt: run.started_at || startedAt, finishedAt, result, webhook }
   } catch (error) {
     const finishedAt = new Date().toISOString()
     await supabase
@@ -1333,6 +1341,7 @@ async function executeOperationJob(jobName, { actorId = null, trigger = 'manual'
       targetId: run.id,
       metadata: { jobName: normalizedJobName, trigger, error: error instanceof Error ? error.message : String(error) },
     })
+    await osWebhooks.publish('operation.failed', { runId: run.id, jobName: normalizedJobName, status: 'failed' }).catch(() => {})
     throw error
   } finally {
     activeOperationJobs.delete(normalizedJobName)
@@ -1628,7 +1637,7 @@ app.post('/ai/outreach-message', async (request, response, next) => {
     const config = await getActiveAiFeatureConfig('outreach-message')
     if (!config) throw httpError(503, 'An active administrator outreach-message policy is required.')
     const prompt = applyAdminKnowledge(buildOutreachMessagePrompt(creator, brand, campaign), config)
-    const message = await callOpenAIText(prompt)
+    const message = await callOpenAIText(prompt, { featureKey: 'outreach-message', policyVersion: config.version, actorId: request.workspaceUser.id })
     response.json({ data: { message, policyVersion: config?.version || null, policyFeatureKey: config?.featureKey || null } })
   } catch (error) {
     next(error)
@@ -1641,7 +1650,7 @@ app.post('/ai/content-guide', async (request, response, next) => {
     const config = await getActiveAiFeatureConfig('content-guide')
     if (!config) throw httpError(503, 'An active administrator content-guide policy is required.')
     const prompt = applyAdminKnowledge(buildContentGuidePrompt({ brand, campaign, seedingType, channel, references, draftGuide }), config)
-    const guide = await callOpenAIText(prompt)
+    const guide = await callOpenAIText(prompt, { featureKey: 'content-guide', policyVersion: config.version, actorId: request.workspaceUser.id })
     response.json({
       data: {
         guide,
@@ -1664,7 +1673,7 @@ app.post('/ai/campaign-strategy', async (request, response, next) => {
       buildCampaignStrategyPrompt({ brand, campaign, brief, creators, recommendations, draftStrategy }),
       config,
     )
-    const strategy = await callOpenAIText(prompt)
+    const strategy = await callOpenAIText(prompt, { featureKey: 'campaign-strategy', policyVersion: config.version, actorId: request.workspaceUser.id })
     response.json({
       data: {
         strategy,
@@ -1690,7 +1699,7 @@ app.post('/ai/recommendations/enrich', async (request, response, next) => {
       buildRecommendationEnrichmentPrompt({ brand, campaign, candidates: safeCandidates }),
       config,
     )
-    const rawText = await callOpenAIText(prompt)
+    const rawText = await callOpenAIText(prompt, { featureKey: 'creator-recommendation', policyVersion: config.version, actorId: request.workspaceUser.id })
     const parsed = parseAiJsonObject(rawText)
     const items = Array.isArray(parsed.items)
       ? parsed.items.map(normalizeRecommendationEnrichmentItem).filter(Boolean)
@@ -5108,7 +5117,11 @@ function encodeMimeHeader(value) {
   return `=?UTF-8?B?${Buffer.from(String(value || ''), 'utf8').toString('base64')}?=`
 }
 
-async function callOpenAIText(prompt) {
+async function callOpenAIText(prompt, context) {
+  return llmOps.execute(prompt, context, requestOpenAIText)
+}
+
+async function requestOpenAIText(prompt) {
   const key = requireEnv('OPENAI_API_KEY')
   const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini'
   const payload = await fetchJson('https://api.openai.com/v1/responses', {
@@ -5123,7 +5136,7 @@ async function callOpenAIText(prompt) {
       temperature: 0.7,
     }),
   })
-  return payload.output_text || payload.output?.flatMap((item) => item.content || []).map((item) => item.text).filter(Boolean).join('\n') || ''
+  return { payload, text: payload.output_text || payload.output?.flatMap((item) => item.content || []).map((item) => item.text).filter(Boolean).join('\n') || '' }
 }
 
 function normalizeYouTubeChannel(channel, parsedLookup = {}, fallbackCountry = 'KR') {
