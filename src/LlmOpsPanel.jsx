@@ -1,3 +1,4 @@
+import DecisionMemoryPanel from './DecisionMemoryPanel.jsx'
 import { useEffect, useMemo, useState } from 'react'
 import { Activity, RefreshCw, Search } from 'lucide-react'
 import './LlmOpsPanel.css'
@@ -72,6 +73,7 @@ export default function LlmOpsPanel({ apiBaseUrl, accessToken }) {
   }
   const summary = data?.summary
   return <div className="admin-page llm-ops">
+    <DecisionMemoryPanel apiBaseUrl={apiBaseUrl} accessToken={accessToken} sourceRun={detail} />
     <section className="admin-band">
       <div className="admin-section-heading"><div><span>LLM OPERATIONS</span><h2>AI 호출·사용량·오류</h2><p>앞으로 발생하는 서버 AI 호출을 기록합니다. 기존 기록을 소급 생성하지 않습니다.</p></div>
         <button className="admin-secondary" disabled={loading || busy} onClick={() => setRefresh(n => n + 1)}><RefreshCw size={16} /> 새로고침</button></div>
@@ -95,7 +97,7 @@ export default function LlmOpsPanel({ apiBaseUrl, accessToken }) {
       </tbody></table></div>}
     </section>
     {detail && <section className="admin-band llm-detail"><div className="admin-section-heading"><div><span>GENERATION #{detail.id}</span><h2>입력·출력 및 오류</h2><p>관리자 전용 암호화 기록 · 정책 {detail.policyVersion || '없음'}</p></div><button className="admin-secondary" onClick={() => setDetail(null)}>상세 닫기</button></div>
-      <h3>입력</h3><pre>{detail.input}</pre><h3>출력</h3><pre>{detail.output || '출력 없음'}</pre>{detail.errorDetail && <p role="alert" className="llm-error">{detail.errorDetail}</p>}
+      <h3>참고한 운영 원칙</h3><p>{detail.decisionMemory?.rules?.length ? detail.decisionMemory.rules.map(r => `${r.caseId} (v${r.version})`).join(', ') : '승인 원칙 적용 없음'}</p><h3>입력</h3><pre>{detail.input}</pre><h3>출력</h3><pre>{detail.output || '출력 없음'}</pre>{detail.errorDetail && <p role="alert" className="llm-error">{detail.errorDetail}</p>}
       {detail.retryAvailable && <button className="admin-secondary" disabled={busy} onClick={retry}>실패 호출 재실행</button>}
       {detail.retryOutput && <><h3>재실행 결과 · 캠페인 자동 반영 없음</h3><pre>{detail.retryOutput}</pre></>}
     </section>}

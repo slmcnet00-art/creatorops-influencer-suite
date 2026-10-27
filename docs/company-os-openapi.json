@@ -4065,6 +4065,165 @@
           }
         }
       }
+    },
+    "/admin/decision-memory": {
+      "get": {
+        "summary": "관리자 판단 사례와 원칙 조회",
+        "description": "Owner/Admin 전용. 공통 원칙을 기능별 적용하며 암호화 저장한다. docs/company-os-integration.txt 판단 메모리 계약 참조.",
+        "responses": {
+          "200": {
+            "description": "revision 및 cases 반환"
+          },
+          "400": {
+            "description": "잘못된 입력"
+          },
+          "401": {
+            "description": "인증 필요"
+          },
+          "403": {
+            "description": "관리자 권한 필요"
+          },
+          "409": {
+            "description": "revision 충돌 또는 원칙 승인 충돌"
+          }
+        }
+      },
+      "post": {
+        "summary": "관리자 판단 사례 제안 또는 원칙 검토",
+        "description": "Owner/Admin 전용. 공통 원칙을 기능별 적용하며 암호화 저장한다. docs/company-os-integration.txt 판단 메모리 계약 참조.",
+        "responses": {
+          "201": {
+            "description": "revision 및 cases 반환"
+          },
+          "400": {
+            "description": "잘못된 입력"
+          },
+          "401": {
+            "description": "인증 필요"
+          },
+          "403": {
+            "description": "관리자 권한 필요"
+          },
+          "409": {
+            "description": "revision 충돌 또는 원칙 승인 충돌"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "featureKey": {
+                    "type": "string",
+                    "enum": [
+                      "campaign-strategy",
+                      "creator-recommendation",
+                      "content-guide",
+                      "outreach-message"
+                    ]
+                  },
+                  "topic": {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  "feedback": {
+                    "type": "string",
+                    "maxLength": 1500
+                  },
+                  "judgment": {
+                    "type": "string",
+                    "maxLength": 1500
+                  },
+                  "principle": {
+                    "type": "string",
+                    "maxLength": 1000
+                  },
+                  "runId": {
+                    "type": "string",
+                    "pattern": "^[0-9]+$"
+                  }
+                },
+                "required": [
+                  "revision",
+                  "featureKey",
+                  "topic",
+                  "feedback",
+                  "judgment",
+                  "principle"
+                ]
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/decision-memory/{id}/review": {
+      "post": {
+        "summary": "관리자 판단 사례 제안 또는 원칙 검토",
+        "description": "Owner/Admin 전용. 공통 원칙을 기능별 적용하며 암호화 저장한다. docs/company-os-integration.txt 판단 메모리 계약 참조.",
+        "responses": {
+          "200": {
+            "description": "revision 및 cases 반환"
+          },
+          "400": {
+            "description": "잘못된 입력"
+          },
+          "401": {
+            "description": "인증 필요"
+          },
+          "403": {
+            "description": "관리자 권한 필요"
+          },
+          "409": {
+            "description": "revision 충돌 또는 원칙 승인 충돌"
+          }
+        },
+        "parameters": [
+          {
+            "in": "path",
+            "name": "id",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "revision": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "action": {
+                    "type": "string",
+                    "enum": [
+                      "approve",
+                      "reject",
+                      "retire"
+                    ]
+                  }
+                },
+                "required": [
+                  "revision",
+                  "action"
+                ]
+              }
+            }
+          }
+        }
+      }
     }
   }
 }
