@@ -1,0 +1,4070 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "CreatorOps 회사 OS 연동 API",
+    "version": "2026-10-27",
+    "description": "CreatorOps 회사 OS 및 관리자 LLM Ops 운영 계약. 캠페인 CRUD 중 목록/조회/생성/수정을 지원하며 삭제는 제공하지 않습니다. 결과 및 예산을 실제 성과로 기록하지 않습니다."
+  },
+  "servers": [
+    {
+      "url": "https://creatorops-suite-api.onrender.com"
+    }
+  ],
+  "security": [
+    {
+      "workspaceJwt": []
+    }
+  ],
+  "components": {
+    "securitySchemes": {
+      "workspaceJwt": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "Supabase user access token",
+        "description": "고정 워크스페이스의 활성 회원 세션. 메일 발송은 운영 역할과 캠페인 브랜드 권한 필요. 관리자 API는 Owner/Admin 필요."
+      },
+      "osToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "서버 CREATOROPS_OS_TOKEN과 일치하는 32자 이상의 별도 비밀값. OS 학습 조회에만 사용. 2026-10-26 운영 discovery/strategy 요청 HTTP 200 확인. 실제 비밀값은 이 문서에 포함하지 않음."
+      },
+      "osExecutionToken": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "CREATOROPS_OS_API_TOKEN. 회사 OS 서버 전용: 캠페인/보고서/웹훅 및 검색·AI 생성·성과 갱신. 사용자 권한 관리/Gmail OAuth/이메일 발송/LLM Ops 관리에는 사용 불가."
+      }
+    },
+    "schemas": {
+      "CampaignPatch": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "product": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "objective": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "targetPersona": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "searchKeywords": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "exclusionKeywords": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "mission": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "reward": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "approvalFlow": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "kpiGoal": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "landingUrl": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "oneMessage": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "hookPoints": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "preferredPlatforms": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "deadline": {
+            "type": "string",
+            "maxLength": 5000
+          },
+          "budget": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000000000000
+          },
+          "targetViews": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000000000000
+          },
+          "targetConversions": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000000000000
+          },
+          "targetOrders": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000000000000
+          },
+          "targetRevenue": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000000000000
+          },
+          "minFollowers": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000000000000
+          },
+          "maxCreatorFee": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000000000000
+          },
+          "recommendationTargetCount": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000000000000
+          },
+          "sellerRecruitTarget": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1000000000000000
+          },
+          "campaignType": {
+            "type": "string",
+            "enum": [
+              "제안형",
+              "공개모집",
+              "앰배서더",
+              "커머스/제휴",
+              "공동구매"
+            ]
+          },
+          "contentFormats": {
+            "type": "array",
+            "uniqueItems": true,
+            "items": {
+              "type": "string",
+              "enum": [
+                "숏폼",
+                "롱폼",
+                "라이브",
+                "이미지/캐러셀",
+                "스토리"
+              ]
+            }
+          },
+          "targetCountry": {
+            "type": "string",
+            "enum": [
+              "KR",
+              "US",
+              "JP",
+              "CN",
+              "SEA",
+              "EU"
+            ]
+          },
+          "targetMarkets": {
+            "type": "array",
+            "minItems": 1,
+            "items": {
+              "type": "string",
+              "enum": [
+                "KR",
+                "US",
+                "JP",
+                "CN",
+                "SEA",
+                "EU"
+              ]
+            }
+          },
+          "outputLanguage": {
+            "type": "string",
+            "enum": [
+              "ko",
+              "en",
+              "ja",
+              "zh",
+              "zh-CN"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "섭외",
+              "콘텐츠 제작",
+              "라이브",
+              "리포트",
+              "완료"
+            ]
+          },
+          "schedule": {
+            "type": "object",
+            "properties": {
+              "recruitStart": {
+                "type": "string",
+                "description": "YYYY-MM-DD 또는 빈 문자열"
+              },
+              "recruitEnd": {
+                "type": "string",
+                "description": "YYYY-MM-DD 또는 빈 문자열"
+              },
+              "uploadDue": {
+                "type": "string",
+                "description": "YYYY-MM-DD 또는 빈 문자열"
+              },
+              "reportDue": {
+                "type": "string",
+                "description": "YYYY-MM-DD 또는 빈 문자열"
+              }
+            },
+            "required": [],
+            "additionalProperties": false
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      }
+    },
+    "responses": {
+      "Error400": {
+        "description": "입력 오류",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "error"
+              ]
+            }
+          }
+        }
+      },
+      "Error401": {
+        "description": "인증 없음/만료",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "error"
+              ]
+            }
+          }
+        }
+      },
+      "Error403": {
+        "description": "권한 없음",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "error"
+              ]
+            }
+          }
+        }
+      },
+      "Error409": {
+        "description": "충돌/중복/준비되지 않은 정책",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "error"
+              ]
+            }
+          }
+        }
+      },
+      "Error429": {
+        "description": "사용량 제한",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "error"
+              ]
+            }
+          }
+        }
+      },
+      "Error500": {
+        "description": "서버 오류",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "error"
+              ]
+            }
+          }
+        }
+      },
+      "Error502": {
+        "description": "공급자 응답 오류",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "error"
+              ]
+            }
+          }
+        }
+      },
+      "Error503": {
+        "description": "저장소/설정/원천 사용 불가",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "error"
+              ]
+            }
+          }
+        }
+      },
+      "Error404": {
+        "description": "리소스 없음",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "error"
+              ]
+            }
+          }
+        }
+      },
+      "Error428": {
+        "description": "If-Match 누락",
+        "content": {
+          "application/json": {
+            "schema": {
+              "type": "object",
+              "properties": {
+                "error": {
+                  "type": "string"
+                },
+                "message": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "error"
+              ]
+            }
+          }
+        }
+      }
+    }
+  },
+  "paths": {
+    "/health": {
+      "get": {
+        "summary": "서버 버전 및 설정 상태",
+        "description": "서버 버전 및 설정 상태",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ok": {
+                      "type": "boolean"
+                    },
+                    "service": {
+                      "type": "string"
+                    },
+                    "version": {
+                      "type": "string"
+                    },
+                    "readiness": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "outreach": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "security": []
+      }
+    },
+    "/readiness": {
+      "get": {
+        "summary": "운영 연결 진단",
+        "description": "probe=live로 실제 공급자 읽기 전용 점검. 빈번한 상태 폴링은 /health 사용.",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "security": [],
+        "parameters": [
+          {
+            "name": "probe",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/ai/policy-status": {
+      "get": {
+        "summary": "활성 정책 버전 조회",
+        "description": "활성 정책 버전 조회",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "policies": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "security": []
+      }
+    },
+    "/os-bridge/v1/learning": {
+      "post": {
+        "summary": "회사 OS용 활성 학습 정책/관련 자료 조회",
+        "description": "이 요청만 최상위 data 래퍼 없음. stage/query 외 필드 금지. 모델 호출/메일 발송/자료 수정 없음. 최대 24000바이트 문맥, 발췌 최대 12개 및 자료당 2개. completeLibraryRead=false. 필수 활성 정책이나 쓸 수 있는 내용이 없으면 409, 원천 장애는 503. 오류는 {error:string}이며 message는 없을 수 있음.",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "contract": {
+                      "const": "miping.creatorops-learning.v1"
+                    },
+                    "stage": {
+                      "type": "string"
+                    },
+                    "scope": {
+                      "type": "string"
+                    },
+                    "requiredFeatures": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "policies": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    },
+                    "retrieval": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "fingerprint": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "stage": {
+                    "type": "string",
+                    "enum": [
+                      "discovery",
+                      "guide",
+                      "review",
+                      "strategy"
+                    ],
+                    "default": "discovery"
+                  },
+                  "query": {
+                    "type": "string",
+                    "maxLength": 100,
+                    "default": ""
+                  }
+                },
+                "required": [],
+                "additionalProperties": true
+              },
+              "example": {
+                "stage": "strategy",
+                "query": "뷰티 일본 인플루언서"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "osToken": []
+          }
+        ]
+      }
+    },
+    "/youtube/channel": {
+      "post": {
+        "summary": "YouTube 채널 조회",
+        "description": "followers 필드가 YouTube에서는 구독자 수. averageViews는 누적 조회수/영상 수. 모든 플랫폼의 필드와 의미가 같다고 가정하지 말 것.",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "channelId": {
+                          "type": "string"
+                        },
+                        "name": {
+                          "type": "string"
+                        },
+                        "platform": {
+                          "type": "string"
+                        },
+                        "profileUrl": {
+                          "type": "string"
+                        },
+                        "followers": {
+                          "type": "number"
+                        },
+                        "averageViews": {
+                          "type": "number"
+                        },
+                        "totalViews": {
+                          "type": "number"
+                        },
+                        "videoCount": {
+                          "type": "number"
+                        },
+                        "country": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "lookup": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "lookup"
+                ],
+                "additionalProperties": true
+              },
+              "example": {
+                "lookup": "https://www.youtube.com/@GoogleDevelopers"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ]
+      }
+    },
+    "/discovery/youtube/search": {
+      "post": {
+        "summary": "YouTube 크리에이터 발굴",
+        "description": "YouTube 크리에이터 발굴",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string"
+                  },
+                  "country": {
+                    "type": "string",
+                    "default": "KR"
+                  },
+                  "maxResults": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000,
+                    "default": 24,
+                    "description": "요청 상한이며 실제 반환 개수 보장 아님. 작은 수부터 사용 권장."
+                  }
+                },
+                "required": [
+                  "query"
+                ],
+                "additionalProperties": true
+              },
+              "example": {
+                "query": "뷰티 클렌징 리뷰",
+                "country": "KR",
+                "maxResults": 24
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ]
+      }
+    },
+    "/discovery/google-profiles/search": {
+      "post": {
+        "summary": "Instagram/TikTok 공개 프로필 발굴",
+        "description": "all은 Instagram/TikTok 검색. 엔드포인트 이름과 실제 검색 공급자는 다를 수 있음. 팔로워/연락처/성과 데이터 확보를 보장하지 않음.",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "array",
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": true
+                      }
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string"
+                  },
+                  "platform": {
+                    "type": "string",
+                    "enum": [
+                      "all",
+                      "Instagram",
+                      "TikTok",
+                      "YouTube"
+                    ],
+                    "default": "all"
+                  },
+                  "country": {
+                    "type": "string",
+                    "default": "KR"
+                  },
+                  "maxResults": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 1000,
+                    "default": 24,
+                    "description": "요청 상한이며 실제 반환 개수 보장 아님. 작은 수부터 사용 권장."
+                  }
+                },
+                "required": [
+                  "query"
+                ],
+                "additionalProperties": true
+              },
+              "example": {
+                "query": "뷰티 클렌징",
+                "platform": "Instagram",
+                "country": "JP",
+                "maxResults": 24
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ]
+      }
+    },
+    "/references/search": {
+      "post": {
+        "summary": "콘텐츠 레퍼런스 검색",
+        "description": "콘텐츠 레퍼런스 검색",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "references": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": {
+                    "type": "string"
+                  },
+                  "country": {
+                    "type": "string",
+                    "default": "KR"
+                  },
+                  "platform": {
+                    "type": "string",
+                    "default": "YouTube"
+                  },
+                  "sort": {
+                    "type": "string",
+                    "default": "virality"
+                  },
+                  "maxResults": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 500,
+                    "default": 36,
+                    "description": "요청 상한이며 실제 반환 개수 보장 아님. 작은 수부터 사용 권장."
+                  }
+                },
+                "required": [
+                  "query"
+                ],
+                "additionalProperties": true
+              },
+              "example": {
+                "query": "클렌징 사용 전후",
+                "country": "JP",
+                "platform": "YouTube",
+                "maxResults": 12
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ]
+      }
+    },
+    "/public/profile-snapshot": {
+      "post": {
+        "summary": "공개 URL 정보 조회",
+        "description": "경로에 public이 포함되지만 익명 호출은 불가. 지원되는 공개 프로필/콘텐츠 URL만 처리 가능하며 플랫폼별 필드와 수집 가능성이 다름.",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string",
+                    "format": "uri"
+                  }
+                },
+                "required": [
+                  "url"
+                ],
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ]
+      }
+    },
+    "/tracking/refresh": {
+      "post": {
+        "summary": "전달한 콘텐츠들의 성과 갱신",
+        "description": "각 항목 status는 refreshed/manual_required/refresh_failed. HTTP 200이어도 개별 실패를 확인해야 함. YouTube 공개 지표에서 shares/saves는 null일 수 있음. 캠페인 전체 자동 저장 API가 아니며 반환 결과의 저장은 호출자가 처리.",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "posts": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "posts": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "platform": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    },
+                    "description": "앞 50개만 처리. 50개 단위로 나눠 호출할 것."
+                  }
+                },
+                "required": [],
+                "additionalProperties": true
+              },
+              "example": {
+                "posts": [
+                  {
+                    "id": "content-1",
+                    "platform": "YouTube",
+                    "url": "https://www.youtube.com/watch?v=VIDEO_ID"
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ]
+      }
+    },
+    "/ai/outreach-message": {
+      "post": {
+        "summary": "섭외 문구 생성 (발송하지 않음)",
+        "description": "섭외 문구 생성 (발송하지 않음)",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "message": {
+                          "type": "string"
+                        },
+                        "policyVersion": {
+                          "type": "string"
+                        },
+                        "policyFeatureKey": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brand": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "campaign": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "creator": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [],
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ]
+      }
+    },
+    "/ai/campaign-strategy": {
+      "post": {
+        "summary": "캠페인 전략 생성",
+        "description": "입력 객체는 유연한 현재 내부 형식. 실제 제품/조건/KPI를 명시할 것. 내부 전략 설명은 한국어, 크리에이터 대상 문구는 선택 언어. 활성 관리자 정책 필요. 결과는 문자열이며 캠페인 저장을 수행하지 않음.",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "strategy": {
+                          "type": "string"
+                        },
+                        "policyVersion": {
+                          "type": "string"
+                        },
+                        "policyFeatureKey": {
+                          "type": "string"
+                        },
+                        "sourceRawIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brand": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "campaign": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "brief": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "creators": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "recommendations": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "draftStrategy": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "additionalProperties": true
+              },
+              "example": {
+                "brand": {
+                  "name": "바닐라코"
+                },
+                "campaign": {
+                  "name": "클렌징 캠페인",
+                  "targetCountry": "JP",
+                  "outputLanguage": "ja",
+                  "contentFormats": [
+                    "숏폼"
+                  ]
+                },
+                "brief": {
+                  "product": "클렌징 제품",
+                  "targetPersona": "일본 뷰티 관심 고객"
+                },
+                "creators": [],
+                "recommendations": [],
+                "draftStrategy": ""
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ]
+      }
+    },
+    "/ai/content-guide": {
+      "post": {
+        "summary": "콘텐츠 가이드 생성",
+        "description": "콘텐츠 가이드 생성",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "guide": {
+                          "type": "string"
+                        },
+                        "policyVersion": {
+                          "type": "string"
+                        },
+                        "policyFeatureKey": {
+                          "type": "string"
+                        },
+                        "sourceRawIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brand": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "campaign": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "seedingType": {
+                    "type": "string"
+                  },
+                  "channel": {
+                    "type": "string"
+                  },
+                  "references": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "draftGuide": {
+                    "type": "string"
+                  }
+                },
+                "required": [],
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ]
+      }
+    },
+    "/ai/recommendations/enrich": {
+      "post": {
+        "summary": "제공한 후보에 AI 추천 근거 추가",
+        "description": "새 인플루언서 검색이 아닌 제공 후보의 근거 보강. 후보에 recommendationId/creatorId를 포함해야 결과 매칭 가능. 모델 출력이 파싱되어도 items는 비어 있을 수 있음.",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "items": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "recommendationId": {
+                                "type": "string"
+                              },
+                              "creatorId": {
+                                "type": "string"
+                              },
+                              "aiSummary": {
+                                "type": "string"
+                              },
+                              "aiReasons": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string"
+                                }
+                              },
+                              "outreachAngle": {
+                                "type": "string"
+                              },
+                              "riskNote": {
+                                "type": "string"
+                              },
+                              "message": {
+                                "type": "string"
+                              }
+                            },
+                            "required": [],
+                            "additionalProperties": true
+                          }
+                        },
+                        "model": {
+                          "type": "string"
+                        },
+                        "promptVersion": {
+                          "type": "string"
+                        },
+                        "policyFeatureKey": {
+                          "type": "string"
+                        },
+                        "sourceRawIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        },
+                        "metricIds": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brand": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "campaign": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "candidates": {
+                    "type": "array",
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": true
+                    },
+                    "description": "필수 비어 있지 않은 배열. 앞 50명만 처리."
+                  }
+                },
+                "required": [
+                  "candidates"
+                ],
+                "additionalProperties": true
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ]
+      }
+    },
+    "/oauth/google/auth-url": {
+      "get": {
+        "summary": "Gmail 연결 승인 URL 생성",
+        "description": "Gmail 연결 승인 URL 생성",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "url": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "state",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/oauth/google/token": {
+      "post": {
+        "summary": "Google 승인 코드를 발송 토큰으로 교환",
+        "description": "Google 승인 코드를 발송 토큰으로 교환",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "accessToken": {
+                          "type": "string"
+                        },
+                        "refreshToken": {
+                          "type": "string"
+                        },
+                        "expiresIn": {
+                          "type": "number"
+                        },
+                        "expiresAt": {
+                          "type": "number"
+                        },
+                        "scope": {
+                          "type": "string"
+                        },
+                        "tokenType": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "code": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "code"
+                ],
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/oauth/google/refresh": {
+      "post": {
+        "summary": "Google 발송 토큰 갱신",
+        "description": "Google 발송 토큰 갱신",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "accessToken": {
+                          "type": "string"
+                        },
+                        "expiresIn": {
+                          "type": "number"
+                        },
+                        "expiresAt": {
+                          "type": "number"
+                        },
+                        "scope": {
+                          "type": "string"
+                        },
+                        "tokenType": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "refreshToken": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "refreshToken"
+                ],
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/outreach/policy": {
+      "get": {
+        "summary": "캠페인 일일 발송 잔여량 조회",
+        "description": "캠페인 일일 발송 잔여량 조회",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "batchLimit": {
+                          "type": "integer"
+                        },
+                        "sendIntervalMs": {
+                          "type": "integer"
+                        },
+                        "dailyLimitPerCampaign": {
+                          "type": "integer"
+                        },
+                        "timeZone": {
+                          "type": "string"
+                        },
+                        "usage": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "campaignId",
+            "in": "query",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/outreach/gmail/send": {
+      "post": {
+        "summary": "실제 Gmail 단건 발송",
+        "description": "Authorization 헤더는 CreatorOps 사용자 세션, body.accessToken은 별도의 Google 토큰. 동일 작업은 동일 idempotencyKey로 재시도. 캠페인 존재/브랜드 쓰기 권한 필요. 발송 제한과 수신 거부 적용. 성공 중복 응답은 id/duplicate만 반환 가능. 모호한 발송 결과는 자동 재발송하지 않음.",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "id": {
+                          "type": "string"
+                        },
+                        "threadId": {
+                          "type": "string"
+                        },
+                        "duplicate": {
+                          "type": "boolean"
+                        },
+                        "policy": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "campaignId": {
+                    "type": "string"
+                  },
+                  "creatorId": {
+                    "type": "string"
+                  },
+                  "to": {
+                    "type": "string"
+                  },
+                  "subject": {
+                    "type": "string"
+                  },
+                  "message": {
+                    "type": "string"
+                  },
+                  "idempotencyKey": {
+                    "type": "string"
+                  },
+                  "accessToken": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "accessToken",
+                  "campaignId",
+                  "to",
+                  "message"
+                ],
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/outreach/gmail/send-batch": {
+      "post": {
+        "summary": "실제 Gmail 일괄 발송",
+        "description": "현재 설정 기준 최대 20건/요청, 배치 내 발송 간격 10초, 캠페인당 하루 50건(한국 자정 기준). 동기 응답이므로 20건은 3분 이상 걸릴 수 있어 호출자 타임아웃 고려. 항목별 sent/skipped/failed 및 summary 확인. 서버 작업 잠금 중 409.",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "results": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "summary": {
+                          "type": "object",
+                          "additionalProperties": true
+                        },
+                        "policy": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "accessToken": {
+                    "type": "string"
+                  },
+                  "items": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 20,
+                    "items": {
+                      "type": "object",
+                      "properties": {
+                        "campaignId": {
+                          "type": "string"
+                        },
+                        "creatorId": {
+                          "type": "string"
+                        },
+                        "to": {
+                          "type": "string"
+                        },
+                        "subject": {
+                          "type": "string"
+                        },
+                        "message": {
+                          "type": "string"
+                        },
+                        "idempotencyKey": {
+                          "type": "string"
+                        },
+                        "id": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "campaignId",
+                        "to",
+                        "message"
+                      ],
+                      "additionalProperties": true
+                    }
+                  }
+                },
+                "required": [
+                  "accessToken",
+                  "items"
+                ],
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/outreach/suppressions": {
+      "post": {
+        "summary": "캠페인 발송 제외 또는 전체 수신 거부 설정",
+        "description": "campaign은 campaignId와 해당 브랜드 권한 필요. workspace는 Owner/Admin만. scope를 반드시 명시할 것. suppressed=false로 해제.",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "email": {
+                          "type": "string"
+                        },
+                        "scope": {
+                          "type": "string"
+                        },
+                        "campaignId": {
+                          "type": [
+                            "string",
+                            "null"
+                          ]
+                        },
+                        "suppressed": {
+                          "type": "boolean"
+                        },
+                        "updatedAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "email": {
+                    "type": "string"
+                  },
+                  "scope": {
+                    "type": "string",
+                    "enum": [
+                      "campaign",
+                      "workspace"
+                    ],
+                    "default": "workspace",
+                    "description": "현재 서버는 campaign 외 값 및 누락을 workspace 전체 수신 거부로 정규화하므로 반드시 명시할 것."
+                  },
+                  "campaignId": {
+                    "type": "string"
+                  },
+                  "suppressed": {
+                    "type": "boolean",
+                    "default": true
+                  },
+                  "reason": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "email"
+                ],
+                "additionalProperties": true
+              }
+            }
+          }
+        }
+      }
+    },
+    "/admin/ai-configs": {
+      "get": {
+        "summary": "관리자 학습 설정 조회",
+        "description": "Owner/Admin 전용. 내부 프롬프트 및 첨부 추출 텍스트가 포함될 수 있으므로 회사 OS 서버에서만 취급.",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "workspaceId": {
+                          "type": "string"
+                        },
+                        "configs": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/admin/audit-logs": {
+      "get": {
+        "summary": "관리자 감사 로그 조회",
+        "description": "Owner/Admin. limit 기본 80, 최대 200.",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "workspaceId": {
+                          "type": "string"
+                        },
+                        "logs": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/admin/jobs": {
+      "get": {
+        "summary": "자동화 실행 이력 조회",
+        "description": "Owner/Admin. limit 기본 50, 최대 200.",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "workspaceId": {
+                          "type": "string"
+                        },
+                        "runs": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true
+                          }
+                        },
+                        "activeJobs": {
+                          "type": "array",
+                          "items": {
+                            "type": "string"
+                          }
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/admin/jobs/{jobName}/run": {
+      "post": {
+        "summary": "운영 자동화 작업 실행",
+        "description": "Owner/Admin 전용. 실제 DB 수집/갱신/재계산 또는 YouTube 보존 정책 정리를 실행하는 변경 작업. 실행 중 중복 요청 409.",
+        "responses": {
+          "200": {
+            "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "properties": {
+                        "workspaceId": {
+                          "type": "string"
+                        },
+                        "run": {
+                          "type": "object",
+                          "additionalProperties": true
+                        }
+                      },
+                      "required": [],
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "429": {
+            "$ref": "#/components/responses/Error429"
+          },
+          "500": {
+            "$ref": "#/components/responses/Error500"
+          },
+          "502": {
+            "$ref": "#/components/responses/Error502"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "jobName",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "tracking-refresh",
+                "metric-recalculation",
+                "youtube-retention",
+                "daily-operations"
+              ]
+            }
+          }
+        ]
+      }
+    },
+    "/os-bridge/v1/capabilities": {
+      "get": {
+        "summary": "연동 기능과 버전 조회",
+        "description": "",
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/os-bridge/v1/openapi.json": {
+      "get": {
+        "summary": "이 OpenAPI 문서 조회",
+        "description": "응답은 data 래퍼 없이 OpenAPI JSON 그 자체.",
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OpenAPI 3.1 JSON",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": true
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/os-bridge/v1/brands": {
+      "get": {
+        "summary": "기존 브랜드·버전·쓰기 가능 여부 조회",
+        "description": "data.brands[]: id,name,version,writable. 신규 브랜드 생성은 지원하지 않으며 기존 scoped 브랜드에 캠페인을 추가합니다.",
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/os-bridge/v1/campaigns": {
+      "get": {
+        "summary": "캠페인 목록",
+        "description": "data: campaigns,total,limit,offset. 삭제된 scoped 캠페인은 오래된 전체 스냅샷에서 복원하지 않음.",
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "brandId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "offset",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "post": {
+        "summary": "캠페인 생성",
+        "description": "campaign.name 필수. 실제 집행/매출/진행률/크리에이터 배정은 직접 쓸 수 없음. data: campaign,version,webhook. 동일 멱등키+동일 입력은 200 duplicate=true, 새 생성은 201. 알림 큐 저장 불가 시 webhook.queued=false이므로 OS는 이 응답도 확인해야 함. 생성 ID는 기존 UI와 호환되는 안전 정수이며 숫자 정밀도를 보존해야 합니다.",
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brandId": {
+                    "type": [
+                      "string",
+                      "number"
+                    ]
+                  },
+                  "campaign": {
+                    "$ref": "#/components/schemas/CampaignPatch"
+                  }
+                },
+                "required": [
+                  "brandId",
+                  "campaign"
+                ],
+                "additionalProperties": false
+              },
+              "example": {
+                "brandId": "GET-brands에서-받은-ID",
+                "campaign": {
+                  "name": "일본 클렌징 캠페인",
+                  "campaignType": "제안형",
+                  "contentFormats": [
+                    "숏폼"
+                  ],
+                  "targetMarkets": [
+                    "JP"
+                  ],
+                  "budget": 5000000,
+                  "targetViews": 100000
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "브랜드 전체 snapshot version. GET brands 또는 GET campaign 응답의 version 값을 그대로 사용 (따옴표 허용)."
+          },
+          {
+            "name": "Idempotency-Key",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 160
+            }
+          }
+        ]
+      }
+    },
+    "/os-bridge/v1/campaigns/{id}": {
+      "get": {
+        "summary": "캠페인 상세·버전",
+        "description": "data: campaign,version. 버전은 브랜드 스냅샷 단위이며 ETag 헤더에도 반환.",
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "brandId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      },
+      "patch": {
+        "summary": "캠페인 수정",
+        "description": "브랜드 스냅샷이 변경되었으면 409. 최신 버전과 내용을 다시 읽고 변경을 검토한 뒤 재요청. 삭제 미지원.",
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "brandId": {
+                    "type": [
+                      "string",
+                      "number"
+                    ]
+                  },
+                  "campaign": {
+                    "$ref": "#/components/schemas/CampaignPatch"
+                  }
+                },
+                "required": [
+                  "brandId",
+                  "campaign"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "If-Match",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "브랜드 전체 snapshot version. GET brands 또는 GET campaign 응답의 version 값을 그대로 사용 (따옴표 허용)."
+          }
+        ]
+      }
+    },
+    "/os-bridge/v1/reports": {
+      "get": {
+        "summary": "캠페인 통합 집계 보고서",
+        "description": "data: asOf,currency=KRW,campaigns[],totals. 각 캠페인: contentCount,recruitedCount,views,engagementRate,conversions,actualSpendKrw,actualRevenueKrw,roas,actualMoneyAvailable. 최신 스냅샷 집계이며 기간별 시계열이나 YouTube 검색 결과 일괄 내보내기 아님.",
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "brandId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/os-bridge/v1/reports/{id}": {
+      "get": {
+        "summary": "캠페인 단위 집계 보고서",
+        "description": "캠페인 합산 성과 + snapshot version. 모델링 매출/예산은 실제 매출/집행에 포함하지 않음.",
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "brandId",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/os-bridge/v1/webhook": {
+      "get": {
+        "summary": "알림 구독과 지원 이벤트 조회",
+        "description": "data: url,enabled,events,supportedEvents,signingConfigured. 서명 비밀값은 반환하지 않음.",
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      },
+      "put": {
+        "summary": "알림 구독 등록/중지",
+        "description": "워크스페이스당 수신 주소 1개. enabled=true 시 공개 HTTPS 443 URL 필수, 사용자정보/쿼리/fragment 불가. 리다이렉트 미지원. 중지: enabled=false. 이전 주소에 쌓인 이벤트는 새 주소로 전달하지 않음.",
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "url": {
+                    "type": "string"
+                  },
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "events": {
+                    "type": "array",
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "campaign.created",
+                        "campaign.updated",
+                        "ai.generation.completed",
+                        "ai.generation.failed",
+                        "operation.completed",
+                        "operation.failed"
+                      ]
+                    }
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "events"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    },
+    "/os-bridge/v1/webhook/deliveries": {
+      "get": {
+        "summary": "알림 전송 상태 조회",
+        "description": "최근 100건: eventId,type,status,attempts,nextAttemptAt,error. DB 기반 30초 간격 처리, 최대 5회 시도. at-least-once이므로 수신자는 event ID로 중복 제거. 서명: HMAC-SHA256(secret,timestamp+\".\"+rawBody), 헤더 X-CreatorOps-Signature=sha256=hex. X-CreatorOps-Timestamp와 X-CreatorOps-Event-Id를 사용, 수신 시 5분 이내인지 확인. 본문 id,type,workspaceId,occurredAt,data. 대량 원문·프롬프트·비밀값은 포함하지 않음.",
+        "security": [
+          {
+            "workspaceJwt": []
+          },
+          {
+            "osExecutionToken": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        }
+      }
+    },
+    "/admin/llm-ops": {
+      "get": {
+        "summary": "LLM 호출 목록과 집계",
+        "description": "Owner/Admin 사용자 로그인만. data: runs(최대200),summary(최근최대1000),summaryLimit,displayedLimit,pricing,model. usage가 없거나 요율 미설정이면 비용 미산정. actual 청구액이 아닌 추정치. 기존 호출은 소급 기록하지 않음.",
+        "security": [
+          {
+            "workspaceJwt": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "feature",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/admin/llm-ops/runs/{id}": {
+      "get": {
+        "summary": "관리자용 암호화 원문 상세",
+        "description": "data: input,output,errorDetail,policyVersion,model,usage,estimatedCostUsd,retryAvailable 등. 입력/출력 암호화 저장, 30일 보존 이후 원문 정리. 사용량 메타데이터는 유지. 원문 정리는 일일 작업 및 서버 시작/매시간 최대 1000건씩 처리.",
+        "security": [
+          {
+            "workspaceJwt": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/admin/llm-ops/runs/{id}/retry": {
+      "post": {
+        "summary": "실패한 생성 수동 재실행",
+        "description": "원래 입력/정책 버전으로 추가 모델 호출. 원본당 한 번만 선점, 생성되는 후속 실패 이력은 별도 재실행 가능. 캠페인 자동 적용 없음. 원문 보존기간 만료 410. 결과 미확인/running 이력 재실행 금지.",
+        "security": [
+          {
+            "workspaceJwt": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "confirm": {
+                    "const": true
+                  }
+                },
+                "required": [
+                  "confirm"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ]
+      }
+    },
+    "/admin/llm-ops/pricing": {
+      "put": {
+        "summary": "모델 요율 관리",
+        "description": "100만 토큰당 USD, 모두 0 이상 10000 이하. 변경은 이후 호출에 적용되며 과거 호출 비용은 재계산하지 않음.",
+        "security": [
+          {
+            "workspaceJwt": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "성공",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true
+                    }
+                  },
+                  "required": [
+                    "data"
+                  ],
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/Error400"
+          },
+          "401": {
+            "$ref": "#/components/responses/Error401"
+          },
+          "403": {
+            "$ref": "#/components/responses/Error403"
+          },
+          "404": {
+            "$ref": "#/components/responses/Error404"
+          },
+          "409": {
+            "$ref": "#/components/responses/Error409"
+          },
+          "428": {
+            "$ref": "#/components/responses/Error428"
+          },
+          "503": {
+            "$ref": "#/components/responses/Error503"
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "model": {
+                    "type": "string"
+                  },
+                  "input": {
+                    "type": "number"
+                  },
+                  "cachedInput": {
+                    "type": "number"
+                  },
+                  "output": {
+                    "type": "number"
+                  }
+                },
+                "required": [
+                  "model",
+                  "input",
+                  "cachedInput",
+                  "output"
+                ],
+                "additionalProperties": false
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

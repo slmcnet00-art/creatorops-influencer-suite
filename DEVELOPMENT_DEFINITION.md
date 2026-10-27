@@ -351,6 +351,8 @@ npm run render:create-api
 
 후속 개발:
 
+2026-10-27 추가: 회사 OS API v1(캠페인 생성/조회/수정, 브랜드 버전, 통합 보고서, 웹훅)과 관리자 `LLM Ops`를 구현한다. LLM Ops는 호출 목록/상세, 상태·기능 필터, 정책 버전별 운영 통계, 요율 관리와 확인 후 실패 재실행을 제공한다. 저장 원천은 기존 `ai_generation_runs`이며 OS 알림 큐는 `job_runs`를 사용한다. 상세 요청·응답과 운영 제한은 `docs/company-os-openapi.json`, `docs/company-os-integration.txt`를 따른다. 실연동 알림 수신 주소 등록은 별도로 필요하다.
+
 1. Supabase 테이블 또는 별도 데이터 카탈로그 테이블로 raw/metric 정의 저장
 2. Render API 로그, 수집 job 로그, 계산 job 로그와 상세 패널 연결
 3. 데이터 품질 이슈 등록/담당자 지정/변경 이력 저장

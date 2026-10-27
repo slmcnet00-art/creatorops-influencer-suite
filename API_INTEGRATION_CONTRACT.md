@@ -311,6 +311,15 @@ Gmail OAuth 발송 엔드포인트입니다. 단건도 선택한 캠페인의 �
 
 ## Production Priority
 
+### Company OS API v1 / LLM Ops (2026-10-27)
+
+- Machine-readable contract: [company-os-openapi.json](docs/company-os-openapi.json). Integration procedure: [company-os-integration.txt](docs/company-os-integration.txt).
+- Authenticated `GET /os-bridge/v1/openapi.json` serves that same contract. The OS execution key is separate from the read-only learning key.
+- Campaign reads/creates/patches, aggregate reports and signed webhook subscription/delivery status are under `/os-bridge/v1`. `If-Match` is mandatory for writes and `Idempotency-Key` for creates. No deletion API.
+- `/admin/llm-ops` and child routes require Owner/Admin user sessions; machine execution credentials cannot access them or Gmail sending/authorization.
+- Existing search/AI/tracking routes accept the execution token as an OSService principal, without extending that principal to other workspace routes.
+- Webhook delivery is at-least-once with up to five attempts; a receiver URL is required before enabling it. Failure to queue after a campaign save is returned explicitly as `webhook.queued=false`.
+
 1. Supabase Auth와 `workspace_snapshots` 저장소를 먼저 연결합니다.
 2. API 서버에서 YouTube/Google/OpenAI/Gmail 키를 보관합니다.
 3. Instagram/TikTok은 공식 OAuth 또는 공개 프로필 URL 수집 + 수동 검증 원장으로 운영합니다.
