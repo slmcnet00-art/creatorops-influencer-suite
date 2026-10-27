@@ -1,3 +1,4 @@
+import { createDecisionMemory } from './decisionMemory.js'
 import { config as loadEnv } from 'dotenv'
 import {registerOsLearningBridge} from './osLearningBridge.js'
 import { createCompanyOs } from './companyOs.js'
@@ -126,7 +127,9 @@ const companyOs = createCompanyOs({ getClient: getSupabaseAdminClient, workspace
 companyOs.register(app)
 osWebhooks.register(app, companyOs.access)
 osWebhooks.start()
-const llmOps = createLlmOps({ getClient: getSupabaseAdminClient, workspaceId: WORKSPACE_ID, publish: osWebhooks.publish, audit: safeWriteAuditLog,
+const decisionMemory = createDecisionMemory({ getClient: getSupabaseAdminClient, workspaceId: WORKSPACE_ID, audit: safeWriteAuditLog })
+decisionMemory.register(app, requireAdminWorkspaceAccess)
+const llmOps = createLlmOps({ retrieveMemory: decisionMemory.retrieve, getClient: getSupabaseAdminClient, workspaceId: WORKSPACE_ID, publish: osWebhooks.publish, audit: safeWriteAuditLog,
   validateOutput(feature, text) {
     if (feature === 'creator-recommendation') {
       const parsed = parseAiJsonObject(text)

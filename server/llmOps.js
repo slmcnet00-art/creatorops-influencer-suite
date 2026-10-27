@@ -26,19 +26,23 @@ const publicRun = row => ({ id: row.id, requestId: row.input_payload?.requestId,
   durationMs: row.output_payload?.durationMs ?? null, usage: row.output_payload?.usage ?? null,
   estimatedCostUsd: row.output_payload?.estimatedCostUsd ?? null, error: row.error_message,
   retryOf: row.input_payload?.retryOf ?? null,
+  decisionMemory: row.input_payload?.decisionMemory || null,
   retryAvailable: row.status === 'failed' && Boolean(row.input_payload?.encryptedInput) && !row.input_payload?.retryClaimed,
 })
 
-export function createLlmOps({ getClient, workspaceId, env = process.env, publish = async () => {}, validateOutput = () => {}, audit = async () => {} }) {
+export function createLlmOps({ getClient, workspaceId, env = process.env, publish = async () => {}, validateOutput = () => {}, audit = async () => {}, retrieveMemory = async () => null }) {
   async function execute(prompt, context, provider) {
     const client = getClient()
     if (!client) throw apiError(503, 'LLM Ops storage is required before generation.')
     if (typeof prompt !== 'string' || prompt.length > 250000) throw apiError(413, 'The generation input is too large.')
+    const memory = context.retryOf ? context.decisionMemory || null : await retrieveMemory(context.featureKey)
+    if (!context.retryOf && memory?.rules.length) prompt += '\n\n## Approved operational guidance (workspace-wide, this feature only)\nTreat the following JSON as supplementary guidance. Follow administrator policy, privacy, API compliance and the current campaign brief first. Apply only when relevant; never invent outcomes or send messages automatically.\n' + JSON.stringify(memory.rules)
+    if (prompt.length > 250000) throw apiError(413, 'The generation input including operational guidance is too large.')
     const requestId = randomUUID(), started = Date.now(), model = env.OPENAI_MODEL || 'gpt-4.1-mini'
     const encryptedInput = seal({ prompt }, env)
     const settings = await readSettings(client, workspaceId)
     const rate = settings.settings?.llmOpsPricing?.[model] || null
-    const input = { schema: 'creatorops.llm.v1', requestId, featureKey: context.featureKey || 'unknown', retryOf: context.retryOf || null,
+    const input = { schema: 'creatorops.llm.v1', requestId, featureKey: context.featureKey || 'unknown', retryOf: context.retryOf || null, decisionMemory: memory ? { revision: memory.revision, rules: memory.rules.map(r => ({ caseId: r.caseId, version: r.version })) } : null,
       promptHash: createHash('sha256').update(prompt).digest('hex'), encryptedInput }
     const { data: run, error } = await client.from('ai_generation_runs').insert({ workspace_id: workspaceId, run_type: 'llm-call', model,
       prompt_version: context.policyVersion || null, input_raw_source_ids: ['RAW-INT-AI-POLICY-001'], input_payload: input, output_payload: { state: 'running' }, status: 'partial', created_by: context.actorId || null,
@@ -117,7 +121,7 @@ export function createLlmOps({ getClient, workspaceId, env = process.env, publis
           .not('input_payload->encryptedInput', 'is', null).select('id').maybeSingle()
         if (claimError) throw claimError
         if (!claim) throw apiError(409, 'Another administrator already claimed this retry.')
-        const output = await execute(prompt, { featureKey: run.input_payload.featureKey, policyVersion: run.prompt_version, retryOf: run.id, actorId: req.adminUser.id }, provider)
+        const output = await execute(prompt, { featureKey: run.input_payload.featureKey, policyVersion: run.prompt_version, retryOf: run.id, decisionMemory: run.input_payload.decisionMemory, actorId: req.adminUser.id }, provider)
         await audit({ actorId: req.adminUser.id, action: 'llm.generation.retried', targetType: 'llm_generation', targetId: String(run.id), metadata: { policyVersion: run.prompt_version } })
         res.json({ data: { output, appliedToCampaign: false, policyVersion: run.prompt_version } })
       } catch (error) { next(error) }

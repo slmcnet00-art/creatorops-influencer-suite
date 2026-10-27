@@ -250,3 +250,8 @@ audit_log
 - It is used for official commercial/ad content references and disclosure patterns.
 - It does not replace a general TikTok creator profile or follower database.
 - KR/US creator discovery still needs public search, creator opt-in data, and manual/approved verification because the Commercial Content API country filters are EEA-focused.
+
+
+### 판단 메모리 (2026-10-27)
+
+관리자 LLM Ops에서 피드백 → 판단 사례/원칙 후보 → 별도 승인 → 다음 기능별 AI 생성 참고 → 호출 상세 근거 추적 순서로 운영한다. 원문은 암호화하고 전 브랜드 공통 원칙만 저장한다. 자동 재학습·자동 발송·과거 결과 변경은 수행하지 않는다. API, 범위, 한도 및 중지/재승인 방법은 `docs/company-os-integration.txt`의 판단 메모리 항목을 따른다.
