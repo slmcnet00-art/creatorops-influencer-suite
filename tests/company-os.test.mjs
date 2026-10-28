@@ -5,6 +5,7 @@ import vm from 'node:vm'
 import { readFileSync } from 'node:fs'
 import { apiError, matchesSecret } from '../server/integrationStore.js'
 import { createCompanyOs, campaignReport, validateCampaignPatch } from '../server/companyOs.js'
+import {isOsDiscoveryRead} from '../server/osDiscoveryAccess.js'
 import { memorySupabase } from './helpers/memorySupabase.mjs'
 
 const token = 'company-os-test-secret-'.repeat(3), version = '2026-01-01T00:00:00.000Z'
@@ -74,7 +75,7 @@ test('실행 키는 허용한 AI/검색 경로만 통과하고 Gmail/관리자/�
   const source = readFileSync(new URL('../server/index.js', import.meta.url), 'utf8').replace(/\r\n/g, '\n')
   const start = source.indexOf('async function requireWorkspaceAccess('), end = source.indexOf('\nasync function assertOutreachCampaigns(', start)
   const gate = vm.runInNewContext(`(${source.slice(start, end)})`, {
-    process: { env: { CREATOROPS_OS_API_TOKEN: token } }, matchesSecret,
+    process: { env: { CREATOROPS_OS_API_TOKEN: token } }, matchesSecret, isOsDiscoveryRead,
     PROTECTED_API_PATHS: ['/ai/campaign-strategy', '/discovery/youtube/search'], httpError: apiError,
     getSupabaseAdminClient: () => ({ auth: { getUser: async () => ({ data: {}, error: {} }) } }),
   })

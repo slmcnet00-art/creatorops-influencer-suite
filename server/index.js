@@ -1,6 +1,8 @@
 import { createDecisionMemory } from './decisionMemory.js'
 import { config as loadEnv } from 'dotenv'
-import {registerOsLearningBridge} from './osLearningBridge.js'
+import {registerOsLearningBridge,learningFeatures} from './osLearningBridge.js'
+import {registerOsObservations} from './osObservations.js'
+import {isOsDiscoveryRead} from './osDiscoveryAccess.js'
 import { createCompanyOs } from './companyOs.js'
 import { createLlmOps } from './llmOps.js'
 import { createOsWebhooks } from './osWebhooks.js'
@@ -120,7 +122,11 @@ app.use(cors({
 app.use(express.json({ limit: '5mb' }))
 const PROTECTED_API_PATHS = ['/youtube/channel', '/discovery/youtube/search', '/discovery/google-profiles/search', '/references/search', '/ai/outreach-message', '/ai/content-guide', '/ai/campaign-strategy', '/ai/recommendations/enrich', '/public/profile-snapshot', '/tracking/refresh']
 app.use(PROTECTED_API_PATHS, requireWorkspaceAccess)
-registerOsLearningBridge(app,{loadActiveConfigs:()=>getAiFeatureConfigs({strict:true})})
+registerOsLearningBridge(app,{loadActiveConfigs:()=>getAiFeatureConfigs({strict:true}),loadDecisionPrinciples:async stage=>{
+  const features=learningFeatures(stage),packs=await Promise.all(features.map(f=>decisionMemory.retrieve(f)))
+  if(new Set(packs.map(p=>p.revision)).size!==1)throw httpError(409,'Approved principles changed; refresh before execution.')
+  return {revision:packs[0].revision,rules:packs.flatMap((p,i)=>p.rules.map(r=>({id:r.caseId,version:r.version,featureKey:features[i],instruction:r.principle})))}
+}})
 const osWebhooks = createOsWebhooks({ getClient: getSupabaseAdminClient, workspaceId: WORKSPACE_ID, audit: safeWriteAuditLog })
 const companyOs = createCompanyOs({ getClient: getSupabaseAdminClient, workspaceId: WORKSPACE_ID,
   requireAdmin: requireAdminWorkspaceAccess, publish: osWebhooks.publish, audit: safeWriteAuditLog })
@@ -129,6 +135,7 @@ osWebhooks.register(app, companyOs.access)
 osWebhooks.start()
 const decisionMemory = createDecisionMemory({ getClient: getSupabaseAdminClient, workspaceId: WORKSPACE_ID, audit: safeWriteAuditLog })
 decisionMemory.register(app, requireAdminWorkspaceAccess)
+registerOsObservations(app,{getClient:getSupabaseAdminClient,workspaceId:WORKSPACE_ID,observePrinciples:decisionMemory.observe})
 const llmOps = createLlmOps({ retrieveMemory: decisionMemory.retrieve, getClient: getSupabaseAdminClient, workspaceId: WORKSPACE_ID, publish: osWebhooks.publish, audit: safeWriteAuditLog,
   validateOutput(feature, text) {
     if (feature === 'creator-recommendation') {
@@ -950,6 +957,10 @@ async function requireWorkspaceAccess(request, _response, next) {
     const authorization = String(request.headers.authorization || '')
     const accessToken = authorization.match(/^Bearer\s+(.+)$/i)?.[1]?.trim()
     if (!accessToken) throw httpError(401, 'Workspace authentication is required.')
+    if (isOsDiscoveryRead(request)) {
+      request.workspaceUser = { id: null, role: 'OSDiscoveryRead', email: '' }
+      return next()
+    }
     if (PROTECTED_API_PATHS.includes(request.originalUrl.split('?')[0]) && matchesSecret(accessToken, process.env.CREATOROPS_OS_API_TOKEN)) {
       request.workspaceUser = { id: null, role: 'OSService', email: '' }
       return next()

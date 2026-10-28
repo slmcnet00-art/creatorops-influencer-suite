@@ -77,5 +77,11 @@ export function createDecisionMemory({ getClient, workspaceId, env = process.env
       } catch (e) { next(e) }
     })
   }
-  return { register, retrieve }
+  async function observe() {
+    const memory = await read()
+    return { revision: memory.revision, states: memory.cases.filter(c => c.featureKey !== 'outreach-message').map(c => ({
+      id: c.id, version: c.version, status: { approved: 'approved', retired: 'revoked', pending: 'pending', rejected: 'rejected' }[c.state] || 'unknown',
+    })) }
+  }
+  return { register, retrieve, observe }
 }
