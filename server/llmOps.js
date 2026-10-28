@@ -36,6 +36,12 @@ export function createLlmOps({ getClient, workspaceId, env = process.env, publis
     if (!client) throw apiError(503, 'LLM Ops storage is required before generation.')
     if (typeof prompt !== 'string' || prompt.length > 250000) throw apiError(413, 'The generation input is too large.')
     const memory = context.retryOf ? context.decisionMemory || null : await retrieveMemory(context.featureKey)
+    if (context.retryOf && memory?.rules?.length) {
+      const current = await retrieveMemory(context.featureKey)
+      if (memory.rules.some(pinned => !current?.rules?.some(rule => rule.caseId === pinned.caseId && rule.version === pinned.version))) {
+        throw apiError(409, 'The pinned principle was revoked or replaced; review a new request before any paid retry.')
+      }
+    }
     if (!context.retryOf && memory?.rules.length) prompt += '\n\n## Approved operational guidance (workspace-wide, this feature only)\nTreat the following JSON as supplementary guidance. Follow administrator policy, privacy, API compliance and the current campaign brief first. Apply only when relevant; never invent outcomes or send messages automatically.\n' + JSON.stringify(memory.rules)
     if (prompt.length > 250000) throw apiError(413, 'The generation input including operational guidance is too large.')
     const requestId = randomUUID(), started = Date.now(), model = env.OPENAI_MODEL || 'gpt-4.1-mini'
@@ -64,7 +70,7 @@ export function createLlmOps({ getClient, workspaceId, env = process.env, publis
     const state = generationError ? 'failed' : 'success'
     const { error: finishError } = await client.from('ai_generation_runs').update({ status: state,
       error_message: generationError ? `Generation failed (${Number(generationError.status) || 500}); inspect the encrypted detail.` : null,
-      output_payload: { state, durationMs: Date.now() - started, usage, estimatedCostUsd: usage ? estimateCost(usage, rate) : null,
+      output_payload: { state, durationMs: Date.now() - started, usage, estimatedCostUsd: usage ? estimateCost(usage, rate) : null, providerReceiptId: payload?.id || null,
         pricing: rate, finishedAt: new Date().toISOString(), encryptedOutput: seal({ text: text || '', error: generationError?.message || null }, env) },
     }).eq('workspace_id', workspaceId).eq('id', run.id)
     if (finishError) throw apiError(503, `Generation ${run.id} finished but telemetry persistence failed. Do not retry automatically.`)

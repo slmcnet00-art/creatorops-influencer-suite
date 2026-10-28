@@ -65,13 +65,21 @@ test('중지한 원칙은 다음 실행에서 제외되고 재승인하면 검�
   assert.equal(result.body.data.cases[0].version, 4)
   assert.equal(result.body.data.cases[0].history.length, 4)
 })
-test('재시도는 저장된 입력과 근거를 유지하고 최신 원칙을 중복 주입하지 않는다', async t => {
-  const { ops, client } = await fixture(t)
-  const trace = { revision: 7, rules: [{ caseId: 'old', version: 2 }] }
+test('재시도는 승인된 고정 입력을 유지하고 회수된 원칙은 재사용하지 않는다', async t => {
+  const { ops, client, call, memory } = await fixture(t)
+  const proposed = (await call('', { ...proposal, revision: 0 })).body.data
+  const id = proposed.cases[0].id
+  const approved = (await call('/'+id+'/review', { revision: proposed.revision, action: 'approve' })).body.data
+  const active = await memory.retrieve(proposal.featureKey)
+  const trace = { revision: active.revision, rules: active.rules.map(r=>({caseId:r.caseId,version:r.version})) }
   let actual
   await ops.execute('Pinned prompt with old rule', { featureKey: 'outreach-message', retryOf: 99, decisionMemory: trace }, async prompt => { actual = prompt; return { text: 'retry' } })
   assert.equal(actual, 'Pinned prompt with old rule')
   assert.deepEqual(client.tables.ai_generation_runs[0].input_payload.decisionMemory, trace)
+  await call('/'+id+'/review', { revision: approved.revision, action: 'retire' })
+  let calls=0
+  await assert.rejects(ops.execute('Pinned prompt with old rule', { featureKey: 'outreach-message', retryOf: 99, decisionMemory: trace }, async()=>{calls++;return {text:'must not run'}}),e=>e.status===409)
+  assert.equal(calls,0);assert.equal(client.tables.ai_generation_runs.length,1)
 })
 test('유효하지 않은 기능·빈 피드백·존재하지 않는 호출 연결을 거부한다', async t => {
   const { call } = await fixture(t)
