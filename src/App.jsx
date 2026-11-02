@@ -1,3 +1,4 @@
+import useDialogKeyboard from './useDialogKeyboard.js'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { campaignTypeOptions, isGroupBuyingCampaign, normalizeCampaignType, normalizeContentFormats, contentFormatSummary } from './campaignTypes.js'
 import ContentFormatSelector from './ContentFormatSelector.jsx'
@@ -24171,12 +24172,13 @@ function PolicyFreshnessNote({ activePolicy, campaign, featureKey, hasOutput }) 
 }
 
 function PracticeTour({ steps, currentIndex, currentStep, onClose, onDismiss, onStepChange, onComplete }) {
+  const dialogRef = useDialogKeyboard(onClose)
   const totalSteps = steps.length || 1
   const isFirst = currentIndex <= 0
   const isLast = currentIndex >= totalSteps - 1
 
   return (
-    <div className="practice-tour-backdrop" role="dialog" aria-modal="true" aria-label="프랙티스 모드">
+    <div ref={dialogRef} tabIndex={-1} className="practice-tour-backdrop" role="dialog" aria-modal="true" aria-label="프랙티스 모드">
       <section className="practice-tour-card">
         <header className="practice-tour-header">
           <div>
@@ -25162,9 +25164,12 @@ function Stat({ label, value, source }) {
 }
 
 function Modal({ title, children, onClose, variant = '' }) {
+  const dialogRef = useDialogKeyboard(onClose)
   return (
     <div className="modal-backdrop" role="presentation" onMouseDown={onClose}>
       <section
+        ref={dialogRef}
+        tabIndex={-1}
         className={`modal-card ${variant}`}
         role="dialog"
         aria-modal="true"
