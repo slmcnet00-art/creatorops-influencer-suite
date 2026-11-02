@@ -49,6 +49,7 @@
     "vite": "^8.0.12"
   },
   "overrides": {
-    "image-size": "2.0.4"
+    "image-size": "2.0.4",
+    "minimatch": "11.0.1"
   }
 }
