@@ -1557,9 +1557,9 @@ app.post('/discovery/youtube/search', async (request, response, next) => {
           return coalesceYouTubeSearch(key, async () => {
             const translated = await callOpenAIText(localizationPrompt(text, markets), {
               featureKey: 'discovery-translation', policyVersion: 'discovery-translation-v1', actorId: request.workspaceUser?.id || null,
-              validateOutput: raw => parseLocalizedQueries(raw, markets),
+              validateOutput: raw => parseLocalizedQueries(raw, markets, text),
             })
-            const queries = parseLocalizedQueries(translated, markets)
+            const queries = parseLocalizedQueries(translated, markets, text)
             writeSearchCache(key, queries)
             return queries
           })
@@ -2681,9 +2681,9 @@ async function searchYouTubeCreators(query, maxResults, country = 'KR', options 
           return fetchJson(`https://www.googleapis.com/youtube/v3/${resource}?${searchParams}`, deadline ? { signal: AbortSignal.timeout(Math.max(1, Math.min(12000, deadline - Date.now()))) } : undefined)
         },
         normalize: channel => normalizeYouTubeChannel(channel, {}, country),
-        ...(options.evidenceQuery ? { evidenceSelector: video => assessDiscoveryEvidence({ sourceTitle: video.title, sourceSnippet: video.description }, options.evidenceQuery).matches } : {}),
+        ...(options.evidenceQuery ? { evidenceSelector: video => assessDiscoveryEvidence({ sourceTitle: video.title, sourceSnippet: video.description }, options.evidenceQuery, options.sourceQuery).matches } : {}),
         select: items => options.evidenceQuery
-          ? items.filter(item => (!options.strictCountry || (item.countryConfidence === 'official' && allowedCountries.includes(item.country))) && assessDiscoveryEvidence(item, options.evidenceQuery).matches).filter(passesMinimumDiscoveryScale)
+          ? items.filter(item => (!options.strictCountry || (item.countryConfidence === 'official' && allowedCountries.includes(item.country))) && assessDiscoveryEvidence(item, options.evidenceQuery, options.sourceQuery).matches).filter(passesMinimumDiscoveryScale)
             .sort((a, b) => Number(Boolean(b.matchedVideoId)) - Number(Boolean(a.matchedVideoId)) || assessDiscoveryEvidence(b, query).matchedTerms.length - assessDiscoveryEvidence(a, query).matchedTerms.length)
           : filterAndRankDiscoveryIntent(filterProductSpecificEvidence(items, query), query).filter(passesMinimumDiscoveryScale),
       })

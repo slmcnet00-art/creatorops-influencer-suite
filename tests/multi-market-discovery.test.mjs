@@ -88,3 +88,14 @@ test('현지어 제품 유형은 같은 의미의 영문 표기도 허용하되 
   assert.equal(assessDiscoveryEvidence({sourceTitle:'Banila cleansing oil review'},'Banila Co sáp tẩy trang').matches,false)
   assert.equal(assessDiscoveryEvidence({sourceTitle:'cleansingbalm review'},'cleansing balm').matches,true)
 })
+
+test('번역이 반려견·민감성·브랜드를 누락하면 원문의 조건을 복원하고 영상에서도 재검증한다', () => {
+  const dog=parseLocalizedQueries('{"queries":[{"country":"JP","query":"ペットキャリー レビュー"}]}',['JP'],'반려견 이동장 리뷰')
+  assert.match(dog.JP,/犬/)
+  assert.equal(assessDiscoveryEvidence({sourceTitle:'猫用のペットキャリー'},'ペットキャリー','반려견 이동장 리뷰').matches,false)
+  assert.equal(assessDiscoveryEvidence({sourceTitle:'犬用のペットキャリー'},'ペットキャリー','반려견 이동장 리뷰').matches,true)
+  const brand=parseLocalizedQueries('{"queries":[{"country":"US","query":"cleansing balm"}]}',['US'],'바닐라코 클렌징밤')
+  assert.match(brand.US,/Banila/)
+  const serum=parseLocalizedQueries('{"queries":[{"country":"JP","query":"美容液"}]}',['JP'],'민감성 세럼')
+  assert.match(serum.JP,/敏感肌/)
+})
