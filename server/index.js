@@ -1937,6 +1937,7 @@ app.get('/admin/jobs', requireAdminWorkspaceAccess, async (request, response, ne
       .select('id,job_name,status,detail,metadata,started_at,finished_at')
       .eq('workspace_id', WORKSPACE_ID)
       .neq('job_name', 'youtube-api-usage')
+      .neq('job_name', 'youtube-api-usage-daily')
       .order('started_at', { ascending: false })
       .limit(limit)
     if (error) throw error

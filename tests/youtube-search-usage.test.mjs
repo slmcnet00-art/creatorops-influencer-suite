@@ -107,8 +107,8 @@ test('사용량 관리자 API는 실행 서비스 키와 일반 회원을 거부
 test('진단용 HTTP 응답 실패를 그대로 반환하면서 사용량 실패로 기록한다', async () => {
   const client = memorySupabase(), usage = createYouTubeUsage({ getClient: () => client, workspaceId: 'test' })
   const response = await usage.track('https://www.googleapis.com/youtube/v3/videos', async () => new Response(JSON.stringify({ error: { message: 'daily quota exceeded' } }), { status: 403 }))
-  assert.equal(response.status, 403); assert.equal(client.tables.job_runs[0].status, 'failed')
-  assert.equal(client.tables.job_runs[0].metadata.quotaExceeded, true)
+  assert.equal(response.status, 403); assert.equal(client.tables.job_runs[0].metadata.failedCount, 1)
+  assert.equal(client.tables.job_runs[0].metadata.quotaErrors, 1)
   assert.ok(await response.json())
 })
 test('날짜가 바뀌면 일일 카운트는 분리하고 월 누적은 유지한다', async () => {
@@ -119,4 +119,26 @@ test('날짜가 바뀌면 일일 카운트는 분리하고 월 누적은 유지�
   let summary = await usage.summary(); assert.equal(summary.buckets[0].used, 0); assert.equal(summary.buckets[0].monthUsed, 1)
   await usage.track('https://www.googleapis.com/youtube/v3/search', async () => true)
   summary = await usage.summary(); assert.equal(summary.buckets[0].used, 1); assert.equal(summary.buckets[0].monthUsed, 2)
+})
+test('서로 다른 서버의 동시 호출도 누락 없이 일별 카운터 한 행에 누적한다', async () => {
+  const client = memorySupabase(), opts = { getClient: () => client, workspaceId: 'test' }, a = createYouTubeUsage(opts), b = createYouTubeUsage(opts)
+  let calls = 0
+  await Promise.all(Array.from({ length: 40 }, (_, i) => (i % 2 ? a : b).track('https://www.googleapis.com/youtube/v3/search', async () => { calls++ })))
+  assert.equal(calls, 40); assert.equal(client.tables.job_runs.length, 1)
+  assert.equal((await createYouTubeUsage(opts).summary()).buckets[0].used, 40)
+})
+test('선행 계측 기록을 잃지 않으며 이후 호출은 일별 카운터로 집약한다', async () => {
+  const time = new Date('2026-11-03T12:00:00Z'), client = memorySupabase({ job_runs: [{ id: 1, workspace_id: 'test', job_name: 'youtube-api-usage', started_at: time.toISOString(), metadata: { bucket: 'search', day: '2026-11-03', month: '2026-11' } }] })
+  const usage = createYouTubeUsage({ getClient: () => client, workspaceId: 'test', now: () => time })
+  await usage.track('https://www.googleapis.com/youtube/v3/search', async () => true)
+  const summary = await usage.summary(); assert.equal(summary.buckets[0].used, 2); assert.equal(summary.buckets[0].monthUsed, 2)
+  assert.equal(client.tables.job_runs.length, 2)
+})
+test('카운터 키가 잘못된 범위에 연결되면 기존 데이터를 덮어쓰지 않는다', async () => {
+  const client = memorySupabase(), usage = createYouTubeUsage({ getClient: () => client, workspaceId: 'test' })
+  await usage.track('https://www.googleapis.com/youtube/v3/search', async () => true)
+  client.tables.job_runs[0].metadata.day = 'invalid'
+  let called = false
+  await assert.rejects(usage.track('https://www.googleapis.com/youtube/v3/search', async () => { called = true }), e => e.status === 503)
+  assert.equal(called, false); assert.equal(client.tables.job_runs[0].metadata.calls, 1)
 })
