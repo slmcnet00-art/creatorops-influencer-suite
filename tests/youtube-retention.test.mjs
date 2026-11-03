@@ -47,3 +47,9 @@ test('사용자가 직접 입력한 YouTube 수치는 API 보존 정책으로 �
   assert.equal(result.changed, false)
   assert.equal(result.payload.creators[0].followers, 1000)
 })
+
+test('다중 국가 검색의 영상 근거와 공개 국가 검증도 30일 미갱신이면 제거한다', () => {
+  const result=sanitizeStaleYouTubeApiData({creators:[{id:123,platform:'YouTube',sourceNote:'YouTube Data API',country:'JP',countryConfidence:'official',sourceTitle:'API video title',sourceSnippet:'API video description',discoveryEvidence:{matches:true,matchedTerms:['美容液']},sourceCollectedAtIso:'2026-07-01T00:00:00Z',profileUrl:'https://youtube.com/@demo',localizedQuery:'美容液'}]}, {now:new Date('2026-09-03T00:00:00Z')})
+  const creator=result.payload.creators[0]
+  assert.equal(creator.sourceTitle,'');assert.equal(creator.sourceSnippet,'');assert.equal(creator.discoveryEvidence,null);assert.equal(creator.countryConfidence,'unverified');assert.equal(creator.country,'');assert.equal(creator.profileUrl,'https://youtube.com/@demo');assert.equal(creator.localizedQuery,'美容液')
+})

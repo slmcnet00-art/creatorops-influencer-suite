@@ -22,7 +22,7 @@ export function youtubeSearchScope(value) {
 
 // Search result pages are bounded; detail requests are shared across both search
 // paths. Relevance is evaluated against the original query, never the expansion.
-export async function discoverYouTubeCreators({ queries, maxResults, country, allowedCountries = country ? [country] : [], request, normalize, select, maxPages = 16 }) {
+export async function discoverYouTubeCreators({ queries, maxResults, country, allowedCountries = country ? [country] : [], request, normalize, select, evidenceSelector, maxPages = 16 }) {
   if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 1000) throw Object.assign(Error('maxResults must be an integer between 1 and 1000.'), { status: 400 })
   const channels = new Map(), evidence = new Map(), ids = new Set()
   const limit = Math.min(50, Math.max(10, maxResults * 2)), cursors = new Map()
@@ -46,7 +46,12 @@ export async function discoverYouTubeCreators({ queries, maxResults, country, al
         ids.add(id)
         if (type === 'video') {
           const old = evidence.get(id) || []
-          if (old.length < 5) old.push({ title: item.snippet?.title || '', description: item.snippet?.description || '', videoId: item.id?.videoId || '' })
+          const video = { title: item.snippet?.title || '', description: item.snippet?.description || '', videoId: item.id?.videoId || '' }
+          if (!evidenceSelector || evidenceSelector(video)) {
+            const previous = old.find(match => match.videoId === video.videoId)
+            if (previous) Object.assign(previous, video)
+            else if (old.length < 20) old.push(video)
+          }
           evidence.set(id, old)
         }
       }
@@ -61,12 +66,13 @@ export async function discoverYouTubeCreators({ queries, maxResults, country, al
       const normalized = [...channels.values()].filter(Boolean)
         .filter(c => !allowedCountries.length || !c.snippet?.country || allowedCountries.includes(c.snippet.country))
         .map(channel => {
-          const matches = evidence.get(channel.id) || [], first = matches[0]
+          const matches = (evidence.get(channel.id) || []).filter(match => !evidenceSelector || evidenceSelector(match)), first = matches[0]
+          if (evidenceSelector && !first) return null
           return { ...normalize(channel), ...(first ? {
             source: 'YouTube Data API search.list + channels.list', sourceTitle: matches.map(m => m.title).join(' | '),
             sourceSnippet: matches.map(m => m.description).join(' | '), matchedContentUrl: first.videoId ? `https://www.youtube.com/watch?v=${first.videoId}` : '', matchedVideoId: first.videoId,
           } : {}) }
-        })
+        }).filter(Boolean)
       result = select(normalized).slice(0, maxResults)
       if (result.length >= maxResults) return { items: result, diagnostics: { searchCalls: pages, detailCalls, requested: maxResults, returned: result.length, partial: false } }
     }

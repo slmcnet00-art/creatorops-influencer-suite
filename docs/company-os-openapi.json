@@ -867,7 +867,7 @@
     "/discovery/youtube/search": {
       "post": {
         "summary": "YouTube 크리에이터 발굴",
-        "description": "YouTube 크리에이터 발굴",
+        "description": "country 단일 검색의 기존 계약 유지. countries(최대 6개)를 보내면 AI로 국가별 언어로 번역 후 동시 검색. maxResults는 모든 국가 합산 요청 상한으로 균등 배분. strictCountry 기본 true. 관련 근거 영상이 부족하면 부분 결과. 번역 호출은 암호화된 LLM Ops에 기록되고 유료 모델 사용량이 발생할 수 있음.",
         "responses": {
           "200": {
             "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
@@ -882,6 +882,11 @@
                         "type": "object",
                         "additionalProperties": true
                       }
+                    },
+                    "search": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "description": "countries 모드: originalQuery, localized, strictCountry, requested, returned, partial, markets(country/language/query/requested/returned/status/partial/search). 한 국가 실패 시 성공 국가 유지, 모두 실패 시 502. 국가별 search.searchCalls/detailCalls로 실제 호출 진단."
                     }
                   },
                   "required": [
@@ -937,6 +942,38 @@
                     "maximum": 1000,
                     "default": 24,
                     "description": "요청 상한이며 실제 반환 개수 보장 아님. 작은 수부터 사용 권장."
+                  },
+                  "countries": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 6,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "KR",
+                        "US",
+                        "JP",
+                        "CN",
+                        "GB",
+                        "VN",
+                        "TH",
+                        "ID",
+                        "PH",
+                        "SG",
+                        "MY",
+                        "TW",
+                        "FR",
+                        "DE",
+                        "ES"
+                      ]
+                    },
+                    "description": "다중 검색 모드. country보다 우선. SEA/EU/ALL 대신 개별 국가 선택."
+                  },
+                  "strictCountry": {
+                    "type": "boolean",
+                    "default": true,
+                    "description": "채널 공개 국가 일치가 확인된 후보만. false여도 공개 국가 불일치는 제외, 국가 미공개만 추가 허용."
                   }
                 },
                 "required": [
@@ -945,9 +982,14 @@
                 "additionalProperties": true
               },
               "example": {
-                "query": "뷰티 클렌징 리뷰",
-                "country": "KR",
-                "maxResults": 24
+                "query": "클렌징밤 리뷰",
+                "countries": [
+                  "KR",
+                  "JP",
+                  "US"
+                ],
+                "maxResults": 15,
+                "strictCountry": true
               }
             }
           }

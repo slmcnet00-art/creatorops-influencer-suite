@@ -142,3 +142,17 @@ test('카운터 키가 잘못된 범위에 연결되면 기존 데이터를 덮�
   await assert.rejects(usage.track('https://www.googleapis.com/youtube/v3/search', async () => { called = true }), e => e.status === 503)
   assert.equal(called, false); assert.equal(client.tables.job_runs[0].metadata.calls, 1)
 })
+
+test('국가별 번역 검색은 한 영상에서 조건을 충족한 근거만 연결하고 교차 영상 단어 합산을 거부한다', async () => {
+  const {assessDiscoveryEvidence}=await import('../server/multiMarketDiscovery.js')
+  const result=await discoverYouTubeCreators({queries:['sensitive serum'],country:'US',maxResults:2,maxPages:2,
+    evidenceSelector:v=>assessDiscoveryEvidence({sourceTitle:v.title},'sensitive serum').matches,
+    normalize:c=>({id:c.id}),select:rows=>rows,
+    request:async(resource,p)=>resource==='channels'?{items:[{id:'a',snippet:{country:'US'}},{id:'b',snippet:{country:'US'}}]}:{items:p.type==='video'?[
+      {id:{videoId:'bad-1'},snippet:{channelId:'a',title:'sensitive skin'}},
+      {id:{videoId:'bad-2'},snippet:{channelId:'a',title:'oily skin serum'}},
+      {id:{videoId:'good'},snippet:{channelId:'b',title:'sensitive skin serum review'}},
+    ]:[]},
+  })
+  assert.deepEqual(result.items.map(c=>c.id),['b']);assert.equal(result.items[0].matchedVideoId,'good');assert.equal(result.items[0].matchedContentUrl,'https://www.youtube.com/watch?v=good')
+})

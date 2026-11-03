@@ -52,6 +52,11 @@ function redactStaleCreator(record) {
   return {
     ...record,
     avatar: '',
+    sourceTitle: '',
+    sourceSnippet: '',
+    discoveryEvidence: null,
+    countryConfidence: 'unverified',
+    ...(record.countryConfidence === 'official' ? { country: '' } : {}),
     followers: 0,
     averageViews: 0,
     totalViews: 0,
