@@ -1,3 +1,5 @@
+import { searchAcrossMarkets, localizationPrompt, parseLocalizedQueries, assessDiscoveryEvidence } from './multiMarketDiscovery.js'
+import { normalizeDiscoveryMarkets, allocateDiscoveryResults } from '../shared/discoveryMarkets.js'
 import { createYouTubeUsage } from './youtubeUsage.js'
 import { discoverYouTubeCreators, focusedYouTubeQueries, coalesceYouTubeSearch, youtubeSearchScope } from './youtubeDiscovery.js'
 import { createDecisionMemory } from './decisionMemory.js'
@@ -1541,6 +1543,32 @@ app.post('/discovery/youtube/search', async (request, response, next) => {
   try {
     if (!query) throw httpError(400, 'query is required.')
 
+    if (request.body?.countries !== undefined) {
+      const countries = normalizeDiscoveryMarkets(request.body.countries)
+      const total = Number(request.body.maxResults ?? 24)
+      allocateDiscoveryResults(total, countries)
+      if (query.length > 500) throw httpError(400, '검색어는 500자 이하로 입력하세요.')
+      if (request.body.strictCountry !== undefined && typeof request.body.strictCountry !== 'boolean') throw httpError(400, 'strictCountry must be boolean.')
+      const result = await searchAcrossMarkets({ query, countries, maxResults: total, strictCountry: request.body.strictCountry !== false,
+        translate: async (text, markets) => {
+          const key = getSearchCacheKey('youtube-localized-query-v1', { text, markets: [...markets].sort() })
+          const cached = readSearchCache(key)
+          if (cached) return cached
+          return coalesceYouTubeSearch(key, async () => {
+            const translated = await callOpenAIText(localizationPrompt(text, markets), {
+              featureKey: 'discovery-translation', policyVersion: 'discovery-translation-v1', actorId: request.workspaceUser?.id || null,
+              validateOutput: raw => parseLocalizedQueries(raw, markets, text),
+            })
+            const queries = parseLocalizedQueries(translated, markets, text)
+            writeSearchCache(key, queries)
+            return queries
+          })
+        },
+        search: searchYouTubeCreators,
+      })
+      await safeLogExternalCollectionEvent({ rawSourceId: 'RAW-EXT-SEARCH-001', provider: 'youtube-data-api', endpoint, query, platform: 'YouTube', country: countries.join(','), requestPayload: { query, countries, maxResults: total, strictCountry: request.body.strictCountry !== false }, responsePayload: result, resultCount: result.data.length })
+      return response.json(result)
+    }
     const creators = await searchYouTubeCreators(query, maxResults, country)
     await safeLogExternalCollectionEvent({
       rawSourceId: 'RAW-EXT-SEARCH-001',
@@ -2628,8 +2656,8 @@ async function fetchYouTubeChannelSnapshot(lookup) {
   return normalizeYouTubeChannel(channel, parsed)
 }
 
-async function searchYouTubeCreators(query, maxResults, country = 'KR') {
-  const cacheKey = getSearchCacheKey('youtube-creators-v2', { query, maxResults, country })
+async function searchYouTubeCreators(query, maxResults, country = 'KR', options = {}) {
+  const cacheKey = getSearchCacheKey('youtube-creators-v3', { query, maxResults, country, options })
   const cached = readSearchCache(cacheKey)
   if (cached) {
     const copy = [...cached.items]
@@ -2638,20 +2666,26 @@ async function searchYouTubeCreators(query, maxResults, country = 'KR') {
   }
   return coalesceYouTubeSearch(cacheKey, async () => {
     const key = requireEnv('YOUTUBE_DATA_API_KEY'), { regionCode, allowedCountries } = youtubeSearchScope(country)
+    const deadline = options.evidenceQuery ? Date.now() + 25000 : null
     try {
       const result = await discoverYouTubeCreators({
         queries: focusedYouTubeQueries(String(query).replace(/\s+/g, ' ').trim(), expandProductSearchAliases(query), regionCode),
-        maxResults, country: regionCode, allowedCountries,
+        maxResults, country: regionCode, allowedCountries, ...(options.evidenceQuery ? { maxPages: 8 } : {}),
         request(resource, params) {
           const searchParams = new URLSearchParams({ ...params, key })
           if (resource === 'search' && regionCode) {
             searchParams.set('regionCode', regionCode)
             searchParams.set('relevanceLanguage', getDiscoveryLanguage(regionCode))
           }
-          return fetchJson(`https://www.googleapis.com/youtube/v3/${resource}?${searchParams}`)
+          if (deadline && Date.now() >= deadline) throw httpError(504, '국가별 검색 시간이 초과되었습니다.')
+          return fetchJson(`https://www.googleapis.com/youtube/v3/${resource}?${searchParams}`, deadline ? { signal: AbortSignal.timeout(Math.max(1, Math.min(12000, deadline - Date.now()))) } : undefined)
         },
         normalize: channel => normalizeYouTubeChannel(channel, {}, country),
-        select: items => filterAndRankDiscoveryIntent(filterProductSpecificEvidence(items, query), query).filter(passesMinimumDiscoveryScale),
+        ...(options.evidenceQuery ? { evidenceSelector: video => assessDiscoveryEvidence({ sourceTitle: video.title, sourceSnippet: video.description }, options.evidenceQuery, options.sourceQuery).matches } : {}),
+        select: items => options.evidenceQuery
+          ? items.filter(item => (!options.strictCountry || (item.countryConfidence === 'official' && allowedCountries.includes(item.country))) && assessDiscoveryEvidence(item, options.evidenceQuery, options.sourceQuery).matches).filter(passesMinimumDiscoveryScale)
+            .sort((a, b) => Number(Boolean(b.matchedVideoId)) - Number(Boolean(a.matchedVideoId)) || assessDiscoveryEvidence(b, query).matchedTerms.length - assessDiscoveryEvidence(a, query).matchedTerms.length)
+          : filterAndRankDiscoveryIntent(filterProductSpecificEvidence(items, query), query).filter(passesMinimumDiscoveryScale),
       })
       const creators = result.items
       creators.searchMeta = { ...result.diagnostics, cacheHit: false }
@@ -5012,14 +5046,15 @@ function encodeMimeHeader(value) {
 }
 
 async function callOpenAIText(prompt, context) {
-  return llmOps.execute(prompt, context, requestOpenAIText)
+  return llmOps.execute(prompt, context, context?.featureKey === 'discovery-translation' ? input => requestOpenAIText(input, { signal: AbortSignal.timeout(20000), temperature: 0 }) : requestOpenAIText)
 }
 
-async function requestOpenAIText(prompt) {
+async function requestOpenAIText(prompt, options = {}) {
   const key = requireEnv('OPENAI_API_KEY')
   const model = process.env.OPENAI_MODEL || 'gpt-4.1-mini'
   const payload = await fetchJson('https://api.openai.com/v1/responses', {
     method: 'POST',
+    ...(options.signal ? { signal: options.signal } : {}),
     headers: {
       Authorization: `Bearer ${key}`,
       'Content-Type': 'application/json',
@@ -5027,7 +5062,7 @@ async function requestOpenAIText(prompt) {
     body: JSON.stringify({
       model,
       input: prompt,
-      temperature: 0.7,
+      temperature: options.temperature ?? 0.7,
     }),
   })
   return { payload, text: payload.output_text || payload.output?.flatMap((item) => item.content || []).map((item) => item.text).filter(Boolean).join('\n') || '' }
@@ -5987,6 +6022,9 @@ function getDiscoveryLanguage(country) {
     TW: 'zh-Hant',
     US: 'en',
     GB: 'en',
+    FR: 'fr',
+    DE: 'de',
+    ES: 'es',
     SG: 'en',
     MY: 'ms',
     TH: 'th',

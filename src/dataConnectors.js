@@ -59,11 +59,11 @@ function formatCreatorOpsApiFailure(path, response, payload = {}, fallbackText =
   return `${path} · ${status || 'network'}: ${hint}${details}`
 }
 
-async function callCreatorOpsApi(path, body) {
+async function callCreatorOpsApi(path, body, { envelope = false } = {}) {
   if (!CREATOROPS_API_BASE_URL) return null
 
   const controller = new AbortController()
-  const timeoutId = window.setTimeout(() => controller.abort(), CREATOROPS_API_TIMEOUT_MS)
+  const timeoutId = window.setTimeout(() => controller.abort(), path === '/discovery/youtube/search' && body?.countries ? 120000 : CREATOROPS_API_TIMEOUT_MS)
   let response
   let payload
 
@@ -94,7 +94,7 @@ async function callCreatorOpsApi(path, body) {
     throw new Error(formatCreatorOpsApiFailure(path, response, payload))
   }
 
-  return payload?.data ?? payload
+  return envelope ? payload : payload?.data ?? payload
 }
 
 export const marketBenchmarkBlueprints = [
@@ -475,7 +475,7 @@ export async function fetchYouTubeChannelSnapshot({ apiKey, lookup }) {
   }
 }
 
-export async function searchYouTubeCreatorDiscovery({ apiKey, query, country = 'KR', maxResults = 8 }) {
+export async function searchYouTubeCreatorDiscovery({ apiKey, query, country = 'KR', countries, strictCountry = true, maxResults = 8 }) {
   const cleanKey = String(apiKey || '').trim()
   const cleanQuery = String(query || '').trim()
   const cleanCountry = normalizeDiscoveryCountry(country)
@@ -485,8 +485,11 @@ export async function searchYouTubeCreatorDiscovery({ apiKey, query, country = '
       query: cleanQuery,
       country: cleanCountry,
       maxResults,
-    })
+      ...(countries ? { countries, strictCountry } : {}),
+    }, { envelope: Boolean(countries) })
   }
+
+  if (countries) throw new Error('국가별 자동 번역 검색에는 CreatorOps API 서버 연결이 필요합니다.')
 
   if (!cleanKey) {
     throw new Error('YouTube 실제 검색에는 YouTube Data API 키가 필요합니다.')

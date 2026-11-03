@@ -1,3 +1,6 @@
+import { nextDiscoveryId } from './discoveryIdentity.js'
+import DiscoveryMarkets from './DiscoveryMarkets.jsx'
+import { DISCOVERY_MARKETS } from '../shared/discoveryMarkets.js'
 import useDialogKeyboard from './useDialogKeyboard.js'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { campaignTypeOptions, isGroupBuyingCampaign, normalizeCampaignType, normalizeContentFormats, contentFormatSummary } from './campaignTypes.js'
@@ -538,6 +541,8 @@ const defaultDiscoveryFilters = {
 
 const discoveryFilterLabels = {
   country: '국가',
+  countries: '검색 국가',
+  strictCountry: '공개 국가 확인',
   minFollowers: '팔로워 최소',
   maxFollowers: '팔로워 최대',
   minAverageViews: '평균 조회 최소',
@@ -3742,7 +3747,7 @@ function buildRecommendation(creator, brief, campaign) {
   }
 
   return {
-    id: createId(),
+    id: nextDiscoveryId(),
     creatorId: creator.id,
     campaignId: campaign?.id,
     marketCountry: resolveCampaignRecordMarket(campaign, creator.country, creator.searchCountry),
@@ -5817,7 +5822,7 @@ function looksLikeBrandReferenceCandidate(reference, handle) {
   return /banilaco|banila\s*co|official|tester\s*korea|coupang|amazon|ulta|bagallery/.test(text)
 }
 
-function buildRealDiscoveryCreator(result, brief, fallbackCategory, index = 0) {
+function buildRealDiscoveryCreator(result, brief, fallbackCategory) {
   const followers = Number(result.followers || 0)
   const averageViews = Number(result.averageViews || 0)
   const verifiedMetrics = Boolean(result.verifiedMetrics && followers)
@@ -5825,7 +5830,7 @@ function buildRealDiscoveryCreator(result, brief, fallbackCategory, index = 0) {
   const platform = result.platform || 'Instagram'
   const collectedAt = nowLabel()
   const isExpandedCandidate = result.discoveryMatchType === 'expanded'
-  const detectedCountry = detectDiscoveryResultCountry(result)
+  const detectedCountry = platform === 'YouTube' && result.countryConfidence === 'unverified' ? '' : detectDiscoveryResultCountry(result)
   const topicCandidates = keywordList(`${brief.keywords}, ${brief.product}`).slice(0, 5)
   const metricSources = [
     {
@@ -5867,7 +5872,7 @@ function buildRealDiscoveryCreator(result, brief, fallbackCategory, index = 0) {
   const keywordHits = keywordList(brief.keywords).filter((keyword) => keywordText.includes(keyword)).length
 
   return {
-    id: createId() + index,
+    id: nextDiscoveryId(),
     name: result.name || result.handle || '실제 검색 후보',
     handle: result.handle || deriveHandleFromUrl(result.profileUrl),
     avatar:
@@ -5875,6 +5880,15 @@ function buildRealDiscoveryCreator(result, brief, fallbackCategory, index = 0) {
       'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=160&q=80',
     platform,
     profileUrl: result.profileUrl,
+    discoveryQuery: result.discoveryQuery || '',
+    localizedQuery: result.localizedQuery || '',
+    discoveryEvidence: result.discoveryEvidence || null,
+    matchedMarkets: result.matchedMarkets || [],
+    countryConfidence: result.countryConfidence || 'unverified',
+    searchCountry: result.searchCountry || '',
+    sourceTitle: result.sourceTitle || '',
+    sourceSnippet: result.sourceSnippet || '',
+    matchedContentUrl: result.matchedContentUrl || '',
     contactEmail: '',
     preferredContactChannel: platform === 'YouTube' ? 'email' : platform === 'TikTok' ? 'tiktok_dm' : 'instagram_dm',
     category: fallbackCategory || brief.categories?.[0] || '리뷰',
@@ -8079,6 +8093,7 @@ function AppContent() {
   const [practiceStepIndex, setPracticeStepIndex] = useState(0)
   const [, setYoutubeSyncing] = useState(false)
   const [realDiscoverySearching, setRealDiscoverySearching] = useState(false)
+  const [discoverySearchSummary, setDiscoverySearchSummary] = useState(null)
   const [showExampleCreators, setShowExampleCreators] = useState(false)
   const [selectedRecommendationIds, setSelectedRecommendationIds] = useState([])
   const [selectedDiscoveryCreatorIds, setSelectedDiscoveryCreatorIds] = useState([])
@@ -9276,7 +9291,7 @@ function AppContent() {
     const minEngagement = parseDiscoveryFilterValue(discoveryFilters.minEngagement)
     const maxPrice = parseDiscoveryFilterValue(discoveryFilters.maxPrice)
     const minFit = parseDiscoveryFilterValue(discoveryFilters.minFit)
-    const selectedCountry = String(discoveryFilters.country || '전체')
+    const selectedCountries = discoveryFilters.countries?.length && (platform === '전체' || platform === 'YouTube') ? discoveryFilters.countries : [String(discoveryFilters.country || '전체')]
 
     return discoveryCreatorPool
       .filter((creator) => {
@@ -9294,10 +9309,10 @@ function AppContent() {
           .toLowerCase()
 
         return (
-          (!queryTerms.length || queryTerms.some((term) => searchable.includes(term))) &&
+          (!queryTerms.length || (creator.discoveryQuery === query.trim() && creator.discoveryEvidence?.matches) || queryTerms.some((term) => searchable.includes(term))) &&
           (platform === '전체' || creator.platform === platform) &&
           (category === '전체' || creator.category === category) &&
-          (matchesDiscoveryCountry(creator.country, selectedCountry) || matchesDiscoveryCountry(creator.city, selectedCountry)) &&
+          selectedCountries.some(selectedCountry => matchesDiscoveryCountry(creator.country, selectedCountry) || matchesDiscoveryCountry(creator.city, selectedCountry) || (discoveryFilters.strictCountry === false && creator.countryConfidence === 'unverified' && creator.matchedMarkets?.includes(selectedCountry))) &&
           (pendingMetrics || creator.followers >= effectiveMinFollowers) &&
           (pendingMetrics || maxFollowers === null || creator.followers <= maxFollowers) &&
           (pendingMetrics || minAverageViews === null || creator.averageViews >= minAverageViews) &&
@@ -9741,8 +9756,8 @@ function AppContent() {
     () =>
       Object.entries(discoveryFilters).filter(([field, value]) =>
         field === 'country'
-          ? Boolean(value && value !== '전체')
-          : hasDiscoveryFilterValue(value),
+          ? Boolean(value && value !== '전체' && !discoveryFilters.countries?.length)
+          : field === 'countries' ? Boolean(value?.length) : field === 'strictCountry' ? value === true : hasDiscoveryFilterValue(value),
       ).length,
     [discoveryFilters],
   )
@@ -9752,10 +9767,10 @@ function AppContent() {
       Object.entries(discoveryFilters)
         .filter(([field, value]) =>
           field === 'country'
-            ? Boolean(value && value !== '전체')
-            : hasDiscoveryFilterValue(value),
+            ? Boolean(value && value !== '전체' && !discoveryFilters.countries?.length)
+            : field === 'countries' ? Boolean(value?.length) : field === 'strictCountry' ? value === true : hasDiscoveryFilterValue(value),
         )
-        .map(([field, value]) => `${discoveryFilterLabels[field]} ${value}`)
+        .map(([field, value]) => `${discoveryFilterLabels[field]} ${Array.isArray(value) ? value.join(', ') : value === true ? '사용' : value}`)
         .join(' · '),
     [discoveryFilters],
   )
@@ -12755,6 +12770,8 @@ function AppContent() {
     setDiscoveryFilters((current) => ({
       ...current,
       [field]: value,
+      ...(field === 'countries' ? { country: value.length === 1 ? value[0] : '전체' } : {}),
+      ...(field === 'country' ? { countries: undefined } : {}),
     }))
   }
 
@@ -13083,7 +13100,7 @@ function AppContent() {
 
   const runRealDiscoverySearch = async () => {
     const campaignBrief = buildCampaignDiscoveryBrief(brandBrief, selectedCampaign)
-    const searchText = buildDiscoverySearchText({ query, category, brandBrief: campaignBrief, selectedCampaign })
+    const searchText = query.trim() || buildDiscoverySearchText({ query, category, brandBrief: campaignBrief, selectedCampaign })
     const intentTerms = getDiscoveryIntentTerms(searchText, category)
     const maxResults = Math.min(Math.max(Number(realDiscoveryDraft.maxResults) || 300, 1), 1000)
     const youtubeApiKey = realDiscoveryDraft.youtubeApiKey.trim() || youtubeDraft.apiKey.trim()
@@ -13096,6 +13113,9 @@ function AppContent() {
       return
     }
 
+    const countries = discoveryFilters.countries?.length ? discoveryFilters.countries : [DISCOVERY_MARKETS[discoveryCountry] ? discoveryCountry : 'KR']
+    if ((platform === '전체' || platform === 'YouTube') && maxResults < countries.length) { showToast('요청 인원을 선택 국가 수 이상으로 입력하세요.'); return }
+    setDiscoverySearchSummary(null)
     setRealDiscoverySearching(true)
 
     try {
@@ -13109,20 +13129,17 @@ function AppContent() {
 
       if (wantsYouTube && (hasServerApi || youtubeApiKey)) {
         try {
-          results.push(
-            ...(await searchYouTubeCreatorDiscovery({
-              apiKey: youtubeApiKey,
-              query: searchText,
-              country: discoveryCountry,
-              maxResults,
-            })),
-          )
+          const payload = await searchYouTubeCreatorDiscovery({ apiKey: youtubeApiKey, query: searchText, country: discoveryCountry,
+            ...(hasServerApi ? { countries, strictCountry: discoveryFilters.strictCountry !== false } : {}), maxResults })
+          if (Array.isArray(payload)) results.push(...payload)
+          else { results.push(...payload.data); setDiscoverySearchSummary(payload.search) }
         } catch (error) {
           rememberDiscoveryWarning('YouTube Data API', error)
+          setDiscoverySearchSummary({ error: error.message || 'API 연결을 확인하고 다시 검색하세요.' })
         }
       }
 
-      if (hasProfileSearch && (platform !== 'YouTube' || !results.length)) {
+      if (hasProfileSearch && platform !== 'YouTube') {
         try {
           results.push(
             ...(await searchGoogleProfileDiscovery({
@@ -13139,7 +13156,7 @@ function AppContent() {
         }
       }
 
-      if (hasServerApi && results.length < maxResults) {
+      if (hasServerApi && platform !== 'YouTube' && results.length < maxResults) {
         try {
           const referencePlatform = platform === '전체' ? 'all' : platform
           const referencePayload = await searchContentReferences({
@@ -13159,7 +13176,7 @@ function AppContent() {
       }
 
       const matchingResults = intentTerms.length
-        ? results.filter((result) => discoveryResultMatchesIntent(result, intentTerms))
+        ? results.filter((result) => result.discoveryEvidence?.matches || discoveryResultMatchesIntent(result, intentTerms))
         : results
       const discoveredCreators = matchingResults.map((result, index) =>
         buildRealDiscoveryCreator(
@@ -13176,7 +13193,7 @@ function AppContent() {
           : discoveryWarnings.length
             ? `검색 API 제한: ${discoveryWarnings[0]}`
             : '실제 검색 결과에서 가져올 프로필을 찾지 못했습니다.'
-        showDemoDiscoveryCandidates(demoReason)
+        showToast(demoReason + ' 검색어 또는 국가 조건을 조정해 다시 검색하세요.')
         return
       }
 
@@ -13232,7 +13249,8 @@ function AppContent() {
       )
     } catch (error) {
       const message = error instanceof Error ? error.message : '실제 발굴 검색 중 오류가 발생했습니다.'
-      showDemoDiscoveryCandidates(`검색 API 오류: ${message.slice(0, 120)}`)
+      setDiscoverySearchSummary({ error: message })
+      showToast(`검색 API 오류: ${message.slice(0, 120)}`)
     } finally {
       setRealDiscoverySearching(false)
     }
@@ -19009,16 +19027,23 @@ function AppContent() {
                 }}
                 label="카테고리"
               />
-              <SelectPill
+              {platform !== 'YouTube' && platform !== '전체' && <SelectPill
                 icon={<Globe2 size={16} />}
                 value={discoveryFilters.country}
                 options={discoveryCountryOptions}
                 onChange={(value) => updateDiscoveryFilter('country', value)}
                 label="국가"
-              />
+              />}
             </div>
 
-            <div className="discovery-country-tabs" aria-label="발굴 국가 빠른 선택">
+            {(platform === 'YouTube' || platform === '전체') ? <DiscoveryMarkets
+              countries={discoveryFilters.countries?.length ? discoveryFilters.countries : [DISCOVERY_MARKETS[discoveryFilters.country] ? discoveryFilters.country : 'KR']}
+              onChange={countries => { updateDiscoveryFilter('countries', countries); setDiscoverySearchSummary(null) }}
+              strictCountry={discoveryFilters.strictCountry !== false}
+              onStrictChange={value => { updateDiscoveryFilter('strictCountry', value); setDiscoverySearchSummary(null) }}
+              disabled={realDiscoverySearching}
+              summary={discoverySearchSummary}
+            /> : <div className="discovery-country-tabs" aria-label="발굴 국가 빠른 선택">
               <span>국가</span>
               {discoveryCountryPresets.map((countryOption) => (
                 <button
@@ -19030,7 +19055,7 @@ function AppContent() {
                   {countryOption}
                 </button>
               ))}
-            </div>
+            </div>}
 
             {(platform === 'YouTube' || platform === '전체') && (
               <div className="youtube-data-policy-note" role="note">
@@ -19095,6 +19120,10 @@ function AppContent() {
                   </label>
                 </div>
               )}
+              {backendConfig.apiBaseUrl && <label className="discovery-total-results">
+                요청할 총 후보 수
+                <input type="number" min="1" max="1000" step="1" disabled={realDiscoverySearching} value={realDiscoveryDraft.maxResults} onChange={event => setRealDiscoveryDraft(current => ({ ...current, maxResults: event.target.value }))} />
+              </label>}
               <div className="real-discovery-actions">
                 <button
                   className="secondary-button compact-button"
@@ -19362,6 +19391,14 @@ function AppContent() {
                 </div>
                 <p>{selectedCreator.audience}</p>
                 {selectedCreator.sourceNote && <small className="source-note">{selectedCreator.sourceNote}</small>}
+                {selectedCreator.discoveryEvidence && <div className="discovery-market-results">
+                  <strong>검색 근거 확인</strong>
+                  <p>검색어: {selectedCreator.localizedQuery} · 국가: {selectedCreator.countryConfidence === 'official' ? `${selectedCreator.country} (채널 공개 정보)` : '미확인'}</p>
+                  <p>일치 근거: {(selectedCreator.discoveryEvidence.evidenceTerms || selectedCreator.discoveryEvidence.matchedTerms).join(', ')}</p>
+                  {selectedCreator.sourceTitle && <p>{selectedCreator.sourceTitle}</p>}
+                  {selectedCreator.matchedContentUrl && <a href={selectedCreator.matchedContentUrl} target="_blank" rel="noopener noreferrer">근거 영상 원본 열기</a>}
+                  <p>공개 정보의 검색어 일치 근거이며, 시청자 국가·구매 전환·협업 적합성은 별도 검토가 필요합니다.</p>
+                </div>}
                 <div className="topic-row">
                   {selectedCreator.topics.map((topic) => (
                     <span key={topic}>{topic}</span>

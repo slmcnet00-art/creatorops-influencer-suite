@@ -260,3 +260,6 @@ audit_log
 ### YouTube 검색·사용량 (2026-11-03)
 
 검색은 원래 키워드를 유지한 단계별 확장과 채널 상세 배치 조회·동시 요청 공유를 사용한다. API 실제 요청 시도 메타데이터는 `job_runs`의 `youtube-api-usage-daily` 일별 카운터에 원자적으로 누적하며 관리자 YouTube 사용량 화면에서 검색/일반 할당량, 일일/월 누적 및 80·95·100% 경고를 확인한다. 공식 Google Cloud 집계와 기록 범위를 구분한다. 상세 계약은 `docs/company-os-integration.txt`를 따른다.
+
+### YouTube 다중 국가 검색 근거
+`/discovery/youtube/search`는 선택 국가(최대6)별 번역 쿼리를 LLM Ops에 기록한 후 병렬도2로 조회한다. 기존 usage 계측은 실제 Google 요청만 집계한다. `discoveryQuery/localizedQuery/matchedMarkets`는 검색 맥락이고, `sourceTitle/sourceSnippet/discoveryEvidence/countryConfidence`는 API 원천에서 확인한 결과다. 한 영상에서 조건이 모두 충족되어야 원본 링크를 근거로 연결한다. 국가 미공개는 기본 제외. 검색 근거는 정확도 %나 오디언스 검증을 뜻하지 않는다. 신규 API 근거 필드도 기존30일 미갱신 정리 대상이다. 대량 발굴은 시간+작은 난수 대신 단조 증가 숫자 ID를 사용해 한 배치 내 선택/추천 키 충돌을 막는다.
