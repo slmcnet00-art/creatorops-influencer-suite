@@ -1,3 +1,5 @@
+import { createYouTubeUsage } from './youtubeUsage.js'
+import { discoverYouTubeCreators, focusedYouTubeQueries, coalesceYouTubeSearch, youtubeSearchScope } from './youtubeDiscovery.js'
 import { createDecisionMemory } from './decisionMemory.js'
 import { config as loadEnv } from 'dotenv'
 import {registerOsLearningBridge,learningFeatures} from './osLearningBridge.js'
@@ -133,6 +135,8 @@ const companyOs = createCompanyOs({ getClient: getSupabaseAdminClient, workspace
 companyOs.register(app)
 osWebhooks.register(app, companyOs.access)
 osWebhooks.start()
+const youtubeUsage = createYouTubeUsage({ getClient: getSupabaseAdminClient, workspaceId: WORKSPACE_ID })
+youtubeUsage.register(app, requireAdminWorkspaceAccess)
 const decisionMemory = createDecisionMemory({ getClient: getSupabaseAdminClient, workspaceId: WORKSPACE_ID, audit: safeWriteAuditLog })
 decisionMemory.register(app, requireAdminWorkspaceAccess)
 registerOsObservations(app,{getClient:getSupabaseAdminClient,workspaceId:WORKSPACE_ID,observePrinciples:decisionMemory.observe})
@@ -429,6 +433,7 @@ app.get('/readiness', async (request, response, next) => {
       return
     }
     const buildReport = () => buildReadinessReport({
+      fetchImpl: (url, options) => youtubeUsage.track(url, () => fetch(url, options)),
       probe,
       dataRoomProbe: async () => checkDataRoomTables(getDataRoomLogStatus()),
     })
@@ -1548,7 +1553,7 @@ app.post('/discovery/youtube/search', async (request, response, next) => {
       responsePayload: { data: creators },
       resultCount: creators.length,
     })
-    response.json({ data: creators })
+    response.json({ data: creators, search: creators.searchMeta || null })
   } catch (error) {
     await safeLogExternalCollectionEvent({
       rawSourceId: 'RAW-EXT-SEARCH-001',
@@ -1931,6 +1936,7 @@ app.get('/admin/jobs', requireAdminWorkspaceAccess, async (request, response, ne
       .from('job_runs')
       .select('id,job_name,status,detail,metadata,started_at,finished_at')
       .eq('workspace_id', WORKSPACE_ID)
+      .neq('job_name', 'youtube-api-usage')
       .order('started_at', { ascending: false })
       .limit(limit)
     if (error) throw error
@@ -2622,175 +2628,44 @@ async function fetchYouTubeChannelSnapshot(lookup) {
 }
 
 async function searchYouTubeCreators(query, maxResults, country = 'KR') {
-  const cacheKey = getSearchCacheKey('youtube-creators', { query, maxResults, country })
+  const cacheKey = getSearchCacheKey('youtube-creators-v2', { query, maxResults, country })
   const cached = readSearchCache(cacheKey)
-  if (cached) return cached
-
-  const results = []
-  const seen = new Set()
-  const searchLimit = Math.min(Math.max(maxResults * 4, maxResults), DISCOVERY_RESULT_LIMIT)
-
-  try {
-    for (const searchQuery of buildCreatorDiscoveryQueries(query)) {
-      const [channelCreators, contentCreators] = await Promise.all([
-        fetchYouTubeCreatorsForQuery(searchQuery, searchLimit, country),
-        fetchYouTubeCreatorsFromVideosForQuery(searchQuery, searchLimit, country),
-      ])
-      const creators = [...contentCreators, ...channelCreators]
-      for (const creator of creators) {
-        const key = creator.channelId || creator.id || creator.profileUrl
-        if (!key || seen.has(key)) continue
-        seen.add(key)
-        results.push(creator)
-      }
-    }
-
-    const creators = filterAndRankDiscoveryIntent(filterProductSpecificEvidence(results, query), query)
-      .filter(passesMinimumDiscoveryScale)
-      .slice(0, maxResults)
-    writeSearchCache(cacheKey, creators)
-    return creators
-  } catch (error) {
-    const stale = readSearchCache(cacheKey, { allowStale: true })
-    if (stale && isQuotaExceededError(error)) return stale
-    throw error
+  if (cached) {
+    const copy = [...cached.items]
+    copy.searchMeta = { ...cached.diagnostics, cacheHit: true, searchCalls: 0, detailCalls: 0 }
+    return copy
   }
-}
-
-async function fetchYouTubeCreatorsForQuery(query, maxResults, country = 'KR') {
-  const key = requireEnv('YOUTUBE_DATA_API_KEY')
-  const regionCode = normalizeRegionCode(country) || 'KR'
-  const channelIds = []
-  let pageToken = ''
-
-  while (channelIds.length < maxResults) {
-    const searchParams = new URLSearchParams({
-      part: 'snippet',
-      type: 'channel',
-      q: query,
-      maxResults: String(Math.min(50, maxResults - channelIds.length)),
-      regionCode,
-      relevanceLanguage: getDiscoveryLanguage(regionCode),
-      key,
-    })
-    if (pageToken) searchParams.set('pageToken', pageToken)
-    const searchPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/search?${searchParams}`)
-    channelIds.push(...(searchPayload.items || []).map((item) => item.id?.channelId).filter(Boolean))
-    pageToken = searchPayload.nextPageToken || ''
-    if (!pageToken) break
-  }
-
-  const uniqueChannelIds = [...new Set(channelIds)].slice(0, maxResults)
-  if (!uniqueChannelIds.length) return []
-
-  const channels = []
-  for (const idChunk of chunkArray(uniqueChannelIds, 50)) {
-    const channelParams = new URLSearchParams({
-      part: 'snippet,statistics',
-      id: idChunk.join(','),
-      key,
-    })
-    const channelPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/channels?${channelParams}`)
-    channels.push(...(channelPayload.items || []))
-  }
-
-  return channels.map((channel) => normalizeYouTubeChannel(channel, {}, regionCode))
-}
-
-async function fetchYouTubeCreatorsFromVideosForQuery(query, maxResults, country = 'KR') {
-  const key = requireEnv('YOUTUBE_DATA_API_KEY')
-  const regionCode = normalizeRegionCode(country) || 'KR'
-  const channelEvidence = new Map()
-  let pageToken = ''
-
-  while (channelEvidence.size < maxResults) {
-    const searchParams = new URLSearchParams({
-      part: 'snippet',
-      type: 'video',
-      q: query,
-      maxResults: String(Math.min(50, maxResults - channelEvidence.size)),
-      order: 'relevance',
-      safeSearch: 'none',
-      regionCode,
-      relevanceLanguage: getDiscoveryLanguage(regionCode),
-      key,
-    })
-    if (pageToken) searchParams.set('pageToken', pageToken)
-
-    const searchPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/search?${searchParams}`)
-    for (const item of searchPayload.items || []) {
-      const channelId = item.snippet?.channelId
-      if (!channelId || channelEvidence.has(channelId)) continue
-      channelEvidence.set(channelId, {
-        sourceTitle: item.snippet?.title || '',
-        sourceSnippet: item.snippet?.description || '',
-        matchedVideoId: item.id?.videoId || '',
-        matchedVideoUrl: item.id?.videoId ? `https://www.youtube.com/watch?v=${item.id.videoId}` : '',
+  return coalesceYouTubeSearch(cacheKey, async () => {
+    const key = requireEnv('YOUTUBE_DATA_API_KEY'), { regionCode, allowedCountries } = youtubeSearchScope(country)
+    try {
+      const result = await discoverYouTubeCreators({
+        queries: focusedYouTubeQueries(String(query).replace(/\s+/g, ' ').trim(), expandProductSearchAliases(query), regionCode),
+        maxResults, country: regionCode, allowedCountries,
+        request(resource, params) {
+          const searchParams = new URLSearchParams({ ...params, key })
+          if (resource === 'search' && regionCode) {
+            searchParams.set('regionCode', regionCode)
+            searchParams.set('relevanceLanguage', getDiscoveryLanguage(regionCode))
+          }
+          return fetchJson(`https://www.googleapis.com/youtube/v3/${resource}?${searchParams}`)
+        },
+        normalize: channel => normalizeYouTubeChannel(channel, {}, country),
+        select: items => filterAndRankDiscoveryIntent(filterProductSpecificEvidence(items, query), query).filter(passesMinimumDiscoveryScale),
       })
-    }
-    pageToken = searchPayload.nextPageToken || ''
-    if (!pageToken) break
-  }
-
-  const channelIds = [...channelEvidence.keys()].slice(0, maxResults)
-  if (!channelIds.length) return []
-
-  const channels = []
-  for (const idChunk of chunkArray(channelIds, 50)) {
-    const channelParams = new URLSearchParams({
-      part: 'snippet,statistics',
-      id: idChunk.join(','),
-      key,
-    })
-    const channelPayload = await fetchJson(`https://www.googleapis.com/youtube/v3/channels?${channelParams}`)
-    channels.push(...(channelPayload.items || []))
-  }
-
-  return channels.map((channel) => {
-    const evidence = channelEvidence.get(channel.id) || {}
-    return {
-      ...normalizeYouTubeChannel(channel, {}, regionCode),
-      source: 'YouTube Data API search.list(video) + channels.list',
-      sourceTitle: evidence.sourceTitle,
-      sourceSnippet: evidence.sourceSnippet,
-      matchedContentUrl: evidence.matchedVideoUrl,
-      matchedVideoId: evidence.matchedVideoId,
+      const creators = result.items
+      creators.searchMeta = { ...result.diagnostics, cacheHit: false }
+      writeSearchCache(cacheKey, { items: creators, diagnostics: result.diagnostics })
+      return creators
+    } catch (error) {
+      const stale = readSearchCache(cacheKey, { allowStale: true })
+      if (stale && isQuotaExceededError(error)) {
+        const copy = [...stale.items]
+        copy.searchMeta = { ...stale.diagnostics, cacheHit: true, stale: true, reason: 'quota-error-cached-results', searchCalls: null, detailCalls: null }
+        return copy
+      }
+      throw error
     }
   })
-}
-
-function buildCreatorDiscoveryQueries(query) {
-  const cleanQuery = compactDiscoveryQuery(query)
-  const aliasedQuery = expandProductSearchAliases(cleanQuery)
-  const queries = [cleanQuery, aliasedQuery, `${aliasedQuery} review`, `${aliasedQuery} influencer`]
-  const lower = cleanQuery.toLowerCase()
-  if (hasBeautyDiscoveryIntent(lower)) {
-    queries.push('Korean beauty review', 'beauty review Korea', 'K beauty creator', '\uD55C\uAD6D \uBDF0\uD2F0 \uB9AC\uBDF0', '\uC2A4\uD0A8\uCF00\uC5B4 \uB9AC\uBDF0')
-  }
-  if (hasPetDiscoveryIntent(lower)) {
-    queries.push('Korean pet channel', 'dog product review Korea', 'pet creator Korea', '\uBC18\uB824\uACAC \uB9AC\uBDF0')
-  }
-  if (hasFoodDiscoveryIntent(lower)) {
-    queries.push('Korean food review', 'food creator Korea', '\uD55C\uAD6D \uC694\uB9AC \uB9AC\uBDF0')
-  }
-  if (hasFashionDiscoveryIntent(lower)) {
-    queries.push('Korean fashion creator', 'fashion review Korea', '\uD328\uC158 \uB8E9\uBD81')
-  }
-
-  if (/화장품|뷰티|메이크업|스킨케어|코스메틱|올리브영|beauty|makeup|skincare|cosmetic/.test(lower)) {
-    queries.push('Korean beauty review', 'beauty review Korea', 'K beauty creator')
-  }
-  if (/반려|강아지|고양이|펫|켄넬|애견|pet|dog|cat|kennel/.test(lower)) {
-    queries.push('Korean pet channel', 'dog product review Korea', 'pet creator Korea')
-  }
-  if (/푸드|음식|먹방|간식|맛집|food|snack/.test(lower)) {
-    queries.push('Korean food review', 'food creator Korea')
-  }
-  if (/패션|룩북|의류|fashion|lookbook/.test(lower)) {
-    queries.push('Korean fashion creator', 'fashion review Korea')
-  }
-
-  return [...new Set(queries.filter(Boolean))].slice(0, 8)
 }
 
 function hasBeautyDiscoveryIntent(text) {
@@ -2886,7 +2761,11 @@ function debugReferenceSearch(label, payload) {
   console.log(`[reference:${label}] ${JSON.stringify(payload)}`)
 }
 
-async function searchYouTubeVideoReferences({ query, country, sort, maxResults }) {
+async function searchYouTubeVideoReferences(params) {
+  return coalesceYouTubeSearch(`references:${JSON.stringify(params)}`, () => searchYouTubeVideoReferencesRun(params))
+}
+
+async function searchYouTubeVideoReferencesRun({ query, country, sort, maxResults }) {
   const cacheKey = getSearchCacheKey('youtube-references', { query, country, sort, maxResults })
   const cached = readSearchCache(cacheKey)
   if (cached) {
@@ -5506,6 +5385,15 @@ function isTikTokProfileHandle(handle) {
 }
 
 async function fetchJson(url, options) {
+  const parsed = new URL(url)
+  if (['www.googleapis.com', 'youtube.googleapis.com'].includes(parsed.hostname) && parsed.pathname.startsWith('/youtube/v3/')) {
+    if (options?.method && options.method !== 'GET') throw httpError(500, 'YouTube write quota is not configured.')
+    return youtubeUsage.track(url, () => fetchJsonResponse(url, { ...options, signal: options?.signal || AbortSignal.timeout(12000) }))
+  }
+  return fetchJsonResponse(url, options)
+}
+
+async function fetchJsonResponse(url, options) {
   const response = await fetch(url, options)
   const payload = await response.json().catch(() => ({}))
   if (!response.ok) {

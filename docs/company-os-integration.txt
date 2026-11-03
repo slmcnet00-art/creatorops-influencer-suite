@@ -111,3 +111,21 @@ POST /admin/decision-memory -> {revision,featureKey,topic,feedback,judgment,prin
 featureKey: campaign-strategy | creator-recommendation | content-guide | outreach-message
 POST /admin/decision-memory/:id/review -> {revision,action:approve|reject|retire}; 200 {data:{revision,cases}}
 오래된 revision은 409. 잘못된 입력/호출 연결은 400. 호출 연결은 같은 워크스페이스·기능만 허용. 수정 후 새 revision으로 다음 작업을 보낸다.
+
+
+YouTube 검색·사용량 (2026-11-03)
+관리자 화면: /admin?section=youtube
+GET /admin/youtube-usage: Owner/Admin 로그인 전용. OS 실행 키로 조회할 수 없음.
+{data:{day,month,trackingSince,timeZone,buckets:[{bucket,used,monthUsed,dailyLimit,remaining,percent,level,quotaErrors}],thresholds,accounting,scope,note,warning}}
+- search 한도 50,000회/일, default 110,000 units/일. 각각 YOUTUBE_SEARCH_DAILY_LIMIT, YOUTUBE_DEFAULT_DAILY_LIMIT 서버 환경변수. 승인 변경·기간 만료 시 실제 Cloud 한도를 확인해 갱신해야 함.
+- Google Cloud 공식 집계가 아닌 이 서버의 실제 호출 시도 기록. 계측 이전 및 동일 키를 사용하는 외부 서비스는 포함하지 않음. 실패/네트워크 오류도 추정 차감에 포함.
+- 실제 캐시 미스의 YouTube search/channels/videos 등 호출과 readiness 진단을 job_runs(youtube-api-usage)에 기록. API 키·URL·검색어·원본 응답을 usage 메타데이터에 저장하지 않음.
+- 기록 실패 시 Google 호출 전에 503으로 차단. 완료 상태 기록이 실패해도 시작 기록은 카운트에 포함.
+- 일일 날짜는 America/Los_Angeles(서머타임 반영). 월 누적은 태평양 시간 달력월의 실적이며 월 한도가 아님.
+- 80/95/100% 및 공급자 quota 오류 경고를 관리자 화면에 표시. 1분마다 갱신. 경고만으로 자동 메일·결제·한도 증액이나 사전 강제 차단을 하지 않음.
+- /discovery/youtube/search 기존 data 배열 유지. 추가 search 객체로 searchCalls/detailCalls/requested/returned/partial/reason/cacheHit 제공. 캐시 재사용 시 searchCalls/detailCalls=0. 동시 동일 요청은 하나의 검색 작업을 공유.
+- 원래 검색어/제품 동의어 중심, 목표 수 확보 시 조기 종료, 조회 상세 채널 중복 제거·50개 배치. 공식 국가 불일치 제외, 미확인 국가는 기존 countryConfidence로 구분. 채널 국가가 시청자 국가를 증명하지는 않음.
+- 검색당 최대 16개 페이지(검색 API 호출)와 외부 조회 타임아웃 적용. 결과 부족 시 관련 없는 후보로 채우지 않고 partial과 이유를 반환. 기존 후보 규모/레퍼런스 최소 조회수 조건 유지.
+- 정확도 개선은 검색 조건·출처 근거·국가 검증 방식의 개선이며 실제 섭외 성공률 향상 수치를 의미하지 않음.
+
+전체/글로벌은 한국으로 강제하지 않으며, SEA/EU 같은 그룹은 Google regionCode로 직접 보내지 않는다. 그룹에 속하는 공식 채널 국가를 검증하고 미확인 국가는 구분해서 유지한다. API 캐시는 items와 diagnostics를 함께 보존한다.

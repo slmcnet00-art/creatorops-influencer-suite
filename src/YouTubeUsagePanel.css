@@ -1,0 +1,14 @@
+.youtube-usage { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.youtube-usage .admin-band { min-width: 0; }
+.youtube-usage .admin-section-heading { flex-wrap: wrap; gap: 12px; }
+.youtube-usage .admin-section-heading > div { flex: 1 1 260px; }
+.youtube-usage .admin-section-heading button { white-space: nowrap; flex-shrink: 0; }
+.youtube-usage-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 24px; margin-block: 24px; }
+.youtube-usage-meter { min-width: 0; padding-block: 16px; border-block: 1px solid #dce2ec; }
+.youtube-usage-meter strong { font-size: 28px; font-variant-numeric: tabular-nums; }
+.youtube-usage-meter progress { width: 100%; accent-color: #2563eb; }
+.youtube-usage-meter dl > div { display: flex; justify-content: space-between; gap: 12px; margin-block: 10px; }
+.youtube-usage-meter dd { margin: 0; font-variant-numeric: tabular-nums; }
+.youtube-usage-state { font-weight: 700; color: #166534; }
+.is-warning .youtube-usage-state { color: #854d0e; }
+.is-critical .youtube-usage-state, .is-exhausted .youtube-usage-state, .is-upstream-quota-error .youtube-usage-state, .youtube-usage-error { color: #b91c1c; }

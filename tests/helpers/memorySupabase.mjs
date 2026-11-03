@@ -5,9 +5,9 @@ export function memorySupabase(seed = {}) {
   let serial = 1
   const client = { tables, failInsert: '', from(table) {
     const filters = [], orders = [], predicates = []
-    let action = 'read', patch, maximum = Infinity, shape = 'many'
+    let action = 'read', patch, maximum = Infinity, shape = 'many', countRequested = false, head = false
     const q = {
-      select() { return q }, insert(value) { action = 'insert'; patch = value; return q },
+      select(_columns, options = {}) { countRequested = options.count === 'exact'; head = options.head === true; return q }, insert(value) { action = 'insert'; patch = value; return q },
       update(value) { action = 'update'; patch = value; return q },
       eq(key, value) { filters.push([key, value]); return q }, order(key, opts = {}) { orders.push([key, opts.ascending !== false]); return q },
       lt(key, value) { predicates.push(row => valueAt(row, key) < value); return q },
@@ -45,7 +45,7 @@ export function memorySupabase(seed = {}) {
       rows = [...rows]
       for (const [key, asc] of orders) rows.sort((a, b) => (a[key] < b[key] ? -1 : a[key] > b[key] ? 1 : 0) * (asc ? 1 : -1))
       rows = rows.slice(0, maximum)
-      return { data: structuredClone(shape === 'many' ? rows : rows[0] || null), error: shape === 'single' && !rows.length ? { code: 'missing' } : null }
+      return { ...(countRequested ? { count: rows.length } : {}), data: head ? null : structuredClone(shape === 'many' ? rows : rows[0] || null), error: shape === 'single' && !rows.length ? { code: 'missing' } : null }
     }
     return q
   } }
