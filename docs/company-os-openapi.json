@@ -4224,6 +4224,26 @@
           }
         }
       }
+    },
+    "/admin/youtube-usage": {
+      "get": {
+        "summary": "관리자 YouTube 서버 사용량 및 한도 경고 조회",
+        "description": "Owner/Admin Bearer 세션 전용. search/default 별 태평양 일자 및 달력월의 요청 시도 수를 반환. Cloud 공식 잔여량이 아님. 응답 필드 및 범위는 company-os-integration.txt 참조.",
+        "responses": {
+          "200": {
+            "description": "data: day, month, trackingSince, timeZone, buckets, thresholds, accounting, scope, note, warning"
+          },
+          "401": {
+            "description": "관리자 인증 필요"
+          },
+          "403": {
+            "description": "권한 없음"
+          },
+          "503": {
+            "description": "집계 저장소 이용 불가; 0으로 간주하지 않음"
+          }
+        }
+      }
     }
   }
 }

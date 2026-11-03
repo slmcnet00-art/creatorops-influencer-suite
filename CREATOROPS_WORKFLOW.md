@@ -183,3 +183,8 @@ https://github.com/USER/REPO/blob/master/CREATOROPS_WORKFLOW.md
 ### 팝업 키보드 동작 (2026-11-02)
 
 캠페인·메시지 등 공통 상세/입력 팝업과 프랙티스는 열릴 때 내부로 포커스를 옮긴다. Tab/Shift+Tab은 팝업 안에서 순환하며 Escape로 닫은 뒤 기존 버튼으로 돌아간다. 한글 입력 조합 중이거나 내부 컨트롤이 이미 처리한 Escape는 무시한다. 중첩 팝업은 가장 위의 팝업만 키보드 이벤트를 처리한다.
+
+
+### YouTube 검색·사용량 (2026-11-03)
+
+검색은 원래 키워드를 유지한 단계별 확장과 채널 상세 배치 조회·동시 요청 공유를 사용한다. API 실제 요청 시도 메타데이터는 `job_runs`의 `youtube-api-usage-daily` 일별 카운터에 원자적으로 누적하며 관리자 YouTube 사용량 화면에서 검색/일반 할당량, 일일/월 누적 및 80·95·100% 경고를 확인한다. 공식 Google Cloud 집계와 기록 범위를 구분한다. 상세 계약은 `docs/company-os-integration.txt`를 따른다.
