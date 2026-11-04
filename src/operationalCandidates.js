@@ -1,3 +1,4 @@
+import { reviewCampaignGuides } from '../shared/guideClaimReview.js'
 export function isExampleCreator(creator = {}) {
   return creator.isDemo === true || /(?:^|[.@/])example(?:[./:\s]|$)/i.test(`${creator.contactEmail || ''} ${creator.profileUrl || ''}`)
 }
@@ -12,7 +13,7 @@ export function operationalCandidateView(workspace) {
     ...workspace,
     creators,
     shortlist: (workspace.shortlist ?? []).filter(keep),
-    campaigns: (workspace.campaigns ?? []).map((campaign) => ({ ...campaign, creatorIds: (campaign.creatorIds ?? []).filter(keep) })),
+    campaigns: (workspace.campaigns ?? []).map((campaign) => ({ ...reviewCampaignGuides(campaign), creatorIds: (campaign.creatorIds ?? []).filter(keep) })),
     creatorGroups: (workspace.creatorGroups ?? []).map((group) => ({ ...group, creatorIds: (group.creatorIds ?? []).filter(keep) })).filter((group) => group.creatorIds.length),
     recommendations: linked(workspace.recommendations),
     outreach: linked(workspace.outreach),

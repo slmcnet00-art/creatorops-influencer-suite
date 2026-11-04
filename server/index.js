@@ -1,3 +1,4 @@
+import { reviewGuideClaims } from '../shared/guideClaimReview.js'
 import { discoverPublicProfiles, createProfileSearchPacer, braveMarketOptions } from './profileMarketDiscovery.js'
 import { campaignGenerationInput, creatorGenerationInput } from '../shared/campaignGenerationInput.js'
 import { campaignFactsPrompt, assertCampaignGenerationFacts, CAMPAIGN_FACT_INSTRUCTIONS } from './campaignGenerationQuality.js'
@@ -5103,7 +5104,7 @@ async function callOpenAIText(prompt, context) {
   const provider = context?.featureKey === 'discovery-translation'
     ? input => requestOpenAIText(input, { signal: AbortSignal.timeout(20000), temperature: 0 })
     : ['campaign-strategy', 'content-guide'].includes(context?.featureKey)
-      ? input => requestOpenAIText(input, { temperature: 0.2, instructions: CAMPAIGN_FACT_INSTRUCTIONS })
+      ? async input => { const result = await requestOpenAIText(input, { temperature: 0.2, instructions: CAMPAIGN_FACT_INSTRUCTIONS }); return { ...result, text: reviewGuideClaims(result.text) } }
       : requestOpenAIText
   return llmOps.execute(prompt, context, provider)
 }
