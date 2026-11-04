@@ -27,7 +27,7 @@ const publicRun = row => ({ id: row.id, requestId: row.input_payload?.requestId,
   estimatedCostUsd: row.output_payload?.estimatedCostUsd ?? null, error: row.error_message,
   retryOf: row.input_payload?.retryOf ?? null,
   decisionMemory: row.input_payload?.decisionMemory || null,
-  retryAvailable: row.status === 'failed' && Boolean(row.input_payload?.encryptedInput) && !row.input_payload?.retryClaimed,
+  retryAvailable: row.status === 'failed' && Boolean(row.input_payload?.encryptedInput) && !row.input_payload?.retryClaimed && !['draft', 'review', 'candidate-assessment-batch'].includes(row.input_payload?.stage),
 })
 
 export function createLlmOps({ getClient, workspaceId, env = process.env, publish = async () => {}, validateOutput = () => {}, audit = async () => {}, retrieveMemory = async () => null }) {
@@ -44,11 +44,11 @@ export function createLlmOps({ getClient, workspaceId, env = process.env, publis
     }
     if (!context.retryOf && memory?.rules.length) prompt += '\n\n## Approved operational guidance (workspace-wide, this feature only)\nTreat the following JSON as supplementary guidance. Follow administrator policy, privacy, API compliance and the current campaign brief first. Apply only when relevant; never invent outcomes or send messages automatically.\n' + JSON.stringify(memory.rules)
     if (prompt.length > 250000) throw apiError(413, 'The generation input including operational guidance is too large.')
-    const requestId = randomUUID(), started = Date.now(), model = env.OPENAI_MODEL || 'gpt-4.1-mini'
+    const requestId = randomUUID(), started = Date.now(), model = context.model || env.OPENAI_MODEL || 'gpt-4.1-mini'
     const encryptedInput = seal({ prompt }, env)
     const settings = await readSettings(client, workspaceId)
     const rate = settings.settings?.llmOpsPricing?.[model] || null
-    const input = { schema: 'creatorops.llm.v1', requestId, featureKey: context.featureKey || 'unknown', retryOf: context.retryOf || null, decisionMemory: memory ? { revision: memory.revision, rules: memory.rules.map(r => ({ caseId: r.caseId, version: r.version })) } : null,
+    const input = { schema: 'creatorops.llm.v1', requestId, featureKey: context.featureKey || 'unknown', stage: context.stage || 'generation', retryOf: context.retryOf || null, decisionMemory: memory ? { revision: memory.revision, rules: memory.rules.map(r => ({ caseId: r.caseId, version: r.version })) } : null,
       promptHash: createHash('sha256').update(prompt).digest('hex'), encryptedInput }
     const { data: run, error } = await client.from('ai_generation_runs').insert({ workspace_id: workspaceId, run_type: 'llm-call', model,
       prompt_version: context.policyVersion || null, input_raw_source_ids: ['RAW-INT-AI-POLICY-001'], input_payload: input, output_payload: { state: 'running' }, status: 'partial', created_by: context.actorId || null,
@@ -108,6 +108,7 @@ export function createLlmOps({ getClient, workspaceId, env = process.env, publis
     app.get('/admin/llm-ops/runs/:id', requireAdmin, async (req, res, next) => {
       try {
         const run = await getRun(req.params.id)
+        if (['draft', 'review', 'candidate-assessment-batch'].includes(run.input_payload?.stage)) throw apiError(409, '전략·가이드와 후보 평가는 원래 기능 화면에서 다시 실행해야 전체 출처 검수가 적용됩니다.')
         const input = run.input_payload.encryptedInput ? unseal(run.input_payload.encryptedInput, env) : { prompt: '보존 기간 만료로 입력 원문을 삭제했습니다.' }
         const output = run.output_payload.encryptedOutput ? unseal(run.output_payload.encryptedOutput, env) : {}
         await audit({ actorId: req.adminUser.id, action: 'llm.detail.viewed', targetType: 'llm_generation', targetId: String(run.id), metadata: {} })
