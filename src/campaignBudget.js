@@ -1,3 +1,4 @@
+import { getCreatorRateSummary } from '../shared/creatorRates.js'
 const money = value => Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0
 
 export function planCampaignBudget(campaign = {}, rows = [], creators = []) {
@@ -16,12 +17,13 @@ export function planCampaignBudget(campaign = {}, rows = [], creators = []) {
     seen.add(key)
     const creator = byId.get(key)
     if (!creator) continue
-    const cost = [creator.actualPrice, creator.agreedAmount, creator.estimatedPrice, creator.price].map(money).find(value => value > 0) || 0
+    const rate = getCreatorRateSummary(creator, campaign)
+    const cost = rate.budgetPrice
     if (!cost) { unknownCount++; continue }
     if (maxFee && cost > maxFee) { overFeeCount++; continue }
     if (items.length >= target) continue
     if (cost > availableBudget - totalCost) { overBudgetCount++; continue }
-    items.push({ ...row, budgetCost: cost, creatorName: creator.name })
+    items.push({ ...row, budgetCost: cost, creatorName: creator.name, rateLabel: rate.actualPrice ? '협의 금액' : '예상 상한', rateRange: rate.range })
     totalCost += cost
   }
   return { budget, spend, availableBudget, target, items, totalCost, remainingBudget: availableBudget - totalCost, unknownCount, overBudgetCount, overFeeCount }

@@ -1,3 +1,5 @@
+import { calculateEstimatedCreatorRate, getCreatorRateSummary, toCreatorRateNumber, withCreatorRate } from '../shared/creatorRates.js'
+import CreatorRateDetails from './CreatorRateDetails.jsx'
 import { reviewCampaignGuides } from '../shared/guideClaimReview.js'
 import { planCampaignBudget } from './campaignBudget.js'
 import CampaignBudgetPanel from './CampaignBudgetPanel.jsx'
@@ -1696,19 +1698,7 @@ function normalizeCreator(creator) {
     preferredContactChannel: creator.preferredContactChannel ?? fallback?.preferredContactChannel,
     isDemo: creator.isDemo ?? fallback?.isDemo ?? false,
   }
-  const rate = getCreatorRateSummary(nextCreator)
-
-  return {
-    ...nextCreator,
-    estimatedPrice: rate.estimatedPrice,
-    actualPrice: rate.actualPrice || null,
-    price: rate.effectivePrice,
-    rateSource: rate.actualPrice ? nextCreator.rateSource || 'manual' : 'calculated',
-    rateCalculationVersion: nextCreator.rateCalculationVersion || rate.calculationVersion,
-    rateFormula: nextCreator.rateFormula || rate.formula,
-    rateFactors: nextCreator.rateFactors || rate.factors,
-    preferredContactChannel: getRecommendedContactChannelId(nextCreator),
-  }
+  return { ...withCreatorRate(nextCreator, {}), preferredContactChannel: getRecommendedContactChannelId(nextCreator) }
 }
 
 function normalizeCreatorAvatar(creator = {}, fallback = {}) {
@@ -2450,68 +2440,8 @@ function getCreatorsByIds(creators, ids) {
   return ids.map((id) => creators.find((creator) => creator.id === id)).filter(Boolean)
 }
 
-function getCreatorPriceValue(creator = {}) {
-  return getCreatorRateSummary(creator).effectivePrice
-}
-
-function toCreatorRateNumber(value) {
-  if (typeof value === 'number') return Number.isFinite(value) ? value : 0
-  const numericValue = Number(String(value || '').replace(/[^\d.-]/g, ''))
-  return Number.isFinite(numericValue) ? numericValue : 0
-}
-
-function calculateEstimatedCreatorRate(creator = {}) {
-  const platform = String(creator.platform || '').toLowerCase()
-  const followers = Math.max(0, toCreatorRateNumber(creator.followers))
-  const averageViews = Math.max(0, toCreatorRateNumber(creator.averageViews ?? creator.avgViews))
-  const engagement = Math.max(0, toCreatorRateNumber(creator.engagement))
-  const policy = platform.includes('youtube')
-    ? { floor: 300000, viewRate: 18, followerRate: 1.8 }
-    : platform.includes('instagram')
-      ? { floor: 180000, viewRate: 14, followerRate: 1.2 }
-      : { floor: 150000, viewRate: 10, followerRate: 0.8 }
-  const engagementMultiplier = Math.min(1.25, Math.max(0.85, 1 + (engagement - 4) * 0.04))
-  const rawEstimate =
-    (policy.floor + averageViews * policy.viewRate * 0.7 + followers * policy.followerRate * 0.3) *
-    engagementMultiplier
-  const estimatedPrice = Math.max(policy.floor, Math.round(rawEstimate / 10000) * 10000)
-
-  return {
-    estimatedPrice,
-    calculationVersion: 'creator-rate-v1',
-    formula: 'ROUND_10K((platform_floor + avg_views*view_rate*0.7 + followers*follower_rate*0.3) * engagement_multiplier)',
-    factors: {
-      platform: creator.platform || '기타',
-      followers,
-      averageViews,
-      engagement,
-      platformFloor: policy.floor,
-      viewRate: policy.viewRate,
-      followerRate: policy.followerRate,
-      engagementMultiplier: Number(engagementMultiplier.toFixed(2)),
-    },
-  }
-}
-
-function getCreatorRateSummary(creator = {}) {
-  const calculated = calculateEstimatedCreatorRate(creator)
-  const actualPrice = toCreatorRateNumber(
-    creator.actualPrice ?? creator.agreedAmount ?? creator.contractAmount,
-  )
-  const storedEstimate = toCreatorRateNumber(
-    creator.estimatedPrice ?? creator.estimatedCost ?? creator.unitPrice,
-  )
-  const legacyPrice = toCreatorRateNumber(creator.price ?? creator.cost)
-  const estimatedPrice =
-    storedEstimate || (!actualPrice && legacyPrice ? legacyPrice : calculated.estimatedPrice)
-
-  return {
-    ...calculated,
-    estimatedPrice,
-    actualPrice,
-    effectivePrice: actualPrice || estimatedPrice,
-    label: actualPrice ? '확정 단가' : '예상 단가',
-  }
+function getCreatorPriceValue(creator = {}, campaign) {
+  return getCreatorRateSummary(creator, campaign).effectivePrice
 }
 
 function getPublishedContentUrl(record = {}) {
@@ -2528,7 +2458,7 @@ function getPublishedContentUrl(record = {}) {
 }
 
 function getCreatorGroupPriceStats(groupCreators = []) {
-  const prices = groupCreators.map(getCreatorPriceValue).filter((price) => price > 0)
+  const prices = groupCreators.map(creator => getCreatorPriceValue(creator)).filter((price) => price > 0)
   const total = prices.reduce((sum, price) => sum + price, 0)
   return {
     total,
@@ -2914,7 +2844,7 @@ function buildOutreachSubject(typeId, campaign, marketCountry = '') {
 
 function buildOutreachCommercialTerms(typeId, creator, campaign) {
   const messageType = getOutreachMessageType(typeId).id
-  const estimatedGuideAmount = getCreatorRateSummary(creator).estimatedPrice
+  const estimatedGuideAmount = getCreatorRateSummary(creator, campaign).effectivePrice
   const campaignGuideCap = Number(campaign?.maxCreatorFee || 0)
   const fixedOfferAmount = campaignGuideCap
     ? Math.min(estimatedGuideAmount, campaignGuideCap)
@@ -3206,7 +3136,7 @@ function buildUtmTrackingLog({ campaign = {}, creator = {}, brand = {}, tracking
     stableHash(`${brand?.id || 'brand'}:${campaign?.id || 'campaign'}:${creator?.id || index}`).slice(0, 7)
   const utmParams = trackingAsset.params ?? {}
   const contentUrl = getPublishedContentUrl(creator)
-  const creatorCost = getCreatorPriceValue(creator)
+  const creatorCost = getCreatorPriceValue(creator, campaign)
   const shortUrl = trackingAsset.shortUrl ?? ''
   const originalUrl = trackingAsset.originalUrl ?? ''
   const destination = trackingAsset.destination ?? ''
@@ -3595,6 +3525,7 @@ ${commonGuide ? `\n## 10. 실행에 사용할 공통 촬영안과 레퍼런스\n
 }
 
 function buildRecommendation(creator, brief, campaign) {
+  creator = withCreatorRate(creator, campaign || {})
   const learningMaterials = getLearningMaterials(brief)
   const learningKeywordText = learningMaterials.map((item) => `${item.keywords}, ${item.doSay}`).join(', ')
   const wantedKeywords = keywordList(`${brief.keywords}, ${learningKeywordText}`)
@@ -5531,7 +5462,7 @@ function buildBriefDiscoveryCreators(setup, existingCreators = []) {
         brandSafety: clampNumber(94 - index, 86, 98),
         fakeRisk: clampNumber(5 + index, 4, 14),
         cpm: existing?.cpm ?? (target.platform === 'YouTube' ? 7800 : 5200),
-        price: existing?.price ?? Math.max(250000, Math.round(averageViews * (target.platform === 'YouTube' ? 18 : 14))),
+        price: 0,
         audience: `${target.persona || target.label} · ${compactNumber(minFollowers)}~${compactNumber(maxFollowers)} 조건 매칭`,
         city: 'KR',
         lastPost: 'AI 발굴 · 검증 대기',
@@ -5846,13 +5777,15 @@ function buildRealDiscoveryCreator(result, brief, fallbackCategory) {
     country: detectedCountry,
     followers,
     averageViews,
-    engagement: verifiedMetrics ? Number(Math.min(12, Math.max(1.5, (averageViews / Math.max(followers, 1)) * 100)).toFixed(1)) : 0,
+    engagement: 0,
+    engagementBasis: '',
+    engagementVerified: false,
     growth: 0,
     fit: clampNumber(76 + keywordHits * 4 + metricFit, 68, 94),
     brandSafety: verifiedMetrics ? 94 : 86,
     fakeRisk: verifiedMetrics ? 6 : 0,
     cpm: platform === 'YouTube' ? 7800 : 5600,
-    price: averageViews ? Math.round(averageViews * (platform === 'YouTube' ? 18 : 14)) : 0,
+    price: 0,
     audience: verifiedMetrics
       ? `${result.source} 공식/공개 지표 기반`
       : `${result.source || '공개 웹 검색'} 결과 · 팔로워/조회수 후속 수집 필요`,
@@ -8155,6 +8088,7 @@ function AppContent() {
     followers: '',
     averageViews: '',
     engagement: '',
+    engagementBasis: '',
     price: '',
     topics: '',
     contactEmail: '',
@@ -8293,7 +8227,7 @@ function AppContent() {
   const {
     brands,
     activeBrandId,
-    creators,
+    creators: storedCreators,
     campaigns,
     shortlist,
     candidatePoolEvidence,
@@ -8440,6 +8374,7 @@ function AppContent() {
   )
   const selectedCampaign =
     brandCampaigns.find((campaign) => campaign.id === selectedCampaignId) ?? brandCampaigns[0]
+  const creators = useMemo(() => storedCreators.map(creator => withCreatorRate(creator, selectedCampaign || {})), [storedCreators, selectedCampaign])
   const trackingDraftCampaign =
     brandCampaigns.find((campaign) => campaign.id === Number(trackingDraft.campaignId)) ?? selectedCampaign
   const fulfillmentDraftCampaign =
@@ -8469,7 +8404,7 @@ function AppContent() {
         : activeRecommendations,
     [activeRecommendations, selectedCampaign],
   )
-  const budgetCreators = useMemo(() => creators.map(creator => ({ ...creator, price: getCreatorPriceValue(creator) })), [creators])
+  const budgetCreators = creators
   const selectedCampaignRecommendations = useMemo(
     () => selectedCampaign ? planCampaignBudget(selectedCampaign, campaignRecommendationPool, budgetCreators).items : campaignRecommendationPool,
     [selectedCampaign, campaignRecommendationPool, budgetCreators],
@@ -10881,7 +10816,7 @@ function AppContent() {
               brandSafety: 80,
               fakeRisk: 0,
               cpm: 0,
-              price: views ? Math.max(200000, Math.round(views * (platform === 'YouTube' ? 18 : 14))) : 0,
+              price: 0,
               audience: '??? ?? ???? ??',
               city: '',
               lastPost: nowLabel(),
@@ -11081,7 +11016,7 @@ function AppContent() {
               brandSafety: 82,
               fakeRisk: 0,
               cpm: 0,
-              price: averageViews ? Math.max(200000, Math.round(averageViews * 12)) : 0,
+              price: 0,
               audience: String(getPayloadValue(payload, ['memo', 'note', '??']) || '???? ?? ??'),
               city: '',
               lastPost: nowLabel(),
@@ -12128,7 +12063,7 @@ function AppContent() {
         brandSafety: existingCreator?.brandSafety ?? 94,
         fakeRisk: existingCreator?.fakeRisk ?? 5,
         cpm: existingCreator?.cpm ?? 6800,
-        price: existingCreator?.price ?? Math.max(500000, Math.round(snapshot.averageViews * 22)),
+        price: existingCreator?.price ?? 0,
         audience: existingCreator?.audience ?? 'YouTube 공식 채널 통계 기반 · 오디언스 인증 필요',
         city: existingCreator?.city ?? 'KR',
         lastPost: 'YouTube API 동기화',
@@ -12234,7 +12169,7 @@ function AppContent() {
       brandSafety: existingCreator?.brandSafety ?? 92,
       fakeRisk: existingCreator?.fakeRisk ?? 8,
       cpm: existingCreator?.cpm ?? 6000,
-      price: existingCreator?.price ?? Math.max(300000, Math.round(averageViews * 18)),
+      price: existingCreator?.price ?? 0,
       audience: existingCreator?.audience ?? '공개 프로필 수치 기반 · 오디언스 인증 필요',
       city: existingCreator?.city ?? 'KR',
       lastPost: '공개 수치 수집',
@@ -13146,7 +13081,7 @@ function AppContent() {
         const existingByKey = new Map(current.creators.map((creator) => [keyFor(creator), creator]))
         const mergedCreators = discoveredCreators.map((creator) => {
           const existing = existingByKey.get(keyFor(creator))
-          const nextCreator = existing ? { ...existing, ...creator, id: existing.id, isDemo: false, isSynthetic: false } : creator
+          const nextCreator = existing ? { ...existing, ...creator, actualPrice: getCreatorRateSummary(existing).actualPrice || null, id: existing.id, isDemo: false, isSynthetic: false } : creator
           if (creator.id === selectedNextId) selectedNextId = nextCreator.id
           return nextCreator
         })
@@ -15497,15 +15432,17 @@ function AppContent() {
 
   const createCreator = (event) => {
     event.preventDefault()
-    const followers = Number(creatorDraft.followers) || 10000
-    const averageViews = Number(creatorDraft.averageViews) || Math.round(followers * 0.18)
-    const engagement = Number(creatorDraft.engagement) || 4.5
+    const followers = Math.max(0, Number(creatorDraft.followers) || 0)
+    const averageViews = Math.max(0, Number(creatorDraft.averageViews) || 0)
+    const engagement = Math.max(0, Number(creatorDraft.engagement) || 0)
     const actualPrice = Math.max(0, Number(creatorDraft.price) || 0)
     const rateCalculation = calculateEstimatedCreatorRate({
       platform: creatorDraft.platform,
+      country: creatorDraft.country,
       followers,
       averageViews,
       engagement,
+      engagementBasis: creatorDraft.engagementBasis,
     })
     const price = actualPrice || rateCalculation.estimatedPrice
     const nextCreator = {
@@ -15523,6 +15460,7 @@ function AppContent() {
       followers,
       averageViews,
       engagement,
+      engagementBasis: creatorDraft.engagementBasis,
       growth: 7.4,
       fit: Math.min(96, Math.round(72 + engagement * 2.5)),
       brandSafety: 94,
@@ -15568,6 +15506,7 @@ function AppContent() {
       followers: '',
       averageViews: '',
       engagement: '',
+      engagementBasis: '',
       price: '',
       topics: '',
       contactEmail: '',
@@ -15804,7 +15743,7 @@ function AppContent() {
             brandSafety: 80,
             fakeRisk: 0,
             cpm: 0,
-            price: views ? Math.max(200000, Math.round(views * (platform === 'YouTube' ? 18 : 14))) : 0,
+            price: 0,
             audience: '콘텐츠 추적 URL에서 자동 생성',
             city: '',
             lastPost: nowLabel(),
@@ -18850,15 +18789,16 @@ function AppContent() {
                         value={hasPendingMetrics(selectedRecommendationCreator) ? '수집 필요' : percent(selectedRecommendationCreator.engagement)}
                       />
                       <Stat
-                        label={getCreatorRateSummary(selectedRecommendationCreator).label}
-                        value={formatDualCurrency(getCreatorRateSummary(selectedRecommendationCreator).effectivePrice, selectedCampaign)}
+                        label={getCreatorRateSummary(selectedRecommendationCreator, selectedCampaign).label}
+                        value={formatDualCurrency(getCreatorRateSummary(selectedRecommendationCreator, selectedCampaign).effectivePrice, selectedCampaign)}
                       />
                       <Stat label="매칭 점수" value={`${selectedRecommendationDetail.score ?? selectedRecommendationCreator.fit ?? 0}점`} />
                       <Stat label="데이터 신뢰도" value={`${selectedRecommendationQuality.score}%`} />
                     </div>
-                    <div className="creator-rate-toolbar">
+                    <CreatorRateDetails creator={selectedRecommendationCreator} campaign={selectedCampaign} />
+            <div className="creator-rate-toolbar">
                       <span>
-                        {audienceLabel(selectedRecommendationCreator.platform)}·평균 조회수·참여율·플랫폼 기준 예상 {formatDualCurrency(getCreatorRateSummary(selectedRecommendationCreator).estimatedPrice, selectedCampaign)}
+                        {audienceLabel(selectedRecommendationCreator.platform)}·평균 조회수·팔로워·참여율·국가·콘텐츠 형식 기준 예상 {formatDualCurrency(getCreatorRateSummary(selectedRecommendationCreator, selectedCampaign).estimatedPrice, selectedCampaign)}
                       </span>
                       <button
                         className="secondary-button compact-button"
@@ -19319,15 +19259,16 @@ function AppContent() {
                 <Stat label="평균 조회" value={displayMetric(selectedCreator.averageViews)} />
                 <Stat label="참여율" value={hasPendingMetrics(selectedCreator) ? '수집 필요' : percent(selectedCreator.engagement)} />
                 <Stat
-                  label={getCreatorRateSummary(selectedCreator).label}
-                  value={formatDualCurrency(getCreatorRateSummary(selectedCreator).effectivePrice, selectedCampaign)}
+                  label={getCreatorRateSummary(selectedCreator, selectedCampaign).label}
+                  value={formatDualCurrency(getCreatorRateSummary(selectedCreator, selectedCampaign).effectivePrice, selectedCampaign)}
                 />
                 <Stat label="데이터 신뢰도" value={`${selectedCreatorQuality.score}%`} />
                 <Stat label="검증 상태" value={selectedCreatorQuality.level} />
               </div>
-              <div className="creator-rate-toolbar">
+              <CreatorRateDetails creator={selectedCreator} campaign={selectedCampaign} />
+            <div className="creator-rate-toolbar">
                 <span>
-                  {audienceLabel(selectedCreator.platform)}·평균 조회수·참여율·플랫폼 기준 예상 {formatDualCurrency(getCreatorRateSummary(selectedCreator).estimatedPrice, selectedCampaign)}
+                  {audienceLabel(selectedCreator.platform)}·평균 조회수·팔로워·참여율·국가·콘텐츠 형식 기준 예상 {formatDualCurrency(getCreatorRateSummary(selectedCreator, selectedCampaign).estimatedPrice, selectedCampaign)}
                 </span>
                 <button
                   className="secondary-button compact-button"
@@ -22829,7 +22770,8 @@ function AppContent() {
                 <label>
                   활동 국가
                   <select value={creatorDraft.country} onChange={(event) => setCreatorDraft({ ...creatorDraft, country: event.target.value })}>
-                    {MARKET_OPTIONS.map((market) => <option key={market.country} value={market.country}>{market.label} · {market.country}</option>)}
+                    <option value="">미확인 · 국가 보정 없음</option>
+                    {Object.entries(DISCOVERY_MARKETS).map(([code, market]) => <option key={code} value={code}>{market.label} · {code}</option>)}
                   </select>
                 </label>
                 <label>
@@ -22849,6 +22791,14 @@ function AppContent() {
                   placeholder="리뷰, 생활용품, 가성비"
                 />
               </label>
+              <label>참여율 산정 기준
+                <select value={creatorDraft.engagementBasis || ''} onChange={event => setCreatorDraft({ ...creatorDraft, engagementBasis: event.target.value })}>
+                  <option value="">미확인 · 가격 보정에 사용하지 않음</option>
+                  <option value="views">조회수 대비 실제 반응 비율</option>
+                  <option value="followers">팔로워 대비 실제 반응 비율</option>
+                </select>
+                <small>평균 조회수 ÷ 팔로워 수는 참여율이 아닙니다. 실제 반응으로 확인한 비율을 % 단위로 입력하세요.</small>
+              </label>
               <button className="primary-button" type="submit">
                 <Plus size={17} />
                 후보 등록하고 저장
@@ -22859,7 +22809,7 @@ function AppContent() {
           {modal.type === 'creatorRate' && (() => {
             const rateCreator = creators.find((creator) => creator.id === modal.creatorId)
             if (!rateCreator) return null
-            const rate = getCreatorRateSummary(rateCreator)
+            const rate = getCreatorRateSummary(rateCreator, selectedCampaign)
             return (
               <form className="modal-form creator-rate-form" onSubmit={saveCreatorActualRate}>
                 <div className="creator-rate-estimate">
@@ -22869,6 +22819,7 @@ function AppContent() {
                     {rateCreator.platform} · {audienceLabel(rateCreator.platform)} {displayMetric(rate.factors.followers)} · 평균 조회 {displayMetric(rate.factors.averageViews)} · 참여율 {percent(rate.factors.engagement)}
                   </small>
                 </div>
+                <CreatorRateDetails creator={rateCreator} campaign={selectedCampaign} />
                 <label>
                   실제 협의 단가
                   <input
@@ -24454,8 +24405,8 @@ function RecommendationCard({
   const virality = getCreatorViralityRatio(creator)
   const performanceScore = getCreatorPerformanceScore(creator)
   const efficiencyScore = getCreatorEfficiencyScore(creator)
-  const creatorPrice = getCreatorPriceValue(creator)
-  const creatorRate = getCreatorRateSummary(creator)
+  const creatorPrice = getCreatorPriceValue(creator, campaign)
+  const creatorRate = getCreatorRateSummary(creator, campaign)
   const estimatedPriceLabel = creatorPrice ? formatDualCurrency(creatorPrice, campaign) : '산정 전'
   const performanceLearning = creator.performanceLearning
   const costPerView = Number(creator.averageViews || 0) && creatorPrice
@@ -25013,7 +24964,7 @@ function PoolItem({ item, creator, campaign }) {
 
   const topics = creator.topics?.length ? creator.topics.join(', ') : '주요 토픽 미입력'
   const sourceTone = item.source === '자동' ? 'auto-source' : item.source === '대량 섭외' ? 'bulk-source' : 'manual-source'
-  const creatorRate = getCreatorRateSummary(creator)
+  const creatorRate = getCreatorRateSummary(creator, campaign)
   const confirmMetrics = [
     [audienceLabel(creator.platform), compactNumber(creator.followers)],
     ['평균 조회', compactNumber(creator.averageViews)],
@@ -25131,7 +25082,7 @@ function ClientApprovalBoard({
         {poolItems.map((poolItem) => {
           const creator = creators.find((item) => item.id === poolItem.creatorId)
           const quality = getCreatorDataQuality(creator)
-          const creatorRate = creator ? getCreatorRateSummary(creator) : null
+          const creatorRate = creator ? getCreatorRateSummary(creator, campaign) : null
           return (
             <article className="client-approval-card" key={poolItem.id}>
               <div className="client-creator-cell">

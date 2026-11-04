@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { planCampaignBudget } from '../src/campaignBudget.js'
 
-const creators = [{ id: 1, name: 'A', price: 700 }, { id: 2, name: 'B', price: 400 }, { id: 3, name: 'C', price: 300 }, { id: 4, name: '미확인', price: 0 }]
+const creators = [{ id: 1, name: 'A', actualPrice: 700, price: 700 }, { id: 2, name: 'B', actualPrice: 400, price: 400 }, { id: 3, name: 'C', actualPrice: 300, price: 300 }, { id: 4, name: '미확인', price: 0 }]
 const rows = creators.map((c, i) => ({ id: i + 10, creatorId: c.id, score: 100 - i }))
 test('한 명씩이 아니라 전체 추천 합계를 총예산 안에 제한한다', () => {
   const plan = planCampaignBudget({ budget: 1000, recommendationTargetCount: 10 }, rows, creators)
