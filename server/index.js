@@ -1,4 +1,5 @@
 import { discoverPublicProfiles, createProfileSearchPacer, braveMarketOptions } from './profileMarketDiscovery.js'
+import { campaignGenerationInput } from '../shared/campaignGenerationInput.js'
 import { searchAcrossMarkets, localizationPrompt, parseLocalizedQueries, assessDiscoveryEvidence } from './multiMarketDiscovery.js'
 import { normalizeDiscoveryMarkets, allocateDiscoveryResults } from '../shared/discoveryMarkets.js'
 import { createYouTubeUsage } from './youtubeUsage.js'
@@ -4975,7 +4976,7 @@ function buildCampaignStrategyPrompt({
     '8. Risks, compliance, and optimization rules',
     'Do not promise performance or invent market data, creator metrics, costs, or conversion figures.',
     `Brand: ${JSON.stringify(sanitizeAiPromptValue(brand) || {})}`,
-    `Campaign: ${JSON.stringify(sanitizeAiPromptValue(campaign) || {})}`,
+    `Campaign: ${JSON.stringify(sanitizeAiPromptValue(campaignGenerationInput(campaign)) || {})}`,
     `Brief: ${JSON.stringify(sanitizeAiPromptValue(brief) || {})}`,
     `Creators: ${JSON.stringify(sanitizeAiPromptValue(Array.isArray(creators) ? creators.slice(0, 30) : []) || [])}`,
     `Recommendations: ${JSON.stringify(sanitizeAiPromptValue(Array.isArray(recommendations) ? recommendations.slice(0, 30) : []) || [])}`,
@@ -4985,7 +4986,7 @@ function buildCampaignStrategyPrompt({
 
 function buildContentGuidePrompt({ brand = {}, campaign = {}, seedingType = '', channel = '', references = [], draftGuide = '' } = {}) {
   const cleanBrand = sanitizeAiPromptValue(brand)
-  const cleanCampaign = sanitizeAiPromptValue(campaign)
+  const cleanCampaign = sanitizeAiPromptValue(campaignGenerationInput(campaign, { includeStrategy: true }))
   const cleanReferences = sanitizeAiPromptValue(references)
   const language = resolveCampaignLanguage(campaign)
   return [

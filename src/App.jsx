@@ -2,7 +2,7 @@ import { nextDiscoveryId } from './discoveryIdentity.js'
 import { resolveCampaignBudget, buildNewCampaignAllocation } from './campaignCreationDefaults.js'
 import CampaignAssignmentEditor from './CampaignAssignmentEditor.jsx'
 import { operationalCandidateView } from './operationalCandidates.js'
-import { resolveGuideChannel, getCampaignGuideReferences, guideEvidenceAppendix } from './campaignGuideEvidence.js'
+import { resolveGuideChannel, getCampaignGuideReferences, guideEvidenceAppendix, buildJapaneseIndividualGuide } from './campaignGuideEvidence.js'
 import DiscoveryMarkets from './DiscoveryMarkets.jsx'
 import { DISCOVERY_MARKETS } from '../shared/discoveryMarkets.js'
 import useDialogKeyboard from './useDialogKeyboard.js'
@@ -3473,6 +3473,7 @@ ${learningContext ? `\n## 14. 브랜드 학습자료 반영 메모\n${learningCo
 }
 
 function buildCreatorSpecificContentGuide({ brand, brief, campaign, creator, commonGuide = '' }) {
+  if (campaign?.outputLanguage === 'ja' && commonGuide) return buildJapaneseIndividualGuide({ campaign, creator, commonGuide })
   const campaignName = campaign?.name || `${brief.product} 인플루언서 캠페인`
   const platform = creator?.platform || campaign?.guideChannel || 'Instagram Reels'
   const trackingAsset = buildInfluencerTrackingAsset({ brand, campaign, creator })
@@ -14869,7 +14870,7 @@ function AppContent() {
       }
     }
     const generatedAt = nowLabel()
-    guide += guideEvidenceAppendix(evidenceReferences)
+    guide += guideEvidenceAppendix(evidenceReferences, campaign.outputLanguage)
     if (appliedTemplateIds.length) sourceRawIds = uniqueList([...sourceRawIds, 'RAW-INT-TEMPLATE-001'])
     const strategyInputRaw = campaign.strategyInputRaw || buildCampaignStrategyInputRaw(campaign, campaignBrief)
 
@@ -21262,7 +21263,7 @@ function AppContent() {
                   </div>
                   {campaignModalGuideCreators.length > 0 ? (
                     <div className="individual-guide-list">
-                      {campaignModalGuideCreators.slice(0, 8).map((creator, index) => {
+                      {campaignModalGuideCreators.map((creator, index) => {
                         const storedGuide = activeCampaignForModal.individualContentGuides?.[creator.id]
                         const trackingAsset = getCampaignCreatorTrackingAsset(activeCampaignForModal, creator, index)
                         return (
