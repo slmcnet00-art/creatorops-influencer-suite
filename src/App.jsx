@@ -1698,7 +1698,7 @@ function normalizeCreator(creator) {
     preferredContactChannel: creator.preferredContactChannel ?? fallback?.preferredContactChannel,
     isDemo: creator.isDemo ?? fallback?.isDemo ?? false,
   }
-  return { ...withCreatorRate(nextCreator, {}), preferredContactChannel: getRecommendedContactChannelId(nextCreator) }
+  return { ...nextCreator, preferredContactChannel: getRecommendedContactChannelId(nextCreator) }
 }
 
 function normalizeCreatorAvatar(creator = {}, fallback = {}) {
