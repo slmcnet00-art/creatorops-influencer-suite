@@ -1,4 +1,8 @@
 import { nextDiscoveryId } from './discoveryIdentity.js'
+import { resolveCampaignBudget, buildNewCampaignAllocation } from './campaignCreationDefaults.js'
+import CampaignAssignmentEditor from './CampaignAssignmentEditor.jsx'
+import { operationalCandidateView } from './operationalCandidates.js'
+import { resolveGuideChannel, getCampaignGuideReferences, guideEvidenceAppendix } from './campaignGuideEvidence.js'
 import DiscoveryMarkets from './DiscoveryMarkets.jsx'
 import { DISCOVERY_MARKETS } from '../shared/discoveryMarkets.js'
 import useDialogKeyboard from './useDialogKeyboard.js'
@@ -3323,8 +3327,8 @@ function trackingAssetFromLog(log = {}, fallback = {}) {
 }
 
 function buildInfluencerContentGuide({ brand, brief, campaign, creators = [] }) {
-  const seedType = campaign.guideSeedType || '무가시딩'
-  const channel = campaign.guideChannel || 'Instagram Reels'
+  const seedType = campaign.guideSeedType || '협업 조건 협의 필요'
+  const channel = resolveGuideChannel(campaign)
   const campaignName = campaign.name || `${brief.product} 인플루언서 캠페인`
   const materialDigest = buildLearningMaterialDigest(getLearningMaterials(brief))
   const oneMessage =
@@ -3531,14 +3535,14 @@ function buildCreatorSpecificContentGuide({ brand, brief, campaign, creator, com
 - 브랜드: ${brand.name}
 - 캠페인: ${campaignName}
 - 제품/서비스: ${brief.product || campaign?.product || '-'}
-- 협업 유형: ${campaign?.guideSeedType || '무가시딩'}
+- 협업 유형: ${campaign?.reward || '협업 조건 협의 필요'}
 - 권장 채널: ${platform}
 - 콘텐츠 형식: ${contentFormatSummary(campaign?.contentFormats)}
 - 업로드 일정: ${campaign?.uploadDueDate || campaign?.deadline || '협의'}
 
 ## 1-1. 개인 추적 숏링크
-- 전달용 숏링크: ${trackingAsset.shortUrl}
-- 쿠폰 코드: ${trackingAsset.couponCode}
+- 전달용 링크: ${campaign?.landingUrl ? `${trackingAsset.originalUrl} (업로드 전 연결 확인 필요)` : '미발급 · 실제 다운로드/랜딩 URL을 담당자가 등록하고 연결 확인 후 전달'}
+- 쿠폰: 실제 발급·적용 여부 확인 전 사용하지 않습니다.
 - 운영 기준: 긴 UTM 원본은 데이터룸 \`${trackingAsset.rawId}\`에 저장하고, 크리에이터에게는 위 숏링크만 전달합니다.
 - 성과 연결: 클릭은 \`${UTM_CLICK_METRIC_ID}\`, 주문/쿠폰 전환은 \`${UTM_REVENUE_METRIC_ID}\`로 집계합니다.
 
@@ -3558,7 +3562,7 @@ ${hookLines.map((line, index) => `${index + 1}. ${line}`).join('\n')}
 ## 5. 컷 구성 제안
 1. 첫 화면: 시청자가 멈출 문제, 가격, 상황, 감정 중 하나를 크게 보여줍니다.
 2. 사용 맥락: 왜 이 제품이 필요한지 본인 일상이나 계정 콘셉트 안에서 설명합니다.
-3. 제품 확인: 패키지, 질감, 크기, 사용 전후 판단 요소를 직접 보여줍니다.
+3. 실제 사용: 아래 공통 촬영안의 실제 제품/앱 사용 단계를 화면 녹화 또는 촬영으로 보여줍니다. 검증하지 않은 기능은 촬영 전에 확인합니다.
 4. 신뢰 증명: 학습자료의 증명 포인트를 본인 말투로 바꿔 한 문장만 넣습니다.
 5. CTA: 댓글 질문, 저장, 링크 확인, 구매/문의 중 캠페인 목적에 맞게 마무리합니다.
 
@@ -3580,7 +3584,7 @@ ${materialDigest.riskPoints.slice(0, 4).map((item) => `- 주의 표현: ${item}`
 
 ## 9. 공통 가이드 반영 기준
 공통 가이드의 원메시지와 금지 표현은 유지하되, 문장과 장면은 ${creator?.name || '크리에이터'}의 평소 말투와 콘텐츠 구조로 바꿔 제작합니다.
-${commonGuide ? '\n공통 가이드는 캠페인 기준 문서이고, 이 문서는 개인별 실행 지시서입니다.' : ''}
+${commonGuide ? `\n## 10. 실행에 사용할 공통 촬영안과 레퍼런스\n${commonGuide}` : ''}
 `
 }
 
@@ -3966,7 +3970,7 @@ function buildProductionReferenceMaterial(reference, brief = {}, campaign = {}) 
       reference.platform,
       reference.mediaType,
       reference.country,
-      '50만 이상 조회 레퍼런스',
+      '공개 성과 별도 검증 레퍼런스',
       '후킹 포인트',
       '변형 스크립트',
       '콘텐츠 가이드',
@@ -8279,6 +8283,7 @@ function AppContent() {
   })
   const [fulfillmentDraft, setFulfillmentDraft] = useState(createEmptyFulfillmentDraft)
 
+  const operationalView = useMemo(() => operationalCandidateView(workspace), [workspace])
   const {
     brands,
     activeBrandId,
@@ -8309,7 +8314,7 @@ function AppContent() {
     team,
     accounts,
     activeAccountId,
-  } = workspace
+  } = operationalView
 
   const localCurrentAccount =
     accounts.find((account) => account.id === activeAccountId) ?? accounts[0] ?? defaultWorkspace.accounts[0]
@@ -14404,7 +14409,8 @@ function AppContent() {
     preferredPlatforms: campaign.preferredPlatforms || '',
     minFollowers: campaign.minFollowers ? String(campaign.minFollowers) : '',
     maxCreatorFee: campaign.maxCreatorFee ? String(campaign.maxCreatorFee) : '',
-    budget: campaign.budget ? String(campaign.budget) : '',
+    budget: String(campaign.budget ?? 0),
+    creatorIds: [...(campaign.creatorIds ?? [])],
     deadline: campaign.deadline || '',
     recruitStartDate: campaign.schedule?.recruitStart || '',
     recruitEndDate: campaign.schedule?.recruitEnd || '',
@@ -14442,7 +14448,7 @@ function AppContent() {
   const saveCampaignEdit = () => {
     if (!activeCampaignForModal || !campaignEditDraft) return
 
-    const nextBudget = Number(campaignEditDraft.budget) || activeCampaignForModal.budget
+    const nextBudget = resolveCampaignBudget(campaignEditDraft.budget, activeCampaignForModal.budget)
     const selectedMarketCountries = campaignEditDraft.marketMode === CAMPAIGN_MARKET_MODES.multi
       ? campaignEditDraft.targetMarkets
       : [campaignEditDraft.targetCountry]
@@ -14473,7 +14479,8 @@ function AppContent() {
       minFollowers: normalizeNumericTarget(campaignEditDraft.minFollowers),
       maxCreatorFee: normalizeNumericTarget(campaignEditDraft.maxCreatorFee),
       budget: nextBudget,
-      spend: Math.min(activeCampaignForModal.spend || 0, nextBudget),
+      creatorIds: [...campaignEditDraft.creatorIds],
+      plannedCreatorCost: getCreatorsByIds(creators, campaignEditDraft.creatorIds).reduce((sum, creator) => sum + (Number(creator.price) || 0), 0),
       deadline: campaignEditDraft.recruitEndDate || campaignEditDraft.deadline || activeCampaignForModal.deadline,
       schedule: {
         recruitStart: campaignEditDraft.recruitStartDate,
@@ -14659,11 +14666,18 @@ function AppContent() {
   const generateCampaignStrategyForDetail = async (campaign) => {
     if (!campaign) return
     const baseCampaignBrief = buildCampaignBriefFromCampaign(campaign)
+    const referenceMaterials = getCampaignGuideReferences(campaign, contentReferences, savedProductionReferenceIds, creators).map((reference) => ({
+      title: reference.title,
+      sourceType: '캠페인 참고 콘텐츠',
+      summary: guideEvidenceAppendix([reference]),
+      dontSay: '공개 조회수만으로 광고 전환 성공을 주장하지 않으며 원본 화면·문장을 복제하지 않는다.',
+    }))
     const campaignWinningTemplates = getCampaignContentTemplates(contentTemplates, activeBrand.id, campaign.reuseTemplateIds)
     const campaignWinningTemplateMaterials = buildReusableTemplateLearningMaterials(campaignWinningTemplates, activeBrand.id)
     const campaignBrief = {
       ...baseCampaignBrief,
       learningMaterials: [
+        ...referenceMaterials,
         ...campaignWinningTemplateMaterials,
         ...getLearningMaterials(baseCampaignBrief),
       ],
@@ -14786,6 +14800,10 @@ function AppContent() {
 
   const generateCampaignGuideForDetail = async (campaign) => {
     if (!campaign) return
+    if (!campaign.influencerStrategy) {
+      showToast('캠페인 전략을 먼저 생성·검토한 후 가이드를 생성하세요.')
+      return
+    }
     const baseCampaignBrief = buildCampaignBriefFromCampaign(campaign)
     const campaignWinningTemplates = getCampaignContentTemplates(contentTemplates, activeBrand.id, campaign.reuseTemplateIds)
     const campaignWinningTemplateMaterials = buildReusableTemplateLearningMaterials(campaignWinningTemplates, activeBrand.id)
@@ -14804,6 +14822,7 @@ function AppContent() {
       performanceReason: material.summary,
       reuseRule: material.dontSay,
     }))
+    const evidenceReferences = getCampaignGuideReferences(campaign, contentReferences, savedProductionReferenceIds, creators)
     const localGuide = buildInfluencerContentGuide({
       brand: activeBrand,
       brief: campaignBrief,
@@ -14825,10 +14844,10 @@ function AppContent() {
           body: JSON.stringify({
             brand: activeBrand,
             campaign,
-            seedingType: campaign.guideSeedType || '무가시딩',
-            channel: campaign.guideChannel || 'Instagram Reels',
+            seedingType: campaign.reward || campaign.guideSeedType || '협업 조건 협의 필요',
+            channel: resolveGuideChannel(campaign),
             references: [
-              ...(Array.isArray(campaign.guideReferences) ? campaign.guideReferences : []),
+              ...evidenceReferences,
               ...reusableTemplateReferences,
             ],
             draftGuide: localGuide,
@@ -14848,6 +14867,7 @@ function AppContent() {
       }
     }
     const generatedAt = nowLabel()
+    guide += guideEvidenceAppendix(evidenceReferences)
     if (appliedTemplateIds.length) sourceRawIds = uniqueList([...sourceRawIds, 'RAW-INT-TEMPLATE-001'])
     const strategyInputRaw = campaign.strategyInputRaw || buildCampaignStrategyInputRaw(campaign, campaignBrief)
 
@@ -14899,6 +14919,10 @@ function AppContent() {
 
   const generateCampaignIndividualGuidesForDetail = (campaign) => {
     if (!campaign) return
+    if (!campaign.generatedContentGuide) {
+      showToast('공통 가이드를 먼저 생성·검토한 후 개별 가이드를 생성하세요.')
+      return
+    }
     const guideCreators = getCampaignGuideCreators(campaign)
     if (!guideCreators.length) {
       showToast('개별 가이드를 만들 배정/섭외 크리에이터가 없습니다.')
@@ -15224,9 +15248,8 @@ function AppContent() {
 
   const createCampaign = (event) => {
     event.preventDefault()
-    const assignedCreators = getCreatorsByIds(creators, shortlist)
-    const estimatedCost = assignedCreators.reduce((sum, creator) => sum + creator.price, 0)
-    const budget = Number(campaignDraft.budget) || Math.max(estimatedCost, 15000000)
+    const allocation = buildNewCampaignAllocation()
+    const budget = resolveCampaignBudget(campaignDraft.budget)
     const campaignBrief = buildCampaignBriefFromDraft(campaignDraft)
     const nextCampaignId = createId()
     const selectedMarketCountries = campaignDraft.marketMode === CAMPAIGN_MARKET_MODES.multi
@@ -15253,7 +15276,7 @@ function AppContent() {
       budget,
       spend: 0,
       revenue: 0,
-      plannedCreatorCost: estimatedCost,
+      plannedCreatorCost: allocation.plannedCreatorCost,
       performanceSource: 'unreported',
       deadline: campaignDraft.recruitEndDate || campaignDraft.deadline || '일정 미정',
       schedule: {
@@ -15363,9 +15386,7 @@ function AppContent() {
         outputRawId: 'RAW-INT-AI-001',
         packageVersion: 'strategy-director-v2.3-local',
       },
-      progress: 12,
-      creatorIds: [...shortlist],
-      stages: [Math.max(18, shortlist.length * 8), 8, 3, 1],
+      ...allocation,
       createdAt: nowLabel(),
     }
 
@@ -15395,7 +15416,7 @@ function AppContent() {
           campaigns: [nextCampaign, ...current.campaigns],
         },
         'campaign',
-        `${nextCampaign.name} 생성 · ${shortlist.length}명 배정 · 가이드 ${nextCampaign.brandGuideAttachments.length}개`,
+        `${nextCampaign.name} 생성 · ${allocation.creatorIds.length}명 배정 · 가이드 ${nextCampaign.brandGuideAttachments.length}개`,
       )
     })
     setSelectedCampaignId(nextCampaign.id)
@@ -20838,7 +20859,16 @@ function AppContent() {
                       <span className="mini-label">캠페인 수정</span>
                       <strong>캠페인 입력값 수정</strong>
                       <p>저장하면 상세, 발굴 조건, 리포트 KPI 기준에 바로 반영됩니다.</p>
+                      <CampaignAssignmentEditor
+                        creators={getCreatorsByIds(creators, activeCampaignForModal.creatorIds ?? [])}
+                        value={campaignEditDraft.creatorIds}
+                        onChange={(ids) => updateCampaignEditField('creatorIds', ids)}
+                      />
                     </div>
+                    <label>
+                      예산
+                      <input type="number" min="0" value={campaignEditDraft.budget} onChange={(event) => updateCampaignEditField('budget', event.target.value)} />
+                    </label>
                     <div className="modal-two-col">
                       <label>
                         캠페인명
@@ -21092,6 +21122,7 @@ function AppContent() {
                 <div className="campaign-guide-detail">
                   <span className="mini-label">인플루언서 전략</span>
                   <strong>캠페인 전략</strong>
+                  <p>전략을 생성하면 아래에서 전략 전체 보기와 전략 PPT·전략 엑셀 다운로드를 사용할 수 있습니다.</p>
                   <p>캠페인 생성 때 입력한 브랜드/제품 raw를 기준으로 섭외 방향, 후보 우선순위, 메시지 전략을 생성합니다.</p>
                   <PolicyFreshnessNote
                     activePolicy={activeCampaignStrategyPolicy}
@@ -21131,8 +21162,8 @@ function AppContent() {
                   </div>
                   {activeCampaignForModal.influencerStrategy && (
                     <div className="content-guide-preview">
-                      <span>전략 미리보기</span>
-                      <pre>{activeCampaignForModal.influencerStrategy.slice(0, 900)}</pre>
+                      <details><summary>전략 전체 보기</summary>
+                      <pre>{activeCampaignForModal.influencerStrategy}</pre></details>
                     </div>
                   )}
                 </div>
@@ -21157,9 +21188,16 @@ function AppContent() {
                   <span className="mini-label">콘텐츠 가이드</span>
                   <strong>인플루언서 전달용 콘텐츠 가이드</strong>
                   <p>
-                    {activeCampaignForModal.guideSeedType ?? '무가시딩'} · {activeCampaignForModal.guideChannel ?? 'Instagram Reels'} · 원메시지/후킹포인트 기반
+                    {activeCampaignForModal.reward || '협업 조건 협의 필요'} · {resolveGuideChannel(activeCampaignForModal)} · 원메시지/후킹포인트 기반
                   </p>
-                  <PolicyFreshnessNote
+                  {activeCampaignForModal.generatedContentGuide && (
+  <div className="content-guide-preview">
+    <details><summary>공통 가이드 전체 보기</summary>
+      <pre>{activeCampaignForModal.generatedContentGuide}</pre>
+    </details>
+  </div>
+)}
+<PolicyFreshnessNote
                     activePolicy={activeContentGuidePolicy}
                     campaign={activeCampaignForModal}
                     featureKey="content-guide"
@@ -21233,7 +21271,10 @@ function AppContent() {
                                 {creator.platform} · {creator.handle} · 평균 조회 {compactNumber(creator.averageViews)}
                               </p>
                               <small>{storedGuide?.generatedAt ? `생성 ${storedGuide.generatedAt}` : '생성 전 · 다운로드 시 초안 생성'}</small>
-                              {trackingAsset ? (
+                              {storedGuide?.guide && (
+                                <details className="content-guide-preview"><summary>{creator.name} 가이드 전체 보기</summary><pre>{storedGuide.guide}</pre></details>
+                              )}
+                              {trackingAsset && activeCampaignForModal.landingUrl ? (
                                 <div className="creator-shortlink-row">
                                   <span>숏링크 {trackingAsset.shortUrl}</span>
                                   <span>쿠폰 {trackingAsset.couponCode}</span>
@@ -22636,13 +22677,7 @@ function AppContent() {
               </label>
               <div className="assignment-list">
                 <span className="mini-label">배정 후보</span>
-                {getCreatorsByIds(creators, shortlist).length === 0 ? (
-                  <p>쇼트리스트에 저장된 후보가 없습니다.</p>
-                ) : (
-                  getCreatorsByIds(creators, shortlist).map((creator) => (
-                    <span key={creator.id}>{creator.name}</span>
-                  ))
-                )}
+                <p>후보는 자동 배정되지 않습니다. 생성 후 후보 그룹에서 원하는 후보를 배정하세요.</p>
               </div>
               <button className="primary-button" type="submit">
                 <Plus size={17} />
@@ -23269,6 +23304,11 @@ function AppContent() {
                     <span className="mini-label">캠페인 수정</span>
                     <strong>캠페인 입력값 수정</strong>
                     <p>저장하면 상세, 발굴 조건, 리포트 KPI 기준에 바로 반영됩니다.</p>
+                      <CampaignAssignmentEditor
+                        creators={getCreatorsByIds(creators, activeCampaignForModal.creatorIds ?? [])}
+                        value={campaignEditDraft.creatorIds}
+                        onChange={(ids) => updateCampaignEditField('creatorIds', ids)}
+                      />
                   </div>
                   <div className="modal-two-col">
                     <label>
@@ -23533,6 +23573,7 @@ function AppContent() {
               <div className="campaign-guide-detail">
                 <span className="mini-label">인플루언서 전략</span>
                 <strong>캠페인 전략</strong>
+                  <p>전략을 생성하면 아래에서 전략 전체 보기와 전략 PPT·전략 엑셀 다운로드를 사용할 수 있습니다.</p>
                 <p>캠페인 생성 때 입력한 브랜드/제품 raw를 기준으로 섭외 방향, 후보 우선순위, 메시지 전략을 생성합니다.</p>
                 <PolicyFreshnessNote
                   activePolicy={activeCampaignStrategyPolicy}
@@ -23572,8 +23613,8 @@ function AppContent() {
                 </div>
                 {activeCampaignForModal.influencerStrategy && (
                   <div className="content-guide-preview">
-                    <span>전략 미리보기</span>
-                    <pre>{activeCampaignForModal.influencerStrategy.slice(0, 900)}</pre>
+                    <details><summary>전략 전체 보기</summary>
+                    <pre>{activeCampaignForModal.influencerStrategy}</pre></details>
                   </div>
                 )}
               </div>
@@ -23596,9 +23637,16 @@ function AppContent() {
                 <span className="mini-label">콘텐츠 가이드</span>
                 <strong>인플루언서 전달용 콘텐츠 가이드</strong>
                 <p>
-                  {activeCampaignForModal.guideSeedType ?? '무가시딩'} · {activeCampaignForModal.guideChannel ?? 'Instagram Reels'} · 원메시지/후킹포인트 기반
+                  {activeCampaignForModal.reward || '협업 조건 협의 필요'} · {resolveGuideChannel(activeCampaignForModal)} · 원메시지/후킹포인트 기반
                 </p>
-                <PolicyFreshnessNote
+                {activeCampaignForModal.generatedContentGuide && (
+  <div className="content-guide-preview">
+    <details><summary>공통 가이드 전체 보기</summary>
+      <pre>{activeCampaignForModal.generatedContentGuide}</pre>
+    </details>
+  </div>
+)}
+<PolicyFreshnessNote
                   activePolicy={activeContentGuidePolicy}
                   campaign={activeCampaignForModal}
                   featureKey="content-guide"
