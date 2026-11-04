@@ -1,3 +1,6 @@
+import { reviewCampaignGuides } from '../shared/guideClaimReview.js'
+import { planCampaignBudget } from './campaignBudget.js'
+import CampaignBudgetPanel from './CampaignBudgetPanel.jsx'
 import { nextDiscoveryId } from './discoveryIdentity.js'
 import { campaignGenerationInput } from '../shared/campaignGenerationInput.js'
 import { hasTrackingDestination, trackingLogTimestamp, invalidatePlaceholderTrackingLogs } from './trackingDestination.js'
@@ -8459,12 +8462,17 @@ function AppContent() {
       ),
     [activeBrand.id, activeCampaignIdSet, creators, recommendations, showExampleCreators],
   )
-  const selectedCampaignRecommendations = useMemo(
+  const campaignRecommendationPool = useMemo(
     () =>
       selectedCampaign
         ? activeRecommendations.filter((recommendation) => recommendation.campaignId === selectedCampaign.id)
         : activeRecommendations,
     [activeRecommendations, selectedCampaign],
+  )
+  const budgetCreators = useMemo(() => creators.map(creator => ({ ...creator, price: getCreatorPriceValue(creator) })), [creators])
+  const selectedCampaignRecommendations = useMemo(
+    () => selectedCampaign ? planCampaignBudget(selectedCampaign, campaignRecommendationPool, budgetCreators).items : campaignRecommendationPool,
+    [selectedCampaign, campaignRecommendationPool, budgetCreators],
   )
   const aiRecommendationApiState = useMemo(() => {
     const routeResult = apiTestStatus.results.find((item) => item.key === 'openai')
@@ -13352,13 +13360,13 @@ function AppContent() {
         if (decisionGap) return decisionGap
         return b.score - a.score
       })
-    const ranked = rankedPool.slice(0, getCampaignRecommendationTarget(selectedCampaign))
+    const ranked = selectedCampaign ? planCampaignBudget(selectedCampaign, rankedPool, budgetCreators).items : rankedPool.slice(0, getCampaignRecommendationTarget(selectedCampaign))
 
     if (!ranked.length) {
       const realCreatorCount = creators.filter((creator) => !isExampleCreator(creator)).length
       showToast(
         realCreatorCount
-          ? '우선 제안 가능한 후보가 없습니다. 국가/평균조회/단가 조건을 조정하거나 실제 웹 발굴을 더 실행해보세요.'
+          ? '예산 내 추천 후보가 없습니다. 총예산·집행액·인당 한도와 후보 단가를 확인하세요. 0원은 무가 협찬을 뜻하지 않습니다.'
           : '먼저 아래 실제 웹 발굴을 실행해서 후보를 모아주세요.',
       )
       return
@@ -13381,7 +13389,7 @@ function AppContent() {
       return appendActivity(
         {
           ...current,
-          recommendations: [...finalRanked, ...scopedRecommendations].slice(0, 2000),
+          recommendations: [...rankedPool.map(row => finalRanked.find(enriched => enriched.creatorId === row.creatorId) || row), ...scopedRecommendations].slice(0, 2000),
         },
         'ai',
         `${selectedCampaign?.name ?? activeBrand.name} AI 추천 ${finalRanked.length}명${enrichmentLabel}`,
@@ -14446,6 +14454,16 @@ function AppContent() {
       ...(current || buildCampaignEditDraft(activeCampaignForModal)),
       [field]: value,
     }))
+  }
+
+  const reviewAndSaveCampaignGuides = (campaign) => {
+    updateWorkspace(current => appendActivity({
+      ...current,
+      campaigns: current.campaigns.map(item => item.id === campaign.id
+        ? { ...reviewCampaignGuides(item), guideClaimsReviewedAt: new Date().toISOString() }
+        : item),
+    }, 'campaign', `${campaign.name} 전략·공통·개별 가이드 미확인 문구 검수 저장`))
+    showToast('전략·공통·개별 가이드를 검수 저장했습니다. 확인 필요 문구는 기능 확인 전 사용하지 마세요.')
   }
 
   const saveCampaignEdit = () => {
@@ -18693,6 +18711,7 @@ function AppContent() {
                 원천 raw: 후보 프로필, 채널 수치, 콘텐츠 성과, 외부 리포트, 캠페인 전략/가이드
               </small>
             </details>
+            <CampaignBudgetPanel campaign={selectedCampaign} recommendations={activeRecommendations} creators={budgetCreators} />
             {selectedCampaignRecommendations.length > 0 && (
               <div className="recommendation-selection-bar">
                 <div>
@@ -21129,6 +21148,9 @@ function AppContent() {
                   <span className="mini-label">인플루언서 전략</span>
                   <strong>캠페인 전략</strong>
                   <p>전략을 생성하면 아래에서 전략 전체 보기와 전략 PPT·전략 엑셀 다운로드를 사용할 수 있습니다.</p>
+                  <p>확인 필요 표시가 있는 기능·지원 언어·보상 조건은 확인 전 촬영하거나 확정하지 마세요.</p>
+                  <button type="button" className="secondary-button compact-button" onClick={() => reviewAndSaveCampaignGuides(activeCampaignForModal)}>가이드 문구 검수·저장</button>
+                  <CampaignBudgetPanel campaign={activeCampaignForModal} recommendations={activeRecommendations} creators={budgetCreators} />
                   <p>캠페인 생성 때 입력한 브랜드/제품 raw를 기준으로 섭외 방향, 후보 우선순위, 메시지 전략을 생성합니다.</p>
                   <PolicyFreshnessNote
                     activePolicy={activeCampaignStrategyPolicy}
@@ -23580,6 +23602,9 @@ function AppContent() {
                 <span className="mini-label">인플루언서 전략</span>
                 <strong>캠페인 전략</strong>
                   <p>전략을 생성하면 아래에서 전략 전체 보기와 전략 PPT·전략 엑셀 다운로드를 사용할 수 있습니다.</p>
+                  <p>확인 필요 표시가 있는 기능·지원 언어·보상 조건은 확인 전 촬영하거나 확정하지 마세요.</p>
+                  <button type="button" className="secondary-button compact-button" onClick={() => reviewAndSaveCampaignGuides(activeCampaignForModal)}>가이드 문구 검수·저장</button>
+                  <CampaignBudgetPanel campaign={activeCampaignForModal} recommendations={activeRecommendations} creators={budgetCreators} />
                 <p>캠페인 생성 때 입력한 브랜드/제품 raw를 기준으로 섭외 방향, 후보 우선순위, 메시지 전략을 생성합니다.</p>
                 <PolicyFreshnessNote
                   activePolicy={activeCampaignStrategyPolicy}

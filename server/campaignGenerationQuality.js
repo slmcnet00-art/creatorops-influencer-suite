@@ -25,7 +25,8 @@ export function assertCampaignGenerationFacts(text, campaign = {}, source = {}) 
       if (numbers.some((match) => Number(match[0].replace(/[^\d.]/g, '')) > 0)) fail('생성된 예산이 저장된 0원 예산과 다릅니다. 전략을 검토한 후 다시 생성하세요.')
     }
   }
-  if (/日本語対応アプリで|일본어 지원[^\n]{0,20}기능을 갖춘/.test(text)) fail('확인되지 않은 일본어 지원을 확정한 생성물입니다. 앱 지원 정보를 확인하세요.')
+  const unconditionalText = String(text).split('\n').filter(line => !/要確認|확인 필요|未確認|미확인|confirmation required/i.test(line)).join('\n')
+  if (/日本語対応アプリで|일본어 지원[^\n]{0,20}기능을 갖춘/.test(unconditionalText)) fail('확인되지 않은 일본어 지원을 확정한 생성물입니다. 앱 지원 정보를 확인하세요.')
   const videoIds = (value) => [...String(value).matchAll(/(?:youtube\.com\/watch\?v=|youtu\.be\/)([\w-]{11})/g)].map((match) => match[1])
   const permitted = new Set(videoIds(JSON.stringify(source)))
   if (videoIds(text).some((id) => !permitted.has(id))) fail('입력에 없는 YouTube 원본 링크가 생성되어 저장하지 않았습니다.')
