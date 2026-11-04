@@ -85,7 +85,7 @@ export async function discoverPublicProfiles({ query, sourceQuery, platform, cou
           const inferred = inferPublicProfileCountry(profile), evidence = assessDiscoveryEvidence(profile, query, sourceQuery)
           if (!evidence.matches || (inferred.country && inferred.country !== country) || (strictCountry && !inferred.country)) continue
           const canonical = profile.profileUrl.replace(/\/+$/, '').toLowerCase()
-          if (!matches.has(canonical)) matches.set(canonical, { ...profile, ...inferred, searchCountry:country, verifiedMetrics:false, avatar:avatarPlaceholder, avatarStatus:'unverified',
+          if (!matches.has(canonical)) matches.set(canonical, { ...profile, ...inferred, id:`${itemPlatform}:${canonical}`, searchCountry:country, verifiedMetrics:false, avatar:avatarPlaceholder, avatarStatus:'unverified',
             matchedContentUrl: itemPlatform === 'TikTok' && new URL(url).pathname.includes('/video/') ? url : '', evidenceUrl:url })
         }
         if (matches.size >= target) break

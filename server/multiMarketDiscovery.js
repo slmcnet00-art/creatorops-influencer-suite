@@ -95,7 +95,7 @@ export async function searchAcrossMarkets({ query, countries, maxResults, strict
   if (markets.every(m => m.status === 'failed')) throw Object.assign(Error('선택 국가의 검색이 모두 실패했습니다. API 연결·할당량을 확인하고 다시 시도하세요.'), { status: 502 })
   const unique = new Map()
   for (const market of markets) for (const item of market.items) {
-    const key = item.id || item.profileUrl
+    const key = countryPolicy === 'public-profile' && item.profileUrl ? `${item.platform}:${item.profileUrl.replace(/\/+$/, '').toLowerCase()}` : item.id || item.profileUrl
     if (!key) continue
     const old = unique.get(key)
     unique.set(key, old ? { ...old, matchedMarkets: [...new Set([...old.matchedMarkets, market.country])] } : { ...item, matchedMarkets: [market.country] })

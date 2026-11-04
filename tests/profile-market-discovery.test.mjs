@@ -86,3 +86,8 @@ test('캐나다는 선택·영어 검색·공개 텍스트 국가 추정을 지�
   assert.match(profileMarketQueries('beauty','Instagram','CA')[0],/Canada/)
   assert.equal(inferPublicProfileCountry({sourceTitle:'Beauty creator 🇨🇦',sourceSnippet:'Toronto'}).country,'CA')
 })
+
+test('국가별 검색이 URL 대소문자·끝 슬래시를 달리 반환해도 같은 계정은 한 번 표시한다',async()=>{
+  const result=await searchAcrossMarkets({query:'serum',countries:['US','CA'],maxResults:2,strictCountry:false,countryPolicy:'public-profile',translate:async()=>({US:'serum',CA:'serum'}),search:async(q,n,c)=>[{id:c==='US'?'first':'second',platform:'Instagram',profileUrl:c==='US'?'https://instagram.com/Alice/':'https://instagram.com/alice',name:'serum',country:'',countryConfidence:'unverified'}]})
+  assert.equal(result.data.length,1);assert.deepEqual(result.data[0].matchedMarkets,['US','CA'])
+})
