@@ -14665,6 +14665,8 @@ function AppContent() {
 
   const generateCampaignStrategyForDetail = async (campaign) => {
     if (!campaign) return
+    const assignedStrategyCreators = getCreatorsByIds(creators, campaign.creatorIds ?? [])
+    const assignedStrategyIds = new Set(assignedStrategyCreators.map((creator) => String(creator.id)))
     const baseCampaignBrief = buildCampaignBriefFromCampaign(campaign)
     const referenceMaterials = getCampaignGuideReferences(campaign, contentReferences, savedProductionReferenceIds, creators).map((reference) => ({
       title: reference.title,
@@ -14687,8 +14689,8 @@ function AppContent() {
       brand: activeBrand,
       brief: campaignBrief,
       campaign,
-      creators,
-      recommendations: activeRecommendations,
+      creators: assignedStrategyCreators,
+      recommendations: activeRecommendations.filter((item) => assignedStrategyIds.has(String(item.creatorId))),
       learningMaterials: campaignBrief.learningMaterials,
     })
     let strategy = localStrategy
@@ -14707,9 +14709,9 @@ function AppContent() {
             brand: activeBrand,
             campaign,
             brief: campaignBrief,
-            creators: (Array.isArray(creators) ? creators : []).slice(0, 30),
-            recommendations: (Array.isArray(activeRecommendations) ? activeRecommendations : []).slice(0, 30),
-            draftStrategy: localStrategy,
+            creators: assignedStrategyCreators.slice(0, 30),
+            recommendations: activeRecommendations.filter((item) => assignedStrategyIds.has(String(item.creatorId))).slice(0, 30),
+            draftStrategy: '',
           }),
         })
         const payload = await response.json().catch(() => ({}))
