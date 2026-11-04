@@ -1,3 +1,4 @@
+import { isCookingYouTubeQuery } from './youtubeEvidence.js'
 const inFlight = new Map()
 export async function coalesceYouTubeSearch(key, load) {
   if (inFlight.has(key)) return inFlight.get(key)
@@ -7,7 +8,9 @@ export async function coalesceYouTubeSearch(key, load) {
 }
 
 export function focusedYouTubeQueries(clean, aliased, country) {
-  const suffix = country === 'JP' ? ['レビュー', 'クリエイター'] : country === 'KR' ? ['리뷰', '크리에이터'] : ['review', 'creator']
+  const suffix = isCookingYouTubeQuery(`${clean} ${aliased}`)
+    ? country === 'JP' ? ['レシピ', '作り方'] : country === 'KR' ? ['레시피', '만드는법'] : ['recipe', 'how to cook']
+    : country === 'JP' ? ['レビュー', 'クリエイター'] : country === 'KR' ? ['리뷰', '크리에이터'] : ['review', 'creator']
   return [...new Set([clean, aliased, ...suffix.map(s => `${aliased} ${s}`)].map(q => q.trim()).filter(Boolean))]
 }
 
@@ -22,7 +25,7 @@ export function youtubeSearchScope(value) {
 
 // Search result pages are bounded; detail requests are shared across both search
 // paths. Relevance is evaluated against the original query, never the expansion.
-export async function discoverYouTubeCreators({ queries, maxResults, country, allowedCountries = country ? [country] : [], request, normalize, select, evidenceSelector, maxPages = 16 }) {
+export async function discoverYouTubeCreators({ queries, maxResults, country, allowedCountries = country ? [country] : [], request, normalize, select, evidenceSelector, reviewChannels, maxPages = 16 }) {
   if (!Number.isInteger(maxResults) || maxResults < 1 || maxResults > 1000) throw Object.assign(Error('maxResults must be an integer between 1 and 1000.'), { status: 400 })
   const channels = new Map(), evidence = new Map(), ids = new Set()
   const limit = Math.min(50, Math.max(10, maxResults * 2)), cursors = new Map()
@@ -59,7 +62,7 @@ export async function discoverYouTubeCreators({ queries, maxResults, country, al
       for (let i = 0; i < missing.length; i += 50) {
         const chunk = missing.slice(i, i + 50)
         detailCalls++
-        const data = await request('channels', { part: 'snippet,statistics', id: chunk.join(',') })
+        const data = await request('channels', { part: 'snippet,statistics,contentDetails', id: chunk.join(',') })
         chunk.forEach(id => channels.set(id, null))
         for (const channel of data.items || []) channels.set(channel.id, channel)
       }
@@ -73,12 +76,12 @@ export async function discoverYouTubeCreators({ queries, maxResults, country, al
             sourceSnippet: matches.map(m => m.description).join(' | '), matchedContentUrl: first.videoId ? `https://www.youtube.com/watch?v=${first.videoId}` : '', matchedVideoId: first.videoId,
           } : {}) }
         }).filter(Boolean)
-      result = select(normalized).slice(0, maxResults)
-      if (result.length >= maxResults) return { items: result, diagnostics: { searchCalls: pages, detailCalls, requested: maxResults, returned: result.length, partial: false } }
+      result = (reviewChannels ? select(await reviewChannels(select(normalized))) : select(normalized)).slice(0, maxResults)
+      if (result.length >= maxResults || reviewChannels?.exhausted) return { items: result, diagnostics: { searchCalls: pages, detailCalls, requested: maxResults, returned: result.length, partial: result.length < maxResults, ...(reviewChannels ? { recentReview: reviewChannels.diagnostics } : {}), ...(result.length < maxResults ? { reason: 'recent-review-budget-reached' } : {}) } }
     }
     if (!progressed || [...cursors.values()].every(v => v === null)) { exhausted = true; break }
     // First complete all exact-query variants, then paginate only when needed.
     if (round >= maxPages) break
   }
-  return { items: result, diagnostics: { searchCalls: pages, detailCalls, requested: maxResults, returned: result.length, partial: result.length < maxResults, reason: exhausted ? 'no-more-matching-results' : 'search-budget-reached' } }
+  return { items: result, diagnostics: { searchCalls: pages, detailCalls, requested: maxResults, returned: result.length, partial: result.length < maxResults, reason: exhausted ? 'no-more-matching-results' : 'search-budget-reached', ...(reviewChannels ? { recentReview: reviewChannels.diagnostics } : {}) } }
 }

@@ -14483,3 +14483,12 @@
     grid-column: 1;
   }
 }
+
+.creator-rate-details { margin-block: 12px; padding-block: 12px; border-block: 1px solid var(--line); font-size: 13px; line-height: 1.6; overflow-wrap: anywhere; min-width: 0; }
+.creator-rate-details summary { cursor: pointer; font-weight: 700; }
+.creator-rate-details summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; }
+.creator-rate-details p, .creator-rate-details ul { margin-block: 10px; max-width: 72ch; }
+.creator-rate-details dl { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 2fr); gap: 8px 12px; }
+.creator-rate-details dt { font-weight: 600; }
+.creator-rate-details dd { margin: 0; }
+@media (max-width: 480px) { .creator-rate-details dl { grid-template-columns: minmax(0, 1fr); gap: 4px; } .creator-rate-details dd { margin-bottom: 8px; } }

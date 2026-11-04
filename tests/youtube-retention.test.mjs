@@ -53,3 +53,12 @@ test('다중 국가 검색의 영상 근거와 공개 국가 검증도 30일 미
   const creator=result.payload.creators[0]
   assert.equal(creator.sourceTitle,'');assert.equal(creator.sourceSnippet,'');assert.equal(creator.discoveryEvidence,null);assert.equal(creator.countryConfidence,'unverified');assert.equal(creator.country,'');assert.equal(creator.profileUrl,'https://youtube.com/@demo');assert.equal(creator.localizedQuery,'美容液')
 })
+
+test('최근 영상 표본·형식별 조회수·추정 Shorts·관련성 근거도 만료 시 제거한다', () => {
+  const result = sanitizeStaleYouTubeApiData({ creators: [{ platform: 'YouTube', source: 'YouTube Data API', sourceCollectedAtIso: '2026-07-01T00:00:00Z', averageViewsByFormat: { 롱폼: 1000 }, inferredAverageViewsByFormat: { 숏폼: 2000 }, youtubeRecentMetrics: { sampleCount: 12 }, recentRelevance: { evidence: [{ title: 'Old title' }] } }] }, { now: new Date('2026-09-03T00:00:00Z') })
+  const c = result.payload.creators[0]
+  assert.deepEqual(c.averageViewsByFormat, {})
+  assert.deepEqual(c.inferredAverageViewsByFormat, {})
+  assert.equal(c.youtubeRecentMetrics, null)
+  assert.equal(c.recentRelevance, null)
+})

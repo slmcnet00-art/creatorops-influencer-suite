@@ -1,3 +1,4 @@
+import { createYouTubeEvidenceReviewer, classifyYouTubeVideo, isRelevantYouTubeTopicVideo } from './youtubeEvidence.js'
 import { reviewGuideClaims } from '../shared/guideClaimReview.js'
 import { discoverPublicProfiles, createProfileSearchPacer, braveMarketOptions } from './profileMarketDiscovery.js'
 import { campaignGenerationInput, creatorGenerationInput } from '../shared/campaignGenerationInput.js'
@@ -2682,11 +2683,21 @@ app.listen(port, () => {
   console.log(`CreatorOps API listening on ${port}`)
 })
 
+async function requestYouTubeEvidenceData(resource, params, country = '', deadline = null) {
+  const searchParams = new URLSearchParams({ ...params, key: requireEnv('YOUTUBE_DATA_API_KEY') })
+  if (resource === 'search' && country) {
+    searchParams.set('regionCode', country)
+    searchParams.set('relevanceLanguage', getDiscoveryLanguage(country))
+  }
+  if (deadline && Date.now() >= deadline) throw httpError(504, '국가별 검색 시간이 초과되었습니다.')
+  return fetchJson(`https://www.googleapis.com/youtube/v3/${resource}?${searchParams}`, { signal: AbortSignal.timeout(deadline ? Math.max(1, Math.min(12000, deadline - Date.now())) : 12000) })
+}
+
 async function fetchYouTubeChannelSnapshot(lookup) {
   const key = requireEnv('YOUTUBE_DATA_API_KEY')
   const parsed = parseYouTubeLookup(lookup)
   const params = new URLSearchParams({
-    part: 'snippet,statistics',
+    part: 'snippet,statistics,contentDetails',
     key,
   })
   if (parsed.type === 'id') {
@@ -2698,11 +2709,12 @@ async function fetchYouTubeChannelSnapshot(lookup) {
   const payload = await fetchJson(`https://www.googleapis.com/youtube/v3/channels?${params}`)
   const channel = payload.items?.[0]
   if (!channel) throw httpError(404, 'Matching YouTube channel was not found.')
-  return normalizeYouTubeChannel(channel, parsed)
+  const review = createYouTubeEvidenceReviewer({ request: requestYouTubeEvidenceData, filterResults: false, maxChannels: 1 })
+  return (await review([normalizeYouTubeChannel(channel, parsed)]))[0]
 }
 
 async function searchYouTubeCreators(query, maxResults, country = 'KR', options = {}) {
-  const cacheKey = getSearchCacheKey('youtube-creators-v3', { query, maxResults, country, options })
+  const cacheKey = getSearchCacheKey('youtube-creators-v4-recent', { query, maxResults, country, options })
   const cached = readSearchCache(cacheKey)
   if (cached) {
     const copy = [...cached.items]
@@ -2710,27 +2722,22 @@ async function searchYouTubeCreators(query, maxResults, country = 'KR', options 
     return copy
   }
   return coalesceYouTubeSearch(cacheKey, async () => {
-    const key = requireEnv('YOUTUBE_DATA_API_KEY'), { regionCode, allowedCountries } = youtubeSearchScope(country)
+    const { regionCode, allowedCountries } = youtubeSearchScope(country)
     const deadline = options.evidenceQuery ? Date.now() + 25000 : null
+    const request = (resource, params) => requestYouTubeEvidenceData(resource, params, regionCode, deadline)
+    const matchesVideo = video => assessDiscoveryEvidence({ sourceTitle: video.snippet?.title, sourceSnippet: video.snippet?.description }, options.evidenceQuery || query, options.sourceQuery).matches
+    const reviewChannels = createYouTubeEvidenceReviewer({ request, query: options.evidenceQuery || query, matchesVideo, maxChannels: Math.min(60, Math.max(12, maxResults * 3)) })
     try {
       const result = await discoverYouTubeCreators({
         queries: focusedYouTubeQueries(String(query).replace(/\s+/g, ' ').trim(), expandProductSearchAliases(query), regionCode),
         maxResults, country: regionCode, allowedCountries, ...(options.evidenceQuery ? { maxPages: 8 } : {}),
-        request(resource, params) {
-          const searchParams = new URLSearchParams({ ...params, key })
-          if (resource === 'search' && regionCode) {
-            searchParams.set('regionCode', regionCode)
-            searchParams.set('relevanceLanguage', getDiscoveryLanguage(regionCode))
-          }
-          if (deadline && Date.now() >= deadline) throw httpError(504, '국가별 검색 시간이 초과되었습니다.')
-          return fetchJson(`https://www.googleapis.com/youtube/v3/${resource}?${searchParams}`, deadline ? { signal: AbortSignal.timeout(Math.max(1, Math.min(12000, deadline - Date.now()))) } : undefined)
-        },
+        request, reviewChannels,
         normalize: channel => normalizeYouTubeChannel(channel, {}, country),
         ...(options.evidenceQuery ? { evidenceSelector: video => assessDiscoveryEvidence({ sourceTitle: video.title, sourceSnippet: video.description }, options.evidenceQuery, options.sourceQuery).matches } : {}),
         select: items => options.evidenceQuery
-          ? items.filter(item => (!options.strictCountry || (item.countryConfidence === 'official' && allowedCountries.includes(item.country))) && assessDiscoveryEvidence(item, options.evidenceQuery, options.sourceQuery).matches).filter(passesMinimumDiscoveryScale)
+          ? items.filter(item => (!options.strictCountry || (item.countryConfidence === 'official' && allowedCountries.includes(item.country))) && assessDiscoveryEvidence(item, options.evidenceQuery, options.sourceQuery).matches).filter(item => !item.youtubeRecentMetrics || passesMinimumDiscoveryScale(item))
             .sort((a, b) => Number(Boolean(b.matchedVideoId)) - Number(Boolean(a.matchedVideoId)) || assessDiscoveryEvidence(b, query).matchedTerms.length - assessDiscoveryEvidence(a, query).matchedTerms.length)
-          : filterAndRankDiscoveryIntent(filterProductSpecificEvidence(items, query), query).filter(passesMinimumDiscoveryScale),
+          : filterAndRankDiscoveryIntent(filterProductSpecificEvidence(items, query), query).filter(item => !item.youtubeRecentMetrics || passesMinimumDiscoveryScale(item)),
       })
       const creators = result.items
       creators.searchMeta = { ...result.diagnostics, cacheHit: false }
@@ -2846,7 +2853,7 @@ async function searchYouTubeVideoReferences(params) {
 }
 
 async function searchYouTubeVideoReferencesRun({ query, country, sort, maxResults }) {
-  const cacheKey = getSearchCacheKey('youtube-references', { query, country, sort, maxResults })
+  const cacheKey = getSearchCacheKey('youtube-references-v2-topic', { query, country, sort, maxResults })
   const cached = readSearchCache(cacheKey)
   if (cached) {
     const validatedCache = hasProductSpecificEvidenceTerms(query)
@@ -2897,7 +2904,7 @@ async function searchYouTubeVideoReferencesRun({ query, country, sort, maxResult
     const videos = []
     for (const idChunk of chunkArray(uniqueVideoIds, 50)) {
       const videoParams = new URLSearchParams({
-        part: 'snippet,statistics',
+        part: 'snippet,statistics,contentDetails,liveStreamingDetails',
         id: idChunk.join(','),
         key,
       })
@@ -2907,7 +2914,7 @@ async function searchYouTubeVideoReferencesRun({ query, country, sort, maxResult
     const channelIds = [...new Set(videos.map((item) => item.snippet?.channelId).filter(Boolean))]
     const channelMap = await fetchYouTubeChannelStatsMap(channelIds)
 
-    const normalizedReferences = videos.map((item) => normalizeYouTubeReference(item, channelMap, regionCode || country || 'GLOBAL'))
+    const normalizedReferences = videos.filter(video => isRelevantYouTubeTopicVideo(video, query)).map((item) => normalizeYouTubeReference(item, channelMap, regionCode || country || 'GLOBAL'))
     const evidenceReferences = hasProductSpecificEvidenceTerms(query)
       ? filterProductSpecificEvidence(normalizedReferences, query)
       : normalizedReferences
@@ -2985,6 +2992,7 @@ function normalizeYouTubeReference(item, channelMap, country) {
     id: `ytref:${item.id}`,
     mediaType: '영상',
     platform: 'YouTube',
+    videoFormat: classifyYouTubeVideo(item),
     country: detectedCountry,
     searchCountry: country || '',
     countryConfidence: channel.country ? 'official' : detectedCountry ? 'detected' : 'unverified',
@@ -5135,7 +5143,7 @@ function normalizeYouTubeChannel(channel, parsedLookup = {}, fallbackCountry = '
   const subscribers = Number(statistics.subscriberCount || 0)
   const viewCount = Number(statistics.viewCount || 0)
   const videoCount = Number(statistics.videoCount || 0)
-  const averageViews = videoCount > 0 ? Math.round(viewCount / videoCount) : 0
+  const averageViews = 0
   const handle = snippet.customUrl?.startsWith('@')
     ? snippet.customUrl
     : parsedLookup.type === 'handle'
@@ -5145,6 +5153,7 @@ function normalizeYouTubeChannel(channel, parsedLookup = {}, fallbackCountry = '
   return {
     id: channel.id,
     channelId: channel.id,
+    uploadsPlaylistId: channel.contentDetails?.relatedPlaylists?.uploads || '',
     platform: 'YouTube',
     name: snippet.title || 'YouTube Creator',
     handle,
