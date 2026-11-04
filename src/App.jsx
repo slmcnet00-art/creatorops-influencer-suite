@@ -4,7 +4,7 @@ import CreatorRateDetails from './CreatorRateDetails.jsx'
 import { reviewCampaignGuides } from '../shared/guideClaimReview.js'
 import { planCampaignBudget } from './campaignBudget.js'
 import CampaignBudgetPanel from './CampaignBudgetPanel.jsx'
-import { nextDiscoveryId } from './discoveryIdentity.js'
+import { nextDiscoveryId, discoverySelectionKey, matchesDiscoverySelection } from './discoveryIdentity.js'
 import { campaignGenerationInput } from '../shared/campaignGenerationInput.js'
 import { hasTrackingDestination, trackingLogTimestamp, invalidatePlaceholderTrackingLogs } from './trackingDestination.js'
 import { resolveCampaignBudget, buildNewCampaignAllocation } from './campaignCreationDefaults.js'
@@ -9231,9 +9231,9 @@ function AppContent() {
   }, [filteredCreators, safeDiscoveryPage])
 
   const selectedCreator =
-    filteredCreators.find((creator) => creator.id === selectedCreatorId) ??
+    filteredCreators.find((creator) => matchesDiscoverySelection(creator, selectedCreatorId)) ??
     filteredCreators[0] ??
-    (showExampleCreators ? creators.find((creator) => creator.id === selectedCreatorId) : undefined) ??
+    (showExampleCreators ? creators.find((creator) => matchesDiscoverySelection(creator, selectedCreatorId)) : undefined) ??
     creators.find((creator) => !isExampleCreator(creator)) ??
     (showExampleCreators ? creators[0] : undefined)
   const selectedDiscoveryCreators = useMemo(
@@ -13087,7 +13087,7 @@ function AppContent() {
         return
       }
 
-      let selectedNextId = discoveredCreators[0].id
+      const selectedNextKey = discoverySelectionKey(discoveredCreators[0])
 
       updateWorkspace((current) => {
         const keyFor = (creator) => String(creator.profileUrl || `${creator.platform}:${creator.handle}`).toLowerCase()
@@ -13095,7 +13095,6 @@ function AppContent() {
         const mergedCreators = discoveredCreators.map((creator) => {
           const existing = existingByKey.get(keyFor(creator))
           const nextCreator = existing ? { ...existing, ...creator, actualPrice: getCreatorRateSummary(existing).actualPrice || null, id: existing.id, isDemo: false, isSynthetic: false } : creator
-          if (creator.id === selectedNextId) selectedNextId = nextCreator.id
           return nextCreator
         })
         const mergedKeys = new Set(mergedCreators.map(keyFor))
@@ -13130,7 +13129,7 @@ function AppContent() {
         )
       })
       setShowExampleCreators(false)
-      setSelectedCreatorId(selectedNextId)
+      setSelectedCreatorId(selectedNextKey)
       setDiscoveryPage(1)
       showToast(
         discoveryWarnings.length
