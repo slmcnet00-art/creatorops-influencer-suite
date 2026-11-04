@@ -1,5 +1,5 @@
 import { discoverPublicProfiles, createProfileSearchPacer, braveMarketOptions } from './profileMarketDiscovery.js'
-import { campaignGenerationInput } from '../shared/campaignGenerationInput.js'
+import { campaignGenerationInput, creatorGenerationInput } from '../shared/campaignGenerationInput.js'
 import { searchAcrossMarkets, localizationPrompt, parseLocalizedQueries, assessDiscoveryEvidence } from './multiMarketDiscovery.js'
 import { normalizeDiscoveryMarkets, allocateDiscoveryResults } from '../shared/discoveryMarkets.js'
 import { createYouTubeUsage } from './youtubeUsage.js'
@@ -4978,8 +4978,8 @@ function buildCampaignStrategyPrompt({
     `Brand: ${JSON.stringify(sanitizeAiPromptValue(brand) || {})}`,
     `Campaign: ${JSON.stringify(sanitizeAiPromptValue(campaignGenerationInput(campaign)) || {})}`,
     `Brief: ${JSON.stringify(sanitizeAiPromptValue(brief) || {})}`,
-    `Creators: ${JSON.stringify(sanitizeAiPromptValue(Array.isArray(creators) ? creators.slice(0, 30) : []) || [])}`,
-    `Recommendations: ${JSON.stringify(sanitizeAiPromptValue(Array.isArray(recommendations) ? recommendations.slice(0, 30) : []) || [])}`,
+    `Creators (public identity and observed subscriber count only; public channel country is not audience location): ${JSON.stringify(sanitizeAiPromptValue(Array.isArray(creators) ? creators.slice(0, 30).map(creatorGenerationInput) : []) || [])}`,
+    `Recommendations are not verified creator facts. Count provided for context only: ${Array.isArray(recommendations) ? recommendations.length : 0}`,
     `Deterministic draft to improve: ${sanitizeAiPromptValue(draftStrategy) || ''}`,
   ].join('\\n')
 }

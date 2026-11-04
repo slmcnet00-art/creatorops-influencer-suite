@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { operationalCandidateView } from '../src/operationalCandidates.js'
-import { campaignGenerationInput } from '../shared/campaignGenerationInput.js'
+import { campaignGenerationInput, creatorGenerationInput } from '../shared/campaignGenerationInput.js'
 import { resolveGuideChannel, getCampaignGuideReferences, guideEvidenceAppendix, buildJapaneseIndividualGuide } from '../src/campaignGuideEvidence.js'
 
 test('예시 후보는 운영 목록·캠페인·그룹·AI 입력에서 제외하며 원본은 보존한다', () => {
@@ -60,4 +60,8 @@ test('과거 생성물이 다음 전략의 사실 근거로 재입력되지 않�
   assert.deepEqual(campaignGenerationInput(campaign), { id: 'c', budget: 0 })
   assert.deepEqual(campaignGenerationInput(campaign, { includeStrategy: true }), { id: 'c', budget: 0, influencerStrategy: 'approved strategy' })
   assert.equal(campaign.generatedContentGuide, 'old guide')
+})
+
+test('계산한 참여율·위험도·가격이 전략의 검증된 사실로 전달되지 않는다', () => {
+  assert.deepEqual(creatorGenerationInput({ id: 2, name: '요리', followers: 50000, engagement: 12, brandSafety: 94, fakeRisk: 6, price: 15000000, averageViews: 900000 }), { id: 2, name: '요리', followers: 50000 })
 })
