@@ -1,4 +1,5 @@
 import { nextDiscoveryId } from './discoveryIdentity.js'
+import { campaignGenerationInput } from '../shared/campaignGenerationInput.js'
 import { resolveCampaignBudget, buildNewCampaignAllocation } from './campaignCreationDefaults.js'
 import CampaignAssignmentEditor from './CampaignAssignmentEditor.jsx'
 import { operationalCandidateView } from './operationalCandidates.js'
@@ -14668,7 +14669,7 @@ function AppContent() {
     if (!campaign) return
     const assignedStrategyCreators = getCreatorsByIds(creators, campaign.creatorIds ?? [])
     const assignedStrategyIds = new Set(assignedStrategyCreators.map((creator) => String(creator.id)))
-    const baseCampaignBrief = buildCampaignBriefFromCampaign(campaign)
+    const baseCampaignBrief = buildCampaignBriefFromCampaign(campaignGenerationInput(campaign))
     const referenceMaterials = getCampaignGuideReferences(campaign, contentReferences, savedProductionReferenceIds, creators).map((reference) => ({
       title: reference.title,
       sourceType: '캠페인 참고 콘텐츠',
@@ -14807,7 +14808,7 @@ function AppContent() {
       showToast('캠페인 전략을 먼저 생성·검토한 후 가이드를 생성하세요.')
       return
     }
-    const baseCampaignBrief = buildCampaignBriefFromCampaign(campaign)
+    const baseCampaignBrief = buildCampaignBriefFromCampaign(campaignGenerationInput(campaign, { includeStrategy: true }))
     const campaignWinningTemplates = getCampaignContentTemplates(contentTemplates, activeBrand.id, campaign.reuseTemplateIds)
     const campaignWinningTemplateMaterials = buildReusableTemplateLearningMaterials(campaignWinningTemplates, activeBrand.id)
     const campaignBrief = {

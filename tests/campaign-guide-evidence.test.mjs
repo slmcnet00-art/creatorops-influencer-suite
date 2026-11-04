@@ -60,6 +60,9 @@ test('과거 생성물이 다음 전략의 사실 근거로 재입력되지 않�
   assert.deepEqual(campaignGenerationInput(campaign), { id: 'c', budget: 0 })
   assert.deepEqual(campaignGenerationInput(campaign, { includeStrategy: true }), { id: 'c', budget: 0, influencerStrategy: 'approved strategy' })
   assert.equal(campaign.generatedContentGuide, 'old guide')
+  const app = readFileSync(new URL('../src/App.jsx', import.meta.url), 'utf8')
+  assert.match(app, /baseCampaignBrief = buildCampaignBriefFromCampaign\(campaignGenerationInput\(campaign\)\)/)
+  assert.match(app, /baseCampaignBrief = buildCampaignBriefFromCampaign\(campaignGenerationInput\(campaign, \{ includeStrategy: true \}\)\)/)
 })
 
 test('계산한 참여율·위험도·가격이 전략의 검증된 사실로 전달되지 않는다', () => {
