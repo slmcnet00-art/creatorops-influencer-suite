@@ -13,6 +13,8 @@
 
 ## 실제 연결 시작 조건
 
+관리자 화면 `/admin?section=tiktok`에서 서버 키 등록과 인증 저장 상태를 확인한다. 포털에 해당 인증 완료 주소를 저장한 뒤 확인란을 선택하고 **광고주 연결 준비 → TikTok에서 승인 화면 열기** 순서로 진행한다. 이 화면은 승인을 자동 제출하지 않는다. 계정 소유자 연결은 승인된 계정 scope 설정이 준비되었을 때만 활성화된다.
+
 - 서버의 `TIKTOK_BUSINESS_APP_ID`, `TIKTOK_BUSINESS_APP_SECRET`에 **TikTok API for Business의 해당 앱** 값을 등록해야 한다. Research/Commercial Content API 앱의 키를 대신 사용하지 않는다.
 - 계정 소유자 인증에는 승인된 실제 scope를 `TIKTOK_BUSINESS_ACCOUNT_SCOPES`에 설정해야 한다. 범위를 임의로 요청하지 않는다.
 - 관리자 인증을 포함해 `GET /oauth/tiktok/advertiser/auth-url` 또는 `GET /oauth/tiktok/account/auth-url`을 호출한다. 반환한 URL로 광고주/계정 소유자가 직접 승인한다. 포털 예시 URL의 `your_custom_params`를 실제 연결에 사용하지 않는다.

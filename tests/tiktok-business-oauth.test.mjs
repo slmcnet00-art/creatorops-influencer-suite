@@ -65,6 +65,9 @@ test('동일 state의 동시 콜백도 한 번만 교환하며 미설정 계정 
   assert.equal(requests.length, 1)
   env.TIKTOK_BUSINESS_ACCOUNT_SCOPES = ''
   await assert.rejects(service.begin('account', 'owner'), { status: 503 })
+  const stateInfo = await service.status()
+  assert.equal(stateInfo.configured, true)
+  assert.equal(stateInfo.accountAuthorizationReady, false)
 })
 
 test('등록 콜백은 HTTPS 주소를 제공하고 일반 방문·오류 페이지에 인증 코드를 반사하지 않는다', async t => {

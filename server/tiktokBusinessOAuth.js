@@ -105,7 +105,8 @@ export function createTikTokBusinessOAuth({ getClient, workspaceId, env = proces
   }
   async function status() {
     const value = await storage.read()
-    return { configured: Boolean(env.TIKTOK_BUSINESS_APP_ID && env.TIKTOK_BUSINESS_APP_SECRET), registration,
+    const configured = Boolean(String(env.TIKTOK_BUSINESS_APP_ID || '').trim() && String(env.TIKTOK_BUSINESS_APP_SECRET || '').trim())
+    return { configured, accountAuthorizationReady: configured && Boolean(String(env.TIKTOK_BUSINESS_ACCOUNT_SCOPES || '').trim()), registration,
       connections: Object.entries(value.connections || {}).map(([id, item]) => ({ id, kind: item.kind, advertiserIds: item.advertiserIds, connectedAt: item.connectedAt, expiresAt: item.expiresAt })) }
   }
   function register(app, requireAdmin) {
