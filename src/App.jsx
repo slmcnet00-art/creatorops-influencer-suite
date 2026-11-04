@@ -1,3 +1,4 @@
+import YouTubeEvidenceDetails from './YouTubeEvidenceDetails.jsx'
 import { calculateEstimatedCreatorRate, getCreatorRateSummary, toCreatorRateNumber, withCreatorRate } from '../shared/creatorRates.js'
 import CreatorRateDetails from './CreatorRateDetails.jsx'
 import { reviewCampaignGuides } from '../shared/guideClaimReview.js'
@@ -5737,7 +5738,7 @@ function buildRealDiscoveryCreator(result, brief, fallbackCategory) {
       metric: '평균 조회',
       source: verifiedMetrics || averageViews ? result.source : '수집 필요',
       method: verifiedMetrics
-        ? '공식 채널 통계 기반 계산'
+        ? (result.averageViewsSource || '최근 영상 기준 재수집 필요')
         : averageViews
           ? '검색 스니펫/공개 콘텐츠에서 추출한 공개 수치'
           : '최근 콘텐츠 공개 지표로 후속 계산 필요',
@@ -5777,6 +5778,11 @@ function buildRealDiscoveryCreator(result, brief, fallbackCategory) {
     country: detectedCountry,
     followers,
     averageViews,
+    averageViewsByFormat: result.averageViewsByFormat || {},
+    inferredAverageViewsByFormat: result.inferredAverageViewsByFormat || {},
+    youtubeRecentMetrics: result.youtubeRecentMetrics || null,
+    recentRelevance: result.recentRelevance || null,
+    averageViewsSource: result.averageViewsSource || '',
     engagement: 0,
     engagementBasis: '',
     engagementVerified: false,
@@ -5795,7 +5801,7 @@ function buildRealDiscoveryCreator(result, brief, fallbackCategory) {
     topics: uniqueList([brief.product, fallbackCategory, ...topicCandidates, result.snippet || '공개 검색']).slice(0, 7),
     sourceUrl: result.profileUrl,
     sourceCollectedAt: collectedAt,
-    sourceCollectedAtIso: new Date().toISOString(),
+    sourceCollectedAtIso: result.youtubeRecentMetrics?.collectedAt || new Date().toISOString(),
     sourceNote: verifiedMetrics
       ? `${result.source}로 실제 채널과 공개 통계를 가져왔습니다.`
       : observedMetrics
@@ -12057,6 +12063,13 @@ function AppContent() {
         country: snapshot.country,
         followers: snapshot.followers,
         averageViews: snapshot.averageViews,
+        averageViewsByFormat: snapshot.averageViewsByFormat || {},
+        inferredAverageViewsByFormat: snapshot.inferredAverageViewsByFormat || {},
+        youtubeRecentMetrics: snapshot.youtubeRecentMetrics || null,
+        recentRelevance: snapshot.recentRelevance || null,
+        averageViewsSource: snapshot.averageViewsSource || '',
+        countryConfidence: snapshot.countryConfidence,
+        verifiedMetrics: true,
         engagement: existingCreator?.engagement ?? 4.2,
         growth: existingCreator?.growth ?? 0,
         fit: existingCreator?.fit ?? 82,
@@ -18795,6 +18808,7 @@ function AppContent() {
                       <Stat label="매칭 점수" value={`${selectedRecommendationDetail.score ?? selectedRecommendationCreator.fit ?? 0}점`} />
                       <Stat label="데이터 신뢰도" value={`${selectedRecommendationQuality.score}%`} />
                     </div>
+                    <YouTubeEvidenceDetails creator={selectedRecommendationCreator} />
                     <CreatorRateDetails creator={selectedRecommendationCreator} campaign={selectedCampaign} />
             <div className="creator-rate-toolbar">
                       <span>
@@ -19265,7 +19279,8 @@ function AppContent() {
                 <Stat label="데이터 신뢰도" value={`${selectedCreatorQuality.score}%`} />
                 <Stat label="검증 상태" value={selectedCreatorQuality.level} />
               </div>
-              <CreatorRateDetails creator={selectedCreator} campaign={selectedCampaign} />
+              <YouTubeEvidenceDetails creator={selectedCreator} />
+                    <CreatorRateDetails creator={selectedCreator} campaign={selectedCampaign} />
             <div className="creator-rate-toolbar">
                 <span>
                   {audienceLabel(selectedCreator.platform)}·평균 조회수·팔로워·참여율·국가·콘텐츠 형식 기준 예상 {formatDualCurrency(getCreatorRateSummary(selectedCreator, selectedCampaign).estimatedPrice, selectedCampaign)}

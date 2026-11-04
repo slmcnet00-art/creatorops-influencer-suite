@@ -54,8 +54,11 @@ export function calculateEstimatedCreatorRate(creator = {}, context = creator.ra
   const breakdown = formats.map(format => {
     const multiplier = policy?.formats[format]
     const formatViews = toCreatorRateNumber(creator.averageViewsByFormat?.[format])
-    const views = formatViews || averageViews
-    if (!formatViews && views) warnings.push(`${format}: 형식별 조회수 미확인, 전체 평균 조회수를 대용한 초안`)
+    // Recently reviewed YouTube data must not mix unknown or inferred Shorts into confirmed format prices.
+    const requiresFormatEvidence = platform === 'youtube' && Boolean(creator.youtubeRecentMetrics)
+    const views = formatViews || (requiresFormatEvidence ? 0 : averageViews)
+    if (!formatViews && requiresFormatEvidence) warnings.push(`${format}: 확인된 최근 형식별 표본 부족, 원본 확인 또는 협의 단가 입력 필요`)
+    else if (!formatViews && views) warnings.push(`${format}: 형식별 조회수 미확인, 전체 평균 조회수를 대용한 초안`)
     if (!views || !multiplier) warnings.push(`${format}: ${!views ? '평균 조회수 수집 필요' : '지원하지 않는 형식·플랫폼으로 별도 견적 필요'}`)
     const base = policy && multiplier && views ? Math.max(policy.floor * multiplier * countryMultiplier, views / 1000 * policy.cpm * multiplier * followerMultiplier * engagementMultiplier * countryMultiplier) : 0
     return { format, averageViews: views, viewsSource: formatViews ? '형식별 평균' : '전체 평균 대용', formatMultiplier: multiplier || 0, estimatedPrice: round(base) }

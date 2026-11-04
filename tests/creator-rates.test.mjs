@@ -76,3 +76,10 @@ test('같은 조회수의 세 플랫폼·미지원 형식·누락된 부분 패�
   assert.equal(calculateEstimatedCreatorRate({ ...creator, engagement: -1 }).factors.engagementMultiplier, 1)
   assert.equal(calculateEstimatedCreatorRate({ ...creator, engagement: undefined }).factors.engagementMultiplier, 1)
 })
+
+test('최근 YouTube 표본이 있으면 미확인 Shorts를 전체 평균으로 대신 가격 매기지 않는다', () => {
+  const c = { ...creator, youtubeRecentMetrics: { sampleCount: 12 }, averageViewsByFormat: { 롱폼: 20000 }, inferredAverageViewsByFormat: { 숏폼: 9999999 } }
+  assert.equal(calculateEstimatedCreatorRate(c, { contentFormats: ['숏폼'] }).estimatedPrice, 0)
+  assert.equal(calculateEstimatedCreatorRate(c, { contentFormats: ['롱폼'] }).breakdown[0].averageViews, 20000)
+  assert.equal(getCreatorRateSummary({ ...c, actualPrice: 700000 }, { contentFormats: ['숏폼', '롱폼'] }).effectivePrice, 700000)
+})
