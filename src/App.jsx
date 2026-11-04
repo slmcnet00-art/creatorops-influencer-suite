@@ -1,5 +1,6 @@
 import { nextDiscoveryId } from './discoveryIdentity.js'
 import { campaignGenerationInput } from '../shared/campaignGenerationInput.js'
+import { hasTrackingDestination, trackingLogTimestamp, invalidatePlaceholderTrackingLogs } from './trackingDestination.js'
 import { resolveCampaignBudget, buildNewCampaignAllocation } from './campaignCreationDefaults.js'
 import CampaignAssignmentEditor from './CampaignAssignmentEditor.jsx'
 import { operationalCandidateView } from './operationalCandidates.js'
@@ -3303,7 +3304,7 @@ function getLatestCreatorUtmLog(logs = [], campaignId = '', creatorId = '') {
         String(item.campaignId || item.campaign_id || '') === String(campaignId || '') &&
         String(item.creatorId || item.creator_id || '') === String(creatorId || ''),
     )
-    .sort((left, right) => new Date(right.updatedAt || right.createdAt || 0) - new Date(left.updatedAt || left.createdAt || 0))[0]
+    .sort((left, right) => trackingLogTimestamp(right) - trackingLogTimestamp(left))[0]
 }
 
 function trackingAssetFromLog(log = {}, fallback = {}) {
@@ -14949,7 +14950,8 @@ function AppContent() {
       const trackingAsset = storedTrackingAsset?.shortUrl
         ? { ...generatedTrackingAsset, ...storedTrackingAsset, params: storedTrackingAsset.params || generatedTrackingAsset.params }
         : trackingAssetFromLog(latestTrackingLog, generatedTrackingAsset)
-      nextUtmTrackingLogs.push(
+      const hasDestination = hasTrackingDestination(trackingAsset)
+      if (hasDestination) nextUtmTrackingLogs.push(
         buildUtmTrackingLog({
           brand: activeBrand,
           campaign,
@@ -14965,8 +14967,8 @@ function AppContent() {
         platform: creator.platform,
         handle: creator.handle,
         generatedAt,
-        trackingLink: trackingAsset.shortUrl,
-        trackingLinks: {
+        trackingLink: hasDestination ? trackingAsset.shortUrl : '',
+        trackingLinks: hasDestination ? {
           ...trackingAsset,
           shortUrl: trackingAsset.shortUrl,
           originalUrl: trackingAsset.originalUrl,
@@ -14974,7 +14976,7 @@ function AppContent() {
           rawId: trackingAsset.rawId,
           metricIds: trackingAsset.metricIds,
           generatedAt,
-        },
+        } : null,
         guide: buildCreatorSpecificContentGuide({
           brand: activeBrand,
           brief: campaignBrief,
@@ -15015,7 +15017,7 @@ function AppContent() {
                 }
               : item,
           ),
-          utmTrackingLogs: mergeUtmTrackingLogs(current.utmTrackingLogs, nextUtmTrackingLogs),
+          utmTrackingLogs: mergeUtmTrackingLogs(invalidatePlaceholderTrackingLogs(current.utmTrackingLogs, campaign.id, new Date().toISOString()), nextUtmTrackingLogs),
         },
         'campaign',
         `${campaign.name} 개별 인플루언서 가이드 ${guideCreators.length}건 생성`,
@@ -21340,11 +21342,11 @@ function AppContent() {
                         })
                         const storedAsset = activeCampaignForModal.individualContentGuides?.[creator.id]?.trackingLinks
                         const latestLog = getLatestCreatorUtmLog(utmTrackingLogs, activeCampaignForModal.id, creator.id)
-                        const hasIssuedLink = Boolean(storedAsset?.shortUrl || latestLog?.shortUrl || latestLog?.short_url)
                         const trackingAsset = storedAsset?.shortUrl
                           ? { ...fallbackAsset, ...storedAsset, params: storedAsset.params || fallbackAsset.params }
                           : trackingAssetFromLog(latestLog, fallbackAsset)
-                        const linkStatus = latestLog?.status || storedAsset?.status || (hasIssuedLink ? 'active' : 'not_issued')
+                        const hasIssuedLink = hasTrackingDestination(trackingAsset) && Boolean(storedAsset?.shortUrl || latestLog?.shortUrl || latestLog?.short_url)
+                        const linkStatus = hasIssuedLink ? latestLog?.status || storedAsset?.status || 'active' : 'not_issued'
                         const isEditing = utmEditorDraft?.campaignId === activeCampaignForModal.id && utmEditorDraft?.creatorId === creator.id
                         return (
                           <article className="campaign-utm-row" key={`utm-${creator.id}`}>
