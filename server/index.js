@@ -5,6 +5,7 @@ import { buildAdminKnowledgeContext, assertKnowledgeCitations } from './adminKno
 import { creativeExecutionInstructions } from './creativeExecution.js'
 import { generateReviewedCreative, CREATIVE_REVIEW_INSTRUCTIONS } from './creativeReview.js'
 import { assessCandidateBatches } from './candidateAssessmentBatches.js'
+import { createTikTokBusinessOAuth } from './tiktokBusinessOAuth.js'
 import { discoverPublicProfiles, createProfileSearchPacer, braveMarketOptions } from './profileMarketDiscovery.js'
 import { campaignGenerationInput, creatorGenerationInput, campaignBrandInput, generationSourceInput } from '../shared/campaignGenerationInput.js'
 import { campaignFactsPrompt, CAMPAIGN_FACT_INSTRUCTIONS } from './campaignGenerationQuality.js'
@@ -145,6 +146,7 @@ const osWebhooks = createOsWebhooks({ getClient: getSupabaseAdminClient, workspa
 const companyOs = createCompanyOs({ getClient: getSupabaseAdminClient, workspaceId: WORKSPACE_ID,
   requireAdmin: requireAdminWorkspaceAccess, publish: osWebhooks.publish, audit: safeWriteAuditLog })
 companyOs.register(app)
+createTikTokBusinessOAuth({ getClient: getSupabaseAdminClient, workspaceId: WORKSPACE_ID, audit: safeWriteAuditLog }).register(app, requireAdminWorkspaceAccess)
 osWebhooks.register(app, companyOs.access)
 osWebhooks.start()
 const youtubeUsage = createYouTubeUsage({ getClient: getSupabaseAdminClient, workspaceId: WORKSPACE_ID })
