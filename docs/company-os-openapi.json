@@ -965,7 +965,8 @@
                         "TW",
                         "FR",
                         "DE",
-                        "ES"
+                        "ES",
+                        "CA"
                       ]
                     },
                     "description": "다중 검색 모드. country보다 우선. SEA/EU/ALL 대신 개별 국가 선택."
@@ -1007,7 +1008,7 @@
     "/discovery/google-profiles/search": {
       "post": {
         "summary": "Instagram/TikTok 공개 프로필 발굴",
-        "description": "all은 Instagram/TikTok 검색. 엔드포인트 이름과 실제 검색 공급자는 다를 수 있음. 팔로워/연락처/성과 데이터 확보를 보장하지 않음.",
+        "description": "countries를 보내면 국가별 언어로 번역해 Instagram/TikTok 공개 검색. 기존 country 단일 경로 유지. 계정/시청자 국가 확정 및 공식 Meta/TikTok 인사이트 API가 아님. 국가 미확인은 기본 포함하고 공개 텍스트 추정 근거 필터는 선택 적용. 결과 부족/실패/캐시 상태를 명시하며 실제 팔로워·최근 성과·섭외 적합성은 후속 검증 필요.",
         "responses": {
           "200": {
             "description": "성공 (예시는 설명용이며 실조회 결과가 아님)",
@@ -1022,6 +1023,11 @@
                         "type": "object",
                         "additionalProperties": true
                       }
+                    },
+                    "search": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "description": "countryPolicy=public-profile, originalQuery, markets(country/language/query/status/requested/returned/countryInferred/countryUnverified/search). search에 공급자 호출 수, 플랫폼별 성공·실패·부분 결과, cacheHit. 반환 후보 discoveryEvidence.countryVerified는 항상 false이고 countryInferred는 공개 텍스트 추정."
                     }
                   },
                   "required": [
@@ -1086,7 +1092,40 @@
                     "minimum": 1,
                     "maximum": 1000,
                     "default": 24,
-                    "description": "요청 상한이며 실제 반환 개수 보장 아님. 작은 수부터 사용 권장."
+                    "description": "모든 국가/플랫폼 합산 요청 상한. 국가별 균등 배분, all은 Instagram/TikTok으로 다시 배분. all은 국가당 최소2명 요청. 실제 반환 수 보장 없음."
+                  },
+                  "countries": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 6,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "enum": [
+                        "KR",
+                        "US",
+                        "JP",
+                        "CN",
+                        "GB",
+                        "VN",
+                        "TH",
+                        "ID",
+                        "PH",
+                        "SG",
+                        "MY",
+                        "TW",
+                        "FR",
+                        "DE",
+                        "ES",
+                        "CA"
+                      ]
+                    },
+                    "description": "국가별 자동 번역 모드. country보다 우선. 최대6개."
+                  },
+                  "strictCountry": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "공개 텍스트에서 선택 국가로 추정되는 근거가 있는 후보만. 공식 국가 검증이 아니며 국가 미확인은 기본 포함. 불일치로 추정되는 후보는 항상 제외."
                   }
                 },
                 "required": [
@@ -1095,10 +1134,15 @@
                 "additionalProperties": true
               },
               "example": {
-                "query": "뷰티 클렌징",
+                "query": "뷰티",
                 "platform": "Instagram",
-                "country": "JP",
-                "maxResults": 24
+                "countries": [
+                  "KR",
+                  "JP",
+                  "US"
+                ],
+                "maxResults": 9,
+                "strictCountry": false
               }
             }
           }

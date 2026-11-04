@@ -1,5 +1,6 @@
 export const DISCOVERY_MARKETS = {
   KR: { label: '한국', language: 'ko', languageName: 'Korean', review: '리뷰' },
+  CA: { label: '캐나다', language: 'en', languageName: 'English', review: 'review' },
   US: { label: '미국', language: 'en', languageName: 'English', review: 'review' },
   JP: { label: '일본', language: 'ja', languageName: 'Japanese', review: 'レビュー' },
   CN: { label: '중국', language: 'zh', languageName: 'Simplified Chinese', review: '测评' },

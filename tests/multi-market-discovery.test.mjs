@@ -99,3 +99,15 @@ test('번역이 반려견·민감성·브랜드를 누락하면 원문의 조건
   const serum=parseLocalizedQueries('{"queries":[{"country":"JP","query":"美容液"}]}',['JP'],'민감성 세럼')
   assert.match(serum.JP,/敏感肌/)
 })
+
+test('일반 뷰티 검색에 제품 용어집이 불필요한 클렌징밤 조건을 추가하지 않는다',()=>{
+  const prompt=localizationPrompt('뷰티',['US','JP'])
+  assert.equal(prompt.includes('cleansing balm'),false)
+  assert.throws(()=>parseLocalizedQueries('{"queries":[{"country":"US","query":"beauty cleansing balm"}]}',['US'],'뷰티'),/원문에 없는/)
+  assert.equal(parseLocalizedQueries('{"queries":[{"country":"US","query":"beauty"}]}',['US'],'뷰티').US,'beauty')
+})
+
+test('캐나다는 기본 영어로 국가별 검색에 포함할 수 있다',()=>{
+  assert.deepEqual(normalizeDiscoveryMarkets(['KR','CA','US']),['KR','CA','US'])
+  assert.equal(parseLocalizedQueries('{"queries":[{"country":"CA","query":"beauty"}]}',['CA'],'뷰티').CA,'beauty')
+})

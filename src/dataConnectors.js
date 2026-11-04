@@ -63,7 +63,7 @@ async function callCreatorOpsApi(path, body, { envelope = false } = {}) {
   if (!CREATOROPS_API_BASE_URL) return null
 
   const controller = new AbortController()
-  const timeoutId = window.setTimeout(() => controller.abort(), path === '/discovery/youtube/search' && body?.countries ? 120000 : CREATOROPS_API_TIMEOUT_MS)
+  const timeoutId = window.setTimeout(() => controller.abort(), ['/discovery/youtube/search','/discovery/google-profiles/search'].includes(path) && body?.countries ? 180000 : CREATOROPS_API_TIMEOUT_MS)
   let response
   let payload
 
@@ -570,7 +570,7 @@ export async function searchYouTubeCreatorDiscovery({ apiKey, query, country = '
   })
 }
 
-export async function searchGoogleProfileDiscovery({ apiKey, cx, query, platform, country = 'KR', maxResults = 8 }) {
+export async function searchGoogleProfileDiscovery({ apiKey, cx, query, platform, country = 'KR', countries, strictCountry = false, maxResults = 8 }) {
   const cleanKey = String(apiKey || '').trim()
   const cleanCountry = normalizeDiscoveryCountry(country)
   const cleanCx = String(cx || '').trim()
@@ -583,8 +583,11 @@ export async function searchGoogleProfileDiscovery({ apiKey, cx, query, platform
       platform: cleanPlatform || 'all',
       country: cleanCountry,
       maxResults,
-    })
+      ...(countries ? { countries, strictCountry } : {}),
+    }, { envelope:Boolean(countries) })
   }
+
+  if (countries) throw new Error('국가별 자동 번역 검색에는 CreatorOps API 서버 연결이 필요합니다.')
 
   if (!cleanKey || !cleanCx) {
     throw new Error('Instagram/TikTok 실제 웹 검색에는 Google Programmable Search API 키와 CX가 필요합니다.')

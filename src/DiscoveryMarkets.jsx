@@ -1,30 +1,35 @@
 import { DISCOVERY_MARKETS, toggleDiscoveryMarket } from '../shared/discoveryMarkets.js'
 import './DiscoveryMarkets.css'
 
-export default function DiscoveryMarkets({ countries, onChange, strictCountry, onStrictChange, disabled, summary }) {
-  return <section className="discovery-markets" aria-label="YouTube 국가별 동시 검색">
+const languageLabels = { ko:'한국어', en:'영어', ja:'일본어', zh:'중국어 간체', 'zh-TW':'중국어 번체', vi:'베트남어', th:'태국어', id:'인도네시아어', ms:'말레이어', fr:'프랑스어', de:'독일어', es:'스페인어' }
+
+export default function DiscoveryMarkets({ platform = 'YouTube', countries, onChange, strictCountry, onStrictChange, profileStrictCountry, onProfileStrictChange, disabled, summary }) {
+  return <section className="discovery-markets" aria-label="국가별 동시 검색">
     <fieldset disabled={disabled}>
-      <legend>YouTube 검색 국가 · 최대 6개</legend>
+      <legend>{platform === '전체' ? '전체 플랫폼' : platform} 검색 국가 · 최대 6개</legend>
       <div className="discovery-market-options">
         {Object.entries(DISCOVERY_MARKETS).map(([code, market]) => <label key={code}>
           <input type="checkbox" checked={countries.includes(code)} disabled={disabled || (!countries.includes(code) && countries.length >= 6)} onChange={() => onChange(toggleDiscoveryMarket(countries, code))} />
-          {market.label} ({code})
+          <span>{market.label} ({code})<small aria-hidden="true">{languageLabels[market.language] || market.languageName} 기본</small></span>
         </label>)}
       </div>
-      <label className="discovery-country-verification"><input type="checkbox" checked={strictCountry} onChange={event => onStrictChange(event.target.checked)} />채널 공개 국가가 확인된 후보만 표시</label>
+      {(platform === 'YouTube' || platform === '전체') && <label className="discovery-country-verification"><input type="checkbox" checked={strictCountry} onChange={event => onStrictChange(event.target.checked)} />YouTube 채널 공개 국가가 확인된 후보만 표시</label>}
+      {platform !== 'YouTube' && <label className="discovery-country-verification"><input type="checkbox" checked={profileStrictCountry} onChange={event => onProfileStrictChange(event.target.checked)} />Instagram·TikTok 공개 텍스트에 국가 추정 근거가 있는 후보만 표시</label>}
     </fieldset>
     <p>한국어로 입력해도 국가별 언어로 자동 번역합니다. 요청한 총 인원을 국가별로 균등 배분하며, 관련 근거가 부족하면 적게 반환합니다. 번역은 AI를 사용하며 LLM Ops에 기록됩니다.</p>
-    <p>채널의 공개 국가는 시청자 국가를 보장하지 않습니다. 중국·대만 등은 언어가 같아도 별도로 검색합니다.</p>
+    <p>국가 선택은 검색 범위입니다. Instagram·TikTok 계정의 국가는 공개 텍스트로 추정하거나 미확인으로 표시합니다. 시청자 국가·거주지는 별도 확인이 필요합니다.</p>
     {summary && <div className="discovery-market-results" role="status" aria-live="polite">
       <strong>{summary.error ? '검색을 완료하지 못했습니다.' : `국가별 검색 결과 · 중복 제외 ${summary.returned}명`}</strong>
       {summary.error ? <p>{summary.error}</p> : <>
         <p>원문: {summary.originalQuery}</p>
-        <ul>{summary.markets?.map(market => <li key={market.country}>
+        <ul>{summary.markets?.map(market => <li key={`${market.platform || 'YouTube'}:${market.country}`}>
           <strong>{DISCOVERY_MARKETS[market.country]?.label || market.country}</strong>
-          <span>{market.query}</span>
+          <span>{market.platform && `${market.platform} · `}{market.query}</span>
           <span>{market.status === 'failed' ? market.error : `${market.returned}/${market.requested}명 · ${market.search?.stale ? '할당량 오류 · 이전 캐시' : market.search?.cacheHit ? '캐시 재사용' : '검색 완료'}${market.partial && market.returned < market.requested ? ' · 조건 충족 후보 부족' : ''}`}</span>
+          {market.search?.provider === 'public-search' && <span>국가 추정 {market.countryInferred || 0}명 · 국가 미확인 {market.countryUnverified || 0}명{market.search.platforms?.some(p=>p.status === 'failed') ? ' · 일부 플랫폼 요청 실패' : ''}</span>}
         </li>)}</ul>
-        <p>번역된 검색어와 채널·영상의 실제 텍스트 일치를 확인합니다. 이 결과는 협업 적합성이나 정확도 백분율을 보장하지 않습니다.</p>
+        {summary.errors?.map(error => <p key={error}>{error}</p>)}
+        <p>번역된 검색어와 프로필·영상의 공개 텍스트 일치를 확인합니다. 이 결과는 협업 적합성이나 정확도 백분율을 보장하지 않습니다.</p>
       </>}
     </div>}
   </section>
