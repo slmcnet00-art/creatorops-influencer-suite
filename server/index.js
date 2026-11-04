@@ -1,5 +1,6 @@
 import { discoverPublicProfiles, createProfileSearchPacer, braveMarketOptions } from './profileMarketDiscovery.js'
 import { campaignGenerationInput, creatorGenerationInput } from '../shared/campaignGenerationInput.js'
+import { campaignFactsPrompt, assertCampaignGenerationFacts, CAMPAIGN_FACT_INSTRUCTIONS } from './campaignGenerationQuality.js'
 import { searchAcrossMarkets, localizationPrompt, parseLocalizedQueries, assessDiscoveryEvidence } from './multiMarketDiscovery.js'
 import { normalizeDiscoveryMarkets, allocateDiscoveryResults } from '../shared/discoveryMarkets.js'
 import { createYouTubeUsage } from './youtubeUsage.js'
@@ -1740,7 +1741,7 @@ app.post('/ai/content-guide', async (request, response, next) => {
     const config = await getActiveAiFeatureConfig('content-guide')
     if (!config) throw httpError(503, 'An active administrator content-guide policy is required.')
     const prompt = applyAdminKnowledge(buildContentGuidePrompt({ brand, campaign, seedingType, channel, references, draftGuide }), config)
-    const guide = await callOpenAIText(prompt, { featureKey: 'content-guide', policyVersion: config.version, actorId: request.workspaceUser.id })
+    const guide = await callOpenAIText(prompt + campaignFactsPrompt(campaign), { featureKey: 'content-guide', policyVersion: config.version, actorId: request.workspaceUser.id, validateOutput: text => assertCampaignGenerationFacts(text, campaign, { references }) })
     response.json({
       data: {
         guide,
@@ -1763,7 +1764,7 @@ app.post('/ai/campaign-strategy', async (request, response, next) => {
       buildCampaignStrategyPrompt({ brand, campaign, brief, creators, recommendations, draftStrategy }),
       config,
     )
-    const strategy = await callOpenAIText(prompt, { featureKey: 'campaign-strategy', policyVersion: config.version, actorId: request.workspaceUser.id })
+    const strategy = await callOpenAIText(prompt + campaignFactsPrompt(campaign), { featureKey: 'campaign-strategy', policyVersion: config.version, actorId: request.workspaceUser.id, validateOutput: text => assertCampaignGenerationFacts(text, campaign, { brief, creators }) })
     response.json({
       data: {
         strategy,
@@ -5099,7 +5100,12 @@ function encodeMimeHeader(value) {
 }
 
 async function callOpenAIText(prompt, context) {
-  return llmOps.execute(prompt, context, context?.featureKey === 'discovery-translation' ? input => requestOpenAIText(input, { signal: AbortSignal.timeout(20000), temperature: 0 }) : requestOpenAIText)
+  const provider = context?.featureKey === 'discovery-translation'
+    ? input => requestOpenAIText(input, { signal: AbortSignal.timeout(20000), temperature: 0 })
+    : ['campaign-strategy', 'content-guide'].includes(context?.featureKey)
+      ? input => requestOpenAIText(input, { temperature: 0.2, instructions: CAMPAIGN_FACT_INSTRUCTIONS })
+      : requestOpenAIText
+  return llmOps.execute(prompt, context, provider)
 }
 
 async function requestOpenAIText(prompt, options = {}) {
@@ -5115,6 +5121,7 @@ async function requestOpenAIText(prompt, options = {}) {
     body: JSON.stringify({
       model,
       input: prompt,
+      ...(options.instructions ? { instructions: options.instructions } : {}),
       temperature: options.temperature ?? 0.7,
     }),
   })

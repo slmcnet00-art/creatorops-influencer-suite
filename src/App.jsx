@@ -14725,7 +14725,7 @@ function AppContent() {
         engine = 'admin-policy-api'
       } catch (error) {
         console.warn('Campaign strategy API fallback:', error)
-        showToast(`${campaign.name} 전략을 생성하지 못했습니다. 관리자 AI 정책 연결 상태를 확인해 주세요.`)
+        showToast(`${campaign.name} 전략 생성 실패: ${error instanceof Error ? error.message : '관리자 AI 정책 연결 상태를 확인해 주세요.'}`)
         return
       }
     }
@@ -14866,7 +14866,7 @@ function AppContent() {
         engine = 'admin-policy-api'
       } catch (error) {
         console.warn('Campaign guide API fallback:', error)
-        showToast(`${campaign.name} 가이드를 생성하지 못했습니다. 관리자 AI 정책 연결 상태를 확인해 주세요.`)
+        showToast(`${campaign.name} 가이드 생성 실패: ${error instanceof Error ? error.message : '관리자 AI 정책 연결 상태를 확인해 주세요.'}`)
         return
       }
     }
