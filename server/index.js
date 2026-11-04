@@ -1,4 +1,6 @@
 import { discoverPublicProfiles, createProfileSearchPacer, braveMarketOptions } from './profileMarketDiscovery.js'
+import { campaignGenerationInput, creatorGenerationInput } from '../shared/campaignGenerationInput.js'
+import { campaignFactsPrompt, assertCampaignGenerationFacts, CAMPAIGN_FACT_INSTRUCTIONS } from './campaignGenerationQuality.js'
 import { searchAcrossMarkets, localizationPrompt, parseLocalizedQueries, assessDiscoveryEvidence } from './multiMarketDiscovery.js'
 import { normalizeDiscoveryMarkets, allocateDiscoveryResults } from '../shared/discoveryMarkets.js'
 import { createYouTubeUsage } from './youtubeUsage.js'
@@ -1739,7 +1741,7 @@ app.post('/ai/content-guide', async (request, response, next) => {
     const config = await getActiveAiFeatureConfig('content-guide')
     if (!config) throw httpError(503, 'An active administrator content-guide policy is required.')
     const prompt = applyAdminKnowledge(buildContentGuidePrompt({ brand, campaign, seedingType, channel, references, draftGuide }), config)
-    const guide = await callOpenAIText(prompt, { featureKey: 'content-guide', policyVersion: config.version, actorId: request.workspaceUser.id })
+    const guide = await callOpenAIText(prompt + campaignFactsPrompt(campaign), { featureKey: 'content-guide', policyVersion: config.version, actorId: request.workspaceUser.id, validateOutput: text => assertCampaignGenerationFacts(text, campaign, { references }) })
     response.json({
       data: {
         guide,
@@ -1762,7 +1764,7 @@ app.post('/ai/campaign-strategy', async (request, response, next) => {
       buildCampaignStrategyPrompt({ brand, campaign, brief, creators, recommendations, draftStrategy }),
       config,
     )
-    const strategy = await callOpenAIText(prompt, { featureKey: 'campaign-strategy', policyVersion: config.version, actorId: request.workspaceUser.id })
+    const strategy = await callOpenAIText(prompt + campaignFactsPrompt(campaign), { featureKey: 'campaign-strategy', policyVersion: config.version, actorId: request.workspaceUser.id, validateOutput: text => assertCampaignGenerationFacts(text, campaign, { brief, creators }) })
     response.json({
       data: {
         strategy,
@@ -4959,6 +4961,11 @@ function buildCampaignStrategyPrompt({
     'Respect all campaign.contentFormats selections as the deliverable formats, independently of campaign type and platform. Adapt conflicting draft deliverables to these formats. If empty, leave formats for agreement.',
     `The target market is ${campaign.targetCountry || 'KR'}. Keep internal strategy explanations in Korean, but write every creator-facing message, hook, caption, and example in ${language.label}.`,
     'Improve the supplied deterministic draft without deleting useful details. Use only supplied facts and administrator knowledge.',
+    'campaign.recommendationTargetCount is the authoritative TOTAL candidate target, not a count per tier. Tier counts must sum exactly to that total; if unsure do not subdivide. Use only the supplied assigned creators, never add unrelated names. Do not introduce minimum follower requirements, fixed response rates, conversion forecasts or candidate prices as confirmed agreements.',
+    'A budget of 0 means no approved spend; do not allocate paid fees, percentages, fabricated quotes or a paid casting plan. State that commercial terms and funding need agreement. The current stage is candidate review if the KPI says testing, not an already contracted production campaign.',
+    'Do not claim that a creator used or posted about this brand without direct supplied evidence. Outreach example compliments must refer to the real recipe/video title provided, never to an invented brand collaboration.',
+    'Reference learning materials contain original URLs, public performance and adaptation ideas. Include a reference section citing those exact URLs and supplied performance, distinguish popularity from ad conversion, and use the actual cooking premise as the creative example. Do not turn internal compliance warnings or raw-data labels into consumer-facing hooks.',
+    'For an app, proposed copy can mention only supplied functionality; mark unverified app screens, Japanese availability, store URLs, tracking integrations and paid terms as items to verify. YouTube does not expose saves/shares through the supplied public API; never promise automatic collection of those metrics or operational short links without verified integration.',
     'Required sections:',
     '1. Objective, target audience, and measurable KPI interpretation',
     '2. Big idea and one-message',
@@ -4970,23 +4977,28 @@ function buildCampaignStrategyPrompt({
     '8. Risks, compliance, and optimization rules',
     'Do not promise performance or invent market data, creator metrics, costs, or conversion figures.',
     `Brand: ${JSON.stringify(sanitizeAiPromptValue(brand) || {})}`,
-    `Campaign: ${JSON.stringify(sanitizeAiPromptValue(campaign) || {})}`,
+    `Campaign: ${JSON.stringify(sanitizeAiPromptValue(campaignGenerationInput(campaign)) || {})}`,
     `Brief: ${JSON.stringify(sanitizeAiPromptValue(brief) || {})}`,
-    `Creators: ${JSON.stringify(sanitizeAiPromptValue(Array.isArray(creators) ? creators.slice(0, 30) : []) || [])}`,
-    `Recommendations: ${JSON.stringify(sanitizeAiPromptValue(Array.isArray(recommendations) ? recommendations.slice(0, 30) : []) || [])}`,
+    `Creators (public identity and observed subscriber count only; public channel country is not audience location): ${JSON.stringify(sanitizeAiPromptValue(Array.isArray(creators) ? creators.slice(0, 30).map(creatorGenerationInput) : []) || [])}`,
+    `Recommendations are not verified creator facts. Count provided for context only: ${Array.isArray(recommendations) ? recommendations.length : 0}`,
     `Deterministic draft to improve: ${sanitizeAiPromptValue(draftStrategy) || ''}`,
   ].join('\\n')
 }
 
 function buildContentGuidePrompt({ brand = {}, campaign = {}, seedingType = '', channel = '', references = [], draftGuide = '' } = {}) {
   const cleanBrand = sanitizeAiPromptValue(brand)
-  const cleanCampaign = sanitizeAiPromptValue(campaign)
+  const cleanCampaign = sanitizeAiPromptValue(campaignGenerationInput(campaign, { includeStrategy: true }))
   const cleanReferences = sanitizeAiPromptValue(references)
   const language = resolveCampaignLanguage(campaign)
   return [
     `Write an influencer content guide in ${language.label} for direct delivery to creators.`,
     'Respect all campaign.contentFormats selections as the deliverable formats, independently of campaign type and platform. Adapt conflicting draft deliverables to these formats. If empty, leave formats for agreement.',
     'Use a document structure that a brand manager can share immediately, while making the shooting direction concrete and creator-friendly.',
+    'Use campaign.influencerStrategy as the approved strategic input. Turn its chosen concept into executable scenes instead of repeating strategic slogans. If absent, mark the strategy as pending approval.',
+    'For EACH selected format, provide one complete storyboard: duration or timestamp, what the creator films, exact sample spoken words, on-screen text, required evidence, and CTA. For short video give 0-3s, 3-8s, 8-20s, 20-35s and closing cuts; for longform give chapters. Label example dialogue as proposed copy, not verified product claims.',
+    'For an app, require screen recording of real available screens and an actual task demonstrated step by step. Do not use physical product packaging/texture/shipping templates. Features, app language availability, landing links and download routes that were not provided must be marked to confirm before filming.',
+    'For every supplied reference, include its original URL, supplied public performance and collection time if any, the observable hook/sequence to borrow, and how to adapt it to this campaign. Do not infer unseen video scenes from a title: explicitly require original-video review before asserting scene details. Missing metrics remain unverified. Channel lifetime averages are not the view count of a reference video. Public popularity does not prove ad conversion success. Never invent URLs, views, results or successful campaigns.',
+    'End with an executable handoff checklist: owner, agreed deliverables, draft review, one revision scope to agree, upload approval, disclosure, link verification, and measurement at 24h/7d. Unknown dates, fees and product features must remain approval items, not promises.',
     'Required sections:',
     '1. Campaign goal and one-message',
     '2. At least five content hook points',
@@ -5088,7 +5100,12 @@ function encodeMimeHeader(value) {
 }
 
 async function callOpenAIText(prompt, context) {
-  return llmOps.execute(prompt, context, context?.featureKey === 'discovery-translation' ? input => requestOpenAIText(input, { signal: AbortSignal.timeout(20000), temperature: 0 }) : requestOpenAIText)
+  const provider = context?.featureKey === 'discovery-translation'
+    ? input => requestOpenAIText(input, { signal: AbortSignal.timeout(20000), temperature: 0 })
+    : ['campaign-strategy', 'content-guide'].includes(context?.featureKey)
+      ? input => requestOpenAIText(input, { temperature: 0.2, instructions: CAMPAIGN_FACT_INSTRUCTIONS })
+      : requestOpenAIText
+  return llmOps.execute(prompt, context, provider)
 }
 
 async function requestOpenAIText(prompt, options = {}) {
@@ -5104,6 +5121,7 @@ async function requestOpenAIText(prompt, options = {}) {
     body: JSON.stringify({
       model,
       input: prompt,
+      ...(options.instructions ? { instructions: options.instructions } : {}),
       temperature: options.temperature ?? 0.7,
     }),
   })
