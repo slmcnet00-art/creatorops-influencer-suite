@@ -1,3 +1,4 @@
+import { discoverPublicProfiles, createProfileSearchPacer, braveMarketOptions } from './profileMarketDiscovery.js'
 import { searchAcrossMarkets, localizationPrompt, parseLocalizedQueries, assessDiscoveryEvidence } from './multiMarketDiscovery.js'
 import { normalizeDiscoveryMarkets, allocateDiscoveryResults } from '../shared/discoveryMarkets.js'
 import { createYouTubeUsage } from './youtubeUsage.js'
@@ -1535,6 +1536,46 @@ app.post('/youtube/channel', async (request, response, next) => {
   }
 })
 
+const pacePublicProfileSearch = createProfileSearchPacer()
+async function translateDiscoveryMarkets(text, markets, actorId) {
+  const key = getSearchCacheKey('discovery-localized-query-v2', { text, markets: [...markets].sort() })
+  const cached = readSearchCache(key)
+  if (cached) return cached
+  return coalesceYouTubeSearch(key, async () => {
+    const raw = await callOpenAIText(localizationPrompt(text, markets), { featureKey:'discovery-translation', policyVersion:'discovery-translation-v2', actorId:actorId || null, validateOutput:value=>parseLocalizedQueries(value, markets, text) })
+    const queries = parseLocalizedQueries(raw, markets, text)
+    writeSearchCache(key, queries)
+    return queries
+  })
+}
+async function searchLocalizedProfiles(query, platform, limit, country, options) {
+  const cacheKey = getSearchCacheKey('public-profiles-localized-v1', { query, platform, limit, country, options })
+  const cached = readSearchCache(cacheKey)
+  if (cached) { const items = [...cached.items]; items.searchMeta = { ...cached.diagnostics, cacheHit:true, searchCalls:0 }; return items }
+  return coalesceYouTubeSearch(cacheKey, async () => {
+    const deadline = Date.now() + 45000
+    const provider = process.env.BRAVE_SEARCH_API_KEY ? 'Brave Search API' : 'Google Programmable Search'
+    const items = await discoverPublicProfiles({ query, sourceQuery:options.sourceQuery, platform, country, maxResults:limit, strictCountry:options.strictCountry,
+      normalize:(item, itemPlatform, selectedCountry)=>normalizeProfileSearchItem(item, itemPlatform, provider, selectedCountry),
+      request:async ({query:q,country:selectedCountry}) => pacePublicProfileSearch(async () => {
+        const signal = AbortSignal.timeout(Math.max(1, Math.min(12000, deadline-Date.now())))
+        if (process.env.BRAVE_SEARCH_API_KEY) {
+          const targeting=braveMarketOptions(selectedCountry)
+          const params=new URLSearchParams({ q, count:'20', country:targeting.country, safesearch:'moderate', spellcheck:'false', extra_snippets:'true', ...(targeting.language ? {search_lang:targeting.language}: {}) })
+          const data=await fetchJson(`https://api.search.brave.com/res/v1/web/search?${params}`,{signal,headers:{Accept:'application/json','X-Subscription-Token':requireEnv('BRAVE_SEARCH_API_KEY')}})
+          return (data.web?.results || []).map(item=>({...item, description:[item.description,...(item.extra_snippets || [])].filter(Boolean).join(' ')}))
+        }
+        const params=new URLSearchParams({q,key:requireEnv('GOOGLE_SEARCH_API_KEY'),cx:requireEnv('GOOGLE_SEARCH_CX'),num:'10',gl:selectedCountry.toLowerCase(),safe:'active'})
+        const data=await fetchJson(`https://www.googleapis.com/customsearch/v1?${params}`,{signal})
+        return data.items || []
+      }, deadline),
+    })
+    // Do not cache an incomplete provider failure as a normal empty result.
+    if (items.searchMeta.platforms.every(p=>p.status==='success')) writeSearchCache(cacheKey,{items,diagnostics:items.searchMeta})
+    return items
+  })
+}
+
 app.post('/discovery/youtube/search', async (request, response, next) => {
   const endpoint = '/discovery/youtube/search'
   const query = String(request.body?.query || '').trim()
@@ -1550,20 +1591,7 @@ app.post('/discovery/youtube/search', async (request, response, next) => {
       if (query.length > 500) throw httpError(400, '검색어는 500자 이하로 입력하세요.')
       if (request.body.strictCountry !== undefined && typeof request.body.strictCountry !== 'boolean') throw httpError(400, 'strictCountry must be boolean.')
       const result = await searchAcrossMarkets({ query, countries, maxResults: total, strictCountry: request.body.strictCountry !== false,
-        translate: async (text, markets) => {
-          const key = getSearchCacheKey('youtube-localized-query-v1', { text, markets: [...markets].sort() })
-          const cached = readSearchCache(key)
-          if (cached) return cached
-          return coalesceYouTubeSearch(key, async () => {
-            const translated = await callOpenAIText(localizationPrompt(text, markets), {
-              featureKey: 'discovery-translation', policyVersion: 'discovery-translation-v1', actorId: request.workspaceUser?.id || null,
-              validateOutput: raw => parseLocalizedQueries(raw, markets, text),
-            })
-            const queries = parseLocalizedQueries(translated, markets, text)
-            writeSearchCache(key, queries)
-            return queries
-          })
-        },
+        translate: (text, markets) => translateDiscoveryMarkets(text, markets, request.workspaceUser?.id),
         search: searchYouTubeCreators,
       })
       await safeLogExternalCollectionEvent({ rawSourceId: 'RAW-EXT-SEARCH-001', provider: 'youtube-data-api', endpoint, query, platform: 'YouTube', country: countries.join(','), requestPayload: { query, countries, maxResults: total, strictCountry: request.body.strictCountry !== false }, responsePayload: result, resultCount: result.data.length })
@@ -1608,6 +1636,20 @@ app.post('/discovery/google-profiles/search', async (request, response, next) =>
   try {
     if (!query) throw httpError(400, 'query is required.')
 
+    if (request.body?.countries !== undefined) {
+      const countries=normalizeDiscoveryMarkets(request.body.countries), total=Number(request.body.maxResults ?? 24)
+      allocateDiscoveryResults(total,countries)
+      if (query.length > 500) throw httpError(400,'검색어는 500자 이하로 입력하세요.')
+      if (!/^(all|전체|instagram|인스타|인스타그램|tiktok|틱톡)$/i.test(String(request.body.platform || 'all').trim())) throw httpError(400,'Instagram 또는 TikTok을 선택하세요.')
+      if (platform === 'all' && total < countries.length * 2) throw httpError(400,'두 플랫폼 동시 검색은 국가당 최소 2명을 요청하세요.')
+      if (request.body.strictCountry !== undefined && typeof request.body.strictCountry !== 'boolean') throw httpError(400,'strictCountry must be boolean.')
+      const result=await searchAcrossMarkets({query,countries,maxResults:total,strictCountry:request.body.strictCountry === true,countryPolicy:'public-profile',
+        translate:(text,markets)=>translateDiscoveryMarkets(text,markets,request.workspaceUser?.id),
+        search:(text,limit,selectedCountry,options)=>searchLocalizedProfiles(text,platform,limit,selectedCountry,options),
+      })
+      await safeLogExternalCollectionEvent({rawSourceId:'RAW-EXT-SEARCH-001',provider:process.env.BRAVE_SEARCH_API_KEY?'brave-search':'google-custom-search',endpoint,query,platform,country:countries.join(','),requestPayload:{query,platform,countries,maxResults:total,strictCountry:request.body.strictCountry===true},responsePayload:result,resultCount:result.data.length})
+      return response.json(result)
+    }
     const profiles = await searchGoogleProfiles(query, platform, maxResults, country)
     await safeLogExternalCollectionEvent({
       rawSourceId: 'RAW-EXT-SEARCH-001',
@@ -6021,6 +6063,7 @@ function getDiscoveryLanguage(country) {
     CN: 'zh-Hans',
     TW: 'zh-Hant',
     US: 'en',
+    CA: 'en',
     GB: 'en',
     FR: 'fr',
     DE: 'de',

@@ -10,8 +10,11 @@
 .discovery-market-results { margin-top: 14px; padding: 14px; border: 1px solid var(--border); border-radius: 12px; }
 .discovery-market-results ul { list-style: none; margin: 10px 0; padding: 0; display: grid; gap: 10px; }
 .discovery-market-results li { display: grid; grid-template-columns: 80px minmax(0, 1fr); gap: 4px 10px; font-size: 13px; overflow-wrap: anywhere; }
-.discovery-market-results li span:last-child { grid-column: 2; font-size: 12px; }
-@media (max-width: 540px) { .discovery-market-results li { grid-template-columns: 1fr; } .discovery-market-results li span:last-child { grid-column: 1; } }
+.discovery-market-results li > span { grid-column: 2; font-size: 12px; }
+@media (max-width: 540px) { .discovery-market-results li { grid-template-columns: 1fr; } .discovery-market-results li > span { grid-column: 1; } }
 
 .discovery-total-results { display: grid; gap: 6px; font-size: 13px; max-width: 180px; }
 .discovery-total-results input { width: 100%; min-height: 36px; padding: 6px 10px; border: 1px solid var(--border); border-radius: 8px; color: var(--text); background: var(--surface); }
+
+.discovery-market-options label > span { display: grid; gap: 1px; }
+.discovery-market-options small { font-size: 11px; font-weight: 400; line-height: 1.35; }

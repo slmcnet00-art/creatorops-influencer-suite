@@ -263,3 +263,7 @@ audit_log
 
 ### YouTube 다중 국가 검색 근거
 `/discovery/youtube/search`는 선택 국가(최대6)별 번역 쿼리를 LLM Ops에 기록한 후 병렬도2로 조회한다. 기존 usage 계측은 실제 Google 요청만 집계한다. `discoveryQuery/localizedQuery/matchedMarkets`는 검색 맥락이고, `sourceTitle/sourceSnippet/discoveryEvidence/countryConfidence`는 API 원천에서 확인한 결과다. 한 영상에서 조건이 모두 충족되어야 원본 링크를 근거로 연결한다. 국가 미공개는 기본 제외. 검색 근거는 정확도 %나 오디언스 검증을 뜻하지 않는다. 신규 API 근거 필드도 기존30일 미갱신 정리 대상이다. 대량 발굴은 시간+작은 난수 대신 단조 증가 숫자 ID를 사용해 한 배치 내 선택/추천 키 충돌을 막는다.
+
+
+### Instagram/TikTok 공개 검색의 국가 근거
+`countries` 요청은 동일 번역/원문 조건 보존 흐름을 재사용한다. 공개 검색 공급자별 지역·언어 파라미터와 현지어 크리에이터 검색어를 적용하고 요청 대기열로 호출을 제한한다. `countryConfidence=detected/unverified`, `countryEvidence/countryEvidenceStatus`로 텍스트 추정의 근거·불명확성을 기록한다. `searchCountry/matchedMarkets`는 검색 맥락이며 실제 계정 국가로 승격하지 않는다. 후보의 `discoveryEvidence.countryVerified`는 false이고 `countryInferred`만 별도 사용한다. 신규 프로필 이미지는 검증 전 중립 아이콘을 사용하며 공식 인사이트 수치를 만들지 않는다. 국가·플랫폼별 부분 실패/빈 결과/캐시를 구분하고, 국가별 검색 결과는 모아서 계정 단위로 중복 제거한다.
