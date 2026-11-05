@@ -107,7 +107,20 @@ export function createTikTokBusinessOAuth({ getClient, workspaceId, env = proces
     const value = await storage.read()
     const configured = Boolean(String(env.TIKTOK_BUSINESS_APP_ID || '').trim() && String(env.TIKTOK_BUSINESS_APP_SECRET || '').trim())
     return { configured, accountAuthorizationReady: configured && Boolean(String(env.TIKTOK_BUSINESS_ACCOUNT_SCOPES || '').trim()), registration,
-      connections: Object.entries(value.connections || {}).map(([id, item]) => ({ id, kind: item.kind, advertiserIds: item.advertiserIds, connectedAt: item.connectedAt, expiresAt: item.expiresAt })) }
+      reportingEnabled: env.TIKTOK_BUSINESS_REPORTING_ENABLED === 'true',
+      connections: Object.entries(value.connections || {}).map(([id, item]) => ({ id, kind: item.kind, advertiserIds: item.advertiserIds, connectedAt: item.connectedAt, expiresAt: item.expiresAt,
+        authenticationState: item.expiresAt && (!Number.isFinite(Date.parse(item.expiresAt)) || Date.parse(item.expiresAt) <= now()) ? 'expired' : item.expiresAt ? 'stored' : 'expiry_unknown',
+      })) }
+  }
+  // Server-only accessor: never register a route that returns this object or its tokens.
+  async function getAdvertiserConnection(id, advertiserId) {
+    const value = await storage.read()
+    const item = Object.hasOwn(value.connections || {}, id) ? value.connections[id] : null
+    const reject = (code, message) => Object.assign(apiError(403, message), { code, publicTikTokError: true })
+    if (!item || item.kind !== 'advertiser' || !Array.isArray(item.advertiserIds) || !item.advertiserIds.includes(advertiserId)) throw reject('account_not_authorized', '저장된 연결에서 승인받은 광고 계정만 조회할 수 있습니다.')
+    if (typeof item.accessToken !== 'string' || !item.accessToken.trim()) throw reject('authorization_required', 'TikTok 광고주 계정을 다시 연결해야 합니다.')
+    if (item.expiresAt && (!Number.isFinite(Date.parse(item.expiresAt)) || Date.parse(item.expiresAt) <= now())) throw reject('authorization_expired', 'TikTok 인증이 만료되었습니다. 광고주 계정을 다시 연결하세요.')
+    return { accessToken: item.accessToken }
   }
   function register(app, requireAdmin) {
     app.get('/oauth/tiktok/registration', (_req, res) => res.set('Cache-Control', 'no-store').json({ data: registration }))
@@ -126,5 +139,5 @@ export function createTikTokBusinessOAuth({ getClient, workspaceId, env = proces
       try { res.set('Cache-Control', 'no-store').json({ data: await status() }) } catch (error) { next(error) }
     })
   }
-  return { register, registration, begin, complete, status }
+  return { register, registration, begin, complete, status, getAdvertiserConnection }
 }

@@ -89,3 +89,20 @@ test('등록 콜백은 HTTPS 주소를 제공하고 일반 방문·오류 페이
     assert.equal((await fetch(`${base}/oauth/tiktok/${kind}/auth-url`)).status, 401)
   }
 })
+
+test('서버 성과 조회는 연결에 실제 승인된 계정만 사용하고 만료 토큰을 거부한다', async () => {
+  const fixture = setup(), { service } = fixture
+  const state = new URL((await service.begin('advertiser', 'owner')).url).searchParams.get('state')
+  await service.complete('advertiser', { auth_code: 'code', state })
+  const status = await service.status(), id = status.connections[0].id
+  assert.equal(status.reportingEnabled, false)
+  assert.equal(status.connections[0].authenticationState, 'stored')
+  assert.equal((await service.getAdvertiserConnection(id, '1234567890123456789')).accessToken, 'test-access-token')
+  for (const [key, advertiser] of [[id, '999'], ['__proto__', '1234567890123456789']]) {
+    await assert.rejects(service.getAdvertiserConnection(key, advertiser), { status: 403, code: 'account_not_authorized' })
+  }
+  fixture.advance(3600000)
+  await assert.rejects(service.getAdvertiserConnection(id, '1234567890123456789'), { status: 403, code: 'authorization_expired' })
+  assert.equal((await service.status()).connections[0].authenticationState, 'expired')
+  assert.doesNotMatch(JSON.stringify(await service.status()), /test-access-token|test-refresh-token|test-secret/)
+})
