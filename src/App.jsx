@@ -1,16 +1,18 @@
+import LearningSourceDetails from './LearningSourceDetails.jsx'
 import YouTubeEvidenceDetails from './YouTubeEvidenceDetails.jsx'
 import { calculateEstimatedCreatorRate, getCreatorRateSummary, toCreatorRateNumber, withCreatorRate } from '../shared/creatorRates.js'
 import CreatorRateDetails from './CreatorRateDetails.jsx'
 import { reviewCampaignGuides } from '../shared/guideClaimReview.js'
 import { planCampaignBudget } from './campaignBudget.js'
+import { buildCandidateEvidence, validateCandidateAssessments, applyCandidateAssessments } from '../shared/evidenceRanking.js'
 import CampaignBudgetPanel from './CampaignBudgetPanel.jsx'
 import { nextDiscoveryId, discoverySelectionKey, matchesDiscoverySelection } from './discoveryIdentity.js'
-import { campaignGenerationInput } from '../shared/campaignGenerationInput.js'
+import { campaignGenerationInput, generationSourceInput, emptyBrandBrief } from '../shared/campaignGenerationInput.js'
 import { hasTrackingDestination, trackingLogTimestamp, invalidatePlaceholderTrackingLogs } from './trackingDestination.js'
 import { resolveCampaignBudget, buildNewCampaignAllocation } from './campaignCreationDefaults.js'
 import CampaignAssignmentEditor from './CampaignAssignmentEditor.jsx'
 import { operationalCandidateView } from './operationalCandidates.js'
-import { resolveGuideChannel, getCampaignGuideReferences, guideEvidenceAppendix, buildJapaneseIndividualGuide } from './campaignGuideEvidence.js'
+import { resolveGuideChannel, getCampaignGuideReferences, guideEvidenceAppendix } from './campaignGuideEvidence.js'
 import DiscoveryMarkets from './DiscoveryMarkets.jsx'
 import { DISCOVERY_MARKETS } from '../shared/discoveryMarkets.js'
 import useDialogKeyboard from './useDialogKeyboard.js'
@@ -1457,15 +1459,16 @@ function getCampaignMarketSummary(campaign = {}) {
 
 const campaignStatuses = ['섭외', '콘텐츠 제작', '라이브', '리포트', '완료']
 
-function normalizeBrand(brand, index = 0) {
-  const fallback = defaultBrands[index] ?? defaultBrands[0]
+function normalizeBrand(brand) {
+  const builtIn = defaultBrands.find(item => String(item.id) === String(brand?.id))
+  const fallback = builtIn || { id: 0, name: '신규 브랜드', brief: {}, color: '#2563eb' }
   const brief = {
-    ...defaultBrandBrief,
+    ...(builtIn ? defaultBrandBrief : emptyBrandBrief(defaultBrandBrief)),
     ...(fallback?.brief ?? {}),
     ...(brand?.brief ?? {}),
     brandName: brand?.brief?.brandName ?? brand?.name ?? fallback.name,
   }
-  brief.learningMaterials = brand?.brief?.learningMaterials ?? fallback?.brief?.learningMaterials ?? defaultBrandBrief.learningMaterials ?? []
+  brief.learningMaterials = generationSourceInput(brand?.brief?.learningMaterials ?? builtIn?.brief?.learningMaterials ?? [])
 
   return {
     id: Number(brand?.id) || fallback.id || createId(),
@@ -2484,7 +2487,7 @@ function normalizeUiCopy(value) {
 }
 
 function getLearningMaterials(brief) {
-  return Array.isArray(brief?.learningMaterials) ? brief.learningMaterials : []
+  return generationSourceInput(Array.isArray(brief?.learningMaterials) ? brief.learningMaterials : [])
 }
 
 function buildLearningContext(brief) {
@@ -3408,122 +3411,6 @@ ${learningContext ? `\n## 14. 브랜드 학습자료 반영 메모\n${learningCo
 `
 }
 
-function buildCreatorSpecificContentGuide({ brand, brief, campaign, creator, commonGuide = '' }) {
-  if (campaign?.outputLanguage === 'ja' && commonGuide) return buildJapaneseIndividualGuide({ campaign, creator, commonGuide })
-  const campaignName = campaign?.name || `${brief.product} 인플루언서 캠페인`
-  const platform = creator?.platform || campaign?.guideChannel || 'Instagram Reels'
-  const trackingAsset = buildInfluencerTrackingAsset({ brand, campaign, creator })
-  const oneMessage =
-    campaign?.oneMessage ||
-    `${brief.product}를 ${brief.persona || '핵심 타깃'}의 실제 사용 장면 안에서 자연스럽게 설득합니다.`
-  const materialDigest = buildLearningMaterialDigest(getLearningMaterials(brief))
-  const channelBrief = {
-    YouTube:
-      '검색 유입과 신뢰 증명을 같이 가져가야 합니다. 제목/첫 멘트에 문제를 명확히 두고, 사용 과정과 판단 근거를 충분히 보여주세요.',
-    Instagram:
-      '첫 화면 자막, 썸네일 감정, 저장 욕구가 중요합니다. 컷 전환은 짧게 가져가고 제품 디테일과 사용 장면을 보기 좋게 배치하세요.',
-    TikTok:
-      '첫 1초 후킹과 빠른 반전이 중요합니다. 문제 제기, 사용 장면, 댓글 유도 질문을 짧고 직접적인 말투로 연결하세요.',
-  }[platform] || '채널 특성에 맞게 첫 3초 후킹, 실제 사용 장면, CTA를 분리하세요.'
-  const creatorAngle = creator
-    ? `${creator.name} 계정은 ${creator.category || '콘텐츠'} 카테고리에서 팔로워 ${compactNumber(creator.followers)}, 평균 조회 ${compactNumber(creator.averageViews)}, 참여율 ${percent(creator.engagement)} 수준으로 확인됩니다.`
-    : '크리에이터별 계정 정보가 연결되면 톤과 컷 구성을 개인화합니다.'
-  const performanceLearning = creator?.performanceLearning
-  const creatorFollowers = Number(creator?.followers || 0)
-  const creatorAverageViews = Number(creator?.averageViews || 0)
-  const creatorVirality = creatorFollowers && creatorAverageViews ? `${(creatorAverageViews / creatorFollowers).toFixed(1)}x` : '검증 전'
-  const performanceGuide = [
-    performanceLearning?.posts
-      ? `최근 추적된 콘텐츠 ${performanceLearning.posts}건 기준으로 평균 조회 ${compactNumber(performanceLearning.averageViews)}, 참여율 ${percent(performanceLearning.engagementRate)} 흐름을 반영합니다.`
-      : creatorAverageViews
-        ? `현재 공개 지표 기준 평균 조회 ${compactNumber(creatorAverageViews)}, 팔로워 대비 조회 ${creatorVirality}를 우선 참고합니다.`
-        : '아직 콘텐츠 성과 데이터가 부족하므로 첫 게시 후 조회/댓글/저장 수치를 빠르게 업데이트합니다.',
-    creator?.platform === 'YouTube'
-      ? '검색형 제목과 첫 10초 신뢰 증명을 우선합니다.'
-      : creator?.platform === 'TikTok'
-        ? '첫 1초 반전, 빠른 사용 장면, 댓글 유도 질문을 우선합니다.'
-        : '첫 화면 자막, 저장하고 싶은 정보, 감정 반응 컷을 우선합니다.',
-    performanceLearning?.topViews
-      ? `성과 상위 콘텐츠는 ${compactNumber(performanceLearning.topViews)} 조회까지 확인되어, 기존 강점과 비슷한 후킹 구조를 변형 적용합니다.`
-      : '성과 상위 레퍼런스가 생기면 다음 가이드에서 후킹 구조만 차용합니다.',
-  ]
-  const hookLines = buildStrategyHookCopyLines({
-    productText: brief.product || campaign?.product || '제품',
-    personaText: brief.persona || campaign?.targetPersona || '타깃 고객',
-    hookRows: buildStrategyHookRows({
-      productText: brief.product || campaign?.product || '제품',
-      personaText: brief.persona || campaign?.targetPersona || '타깃 고객',
-      problemType: getStrategyProblemType(campaign, brief),
-      proofPoints: materialDigest.proofPoints,
-    }),
-    materialDigest,
-    campaign,
-  }).slice(0, 6)
-  const creatorTone =
-    creator?.platform === 'YouTube'
-      ? '리뷰어처럼 차분하게 근거를 쌓고, 과장보다 실제 판단 과정을 보여주세요.'
-      : creator?.platform === 'TikTok'
-        ? '짧고 직관적인 말투로 시작하고, 댓글이 달릴 질문을 마지막에 남겨주세요.'
-        : '일상 속 발견처럼 자연스럽게 시작하고, 캡션에는 저장할 이유를 남겨주세요.'
-
-  return `# ${creator?.name || '크리에이터'} 전용 콘텐츠 가이드
-
-## 1. 캠페인
-- 브랜드: ${brand.name}
-- 캠페인: ${campaignName}
-- 제품/서비스: ${brief.product || campaign?.product || '-'}
-- 협업 유형: ${campaign?.reward || '협업 조건 협의 필요'}
-- 권장 채널: ${platform}
-- 콘텐츠 형식: ${contentFormatSummary(campaign?.contentFormats)}
-- 업로드 일정: ${campaign?.uploadDueDate || campaign?.deadline || '협의'}
-
-## 1-1. 개인 추적 숏링크
-- 전달용 링크: ${campaign?.landingUrl ? `${trackingAsset.originalUrl} (업로드 전 연결 확인 필요)` : '미발급 · 실제 다운로드/랜딩 URL을 담당자가 등록하고 연결 확인 후 전달'}
-- 쿠폰: 실제 발급·적용 여부 확인 전 사용하지 않습니다.
-- 운영 기준: 긴 UTM 원본은 데이터룸 \`${trackingAsset.rawId}\`에 저장하고, 크리에이터에게는 위 숏링크만 전달합니다.
-- 성과 연결: 클릭은 \`${UTM_CLICK_METRIC_ID}\`, 주문/쿠폰 전환은 \`${UTM_REVENUE_METRIC_ID}\`로 집계합니다.
-
-## 2. 이 크리에이터에게 맡길 역할
-${creatorAngle}
-
-- 역할: ${creator?.category || brief.categories?.[0] || '제품 사용 맥락'} 관점에서 제품을 직접 써보고 판단하는 콘텐츠
-- 톤: ${creatorTone}
-- 핵심 메시지: ${oneMessage}
-
-## 3. 개인별 성과 기준
-${performanceGuide.map((item) => `- ${item}`).join('\n')}
-
-## 4. 개인화 후킹 후보
-${hookLines.map((line, index) => `${index + 1}. ${line}`).join('\n')}
-
-## 5. 컷 구성 제안
-1. 첫 화면: 시청자가 멈출 문제, 가격, 상황, 감정 중 하나를 크게 보여줍니다.
-2. 사용 맥락: 왜 이 제품이 필요한지 본인 일상이나 계정 콘셉트 안에서 설명합니다.
-3. 실제 사용: 아래 공통 촬영안의 실제 제품/앱 사용 단계를 화면 녹화 또는 촬영으로 보여줍니다. 검증하지 않은 기능은 촬영 전에 확인합니다.
-4. 신뢰 증명: 학습자료의 증명 포인트를 본인 말투로 바꿔 한 문장만 넣습니다.
-5. CTA: 댓글 질문, 저장, 링크 확인, 구매/문의 중 캠페인 목적에 맞게 마무리합니다.
-
-## 6. 채널별 주의점
-${channelBrief}
-
-## 7. 꼭 지켜야 할 것
-- 광고/협찬 고지를 채널 정책에 맞게 표시합니다.
-- 경험하지 않은 내용을 실제 경험처럼 말하지 않습니다.
-- 치료, 보장, 즉각 개선, 과장 전후 비교 표현은 쓰지 않습니다.
-- 경쟁사 실명 비방은 하지 않습니다.
-${materialDigest.riskPoints.slice(0, 4).map((item) => `- 주의 표현: ${item}`).join('\n')}
-
-## 8. 제출물
-- 업로드 전 초안 또는 원고/컷 구성
-- 게시 링크
-- 썸네일/캡션
-- 게시 후 조회수, 좋아요, 댓글, 공유/저장 수치
-
-## 9. 공통 가이드 반영 기준
-공통 가이드의 원메시지와 금지 표현은 유지하되, 문장과 장면은 ${creator?.name || '크리에이터'}의 평소 말투와 콘텐츠 구조로 바꿔 제작합니다.
-${commonGuide ? `\n## 10. 실행에 사용할 공통 촬영안과 레퍼런스\n${commonGuide}` : ''}
-`
-}
 
 function buildRecommendation(creator, brief, campaign) {
   creator = withCreatorRate(creator, campaign || {})
@@ -7929,6 +7816,10 @@ function AppContent() {
     }
   })
   const [workspace, setWorkspace] = usePersistentState(STORE_KEY, defaultWorkspace)
+  const aiDiscoveryLock = useRef(false)
+  const [aiDiscoveryBusy, setAiDiscoveryBusy] = useState(false)
+  const campaignGenerationLock = useRef(false)
+  const [campaignGenerationProgress, setCampaignGenerationProgress] = useState('')
   const backendConfig = useMemo(() => getBackendConfig(), [])
   const [cloudSyncStatus, setCloudSyncStatus] = useState({
     mode: backendConfig.hasSupabase ? 'connecting' : 'local',
@@ -12246,7 +12137,7 @@ function AppContent() {
       owner: brandDraft.owner || brandDraft.name || 'New Brand',
       color: '#2563eb',
       brief: {
-        ...defaultBrandBrief,
+        ...emptyBrandBrief(defaultBrandBrief),
         brandName: brandDraft.name || '신규 브랜드',
         product: brandDraft.product || '신규 캠페인 제품',
         persona: brandDraft.persona || '구매 가능성이 높은 핵심 타깃',
@@ -13161,17 +13052,15 @@ function AppContent() {
         handle: creator.handle,
         platform: creator.platform,
         category: creator.category,
-        country: creator.country || creator.searchCountry || creator.city,
+        country: creator.country || '',
+        countryConfidence: creator.countryConfidence || 'unverified',
+        evidence: buildCandidateEvidence(creator),
+        recentMetrics: creator.youtubeRecentMetrics ? { sampleCount: creator.youtubeRecentMetrics.sampleCount, method: creator.youtubeRecentMetrics.method, collectedAt: creator.youtubeRecentMetrics.collectedAt } : null,
         followers: Number(creator.followers || 0),
         averageViews: Number(creator.averageViews || 0),
         engagement: Number(creator.engagement || 0),
         price: Number(creator.price || 0),
-        score: recommendation.score,
-        decision: recommendation.decision,
         persona: recommendation.persona,
-        reasons: (recommendation.reasons || []).slice(0, 5),
-        risk: recommendation.risk,
-        scoreBreakdown: recommendation.scoreBreakdown || [],
       }
     })
 
@@ -13197,7 +13086,7 @@ function AppContent() {
         throw new Error(formatApiRouteFailure('/ai/recommendations/enrich', response, payload, fallbackText))
       }
 
-      const enrichmentItems = payload?.data?.items || []
+      const enrichmentItems = validateCandidateAssessments(payload?.data?.items, candidates)
       const enrichmentByRecommendationId = new Map(enrichmentItems.map((item) => [item.recommendationId, item]))
       const trace = {
         provider: 'OpenAI',
@@ -13209,7 +13098,7 @@ function AppContent() {
         generatedAt: nowLabel(),
       }
 
-      const merged = rankedRecommendations.map((recommendation) => {
+      const merged = applyCandidateAssessments(rankedRecommendations, enrichmentItems).map((recommendation) => {
         const enrichment = enrichmentByRecommendationId.get(recommendation.id)
         if (!enrichment) return recommendation
 
@@ -13228,6 +13117,7 @@ function AppContent() {
         return {
           ...recommendation,
           aiEnriched: true,
+          decision: enrichment.decision === 'recommend' ? recommendationPolicy.decisions.priority : recommendationPolicy.decisions.hold,
           aiSummary: enrichment.aiSummary || '',
           aiReasons,
           outreachAngle: enrichment.outreachAngle || '',
@@ -13265,84 +13155,88 @@ function AppContent() {
   }
 
   const runAiDiscovery = async () => {
-    const campaignBrief = buildCampaignDiscoveryBrief(brandBrief, selectedCampaign)
-    const targetCampaignId = selectedCampaign?.id ?? null
-    const campaignMinFollowers = Number(campaignBrief.minFollowers || minimumVisibleFollowers)
-    const campaignMaxCreatorFee = Number(campaignBrief.maxPrice || 0)
-    const campaignMinAverageViews = Number(campaignBrief.minAverageViews || 0)
-    const campaignCountry = String(campaignBrief.country || activeBrand.country || '전체')
-    const campaignPlatforms = campaignBrief.platforms
-    const eligibleCreators = creators
-      .map((creator) => getCreatorWithPerformanceLearning(creator))
-      .filter((creator) => {
-        const pendingMetrics = hasPendingMetrics(creator)
-        const strongActualPerformance =
-          Number(creator.performanceLearning?.averageViews || 0) >= recommendationPolicy.strongActualAverageViews ||
-          Number(creator.performanceLearning?.topViews || 0) >= recommendationPolicy.strongActualTopViews
-        return (
-          !isExampleCreator(creator) &&
-          (campaignCountry === '전체' ||
-            matchesDiscoveryCountry(creator.country, campaignCountry) ||
-            matchesDiscoveryCountry(creator.city, campaignCountry)) &&
-          (pendingMetrics || creator.followers >= campaignMinFollowers) &&
-          (pendingMetrics || !campaignMinAverageViews || creator.averageViews >= campaignMinAverageViews || strongActualPerformance) &&
-          (pendingMetrics || !campaignMaxCreatorFee || Number(creator.price || 0) <= campaignMaxCreatorFee) &&
-          matchesBriefPlatform(creator, campaignPlatforms)
+    if (aiDiscoveryLock.current) return
+    aiDiscoveryLock.current = true
+    setAiDiscoveryBusy(true)
+    try {
+      const campaignBrief = buildCampaignDiscoveryBrief(brandBrief, selectedCampaign)
+      const targetCampaignId = selectedCampaign?.id ?? null
+      const campaignMinFollowers = Number(campaignBrief.minFollowers || minimumVisibleFollowers)
+      const campaignMinAverageViews = Number(campaignBrief.minAverageViews || 0)
+      const campaignCountry = String(campaignBrief.country || activeBrand.country || '전체')
+      const campaignPlatforms = campaignBrief.platforms
+      const eligibleCreators = creators
+        .map((creator) => getCreatorWithPerformanceLearning(creator))
+        .filter((creator) => {
+          const pendingMetrics = hasPendingMetrics(creator)
+          const strongActualPerformance =
+            Number(creator.performanceLearning?.averageViews || 0) >= recommendationPolicy.strongActualAverageViews ||
+            Number(creator.performanceLearning?.topViews || 0) >= recommendationPolicy.strongActualTopViews
+          return (
+            !isExampleCreator(creator) &&
+            (campaignCountry === '전체' ||
+              matchesDiscoveryCountry(creator.country, campaignCountry) ||
+              matchesDiscoveryCountry(creator.city, campaignCountry)) &&
+            (pendingMetrics || creator.followers >= campaignMinFollowers) &&
+            (pendingMetrics || !campaignMinAverageViews || creator.averageViews >= campaignMinAverageViews || strongActualPerformance) &&
+            matchesBriefPlatform(creator, campaignPlatforms)
+          )
+        })
+      const rankedPool = eligibleCreators
+        .map((creator) => {
+          const scoredCreator = creator
+          const recommendation = buildRecommendation(scoredCreator, campaignBrief, selectedCampaign)
+          const decision = getRecommendationDecision(recommendation, scoredCreator)
+          return {
+            ...recommendation,
+            decision,
+            brandId: activeBrand.id,
+          }
+        })
+        .sort((a, b) => {
+          const decisionGap = getRecommendationDecisionRank(b.decision) - getRecommendationDecisionRank(a.decision)
+          if (decisionGap) return decisionGap
+          return b.score - a.score
+        })
+      // Evaluate a wider pool before selecting by budget. Rule scores only bound this review batch.
+      const ranked = rankedPool.slice(0, 50)
+
+      if (!ranked.length) {
+        const realCreatorCount = creators.filter((creator) => !isExampleCreator(creator)).length
+        showToast(
+          realCreatorCount
+            ? '캠페인의 국가·플랫폼·최소 지표에 맞는 후보가 없습니다. 실제 후보를 더 수집하거나 조건을 확인하세요.'
+            : '먼저 아래 실제 웹 발굴을 실행해서 후보를 모아주세요.',
+        )
+        return
+      }
+
+      const enrichmentResult = await enrichRecommendationsWithAi(ranked, campaignBrief, selectedCampaign)
+      if (enrichmentResult.status !== 'openai') {
+        showToast(`AI 추천을 생성하지 못했습니다. ${enrichmentResult.message || '관리자 정책 연결 상태를 확인해 주세요.'}`)
+        return
+      }
+      const assessed = enrichmentResult.recommendations
+      const finalRanked = selectedCampaign ? planCampaignBudget(selectedCampaign, assessed, budgetCreators).items : assessed.filter(row => row.aiDecision === 'recommend').slice(0, getCampaignRecommendationTarget(selectedCampaign))
+      const enrichmentLabel = ` · AI 평가 ${enrichmentResult.enrichedCount}/${rankedPool.length}명 · 예산 내 ${finalRanked.length}명`
+
+      updateWorkspace((current) => {
+        const scopedRecommendations = current.recommendations.filter((recommendation) => {
+          if (targetCampaignId) return recommendation.campaignId !== targetCampaignId
+          return recommendation.brandId !== activeBrand.id
+        })
+
+        return appendActivity(
+          {
+            ...current,
+            recommendations: [...rankedPool.map(row => assessed.find(enriched => enriched.creatorId === row.creatorId) || { ...row, aiDecision: 'unassessed' }), ...scopedRecommendations].slice(0, 2000),
+          },
+          'ai',
+          `${selectedCampaign?.name ?? activeBrand.name} AI 추천 ${finalRanked.length}명${enrichmentLabel}`,
         )
       })
-    const rankedPool = eligibleCreators
-      .map((creator) => {
-        const scoredCreator = creator
-        const recommendation = buildRecommendation(scoredCreator, campaignBrief, selectedCampaign)
-        const decision = getRecommendationDecision(recommendation, scoredCreator)
-        return {
-          ...recommendation,
-          decision,
-          brandId: activeBrand.id,
-        }
-      })
-      .filter((recommendation) => recommendation.decision !== recommendationPolicy.decisions.hold)
-      .sort((a, b) => {
-        const decisionGap = getRecommendationDecisionRank(b.decision) - getRecommendationDecisionRank(a.decision)
-        if (decisionGap) return decisionGap
-        return b.score - a.score
-      })
-    const ranked = selectedCampaign ? planCampaignBudget(selectedCampaign, rankedPool, budgetCreators).items : rankedPool.slice(0, getCampaignRecommendationTarget(selectedCampaign))
-
-    if (!ranked.length) {
-      const realCreatorCount = creators.filter((creator) => !isExampleCreator(creator)).length
-      showToast(
-        realCreatorCount
-          ? '예산 내 추천 후보가 없습니다. 총예산·집행액·인당 한도와 후보 단가를 확인하세요. 0원은 무가 협찬을 뜻하지 않습니다.'
-          : '먼저 아래 실제 웹 발굴을 실행해서 후보를 모아주세요.',
-      )
-      return
-    }
-
-    const enrichmentResult = await enrichRecommendationsWithAi(ranked, campaignBrief, selectedCampaign)
-    if (enrichmentResult.status !== 'openai') {
-      showToast(`AI 추천을 생성하지 못했습니다. ${enrichmentResult.message || '관리자 정책 연결 상태를 확인해 주세요.'}`)
-      return
-    }
-    const finalRanked = enrichmentResult.recommendations
-    const enrichmentLabel = ` · AI 보강 ${enrichmentResult.enrichedCount}명`
-
-    updateWorkspace((current) => {
-      const scopedRecommendations = current.recommendations.filter((recommendation) => {
-        if (targetCampaignId) return recommendation.campaignId !== targetCampaignId
-        return recommendation.brandId !== activeBrand.id
-      })
-
-      return appendActivity(
-        {
-          ...current,
-          recommendations: [...rankedPool.map(row => finalRanked.find(enriched => enriched.creatorId === row.creatorId) || row), ...scopedRecommendations].slice(0, 2000),
-        },
-        'ai',
-        `${selectedCampaign?.name ?? activeBrand.name} AI 추천 ${finalRanked.length}명${enrichmentLabel}`,
-      )
-    })
-    showToast(`AI 추천 후보 ${finalRanked.length}명 생성 완료${enrichmentLabel}`)
+      showToast(`AI 추천 후보 ${finalRanked.length}명 생성 완료${enrichmentLabel}`)
+    } finally { aiDiscoveryLock.current = false; setAiDiscoveryBusy(false) }
   }
 
   const buildRecommendationOutreachRecord = (recommendation, creator, campaign) => {
@@ -14528,19 +14422,7 @@ function AppContent() {
     return getCreatorsByIds(creators, Array.from(new Set(sourceIds))).slice(0, 30)
   }
 
-  const getCampaignIndividualGuide = (campaign, creator) => {
-    if (!campaign || !creator) return ''
-    return (
-      campaign.individualContentGuides?.[creator.id]?.guide ||
-      buildCreatorSpecificContentGuide({
-        brand: activeBrand,
-        brief: buildCampaignBriefFromCampaign(campaign),
-        campaign,
-        creator,
-        commonGuide: getCampaignContentGuide(campaign),
-      })
-    )
-  }
+  const getCampaignIndividualGuide = (campaign, creator) => campaign?.individualContentGuides?.[creator?.id]?.guide || ''
 
   const getCampaignCreatorTrackingAsset = (campaign, creator, index = 0) => {
     if (!campaign || !creator) return null
@@ -14633,120 +14515,130 @@ function AppContent() {
 
   const generateCampaignStrategyForDetail = async (campaign) => {
     if (!campaign) return
-    const assignedStrategyCreators = getCreatorsByIds(creators, campaign.creatorIds ?? [])
-    const assignedStrategyIds = new Set(assignedStrategyCreators.map((creator) => String(creator.id)))
-    const baseCampaignBrief = buildCampaignBriefFromCampaign(campaignGenerationInput(campaign))
-    const referenceMaterials = getCampaignGuideReferences(campaign, contentReferences, savedProductionReferenceIds, creators).map((reference) => ({
-      title: reference.title,
-      sourceType: '캠페인 참고 콘텐츠',
-      summary: guideEvidenceAppendix([reference]),
-      dontSay: '공개 조회수만으로 광고 전환 성공을 주장하지 않으며 원본 화면·문장을 복제하지 않는다.',
-    }))
-    const campaignWinningTemplates = getCampaignContentTemplates(contentTemplates, activeBrand.id, campaign.reuseTemplateIds)
-    const campaignWinningTemplateMaterials = buildReusableTemplateLearningMaterials(campaignWinningTemplates, activeBrand.id)
-    const campaignBrief = {
-      ...baseCampaignBrief,
-      learningMaterials: [
-        ...referenceMaterials,
-        ...campaignWinningTemplateMaterials,
-        ...getLearningMaterials(baseCampaignBrief),
-      ],
-    }
-    const appliedTemplateIds = campaignWinningTemplates.map((template) => String(template.id))
-    const localStrategy = buildInfluencerStrategy({
-      brand: activeBrand,
-      brief: campaignBrief,
-      campaign,
-      creators: assignedStrategyCreators,
-      recommendations: activeRecommendations.filter((item) => assignedStrategyIds.has(String(item.creatorId))),
-      learningMaterials: campaignBrief.learningMaterials,
-    })
-    let strategy = localStrategy
-    let policyVersion = null
-    let policyFeatureKey = null
-    let engine = 'local-strategy-director'
-    let sourceRawIds = ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001']
-    const apiBaseUrl = String(backendConfig?.apiBaseUrl || '').replace(/\/$/, '')
-
-    if (apiBaseUrl) {
-      try {
-        const response = await fetch(`${apiBaseUrl}/ai/campaign-strategy`, {
-          method: 'POST',
-          headers: await getAuthenticatedApiHeaders(),
-          body: JSON.stringify({
-            brand: activeBrand,
-            campaign,
-            brief: campaignBrief,
-            creators: assignedStrategyCreators.slice(0, 30),
-            recommendations: activeRecommendations.filter((item) => assignedStrategyIds.has(String(item.creatorId))).slice(0, 30),
-            draftStrategy: '',
-          }),
-        })
-        const payload = await response.json().catch(() => ({}))
-        if (!response.ok) throw new Error(payload?.message || '캠페인 전략 API 요청에 실패했습니다.')
-        strategy = payload?.data?.strategy || localStrategy
-        policyVersion = payload?.data?.policyVersion || null
-        policyFeatureKey = payload?.data?.policyFeatureKey || null
-        sourceRawIds = payload?.data?.sourceRawIds || sourceRawIds
-        engine = 'admin-policy-api'
-      } catch (error) {
-        console.warn('Campaign strategy API fallback:', error)
-        showToast(`${campaign.name} 전략 생성 실패: ${error instanceof Error ? error.message : '관리자 AI 정책 연결 상태를 확인해 주세요.'}`)
-        return
+    if (campaignGenerationLock.current) return
+    campaignGenerationLock.current = true
+    setCampaignGenerationProgress('전략 작성·검토 중')
+    try {
+      const assignedStrategyCreators = getCreatorsByIds(creators, campaign.creatorIds ?? [])
+      const assignedStrategyIds = new Set(assignedStrategyCreators.map((creator) => String(creator.id)))
+      const baseCampaignBrief = buildCampaignBriefFromCampaign(campaignGenerationInput(campaign))
+      const referenceMaterials = getCampaignGuideReferences(campaign, contentReferences, savedProductionReferenceIds, creators).map((reference) => ({
+        title: reference.title,
+        sourceType: '캠페인 참고 콘텐츠',
+        summary: guideEvidenceAppendix([reference]),
+        dontSay: '공개 조회수만으로 광고 전환 성공을 주장하지 않으며 원본 화면·문장을 복제하지 않는다.',
+      }))
+      const campaignWinningTemplates = getCampaignContentTemplates(contentTemplates, activeBrand.id, campaign.reuseTemplateIds)
+      const campaignWinningTemplateMaterials = buildReusableTemplateLearningMaterials(campaignWinningTemplates, activeBrand.id)
+      const campaignBrief = {
+        ...baseCampaignBrief,
+        learningMaterials: [
+          ...referenceMaterials,
+          ...campaignWinningTemplateMaterials,
+          ...getLearningMaterials(baseCampaignBrief),
+        ],
       }
-    }
-    const generatedAt = nowLabel()
-    if (appliedTemplateIds.length) sourceRawIds = uniqueList([...sourceRawIds, 'RAW-INT-TEMPLATE-001'])
-    const strategyInputRaw = campaign.strategyInputRaw || buildCampaignStrategyInputRaw(campaign, campaignBrief)
+      const appliedTemplateIds = campaignWinningTemplates.map((template) => String(template.id))
+      const localStrategy = buildInfluencerStrategy({
+        brand: activeBrand,
+        brief: campaignBrief,
+        campaign,
+        creators: assignedStrategyCreators,
+        recommendations: activeRecommendations.filter((item) => assignedStrategyIds.has(String(item.creatorId))),
+        learningMaterials: campaignBrief.learningMaterials,
+      })
+      let strategy = localStrategy
+      let learningTrace = null
+      let policyVersion = null
+      let policyFeatureKey = null
+      let engine = 'local-strategy-director'
+      let sourceRawIds = ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001']
+      const apiBaseUrl = String(backendConfig?.apiBaseUrl || '').replace(/\/$/, '')
 
-    updateWorkspace((current) =>
-      appendActivity(
-        {
-          ...current,
-          contentTemplates: (current.contentTemplates ?? []).map((template) =>
-            appliedTemplateIds.includes(String(template.id))
-              ? {
-                  ...template,
-                  reuseCount: Number(template.reuseCount || 0) + 1,
-                  lastUsedAt: generatedAt,
-                  updatedAt: generatedAt,
-                }
-              : template,
-          ),
-          campaigns: current.campaigns.map((item) =>
-            item.id === campaign.id
-              ? {
-                ...item,
-                strategyInputRaw,
-                influencerStrategy: strategy,
-                strategyGeneratedAt: generatedAt,
-                  generationState: {
-                    ...(item.generationState || campaign.generationState || {}),
-                    strategy: 'generated',
-                    guide: item.generatedContentGuide || campaign.generatedContentGuide
-                      ? 'generated'
-                      : item.generationState?.guide || campaign.generationState?.guide || 'not_started',
-                    generatedAt,
-                    strategyGeneratedAt: generatedAt,
-                    sourceRawIds,
-                    outputRawId: 'RAW-INT-AI-001',
-                    packageVersion: policyVersion || 'strategy-director-v2.3-local',
-                    policyFeatureKey,
-                    engine,
-                    strategyPolicyVersion: policyVersion || 'strategy-director-v2.3-local',
-                    strategyPolicyFeatureKey: policyFeatureKey,
-                    strategyEngine: engine,
-                    strategyTemplateIds: appliedTemplateIds,
-                  },
-                }
-              : item,
-          ),
-        },
-        'campaign',
-        `${campaign.name} 인플루언서 전략 생성`,
-      ),
-    )
-    showToast(`${campaign.name} 인플루언서 전략을 생성했어요.`)
+      if (!apiBaseUrl) { showToast('관리자 학습자료를 읽을 수 있는 AI 서버 연결이 필요합니다.'); return }
+      if (apiBaseUrl) {
+        try {
+          const response = await fetch(`${apiBaseUrl}/ai/campaign-strategy`, {
+            method: 'POST',
+            headers: await getAuthenticatedApiHeaders(),
+            body: JSON.stringify({
+              brand: activeBrand,
+              campaign,
+              brief: campaignBrief,
+              creators: assignedStrategyCreators.slice(0, 30),
+              recommendations: activeRecommendations.filter((item) => assignedStrategyIds.has(String(item.creatorId))).slice(0, 30),
+              draftStrategy: '',
+            }),
+          })
+          const payload = await response.json().catch(() => ({}))
+          if (!response.ok) throw new Error(payload?.message || '캠페인 전략 API 요청에 실패했습니다.')
+          if (!payload?.data?.strategy) throw new Error('AI 전략 본문이 비어 있습니다.')
+          strategy = payload.data.strategy
+          learningTrace = payload?.data?.learningTrace || null
+          policyVersion = payload?.data?.policyVersion || null
+          policyFeatureKey = payload?.data?.policyFeatureKey || null
+          sourceRawIds = payload?.data?.sourceRawIds || sourceRawIds
+          engine = 'admin-policy-api'
+        } catch (error) {
+          console.warn('Campaign strategy API fallback:', error)
+          showToast(`${campaign.name} 전략 생성 실패: ${error instanceof Error ? error.message : '관리자 AI 정책 연결 상태를 확인해 주세요.'}`)
+          return
+        }
+      }
+      const generatedAt = nowLabel()
+      if (appliedTemplateIds.length) sourceRawIds = uniqueList([...sourceRawIds, 'RAW-INT-TEMPLATE-001'])
+      const strategyInputRaw = campaign.strategyInputRaw || buildCampaignStrategyInputRaw(campaign, campaignBrief)
+
+      updateWorkspace((current) =>
+        appendActivity(
+          {
+            ...current,
+            contentTemplates: (current.contentTemplates ?? []).map((template) =>
+              appliedTemplateIds.includes(String(template.id))
+                ? {
+                    ...template,
+                    reuseCount: Number(template.reuseCount || 0) + 1,
+                    lastUsedAt: generatedAt,
+                    updatedAt: generatedAt,
+                  }
+                : template,
+            ),
+            campaigns: current.campaigns.map((item) =>
+              item.id === campaign.id
+                ? {
+                  ...item,
+                  strategyInputRaw,
+                  influencerStrategy: strategy,
+                  strategyGeneratedAt: generatedAt,
+                    generationState: {
+                      ...(item.generationState || campaign.generationState || {}),
+                      strategy: 'generated',
+                      guide: item.generatedContentGuide || campaign.generatedContentGuide
+                        ? 'generated'
+                        : item.generationState?.guide || campaign.generationState?.guide || 'not_started',
+                      generatedAt,
+                      strategyGeneratedAt: generatedAt,
+                      sourceRawIds,
+                      outputRawId: 'RAW-INT-AI-001',
+                      packageVersion: policyVersion || 'strategy-director-v2.3-local',
+                      policyFeatureKey,
+                      engine,
+                      strategyPolicyVersion: policyVersion || 'strategy-director-v2.3-local',
+                      strategyPolicyFeatureKey: policyFeatureKey,
+                      strategyEngine: engine,
+                      strategyLearningTrace: learningTrace,
+                      strategyTemplateIds: appliedTemplateIds,
+                    },
+                  }
+                : item,
+            ),
+          },
+          'campaign',
+          `${campaign.name} 인플루언서 전략 생성`,
+        ),
+      )
+      showToast(`${campaign.name} 인플루언서 전략을 생성했어요.`)
+    } finally { campaignGenerationLock.current = false; setCampaignGenerationProgress('') }
   }
 
   const createPermissionTestAccounts = () => {
@@ -14770,124 +14662,135 @@ function AppContent() {
 
   const generateCampaignGuideForDetail = async (campaign) => {
     if (!campaign) return
-    if (!campaign.influencerStrategy) {
-      showToast('캠페인 전략을 먼저 생성·검토한 후 가이드를 생성하세요.')
-      return
-    }
-    const baseCampaignBrief = buildCampaignBriefFromCampaign(campaignGenerationInput(campaign, { includeStrategy: true }))
-    const campaignWinningTemplates = getCampaignContentTemplates(contentTemplates, activeBrand.id, campaign.reuseTemplateIds)
-    const campaignWinningTemplateMaterials = buildReusableTemplateLearningMaterials(campaignWinningTemplates, activeBrand.id)
-    const campaignBrief = {
-      ...baseCampaignBrief,
-      learningMaterials: [
-        ...campaignWinningTemplateMaterials,
-        ...getLearningMaterials(baseCampaignBrief),
-      ],
-    }
-    const appliedTemplateIds = campaignWinningTemplates.map((template) => String(template.id))
-    const reusableTemplateReferences = campaignWinningTemplateMaterials.map((material) => ({
-      title: material.title,
-      source: material.sourceName,
-      structure: material.doSay,
-      performanceReason: material.summary,
-      reuseRule: material.dontSay,
-    }))
-    const evidenceReferences = getCampaignGuideReferences(campaign, contentReferences, savedProductionReferenceIds, creators)
-    const localGuide = buildInfluencerContentGuide({
-      brand: activeBrand,
-      brief: campaignBrief,
-      campaign,
-      creators: getCreatorsByIds(creators, campaign.creatorIds ?? []),
-    })
-    let guide = localGuide
-    let policyVersion = null
-    let policyFeatureKey = null
-    let engine = 'local-strategy-director'
-    let sourceRawIds = ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001', 'RAW-EXT-REF-001']
-    const apiBaseUrl = String(backendConfig?.apiBaseUrl || '').replace(/\/$/, '')
-
-    if (apiBaseUrl) {
-      try {
-        const response = await fetch(`${apiBaseUrl}/ai/content-guide`, {
-          method: 'POST',
-          headers: await getAuthenticatedApiHeaders(),
-          body: JSON.stringify({
-            brand: activeBrand,
-            campaign,
-            seedingType: campaign.reward || campaign.guideSeedType || '협업 조건 협의 필요',
-            channel: resolveGuideChannel(campaign),
-            references: [
-              ...evidenceReferences,
-              ...reusableTemplateReferences,
-            ],
-            draftGuide: localGuide,
-          }),
-        })
-        const payload = await response.json().catch(() => ({}))
-        if (!response.ok) throw new Error(payload?.message || '콘텐츠 가이드 API 요청에 실패했습니다.')
-        guide = payload?.data?.guide || localGuide
-        policyVersion = payload?.data?.policyVersion || null
-        policyFeatureKey = payload?.data?.policyFeatureKey || null
-        sourceRawIds = payload?.data?.sourceRawIds || sourceRawIds
-        engine = 'admin-policy-api'
-      } catch (error) {
-        console.warn('Campaign guide API fallback:', error)
-        showToast(`${campaign.name} 가이드 생성 실패: ${error instanceof Error ? error.message : '관리자 AI 정책 연결 상태를 확인해 주세요.'}`)
+    if (campaignGenerationLock.current) return
+    campaignGenerationLock.current = true
+    setCampaignGenerationProgress('공통 가이드 작성·검토 중')
+    try {
+      if (!campaign.influencerStrategy) {
+        showToast('캠페인 전략을 먼저 생성·검토한 후 가이드를 생성하세요.')
         return
       }
-    }
-    const generatedAt = nowLabel()
-    guide += guideEvidenceAppendix(evidenceReferences, campaign.outputLanguage)
-    if (appliedTemplateIds.length) sourceRawIds = uniqueList([...sourceRawIds, 'RAW-INT-TEMPLATE-001'])
-    const strategyInputRaw = campaign.strategyInputRaw || buildCampaignStrategyInputRaw(campaign, campaignBrief)
+      const baseCampaignBrief = buildCampaignBriefFromCampaign(campaignGenerationInput(campaign, { includeStrategy: true }))
+      const campaignWinningTemplates = getCampaignContentTemplates(contentTemplates, activeBrand.id, campaign.reuseTemplateIds)
+      const campaignWinningTemplateMaterials = buildReusableTemplateLearningMaterials(campaignWinningTemplates, activeBrand.id)
+      const campaignBrief = {
+        ...baseCampaignBrief,
+        learningMaterials: [
+          ...campaignWinningTemplateMaterials,
+          ...getLearningMaterials(baseCampaignBrief),
+        ],
+      }
+      const appliedTemplateIds = campaignWinningTemplates.map((template) => String(template.id))
+      const reusableTemplateReferences = campaignWinningTemplateMaterials.map((material) => ({
+        title: material.title,
+        source: material.sourceName,
+        structure: material.doSay,
+        performanceReason: material.summary,
+        reuseRule: material.dontSay,
+      }))
+      const evidenceReferences = getCampaignGuideReferences(campaign, contentReferences, savedProductionReferenceIds, creators)
+      const localGuide = buildInfluencerContentGuide({
+        brand: activeBrand,
+        brief: campaignBrief,
+        campaign,
+        creators: getCreatorsByIds(creators, campaign.creatorIds ?? []),
+      })
+      let guide = localGuide
+      let learningTrace = null
+      let policyVersion = null
+      let policyFeatureKey = null
+      let engine = 'local-strategy-director'
+      let sourceRawIds = ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-BRD-001', 'RAW-INT-CMP-001', 'RAW-EXT-REF-001']
+      const apiBaseUrl = String(backendConfig?.apiBaseUrl || '').replace(/\/$/, '')
 
-    updateWorkspace((current) =>
-      appendActivity(
-        {
-          ...current,
-          contentTemplates: (current.contentTemplates ?? []).map((template) =>
-            appliedTemplateIds.includes(String(template.id))
-              ? {
-                  ...template,
-                  reuseCount: Number(template.reuseCount || 0) + 1,
-                  lastUsedAt: generatedAt,
-                  updatedAt: generatedAt,
-                }
-              : template,
-          ),
-          campaigns: current.campaigns.map((item) =>
-            item.id === campaign.id
-              ? {
-                  ...item,
-                  strategyInputRaw,
-                  generatedContentGuide: guide,
-                  guideGeneratedAt: generatedAt,
-                  generationState: {
-                    ...(item.generationState || {}),
-                    guide: 'generated',
-                    generatedAt,
-                    sourceRawIds,
-                    outputRawId: 'RAW-INT-AI-001',
-                    packageVersion: policyVersion || 'strategy-director-v2.3-local',
-                    policyFeatureKey,
-                    engine,
-                    guidePolicyVersion: policyVersion || 'strategy-director-v2.3-local',
-                    guidePolicyFeatureKey: policyFeatureKey,
-                    guideEngine: engine,
-                    guideTemplateIds: appliedTemplateIds,
-                  },
-                }
-              : item,
-          ),
-        },
-        'campaign',
-        `${campaign.name} 인플루언서 가이드 생성`,
-      ),
-    )
-    showToast(`${campaign.name} 인플루언서 가이드를 생성했어요.`)
+      if (!apiBaseUrl) { showToast('관리자 학습자료를 읽을 수 있는 AI 서버 연결이 필요합니다.'); return }
+      if (apiBaseUrl) {
+        try {
+          const response = await fetch(`${apiBaseUrl}/ai/content-guide`, {
+            method: 'POST',
+            headers: await getAuthenticatedApiHeaders(),
+            body: JSON.stringify({
+              brand: activeBrand,
+              campaign,
+              creators: getCreatorsByIds(creators, campaign.creatorIds ?? []).slice(0, 30),
+              seedingType: campaign.reward || campaign.guideSeedType || '협업 조건 협의 필요',
+              channel: resolveGuideChannel(campaign),
+              references: [
+                ...evidenceReferences,
+                ...reusableTemplateReferences,
+              ],
+              draftGuide: '',
+            }),
+          })
+          const payload = await response.json().catch(() => ({}))
+          if (!response.ok) throw new Error(payload?.message || '콘텐츠 가이드 API 요청에 실패했습니다.')
+          if (!payload?.data?.guide) throw new Error('AI 가이드 본문이 비어 있습니다.')
+          guide = payload.data.guide
+          learningTrace = payload?.data?.learningTrace || null
+          policyVersion = payload?.data?.policyVersion || null
+          policyFeatureKey = payload?.data?.policyFeatureKey || null
+          sourceRawIds = payload?.data?.sourceRawIds || sourceRawIds
+          engine = 'admin-policy-api'
+        } catch (error) {
+          console.warn('Campaign guide API fallback:', error)
+          showToast(`${campaign.name} 가이드 생성 실패: ${error instanceof Error ? error.message : '관리자 AI 정책 연결 상태를 확인해 주세요.'}`)
+          return
+        }
+      }
+      const generatedAt = nowLabel()
+      guide += guideEvidenceAppendix(evidenceReferences, campaign.outputLanguage)
+      if (appliedTemplateIds.length) sourceRawIds = uniqueList([...sourceRawIds, 'RAW-INT-TEMPLATE-001'])
+      const strategyInputRaw = campaign.strategyInputRaw || buildCampaignStrategyInputRaw(campaign, campaignBrief)
+
+      updateWorkspace((current) =>
+        appendActivity(
+          {
+            ...current,
+            contentTemplates: (current.contentTemplates ?? []).map((template) =>
+              appliedTemplateIds.includes(String(template.id))
+                ? {
+                    ...template,
+                    reuseCount: Number(template.reuseCount || 0) + 1,
+                    lastUsedAt: generatedAt,
+                    updatedAt: generatedAt,
+                  }
+                : template,
+            ),
+            campaigns: current.campaigns.map((item) =>
+              item.id === campaign.id
+                ? {
+                    ...item,
+                    strategyInputRaw,
+                    generatedContentGuide: guide,
+                    guideGeneratedAt: generatedAt,
+                    generationState: {
+                      ...(item.generationState || {}),
+                      guide: 'generated',
+                      generatedAt,
+                      sourceRawIds,
+                      outputRawId: 'RAW-INT-AI-001',
+                      packageVersion: policyVersion || 'strategy-director-v2.3-local',
+                      policyFeatureKey,
+                      engine,
+                      guidePolicyVersion: policyVersion || 'strategy-director-v2.3-local',
+                      guidePolicyFeatureKey: policyFeatureKey,
+                      guideEngine: engine,
+                      guideLearningTrace: learningTrace,
+                      guideTemplateIds: appliedTemplateIds,
+                    },
+                  }
+                : item,
+            ),
+          },
+          'campaign',
+          `${campaign.name} 인플루언서 가이드 생성`,
+        ),
+      )
+      showToast(`${campaign.name} 인플루언서 가이드를 생성했어요.`)
+    } finally { campaignGenerationLock.current = false; setCampaignGenerationProgress('') }
   }
 
-  const generateCampaignIndividualGuidesForDetail = (campaign) => {
+  const generateCampaignIndividualGuidesForDetail = async (campaign) => {
     if (!campaign) return
     if (!campaign.generatedContentGuide) {
       showToast('공통 가이드를 먼저 생성·검토한 후 개별 가이드를 생성하세요.')
@@ -14899,96 +14802,113 @@ function AppContent() {
       return
     }
 
-    const campaignBrief = buildCampaignBriefFromCampaign(campaign)
-    const commonGuide = getCampaignContentGuide(campaign)
-    const generatedAt = nowLabel()
-    const nextUtmTrackingLogs = []
-    const nextGuides = guideCreators.reduce((result, creator, index) => {
-      const generatedTrackingAsset = buildInfluencerTrackingAsset({
-        brand: activeBrand,
-        campaign,
-        creator,
-        index,
-      })
-      const storedTrackingAsset = campaign.individualContentGuides?.[creator.id]?.trackingLinks
-      const latestTrackingLog = getLatestCreatorUtmLog(utmTrackingLogs, campaign.id, creator.id)
-      const trackingAsset = storedTrackingAsset?.shortUrl
-        ? { ...generatedTrackingAsset, ...storedTrackingAsset, params: storedTrackingAsset.params || generatedTrackingAsset.params }
-        : trackingAssetFromLog(latestTrackingLog, generatedTrackingAsset)
-      const hasDestination = hasTrackingDestination(trackingAsset)
-      if (hasDestination) nextUtmTrackingLogs.push(
-        buildUtmTrackingLog({
-          brand: activeBrand,
-          campaign,
-          creator,
-          trackingAsset,
-          generatedAt,
-          index,
-        }),
-      )
-      result[creator.id] = {
-        creatorId: creator.id,
-        creatorName: creator.name,
-        platform: creator.platform,
-        handle: creator.handle,
-        generatedAt,
-        trackingLink: hasDestination ? trackingAsset.shortUrl : '',
-        trackingLinks: hasDestination ? {
-          ...trackingAsset,
-          shortUrl: trackingAsset.shortUrl,
-          originalUrl: trackingAsset.originalUrl,
-          couponCode: trackingAsset.couponCode,
-          rawId: trackingAsset.rawId,
-          metricIds: trackingAsset.metricIds,
-          generatedAt,
-        } : null,
-        guide: buildCreatorSpecificContentGuide({
-          brand: activeBrand,
-          brief: campaignBrief,
-          campaign,
-          creator,
-          commonGuide,
-        }),
-      }
-      return result
-    }, {})
-    const strategyInputRaw = campaign.strategyInputRaw || buildCampaignStrategyInputRaw(campaign, campaignBrief)
+    if (campaignGenerationLock.current) return
+    const apiBaseUrl = String(backendConfig?.apiBaseUrl || '').replace(/\/$/, '')
+    if (!apiBaseUrl) { showToast('개별 가이드 생성에는 관리자 AI 서버 연결이 필요합니다.'); return }
+    campaignGenerationLock.current = true
+    setCampaignGenerationProgress('개별 가이드 생성 준비 중')
+    try {
+      const campaignBrief = buildCampaignBriefFromCampaign(campaign)
+      const commonGuide = getCampaignContentGuide(campaign)
+      const generatedAt = nowLabel()
+      const nextUtmTrackingLogs = []
+      const nextGuides = {}
+      for (const [index, creator] of guideCreators.entries()) {
+        setCampaignGenerationProgress(`${index + 1}/${guideCreators.length} · ${creator.name} 가이드 생성 중`)
+        const response = await fetch(`${apiBaseUrl}/ai/content-guide`, {
+          method: 'POST', headers: await getAuthenticatedApiHeaders(),
+          body: JSON.stringify({ brand: activeBrand, campaign: campaignGenerationInput(campaign, { includeStrategy: true }), creator, commonGuide, creators: guideCreators,
+            channel: creator.platform, seedingType: campaign.reward || '협업 조건 협의 필요',
+            references: getCampaignGuideReferences(campaign, contentReferences, savedProductionReferenceIds, creators), draftGuide: '' }),
+        })
+        const payload = await response.json().catch(() => ({}))
+        if (!response.ok || !payload?.data?.guide) throw new Error(payload?.message || `${creator.name} 개별 가이드 생성 실패`)
 
-    updateWorkspace((current) =>
-      appendActivity(
-        {
-          ...current,
-          campaigns: current.campaigns.map((item) =>
-            item.id === campaign.id
-              ? {
-                  ...item,
-                  strategyInputRaw,
-                  individualContentGuides: {
-                    ...(item.individualContentGuides || {}),
-                    ...nextGuides,
-                  },
-                  individualGuidesGeneratedAt: generatedAt,
-                  generationState: {
-                    ...(item.generationState || {}),
-                    guide: item.generatedContentGuide || campaign.generatedContentGuide ? 'generated' : 'not_started',
-                    individualGuide: 'generated',
-                    individualGuideCount: guideCreators.length,
+        const generatedTrackingAsset = buildInfluencerTrackingAsset({
+          brand: activeBrand,
+          campaign,
+          creator,
+          index,
+        })
+        const storedTrackingAsset = campaign.individualContentGuides?.[creator.id]?.trackingLinks
+        const latestTrackingLog = getLatestCreatorUtmLog(utmTrackingLogs, campaign.id, creator.id)
+        const trackingAsset = storedTrackingAsset?.shortUrl
+          ? { ...generatedTrackingAsset, ...storedTrackingAsset, params: storedTrackingAsset.params || generatedTrackingAsset.params }
+          : trackingAssetFromLog(latestTrackingLog, generatedTrackingAsset)
+        const hasDestination = hasTrackingDestination(trackingAsset)
+        if (hasDestination) nextUtmTrackingLogs.push(
+          buildUtmTrackingLog({
+            brand: activeBrand,
+            campaign,
+            creator,
+            trackingAsset,
+            generatedAt,
+            index,
+          }),
+        )
+        nextGuides[creator.id] = {
+          creatorId: creator.id,
+          creatorName: creator.name,
+          platform: creator.platform,
+          handle: creator.handle,
+          generatedAt,
+          trackingLink: hasDestination ? trackingAsset.shortUrl : '',
+          trackingLinks: hasDestination ? {
+            ...trackingAsset,
+            shortUrl: trackingAsset.shortUrl,
+            originalUrl: trackingAsset.originalUrl,
+            couponCode: trackingAsset.couponCode,
+            rawId: trackingAsset.rawId,
+            metricIds: trackingAsset.metricIds,
+            generatedAt,
+          } : null,
+          guide: payload.data.guide,
+          learningTrace: payload.data.learningTrace,
+          policyVersion: payload.data.policyVersion,
+          engine: 'admin-policy-api',
+        }
+      }
+      const strategyInputRaw = campaign.strategyInputRaw || buildCampaignStrategyInputRaw(campaign, campaignBrief)
+
+      updateWorkspace((current) =>
+        appendActivity(
+          {
+            ...current,
+            campaigns: current.campaigns.map((item) =>
+              item.id === campaign.id
+                ? {
+                    ...item,
+                    strategyInputRaw,
+                    individualContentGuides: {
+                      ...(item.individualContentGuides || {}),
+                      ...nextGuides,
+                    },
                     individualGuidesGeneratedAt: generatedAt,
-                    sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-INF-001', 'RAW-INT-BRD-001', UTM_RAW_SOURCE_ID],
-                    outputRawId: 'RAW-INT-AI-001',
-                    packageVersion: 'strategy-director-v2.3-local',
-                    engine: backendConfig?.apiBaseUrl ? 'api-ready-local-fallback' : 'local-strategy-director',
-                  },
-                }
-              : item,
-          ),
-          utmTrackingLogs: mergeUtmTrackingLogs(invalidatePlaceholderTrackingLogs(current.utmTrackingLogs, campaign.id, new Date().toISOString()), nextUtmTrackingLogs),
-        },
-        'campaign',
-        `${campaign.name} 개별 인플루언서 가이드 ${guideCreators.length}건 생성`,
-      ),
-    )
-    showToast(`${campaign.name} 개별 가이드 ${guideCreators.length}건을 생성했어요.`)
+                    generationState: {
+                      ...(item.generationState || {}),
+                      guide: item.generatedContentGuide || campaign.generatedContentGuide ? 'generated' : 'not_started',
+                      individualGuide: 'generated',
+                      individualGuideCount: guideCreators.length,
+                      individualGuidesGeneratedAt: generatedAt,
+                      sourceRawIds: ['RAW-INT-CMP-BRIEF-001', 'RAW-INT-INF-001', 'RAW-INT-BRD-001', UTM_RAW_SOURCE_ID],
+                      outputRawId: 'RAW-INT-AI-001',
+                      packageVersion: 'strategy-director-v2.3-local',
+                      individualGuideEngine: 'admin-policy-api',
+                      individualGuidePolicyVersion: nextGuides[guideCreators[0].id]?.policyVersion,
+                    },
+                  }
+                : item,
+            ),
+            utmTrackingLogs: mergeUtmTrackingLogs(invalidatePlaceholderTrackingLogs(current.utmTrackingLogs, campaign.id, new Date().toISOString()), nextUtmTrackingLogs),
+          },
+          'campaign',
+          `${campaign.name} 개별 인플루언서 가이드 ${guideCreators.length}건 생성`,
+        ),
+      )
+      showToast(`${campaign.name} 개별 가이드 ${guideCreators.length}건을 생성했어요.`)
+    } catch (error) {
+      showToast(`개별 가이드 생성 중단: ${error instanceof Error ? error.message : 'AI 연결 확인 필요'} 기존 가이드는 보존했습니다.`)
+    } finally { campaignGenerationLock.current = false; setCampaignGenerationProgress('') }
   }
 
   const openCampaignUtmEditor = (campaign, creator, index = 0) => {
@@ -18912,9 +18832,9 @@ function AppContent() {
                   <Plus size={16} />
                   후보 등록
                 </button>
-                <button className="primary-button compact-button" type="button" onClick={runAiDiscovery}>
+                <button className="primary-button compact-button" type="button" onClick={runAiDiscovery} disabled={aiDiscoveryBusy}>
                   <Target size={16} />
-                  AI 매칭 실행
+                  {aiDiscoveryBusy ? '후보 적합성 평가 중' : 'AI 매칭 실행'}
                 </button>
               </div>
             </div>
@@ -21118,9 +21038,11 @@ function AppContent() {
                       className="primary-button compact-button"
                       type="button"
                       onClick={() => generateCampaignStrategyForDetail(activeCampaignForModal)}
+                      disabled={Boolean(campaignGenerationProgress)}
+                      title="초안 작성과 출처 검토를 위해 AI를 두 번 호출합니다."
                     >
                       <Target size={16} />
-                      {activeCampaignForModal.influencerStrategy ? '전략 재생성' : '전략 생성'}
+                      {campaignGenerationProgress || (activeCampaignForModal.influencerStrategy ? '전략 재생성' : '전략 생성')}
                     </button>
                     {activeCampaignForModal.influencerStrategy && (
                       <>
@@ -21147,6 +21069,7 @@ function AppContent() {
                     <div className="content-guide-preview">
                       <details><summary>전략 전체 보기</summary>
                       <pre>{activeCampaignForModal.influencerStrategy}</pre></details>
+                    <LearningSourceDetails trace={activeCampaignForModal.generationState?.strategyLearningTrace} />
                     </div>
                   )}
                 </div>
@@ -21178,6 +21101,7 @@ function AppContent() {
     <details><summary>공통 가이드 전체 보기</summary>
       <pre>{activeCampaignForModal.generatedContentGuide}</pre>
     </details>
+    <LearningSourceDetails trace={activeCampaignForModal.generationState?.guideLearningTrace} />
   </div>
 )}
 <PolicyFreshnessNote
@@ -21191,9 +21115,11 @@ function AppContent() {
                       className="secondary-button compact-button"
                       type="button"
                       onClick={() => generateCampaignGuideForDetail(activeCampaignForModal)}
+                      disabled={Boolean(campaignGenerationProgress)}
+                      title="초안 작성과 출처 검토를 위해 AI를 두 번 호출합니다."
                     >
                       <FileText size={16} />
-                      {activeCampaignForModal.generatedContentGuide ? '가이드 재생성' : '가이드 생성'}
+                      {campaignGenerationProgress || (activeCampaignForModal.generatedContentGuide ? '가이드 재생성' : '가이드 생성')}
                     </button>
                     <button
                       className="primary-button compact-button"
@@ -21233,9 +21159,10 @@ function AppContent() {
                       className="secondary-button compact-button"
                       type="button"
                       onClick={() => generateCampaignIndividualGuidesForDetail(activeCampaignForModal)}
+                      disabled={Boolean(campaignGenerationProgress)}
                     >
                       <FileText size={16} />
-                      {campaignModalIndividualGuideCount ? '개별 가이드 재생성' : '개별 가이드 생성'}
+                      {campaignGenerationProgress || (campaignModalIndividualGuideCount ? '개별 가이드 재생성' : '개별 가이드 생성')}
                     </button>
                     <span className="campaign-context-chip">
                       {campaignModalGuideCreators.length}명 대상 · 생성 {campaignModalIndividualGuideCount}건
@@ -21830,7 +21757,7 @@ function AppContent() {
                     <button
                       className="primary-button compact-button"
                       type="button"
-                      onClick={runAiDiscovery}
+                      onClick={runAiDiscovery} disabled={aiDiscoveryBusy}
                       disabled={!recommendationLearningSummary.creatorCount}
                     >
                       성과 반영 추천 재계산
@@ -23582,9 +23509,11 @@ function AppContent() {
                     className="primary-button compact-button"
                     type="button"
                     onClick={() => generateCampaignStrategyForDetail(activeCampaignForModal)}
+                      disabled={Boolean(campaignGenerationProgress)}
+                      title="초안 작성과 출처 검토를 위해 AI를 두 번 호출합니다."
                   >
                     <Target size={16} />
-                    {activeCampaignForModal.influencerStrategy ? '전략 재생성' : '전략 생성'}
+                    {campaignGenerationProgress || (activeCampaignForModal.influencerStrategy ? '전략 재생성' : '전략 생성')}
                   </button>
                   {activeCampaignForModal.influencerStrategy && (
                     <>
@@ -23611,6 +23540,7 @@ function AppContent() {
                   <div className="content-guide-preview">
                     <details><summary>전략 전체 보기</summary>
                     <pre>{activeCampaignForModal.influencerStrategy}</pre></details>
+                    <LearningSourceDetails trace={activeCampaignForModal.generationState?.strategyLearningTrace} />
                   </div>
                 )}
               </div>
@@ -23640,6 +23570,7 @@ function AppContent() {
     <details><summary>공통 가이드 전체 보기</summary>
       <pre>{activeCampaignForModal.generatedContentGuide}</pre>
     </details>
+    <LearningSourceDetails trace={activeCampaignForModal.generationState?.guideLearningTrace} />
   </div>
 )}
 <PolicyFreshnessNote
@@ -23653,9 +23584,11 @@ function AppContent() {
                     className="secondary-button compact-button"
                     type="button"
                     onClick={() => generateCampaignGuideForDetail(activeCampaignForModal)}
+                      disabled={Boolean(campaignGenerationProgress)}
+                      title="초안 작성과 출처 검토를 위해 AI를 두 번 호출합니다."
                   >
                     <FileText size={16} />
-                    {activeCampaignForModal.generatedContentGuide ? '가이드 재생성' : '가이드 생성'}
+                    {campaignGenerationProgress || (activeCampaignForModal.generatedContentGuide ? '가이드 재생성' : '가이드 생성')}
                   </button>
                   <button
                     className="primary-button compact-button"
@@ -24526,7 +24459,7 @@ function RecommendationCard({
         <div className="ai-score">{recommendation.score}</div>
       </div>
       <div className="recommendation-fit-strip">
-        <span>브랜드 핏 {creator.fit ?? recommendation.score}</span>
+        <span>브랜드 핏 {recommendation.aiFitScore ?? creator.fit ?? recommendation.score}</span>
         <span>안전성 {creator.brandSafety ?? '-'}</span>
         <span>가짜 {audienceLabel(creator.platform)} 위험 {creator.fakeRisk ?? '-'}%</span>
         <span>{creator.status ?? '검토 대기'}</span>
@@ -24633,7 +24566,7 @@ function RecommendationCard({
         )}
         {recommendation.aiEnriched && (
           <small className="recommendation-learning-source">
-            OpenAI 보강 · {recommendation.llmTrace?.model || 'connected model'}
+            {recommendation.aiFitScore != null ? `AI 적합성 ${recommendation.aiFitScore}점 · 근거 ${recommendation.aiEvidenceIds?.length || 0}개` : '이전 AI 설명 보강'} · {recommendation.llmTrace?.model || 'connected model'}
           </small>
         )}
         {recommendationPolicyState?.needsRegeneration && (
