@@ -1,4 +1,5 @@
 import YouTubeEvidenceDetails from './YouTubeEvidenceDetails.jsx'
+import { findSavedInstagramReferences, instagramPostKey } from '../shared/instagramReferenceReuse.js'
 import { calculateEstimatedCreatorRate, getCreatorRateSummary, toCreatorRateNumber, withCreatorRate } from '../shared/creatorRates.js'
 import CreatorRateDetails from './CreatorRateDetails.jsx'
 import { reviewCampaignGuides } from '../shared/guideClaimReview.js'
@@ -17056,6 +17057,19 @@ function AppContent() {
       return
     }
 
+    const savedMatches = referenceMode === 'content'
+      ? findSavedInstagramReferences(contentTrackingReferences, { ...referenceFilters, query })
+      : []
+    const showSavedMatches = () => {
+      if (!savedMatches.length) return false
+      setReferenceSearchResults(savedMatches)
+      setReferenceSearchStatus({
+        mode: 'success',
+        message: `공개 검색에서 새 결과를 가져오지 못해 저장된 인스타그램 레퍼런스 ${savedMatches.length}개를 표시합니다.`,
+      })
+      return true
+    }
+
     try {
       setReferenceSearchStatus({ mode: 'loading', message: '인기 콘텐츠 레퍼런스를 검색 중입니다.' })
       const payload = await searchContentReferences({
@@ -17067,6 +17081,7 @@ function AppContent() {
       })
 
       if (!payload) {
+        if (showSavedMatches()) return
         setReferenceSearchStatus({
           mode: 'error',
           message: 'API 서버 연결 후 실제 레퍼런스 검색을 실행할 수 있어요.',
@@ -17096,6 +17111,7 @@ function AppContent() {
         })),
       )
       if (!incoming.length) {
+        if (showSavedMatches()) return
         setReferenceSearchStatus({
           mode: 'error',
           message:
@@ -17106,24 +17122,27 @@ function AppContent() {
         return
       }
 
+      const seenInstagram = new Set(savedMatches.map((item) => instagramPostKey(item.url)))
+      const newResults = incoming.filter((item) => {
+        const key = item.platform === 'Instagram' && instagramPostKey(item.url)
+        if (!key) return true
+        if (seenInstagram.has(key)) return false
+        seenInstagram.add(key)
+        return true
+      })
       setReferencePage(1)
-      setReferenceSearchResults(
-        incoming.map((item) => ({
-          ...item,
-          analysis: '',
-          applyIdea: '',
-        })),
-      )
+      setReferenceSearchResults([...savedMatches, ...newResults])
       setReferenceFilters((current) => ({
         ...current,
         appliedQuery: '',
       }))
       setReferenceSearchStatus({
         mode: 'success',
-        message: `${incoming.length}개 API raw를 가져왔습니다. 저장한 레퍼런스만 분석하고 가이드에 차용합니다.`,
+        message: `새 검색 결과 ${newResults.length}개 · 저장된 레퍼런스 ${savedMatches.length}개. 저장한 레퍼런스는 분석하고 가이드에 차용할 수 있습니다.`,
       })
-      showToast(`${incoming.length}개 레퍼런스를 가져왔어요. 필요한 항목만 저장하세요.`)
+      showToast(`${savedMatches.length + newResults.length}개 레퍼런스를 찾았어요.`)
     } catch (error) {
+      if (showSavedMatches()) return
       const rawMessage = error instanceof Error ? error.message : '레퍼런스 검색에 실패했어요.'
       const isBillingLimit =
         /\/references\/search/i.test(rawMessage) &&
