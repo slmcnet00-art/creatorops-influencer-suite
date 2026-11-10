@@ -1,5 +1,6 @@
 import { createYouTubeEvidenceReviewer, classifyYouTubeVideo, isRelevantYouTubeTopicVideo } from './youtubeEvidence.js'
 import { reviewGuideClaims } from '../shared/guideClaimReview.js'
+import { isInstagramLoginTitle } from '../shared/instagramReferenceReuse.js'
 import { discoverPublicProfiles, createProfileSearchPacer, braveMarketOptions } from './profileMarketDiscovery.js'
 import { campaignGenerationInput, creatorGenerationInput } from '../shared/campaignGenerationInput.js'
 import { campaignFactsPrompt, assertCampaignGenerationFacts, CAMPAIGN_FACT_INSTRUCTIONS } from './campaignGenerationQuality.js'
@@ -3315,7 +3316,7 @@ async function searchWebContentReferences({ query, country, platform, maxResults
   const maxSnapshotEnrichment = maxResults > 40 ? 40 : maxResults
   const enrichedHead = await Promise.all(normalized.slice(0, maxSnapshotEnrichment).map(async (item) => {
     const snapshot = await fetchPublicProfileSnapshot(item.url).catch(() => null)
-    if (!snapshot) {
+    if (!snapshot || (platform === 'Instagram' && isInstagramLoginTitle(snapshot.title))) {
       return item
     }
 
@@ -3497,6 +3498,7 @@ function isSupportedReferenceContentUrl(value, platform) {
 }
 
 function isLowValueReferenceResult({ title, description, url, platform }) {
+  if (platform === 'Instagram' && isInstagramLoginTitle(title)) return true
   const normalizedTitle = cleanReferenceText(title).toLowerCase()
   const normalizedDescription = cleanReferenceText(description).toLowerCase()
   const combinedText = `${normalizedTitle} ${normalizedDescription}`
