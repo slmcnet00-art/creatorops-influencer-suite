@@ -1,6 +1,13 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { findSavedInstagramReferences, instagramPostKey } from '../shared/instagramReferenceReuse.js'
+import { findSavedInstagramReferences, instagramPostKey, isInstagramLoginTitle } from '../shared/instagramReferenceReuse.js'
+
+test('identifies Instagram login page titles without matching real content titles', () => {
+  for (const title of ['Login · Instagram', 'Log in to Instagram', 'Instagram | 로그인', '로그인']) {
+    assert.equal(isInstagramLoginTitle(title), true, title)
+  }
+  assert.equal(isInstagramLoginTitle('How to log in to Instagram'), false)
+})
 
 test('matches saved references by keyword and country while keeping their original metrics', () => {
   const saved = { platform: 'Instagram', country: 'JP', mediaType: '영상', title: 'Beauty serum', url: 'https://www.instagram.com/reel/AbCdEf/?igsh=abc', views: 520000 }

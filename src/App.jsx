@@ -1,5 +1,5 @@
 import YouTubeEvidenceDetails from './YouTubeEvidenceDetails.jsx'
-import { findSavedInstagramReferences, instagramPostKey } from '../shared/instagramReferenceReuse.js'
+import { findSavedInstagramReferences, instagramPostKey, isInstagramLoginTitle } from '../shared/instagramReferenceReuse.js'
 import { calculateEstimatedCreatorRate, getCreatorRateSummary, toCreatorRateNumber, withCreatorRate } from '../shared/creatorRates.js'
 import CreatorRateDetails from './CreatorRateDetails.jsx'
 import { reviewCampaignGuides } from '../shared/guideClaimReview.js'
@@ -3976,6 +3976,7 @@ function isLowQualitySavedReference(item) {
   if (['Instagram', 'TikTok'].includes(platform) && !isValidReferenceContentUrl(item.url, platform)) return true
 
   const title = cleanReferenceDisplayText(item.title).toLowerCase()
+  if (platform === 'Instagram' && isInstagramLoginTitle(title)) return true
   const analysis = cleanReferenceDisplayText(item.analysis).toLowerCase()
   if (/(^|[\s(])@?reel\b/.test(title) || /reel raffle/.test(title)) return true
   if (title.includes('instagram photos and videos') && analysis.includes('instagram photos and videos')) return true

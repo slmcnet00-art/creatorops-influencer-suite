@@ -1,3 +1,7 @@
+export function isInstagramLoginTitle(title) {
+  return /^(?:(?:log\s*in|sign\s*in|로그인)(?:\s*(?:to\s+instagram|[·•|–—-]\s*instagram))?|instagram\s*[·•|–—-]\s*(?:log\s*in|sign\s*in|로그인))$/i.test(String(title || '').trim())
+}
+
 export function instagramPostKey(value) {
   try {
     const url = new URL(value)
