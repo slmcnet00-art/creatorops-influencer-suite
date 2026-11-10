@@ -9,6 +9,16 @@ export function resolveGuideChannel(campaign = {}) {
   return campaign.guideChannel || '채널 협의 필요'
 }
 
+export function findSavedCampaignReference(references, campaignId, url, referenceKind) {
+  const targetUrl = String(url || '').trim()
+  if (!targetUrl) return undefined
+  return references.find((reference) =>
+    String(reference.campaignId) === String(campaignId) &&
+    String(reference.url || '').trim() === targetUrl &&
+    (reference.referenceKind === 'brand' ? 'brand' : 'content') === referenceKind,
+  )
+}
+
 export function getCampaignGuideReferences(campaign, savedReferences = [], savedIds = [], creators = []) {
   const selected = new Set(savedIds.map(String))
   const assigned = new Set((campaign.creatorIds ?? []).map(String))

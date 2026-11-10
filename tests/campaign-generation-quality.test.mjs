@@ -23,3 +23,11 @@ test('미확인 일본어 지원 확정과 원본 링크 조작은 거부한다'
   assert.doesNotThrow(() => assertCampaignGenerationFacts('https://www.youtube.com/watch?v=MWJumz6syok', {}, source))
   assert.throws(() => assertCampaignGenerationFacts('https://www.youtube.com/watch?v=MWJumz6syoA', {}, source), { status: 422 })
 })
+
+test('차앤박 확정 훅을 바꾼 전략 또는 가이드의 저장을 막는다', () => {
+  const hook = '파데는 똑같은데, 기초 하나로 차이가 날까요?'
+  const campaign = { mission: '확정 훅 그대로: ' + hook + ' 수정화장 없이 4시간 뒤 비교.' }
+  assert.equal(JSON.parse(campaignFactsPrompt(campaign).split('\n').at(-1)).confirmedHook, hook)
+  assert.throws(() => assertCampaignGenerationFacts('파운데이션은 똑같은데, 기초 에센스 하나로 4시간 뒤 차이가 날까요?', campaign), /확정 훅/)
+  assert.doesNotThrow(() => assertCampaignGenerationFacts('첫 컷 “' + hook + '”', campaign))
+})

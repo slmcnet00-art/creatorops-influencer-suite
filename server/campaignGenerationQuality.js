@@ -11,13 +11,25 @@ export function campaignFactsPrompt(campaign = {}) {
     product: campaign.product,
     reward: campaign.reward,
     mission: campaign.mission,
+    oneMessage: campaign.oneMessage,
+    hookPoints: campaign.hookPoints,
+    confirmedHook: getConfirmedHook(campaign),
     unknownUntilVerified: ['app Japanese language support', 'exact app features and available recipes', 'store/download URL', 'agreed creator fee', 'conversion tracking integration', 'audience demographics', 'brand safety and fake follower rates'],
     zeroBudgetRule: '0 KRW is the only approved budget when budgetKrw is 0. Do not import 15,000,000 or any example amount. Do not allocate paid fees until separately approved.',
   })
 }
 
+function getConfirmedHook(campaign) {
+  const mission = String(campaign.mission || '')
+  return mission.match(/(?:^|\n)\s*확정 훅(?: 그대로)?\s*[:：]\s*([^\n?!]+[?!]?)/)?.[1].trim() || ''
+}
+
 export function assertCampaignGenerationFacts(text, campaign = {}, source = {}) {
   const fail = (message) => { throw Object.assign(new Error(message), { status: 422 }) }
+  const confirmedHook = getConfirmedHook(campaign)
+  if (confirmedHook && !String(text).includes(confirmedHook)) {
+    fail('캠페인 미션의 확정 훅이 생성물에서 바뀌었습니다. 확정 문구를 유지해 다시 생성하세요.')
+  }
   if (Number(campaign.budget ?? 0) === 0) {
     for (const line of String(text).split('\n')) {
       if (!/예산|予算|budget/i.test(line)) continue
