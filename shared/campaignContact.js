@@ -1,4 +1,17 @@
 export const CONTACT_LANGUAGES = ['ko', 'en', 'ja', 'zh-CN']
+export const CONTACT_TEMPLATE_PRESETS = [
+  { id: 'basic_proposal', label: '기본 협업 제안', description: '인사와 협업 조건, 회신 요청을 간결하게 전달합니다.' },
+  { id: 'miping_contact', label: '미핑기획 컨택 양식', description: '제공 DM·이메일 양식을 바탕으로 담당자 소개부터 협업 내용·일정·회신 요청까지 전달합니다.' },
+]
+export function contactPresetId(value) { return CONTACT_TEMPLATE_PRESETS.some(p => p.id === value) ? value : 'miping_contact' }
+export function contactTemplatesForPreset(campaign = {}, preset = campaign.contactTemplatePreset) {
+  const id = contactPresetId(preset)
+  return campaign.contactTemplateLibrary?.[id] || (id === contactPresetId(campaign.contactTemplatePreset) ? campaign.contactTemplates || {} : {})
+}
+export function withContactPreset(campaign = {}, preset) {
+  const id = contactPresetId(preset)
+  return { ...campaign, contactTemplatePreset: id, contactTemplates: contactTemplatesForPreset(campaign, id) }
+}
 export const CONTACT_VARIABLES = ['creatorName', 'brand', 'campaignName', 'product', 'deadline', 'offer', 'replyRequest', 'formats', 'sender']
 export function contactProductLabel(campaign = {}, language = 'ko', fallback = '') {
   const product = String(campaign.product || fallback || '').trim()
@@ -11,8 +24,17 @@ const defaults = {
   ja: { subject: '【Mipingplan】{{brand}} コラボレーションのご相談 😊', body: '{{creatorName}}様、こんにちは！😊\nブランドとクリエイターをつなぐマーケティングチーム、{{sender}}です。\n\n📌 {{brand}}の{{product}}について、コラボレーションをご相談したくご連絡しました。\n{{offer}}\n\n・コンテンツ形式：{{formats}}\n・日程：{{deadline}}\n\n{{replyRequest}}\nご興味がございましたら、ご希望のメールアドレスや連絡方法もお知らせください。詳細なブリーフと条件を改めてご案内いたします。\n\nよろしくお願いいたします。\n{{sender}}' },
   'zh-CN': { subject: '【Mipingplan】{{brand}} 内容合作邀请 😊', body: '{{creatorName}}，您好！😊\n我们是连接品牌与创作者的营销团队{{sender}}。\n\n📌 想邀请您了解{{brand}}的{{product}}内容合作。\n{{offer}}\n\n· 内容形式：{{formats}}\n· 时间：{{deadline}}\n\n{{replyRequest}}\n如果感兴趣，也请告知方便联系的邮箱或联系方式。我们会进一步发送详细简报和合作条件。\n\n谢谢！\n{{sender}}' },
 }
-export function defaultContactTemplate(language = 'ko', channel = 'email') {
+export function defaultContactTemplate(language = 'ko', channel = 'email', preset = 'miping_contact') {
   const base = defaults[language] || defaults.en
+  if (preset === 'basic_proposal') {
+    const bodies = {
+      ko: '{{creatorName}}님, 안녕하세요! 😊\n{{brand}}의 {{product}} 콘텐츠 협업을 제안드립니다.\n\n{{offer}}\n\n콘텐츠 형식: {{formats}}\n일정: {{deadline}}\n\n{{replyRequest}}\n감사합니다.\n{{sender}}',
+      en: 'Hi {{creatorName}}! 😊\nWe would like to invite you to a {{brand}} collaboration for {{product}}.\n\n{{offer}}\n\nFormat: {{formats}}\nTiming: {{deadline}}\n\n{{replyRequest}}\nThank you!\n{{sender}}',
+      ja: '{{creatorName}}様、こんにちは！😊\n{{brand}}の{{product}}のコラボレーションをご相談いたします。\n\n{{offer}}\n\n形式：{{formats}}\n日程：{{deadline}}\n\n{{replyRequest}}\nよろしくお願いいたします。\n{{sender}}',
+      'zh-CN': '{{creatorName}}，您好！😊\n想邀请您参与{{brand}}的{{product}}内容合作。\n\n{{offer}}\n\n形式：{{formats}}\n时间：{{deadline}}\n\n{{replyRequest}}\n谢谢！\n{{sender}}',
+    }
+    return { ...base, body: bodies[language] || bodies.en }
+  }
   if (channel !== 'dm') return { ...base }
   const bodies = {
     ko: '{{creatorName}}님, 안녕하세요! 😊 {{sender}}입니다.\n{{brand}}의 {{product}} 콘텐츠 협업을 제안드려요.\n\n{{offer}}\n형식: {{formats}} · 일정: {{deadline}}\n\n{{replyRequest}}\n관심 있으시면 편하신 이메일이나 연락 방법을 알려주세요. 상세 브리프와 조건을 안내드릴게요. 감사합니다!',
@@ -36,8 +58,9 @@ export function validateContactTemplates(templates = {}) {
 }
 export function campaignContactMessage(campaign = {}, language = 'ko', channel = 'email', variables = {}) {
   const key = `${channel}:${language}`
-  let template = campaign.contactTemplates?.[key] || defaultContactTemplate(language, channel)
-  try { validateContactTemplates({ [key]: template }) } catch { template = defaultContactTemplate(language, channel) }
+  const preset = contactPresetId(campaign.contactTemplatePreset)
+  let template = campaign.contactTemplates?.[key] || defaultContactTemplate(language, channel, preset)
+  try { validateContactTemplates({ [key]: template }) } catch { template = defaultContactTemplate(language, channel, preset) }
   const formatLabels = { 숏폼: { en: 'Short video', ja: 'ショート動画', 'zh-CN': '短视频' }, 롱폼: { en: 'Long video', ja: '長尺動画', 'zh-CN': '长视频' }, 라이브: { en: 'Live', ja: 'ライブ', 'zh-CN': '直播' }, '이미지/캐러셀': { en: 'Image / carousel', ja: '画像・カルーセル', 'zh-CN': '图片/轮播' }, 스토리: { en: 'Story', ja: 'ストーリーズ', 'zh-CN': '快拍' } }
   const terms = { ko: '협의 후 확정', en: 'To be agreed', ja: 'ご相談の上決定', 'zh-CN': '协商后确定' }
   const values = { sender: language === 'ko' ? '미핑기획 담당자' : 'Mipingplan', brand: campaign.brandName || '', campaignName: campaign.name || '', product: campaign.product || '',

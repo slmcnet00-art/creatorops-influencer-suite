@@ -1,9 +1,10 @@
 import CampaignDocumentPanel from './CampaignDocumentPanel.jsx'
 import CampaignQuotePanel from './CampaignQuotePanel.jsx'
+import { CampaignDetailTabs, CampaignDetailPanel } from './CampaignDetailTabs.jsx'
 import CampaignContactPanel from './CampaignContactPanel.jsx'
 import CreatorProfileAvatar from './CreatorProfileAvatar.jsx'
 import { creatorAudience } from '../shared/creatorProfilePresentation.js'
-import { campaignContactMessage, contactProductLabel } from '../shared/campaignContact.js'
+import { campaignContactMessage, contactProductLabel, CONTACT_TEMPLATE_PRESETS, contactPresetId, withContactPreset } from '../shared/campaignContact.js'
 import { referencedBrandCreatorIds } from '../shared/brandCreatorReferences.js'
 import { canWriteBrandWorkspace } from './workspacePermissions.js'
 import { buildReportXlsx, campaignWorkbookSheets } from './reportWorkbook.js'
@@ -7896,6 +7897,7 @@ function AppContent() {
   )
   const [activeSection, setActiveSection] = useState(() => window.location.hash === '#report' ? 'report' : 'dashboard')
   const [campaignDetailMode, setCampaignDetailMode] = useState(false)
+  const [campaignDetailTab, setCampaignDetailTab] = useState('overview')
   const [toast, setToast] = useState('')
   const showToast = (message) => setToast(message)
   const [modal, setModal] = useState(null)
@@ -7930,6 +7932,7 @@ function AppContent() {
   const [outreachMessageDraft, setOutreachMessageDraft] = useState('')
   const [outreachOfferAmountDraft, setOutreachOfferAmountDraft] = useState('')
   const [bulkOutreachMessageType, setBulkOutreachMessageType] = useState(DEFAULT_OUTREACH_MESSAGE_TYPE)
+  const [bulkOutreachTemplatePreset, setBulkOutreachTemplatePreset] = useState('miping_contact')
   const [realDiscoveryDraft, setRealDiscoveryDraft] = useState({
     youtubeApiKey: '',
     googleApiKey: '',
@@ -14052,7 +14055,8 @@ function AppContent() {
     showToast('데모 데이터로 초기화했어요.')
   }
 
-  const openCampaign = (campaign) => {
+  const openCampaign = (campaign, tab = 'overview') => {
+    setCampaignDetailTab(typeof tab === 'string' ? tab : 'overview')
     setSelectedCampaignId(campaign.id)
     setCampaignEditDraft(null)
     setCampaignDetailMode(true)
@@ -14061,6 +14065,7 @@ function AppContent() {
   }
 
   const closeCampaignDetail = () => {
+    setCampaignDetailTab('overview')
     setCampaignEditDraft(null)
     setCampaignDetailMode(false)
   }
@@ -14115,9 +14120,9 @@ function AppContent() {
     return { subject, body: message }
   }
 
-  const prepareCampaignContacts = (templates, channel) => {
+  const prepareCampaignContacts = (contactPatch, channel) => {
     if (!selectedCampaign || !canWriteBrandWorkspace(normalizeRole(currentAccount?.role))) return
-    const campaign = { ...selectedCampaign, contactTemplates: templates }
+    const campaign = { ...selectedCampaign, ...contactPatch }
     const records = getCreatorsByIds(creators, campaign.creatorIds || []).filter(creator => !outreach.some(item => item.campaignId === campaign.id && item.creatorId === creator.id)).map(creator => {
       const marketCountry = resolveCampaignRecordMarket(campaign, creator.country, creator.searchCountry)
       const language = getCampaignMarketForCountry(campaign, marketCountry).language
@@ -14127,10 +14132,10 @@ function AppContent() {
       return { id: createId(), creatorId: creator.id, campaignId: campaign.id, marketCountry, source: '캠페인 컨택 양식', status: '승인 대기', channel: plan.id,
         deliveryMode: plan.deliveryMode, complianceNote: plan.notice, messageType: bulkOutreachMessageType,
         commercialTerms: buildOutreachCommercialTerms(bulkOutreachMessageType, creator, campaign), subject: draft.subject, message: draft.body,
-        reason: '제공 컨택 양식 기반 캠페인별 초안', createdAt: nowLabel() }
+        templatePreset: contactPresetId(campaign.contactTemplatePreset), reason: '선택한 발송 멘트 기반 캠페인별 초안', createdAt: nowLabel() }
     })
     updateWorkspace(current => appendActivity({ ...current,
-      campaigns: current.campaigns.map(c => c.id === campaign.id && c.brandId === activeBrand.id ? { ...c, contactTemplates: templates } : c),
+      campaigns: current.campaigns.map(c => c.id === campaign.id && c.brandId === activeBrand.id ? { ...c, ...contactPatch } : c),
       outreach: [...records.filter(record => !current.outreach.some(item => item.campaignId === record.campaignId && item.creatorId === record.creatorId)), ...current.outreach],
     }, 'outreach', `캠페인 컨택 초안 ${records.length}건 생성`))
     showToast(`${records.length}건을 검토함에 준비했습니다. 기존 메시지는 보존했습니다.`)
@@ -15172,6 +15177,9 @@ function AppContent() {
       )
     })
     setSelectedCampaignId(nextCampaign.id)
+    setCampaignDetailTab('overview')
+    setCampaignDetailMode(true)
+    setActiveSection('campaigns')
     setCampaignDraft({
       name: '',
       budget: '',
@@ -15801,18 +15809,20 @@ function AppContent() {
     }
   }
 
-  const rebuildOutreachForMessageType = (item, messageType) => {
+  const rebuildOutreachForMessageType = (item, messageType, templatePreset) => {
     const creator = creators.find((candidate) => candidate.id === item.creatorId)
-    const campaign = campaigns.find((candidate) => candidate.id === item.campaignId)
-    if (!creator || !campaign) return item
+    const sourceCampaign = campaigns.find((candidate) => candidate.id === item.campaignId)
+    if (!creator || !sourceCampaign) return item
+    const campaign = withContactPreset(sourceCampaign, templatePreset || item.templatePreset || sourceCampaign.contactTemplatePreset)
     const campaignBrief = buildCampaignDiscoveryBrief(brandBrief, campaign)
     const commercialTerms = buildOutreachCommercialTerms(messageType, creator, campaign)
     return {
       ...item,
       messageType,
       commercialTerms,
-      subject: buildOutreachSubject(messageType, campaign, item.marketCountry),
-      message: buildTypedProposalMessage(creator, campaignBrief, campaign, messageType, item.marketCountry),
+      templatePreset: contactPresetId(campaign.contactTemplatePreset),
+      subject: buildOutreachSubject(messageType, campaign, item.marketCountry, creator),
+      message: buildTypedProposalMessage(creator, campaignBrief, campaign, messageType, item.marketCountry, '', null, item.channel === 'email' ? 'email' : 'dm'),
       manualEdited: false,
       messageUpdatedAt: nowLabel(),
     }
@@ -15830,7 +15840,7 @@ function AppContent() {
         {
           ...current,
           outreach: current.outreach.map((item) =>
-            selectedIds.has(item.id) ? rebuildOutreachForMessageType(item, type.id) : item,
+            selectedIds.has(item.id) ? rebuildOutreachForMessageType(item, type.id, bulkOutreachTemplatePreset) : item,
           ),
         },
         'outreach',
@@ -15840,16 +15850,16 @@ function AppContent() {
     showToast(`선택한 ${selectedIds.size}건을 '${type.label}' 메시지로 업데이트했어요.`)
   }
 
-  const updateOutreachMessageType = (itemId, messageType) => {
+  const updateOutreachMessageType = (itemId, messageType, templatePreset) => {
     const type = getOutreachMessageType(messageType)
     const currentItem = activeOutreach.find((item) => item.id === itemId)
-    const rebuiltItem = currentItem ? rebuildOutreachForMessageType(currentItem, type.id) : null
+    const rebuiltItem = currentItem ? rebuildOutreachForMessageType(currentItem, type.id, templatePreset) : null
     updateWorkspace((current) =>
       appendActivity(
         {
           ...current,
           outreach: current.outreach.map((item) =>
-            item.id === itemId ? rebuildOutreachForMessageType(item, type.id) : item,
+            item.id === itemId ? rebuildOutreachForMessageType(item, type.id, templatePreset) : item,
           ),
         },
         'outreach',
@@ -20580,7 +20590,7 @@ function AppContent() {
             <div className="panel-heading">
               <div>
                 <span className="mini-label">캠페인</span>
-                <h2>캠페인 파이프라인</h2>
+                <h2>{campaignDetailMode ? '캠페인 관리' : '캠페인 목록'}</h2>
               </div>
               <div className="panel-heading-actions">
                 <button className="primary-button compact-button" type="button" onClick={() => setModal({ type: 'create' })}>
@@ -20625,7 +20635,7 @@ function AppContent() {
                       <button
                         className="secondary-button compact-button"
                         type="button"
-                        onClick={() => setCampaignEditDraft(buildCampaignEditDraft(activeCampaignForModal))}
+                        onClick={() => { setCampaignDetailTab('overview'); setCampaignEditDraft(buildCampaignEditDraft(activeCampaignForModal)) }}
                       >
                         <SlidersHorizontal size={16} />
                         캠페인 수정
@@ -20642,6 +20652,14 @@ function AppContent() {
                   </div>
                 </div>
 
+                <CampaignDetailTabs value={campaignDetailTab} onChange={setCampaignDetailTab} />
+                <CampaignDetailPanel id="quote" activeTab={campaignDetailTab}>
+                <CampaignQuotePanel key={`quote-${activeCampaignForModal.id}`} campaign={activeCampaignForModal} brand={activeBrand} creators={creators}
+                  onSave={canWriteBrandWorkspace(normalizeRole(currentAccount?.role)) ? settings => saveCampaignCommercialSettings(activeCampaignForModal.id, { quoteSettings: settings }) : undefined} />
+                <details><summary>기존 견적 참고자료</summary><CampaignDocumentPanel campaign={activeCampaignForModal} kind="quote" /></details>
+
+                </CampaignDetailPanel>
+                <CampaignDetailPanel id="overview" activeTab={campaignDetailTab}>
                 {campaignEditDraft && (
                   <div className="campaign-edit-panel">
                     <div>
@@ -20823,10 +20841,6 @@ function AppContent() {
                   </div>
                 )}
 
-                <CampaignQuotePanel key={`quote-${activeCampaignForModal.id}`} campaign={activeCampaignForModal} brand={activeBrand} creators={creators}
-                  onSave={canWriteBrandWorkspace(normalizeRole(currentAccount?.role)) ? settings => saveCampaignCommercialSettings(activeCampaignForModal.id, { quoteSettings: settings }) : undefined} />
-                <details><summary>기존 견적 참고자료</summary><CampaignDocumentPanel campaign={activeCampaignForModal} kind="quote" /></details>
-
                 <div className="campaign-kpi-block">
                   <div className="dashboard-section-label">
                     <span className="mini-label">핵심 지표</span>
@@ -20908,6 +20922,8 @@ function AppContent() {
                   </article>
                 </div>
 
+                </CampaignDetailPanel>
+                <CampaignDetailPanel id="strategy" activeTab={campaignDetailTab}>
                 <div className="dashboard-section-label">
                   <span className="mini-label">가이드</span>
                   <small>전략 · 콘텐츠 · 첨부 · 개별 가이드</small>
@@ -21109,6 +21125,9 @@ function AppContent() {
                   )}
                 </div>
 
+                </CampaignDetailPanel>
+                <CampaignDetailPanel id="tracking" activeTab={campaignDetailTab}>
+                <div className="campaign-tab-actions"><button type="button" className="primary-button compact-button" onClick={() => jumpTo('report')}>캠페인 리포트 보기</button></div>
                 <section className="campaign-utm-manager">
                   <div className="campaign-utm-head">
                     <div>
@@ -21226,6 +21245,11 @@ function AppContent() {
                   )}
                 </section>
 
+                </CampaignDetailPanel>
+                <CampaignDetailPanel id="creators" activeTab={campaignDetailTab}>
+                <h3>캠페인 배정 후보 · {activeCampaignForModal.creatorIds?.length || 0}명</h3>
+                <div className="campaign-tab-actions"><button className="secondary-button compact-button" type="button" onClick={() => jumpTo('groups')}>후보 그룹에서 배정</button><button className="secondary-button compact-button" type="button" onClick={() => jumpTo('messages')}>메시지 검토함 열기</button></div>
+                <div className="campaign-candidate-table"><table><thead><tr><th>크리에이터</th><th>채널</th><th>팔로워</th><th>단가</th></tr></thead><tbody>{getCreatorsByIds(creators, activeCampaignForModal.creatorIds || []).map(creator => <tr key={creator.id}><td><CreatorProfileAvatar creator={creator} />{creator.name}</td><td>{creator.platform}</td><td>{creatorAudience(creator).value == null ? '확인 필요' : compactNumber(creatorAudience(creator).value)}<small> · {creatorAudience(creator).label}</small></td><td>{getCreatorPriceValue(creator, activeCampaignForModal) ? won(getCreatorPriceValue(creator, activeCampaignForModal)) : '산정 전'}</td></tr>)}</tbody></table></div>
                 <ClientApprovalBoard
                   campaign={activeCampaignForModal}
                   poolItems={campaignModalPool}
@@ -21238,6 +21262,8 @@ function AppContent() {
                   onEditCreatorRate={openCreatorRateEditor}
                 />
 
+                </CampaignDetailPanel>
+                <CampaignDetailPanel id="operations" activeTab={campaignDetailTab}>
                 <section className="campaign-ops-detail">
                   <div className="campaign-ops-detail-head">
                     <div>
@@ -21276,9 +21302,11 @@ function AppContent() {
                     )}
                   </div>
                 </section>
+                </CampaignDetailPanel>
               </div>
             ) : (
             <div className="campaign-list">
+              <p className="campaign-list-instructions">새 캠페인은 위의 ‘캠페인 생성’에서 시작하세요. 생성한 캠페인은 개요·전략·후보·견적서·추적·정산 탭에서 관리합니다.</p>
               {brandCampaigns.length === 0 ? (
                 <div className="empty-state compact-empty">
                   <Target size={22} />
@@ -21294,7 +21322,7 @@ function AppContent() {
                     campaign={{ ...campaign, spend: getActualSpend(campaign, fulfillmentRecords, creatorOperations) }}
                     creators={getCreatorsByIds(creators, campaign.creatorIds)}
                     kpiSummary={campaignKpiSummaries.find((summary) => summary.campaignId === campaign.id)}
-                    onOpen={() => openCampaign(campaign)}
+                    onOpen={(tab) => openCampaign(campaign, tab)}
                     onDelete={() => deleteCampaign(campaign.id)}
                   />
                 ))
@@ -21797,7 +21825,7 @@ function AppContent() {
             </div>
             <CampaignContactPanel key={`contact-${selectedCampaign?.id}`} campaign={selectedCampaign} creators={getCreatorsByIds(creators, selectedCampaign?.creatorIds || [])}
               preview={previewCampaignContact} messageType={bulkOutreachMessageType} messageTypes={OUTREACH_MESSAGE_TYPES} onMessageTypeChange={setBulkOutreachMessageType}
-              onSave={canWriteBrandWorkspace(normalizeRole(currentAccount?.role)) ? templates => saveCampaignCommercialSettings(selectedCampaign.id, { contactTemplates: templates }) : undefined}
+              onSave={canWriteBrandWorkspace(normalizeRole(currentAccount?.role)) ? contactPatch => saveCampaignCommercialSettings(selectedCampaign.id, contactPatch) : undefined}
               onPrepare={canWriteBrandWorkspace(normalizeRole(currentAccount?.role)) ? prepareCampaignContacts : undefined} />
             <details><summary>기존 컨택 참고자료</summary><CampaignDocumentPanel campaign={selectedCampaign} kind="contact" /></details>
             <div className="outreach-guidance">
@@ -21873,8 +21901,9 @@ function AppContent() {
                   Gmail {gmailConnected ? '연결됨' : '미연결'}
                 </span>
               </div>
+              <label className="message-type-picker"><span>발송 멘트</span><select aria-label="일괄 발송 멘트" value={bulkOutreachTemplatePreset} onChange={e => setBulkOutreachTemplatePreset(e.target.value)}>{CONTACT_TEMPLATE_PRESETS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select></label>
               <label className="message-type-picker">
-                <span>메시지 유형</span>
+                <span>제안 유형</span>
                 <select
                   value={bulkOutreachMessageType}
                   onChange={(event) => setBulkOutreachMessageType(event.target.value)}
@@ -23663,6 +23692,7 @@ function AppContent() {
                   {getOutreachMessageType(activeOutreachDetail.messageType).description}
                 </small>
               </label>
+              <label className="outreach-detail-type-picker"><span>발송 멘트</span><select aria-label="개별 발송 멘트" value={contactPresetId(activeOutreachDetail.templatePreset || activeOutreachDetailCampaign?.contactTemplatePreset)} onChange={e => updateOutreachMessageType(activeOutreachDetail.id, activeOutreachDetail.messageType, e.target.value)}>{CONTACT_TEMPLATE_PRESETS.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}</select><small>선택하면 현재 후보의 검토용 문구에 적용됩니다.</small></label>
               <OutreachMessagePreview
                 item={activeOutreachDetail}
                 creator={activeOutreachDetailCreator}
@@ -24587,9 +24617,11 @@ function CampaignCard({ campaign, creators, kpiSummary, onOpen, onDelete }) {
         ))}
       </div>
       <div className="campaign-card-actions">
-        <button className="primary-button compact-button" type="button" onClick={onOpen}>
+        <button className="primary-button compact-button" type="button" onClick={() => onOpen('overview')}>
           캠페인 상세 보기
         </button>
+        <button className="secondary-button compact-button" type="button" onClick={() => onOpen('strategy')}>전략·가이드</button>
+        <button className="secondary-button compact-button" type="button" onClick={() => onOpen('quote')}>견적서</button>
       </div>
       <div className="progress-line">
         <span style={{ width: `${campaign.progress}%` }} />
@@ -24604,7 +24636,7 @@ function OutreachMessagePreview({ item, creator, campaign, brief }) {
     ? buildTypedProposalMessage(
         creator,
         buildCampaignDiscoveryBrief(brief, campaign),
-        campaign,
+        withContactPreset(campaign, item.templatePreset || campaign.contactTemplatePreset),
         item.messageType,
         item.marketCountry,
         'ko',
