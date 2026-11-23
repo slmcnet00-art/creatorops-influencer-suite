@@ -31,7 +31,17 @@
 
 아마존 외부 유입의 구매 성과를 측정할 때는 Amazon Attribution의 적격 계정에서 발급한 태그가 포함된 URL을 연결한다. 국가·상품 ASIN·브랜드/판매 계정·크리에이터별 링크와 발급 기준을 등록한다. 구매수·매출은 해당 Attribution 보고서를 연동하거나 검증된 원본 보고서로 가져와야 한다.
 
-PA가 Product Advertising API를 뜻한다면 상품 데이터/제휴 서비스의 별도 API다. Amazon 공식 문서는 PA-API 5의 Creators API 전환을 안내하고 있다. Associates 파트너 태그와 Attribution 태그도 목적이 다르므로 받은 코드의 명칭부터 확인한다.
+사용자가 말한 PA는 Amazon Associates 파트너 태그 또는 PA API 범위로 확인했다. 연결 목적별로 다음 항목을 구분한다.
+
+| 목적 | 준비할 항목 | 집계 근거 |
+| --- | --- | --- |
+| 제휴 링크 식별·제휴 수익 확인 | Associates Store/Tracking ID, 해당 국가의 태그가 포함된 상품 링크 | Associates Tracking ID별 원본 보고서의 클릭·주문·배송·수수료 |
+| 상품명·이미지·상품 정보 조회 | 승인된 Associates 계정의 Creators API 자격증명과 파트너 태그 | Creators API 상품 카탈로그 응답 |
+| 브랜드가 진행한 외부 캠페인의 아마존 구매 성과 | Amazon Attribution 적격 계정, 캠페인/크리에이터별 태그 링크와 보고서 접근 | Attribution의 상품상세조회·구매·매출 |
+
+Associates 태그는 보통 URL의 tag 파라미터에 포함된다. 사용자가 제공할 초기 정보는 국가/마켓플레이스, 상품 ASIN 또는 URL, 파트너 태그다. 태그를 등록한 뒤에도 실제 제휴 수익을 대시보드에 표시하려면 원본 보고서를 별도 연결해야 한다. 상품조회 API의 응답을 구매·수수료 실적으로 사용하지 않는다.
+
+Amazon 공식 문서는 PA-API 5의 종료와 Creators API 전환을 안내하므로 신규 상품조회는 Creators API를 기준으로 준비한다. 비밀 자격증명은 관리자 비밀 저장소에 설정하고 링크·UTM·일반 문서에 기록하지 않는다.
 
 현재 CreatorOps에는 Amazon Attribution 태그 자동 발급이나 성과 조회 연결을 이 문서만으로 추가하지 않았다. 발급된 Amazon URL의 추적 파라미터는 유지해야 하며, UTM을 더한 최종 URL·숏링크의 실제 리다이렉트와 귀속은 운영 계정에서 검증해야 한다.
 
@@ -39,3 +49,5 @@ PA가 Product Advertising API를 뜻한다면 상품 데이터/제휴 서비스�
 
 - Amazon Attribution 안내 — https://advertising.amazon.com/library/guides/basics-of-amazon-attribution
 - PA API 전환 안내 — https://affiliate-program.amazon.com/creatorsapi/docs/en-us/paapiv5-deprecation
+- Associates 태그 확인 — https://affiliate-program.amazon.com/help/node/topic/G6253GFSARDQENZR
+- Tracking ID 보고서 — https://affiliate-program.amazon.com/help/node/topic/G5KVDATAT5RKBBBG
