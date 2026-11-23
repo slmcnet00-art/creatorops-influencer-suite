@@ -1,6 +1,12 @@
 export const CONTENT_METRICS = ['views', 'likes', 'comments', 'shares', 'saves']
 const WINDOW_MS = 30 * 24 * 60 * 60 * 1000
 
+export function contentThumbnail(post = {}) {
+  const first = post.images?.[0] || post.carousel?.[0] || post.media?.[0]
+  const candidate = typeof first === 'string' ? first : first?.url || first?.imageUrl || first?.display_url
+  return [candidate, post.thumbnailUrl, post.thumbnail].find(url => /^https?:\/\//i.test(String(url || ''))) || ''
+}
+
 export function metricValue(post, field) {
   const value = post?.[field]
   if (post?.metricsPending || ['missing', 'unavailable', 'restricted', 'unverified'].includes(post?.metric_availability?.[field])) return null

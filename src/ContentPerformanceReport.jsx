@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { CONTENT_METRICS, contentMetricHistory, metricValue } from '../shared/contentMetricHistory.js'
+import { CONTENT_METRICS, contentMetricHistory, metricValue, contentThumbnail } from '../shared/contentMetricHistory.js'
 
 const labels = { views: '조회수', likes: '좋아요', comments: '댓글', shares: '공유', saves: '저장' }
 const number = value => value === null ? '미확인' : value.toLocaleString('ko-KR')
-const time = value => new Date(value).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+const time = value => /^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? value.replaceAll('-', '.') : new Date(value).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })
 const publicUrl = value => /^https?:\/\//i.test(String(value || '')) ? value : ''
 
 function HistoryChart({ points, field }) {
@@ -46,7 +46,7 @@ export default function ContentPerformanceReport({ posts = [] }) {
     {posts.map((post, index) => {
       const points = contentMetricHistory(post)
       const url = publicUrl(post.url || post.contentUrl)
-      const thumbnail = publicUrl(post.thumbnailUrl || post.thumbnail)
+      const thumbnail = contentThumbnail(post)
       const collected = post.sourceCollectedAtIso || post.checkedAt || post.fetchedAt
       return <article className="content-performance-row" key={post.id || url || index}>
         <div className="content-performance-identity">

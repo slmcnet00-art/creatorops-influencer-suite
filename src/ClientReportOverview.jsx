@@ -1,14 +1,15 @@
 import ContentPerformanceReport from './ContentPerformanceReport.jsx'
+import CampaignArchiveSummary from './CampaignArchiveSummary.jsx'
+import { metricValue } from '../shared/contentMetricHistory.js'
 import { metricObservationSummary } from '../shared/metricDefinitions.js'
 
 const number = value => Number(value).toLocaleString('ko-KR', { maximumFractionDigits: 1 })
 const money = value => `${number(value)}원`
-const observed = value => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value)) && Number(value) >= 0
 
 export default function ClientReportOverview({ brand, campaign, performance, kpi, posts = [], hasCost, hasRevenue }) {
   const total = performance.total
   const observation = metricObservationSummary(posts)
-  const ranked = posts.filter(post => observed(post.views)).slice().sort((a, b) => Number(b.views) - Number(a.views)).slice(0, 5)
+  const ranked = posts.filter(post => metricValue(post, 'views') !== null).slice().sort((a, b) => Number(b.views) - Number(a.views)).slice(0, 5)
   const highest = Math.max(1, ...ranked.map(post => Number(post.views)))
   const stages = total ? [
     ['발굴 후보', total.discovered, '명'], ['연락 기록', total.contacted, '건'],
@@ -23,6 +24,9 @@ export default function ClientReportOverview({ brand, campaign, performance, kpi
       </div>
       <span className="client-report-basis">{posts.length ? `${posts.length}건 콘텐츠 추적 중` : '콘텐츠 연결 대기'}</span>
     </header>
+
+    <CampaignArchiveSummary archive={campaign?.archiveReport} />
+
 
     <div className="client-report-kpis">
       <div><span>기록된 매출</span><strong>{hasRevenue && total ? money(total.revenue) : '연결 필요'}</strong><small>구매·환불 또는 운영 입력 기준</small></div>
@@ -59,7 +63,7 @@ export default function ClientReportOverview({ brand, campaign, performance, kpi
         <div className="client-content-name">{post.url ? <a href={post.url} target="_blank" rel="noreferrer">{post.title || '콘텐츠 원본 열기'}</a> : <strong>{post.title || '제목 미입력'}</strong>}<small>{post.platform || '플랫폼 확인 필요'}</small></div>
         <div className="client-stage-track"><span style={{ width: `${Number(post.views) / highest * 100}%` }} /></div>
         <strong>{number(post.views)}회</strong>
-      </li>)}</ol> : <p className="client-report-empty">콘텐츠 URL을 등록하고 조회수를 수집하면 비교할 수 있습니다.</p>}
+      </li>)}</ol> : <p className="client-report-empty">조회수가 확인된 콘텐츠가 생기면 순위를 비교할 수 있습니다.</p>}
     </section>
 
     <ContentPerformanceReport posts={posts} />

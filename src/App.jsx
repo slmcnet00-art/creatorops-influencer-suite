@@ -1,3 +1,7 @@
+import CampaignDocumentPanel from './CampaignDocumentPanel.jsx'
+import { saveCampaignDocument } from '../shared/campaignDocuments.js'
+import { canWriteBrandWorkspace } from './workspacePermissions.js'
+import { buildReportXlsx, campaignWorkbookSheets } from './reportWorkbook.js'
 import { recordContentMetrics } from '../shared/contentMetricHistory.js'
 import YouTubeEvidenceDetails from './YouTubeEvidenceDetails.jsx'
 import MetricDefinitionDetails from './MetricDefinitionDetails.jsx'
@@ -7983,7 +7987,7 @@ function AppContent() {
   const [selectedCampaignId, setSelectedCampaignId] = useState(
     workspace.campaigns.find((campaign) => campaign.brandId === workspace.activeBrandId)?.id ?? workspace.campaigns[0]?.id,
   )
-  const [activeSection, setActiveSection] = useState('dashboard')
+  const [activeSection, setActiveSection] = useState(() => window.location.hash === '#report' ? 'report' : 'dashboard')
   const [campaignDetailMode, setCampaignDetailMode] = useState(false)
   const [toast, setToast] = useState('')
   const showToast = (message) => setToast(message)
@@ -13561,202 +13565,22 @@ function AppContent() {
     setModal({ type: 'fulfillment' })
   }
 
-  const exportPerformanceReport = () => {
+  const exportPerformanceReport = async () => {
     const reportName = selectedCampaign?.name ?? activeBrand.name
-    const exportedAt = new Date().toLocaleString('ko-KR')
-    const rawSourceRows = [
-      ['raw_id', 'raw_name', 'scope', 'description', 'storage', 'metric_bundle', 'status', 'loaded_rows'],
-      [
-        'RAW-EXT-MON-VIDEO-001',
-        'Video Monitor Data raw',
-        'content/video performance',
-        'content-level views, likes, comments, shares, saves, engagement, conversions, daily snapshot values',
-        'externalReportRows(type=video_monitor_data), trackedPosts fallback',
-        'MET-SNS-001~006, MET-CONT-001~004, MET-EXT-VIDEO-001~003',
-        reportVideoRows.length ? 'connected' : 'pending_content_links',
-        reportVideoRows.length,
-      ],
-      [
-        'RAW-EXT-MON-INF-001',
-        'Brand Monitor Influencer raw',
-        'brand/competitor related creators',
-        'creator rows, mention volume, estimated reach, average views, engagement benchmark, pricing benchmark',
-        'externalReportRows(type=brand_monitor_influencers), brandTrackingGroups fallback',
-        'MET-BRAND-001~002, MET-EXT-INF-001~002',
-        reportBrandInfluencerRows.length ? 'connected' : 'pending_brand_tracking',
-        reportBrandInfluencerRows.length,
-      ],
-    ]
-
-    const summaryRows = [
-      ['metric', 'value', 'source_raw'],
-      ['brand', activeBrand.name, 'workspace.brands'],
-      ['campaign', reportName, 'workspace.campaigns'],
-      ['market_mode', isMultiMarketCampaign(selectedCampaign) ? 'multi' : 'single', 'workspace.campaigns.markets'],
-      ['markets', getCampaignMarketCountries(selectedCampaign).join(', '), 'workspace.campaigns.markets'],
-      ['exported_at', exportedAt, 'browser_export'],
-      ['uses_external_raw', reportUsesExternalRaw ? 'yes' : 'no', 'externalReportRows'],
-      ['tracked_content_count', reportVideoRows.length, 'RAW-EXT-MON-VIDEO-001'],
-      ['uploaded_creator_count', reportUploadedCreatorCount, 'RAW-EXT-MON-VIDEO-001'],
-      ['views', reportMetricTotals.views, 'RAW-EXT-MON-VIDEO-001'],
-      ['likes', reportMetricTotals.likes, 'RAW-EXT-MON-VIDEO-001'],
-      ['comments', reportMetricTotals.comments, 'RAW-EXT-MON-VIDEO-001'],
-      ['shares', reportMetricTotals.shares, 'RAW-EXT-MON-VIDEO-001'],
-      ['saves', reportMetricTotals.saves, 'RAW-EXT-MON-VIDEO-001'],
-      ['conversions', reportMetricTotals.conversions, 'RAW-EXT-MON-VIDEO-001'],
-      ['average_engagement_rate', percent(reportAverageEngagement), 'RAW-EXT-MON-VIDEO-001'],
-      ['brand_monitor_creator_rows', reportBrandInfluencerRows.length, 'RAW-EXT-MON-INF-001'],
-      ['brand_monitor_mentions', reportMentionCount, 'RAW-EXT-MON-INF-001'],
-      ['brand_monitor_estimated_exposure', reportEstimatedExposure, 'RAW-EXT-MON-INF-001'],
-      ['recruited_creator_count', selectedCampaignRecruitedPool.length, 'RAW-INT-INF-001'],
-      ['kpi_progress', String(selectedCampaignKpi?.progress ?? 0) + '%', 'calculated_metrics'],
-    ]
-
-    const videoMonitorRows = [
-      [
-        'creator',
-        'handle',
-        'platform',
-        'country',
-        'language',
-        'followers',
-        'profile_url',
-        'content_title',
-        'content_url',
-        'published_at',
-        'views',
-        'likes',
-        'comments',
-        'shares',
-        'saves',
-        'content_engagement_rate',
-        'conversions',
-        'source_file',
-        'source_sheet',
-        'raw_id',
-      ],
-      ...reportVideoRows.map((row) => [
-        row.creatorName,
-        row.handle,
-        row.platform,
-        row.country,
-        row.language,
-        row.followers,
-        row.profileUrl,
-        row.title,
-        row.url,
-        row.publishedAt,
-        row.views,
-        row.likes,
-        row.comments,
-        row.shares,
-        row.saves,
-        percent(row.engagementRate),
-        row.conversions,
-        row.fileName,
-        row.sheetName,
-        row.rawSourceId,
-      ]),
-    ]
-
-    const brandMonitorRows = [
-      [
-        'creator_or_brand',
-        'profile_url',
-        'followers',
-        'region',
-        'language',
-        'average_views',
-        'total_views',
-        'engagement_rate',
-        'videos',
-        'last_video',
-        'price',
-        'source_file',
-        'source_sheet',
-        'raw_id',
-      ],
-      ...reportBrandInfluencerRows.map((row) => [
-        row.creatorName,
-        row.profileUrl,
-        row.followers,
-        row.region,
-        row.language,
-        row.averageViews,
-        row.totalViews,
-        percent(row.engagementRate),
-        row.videos,
-        row.lastVideo,
-        row.price,
-        row.fileName,
-        row.sheetName,
-        row.rawSourceId,
-      ]),
-    ]
-
-    const dailyChangeRows = [
-      [
-        'snapshot_date',
-        'campaign',
-        'content_title',
-        'content_url',
-        'platform',
-        'views',
-        'likes',
-        'comments',
-        'shares',
-        'saves',
-        'engagement_rate',
-        'raw_id',
-        'note',
-      ],
-      ...reportVideoRows.map((row) => [
-        row.publishedAt || exportedAt,
-        reportName,
-        row.title,
-        row.url,
-        row.platform,
-        row.views,
-        row.likes,
-        row.comments,
-        row.shares,
-        row.saves,
-        percent(row.engagementRate),
-        row.rawSourceId,
-        reportUsesExternalRaw ? 'External raw row snapshot.' : 'Manual tracked post snapshot. Historical daily deltas require scheduled API snapshots.',
-      ]),
-    ]
-
-    const marketPerformanceRows = [
-      ['country', 'market', 'currency', 'discovered', 'contacted', 'responded', 'recruited', 'uploaded', 'cost_krw', 'views', 'engagement_rate', 'conversions', 'revenue_krw', 'cpa_krw', 'roas'],
-      ...campaignMarketPerformance.rows.map((row) => [
-        row.country,
-        row.label,
-        row.currency,
-        row.discovered,
-        row.contacted,
-        row.responded,
-        row.recruited,
-        row.uploaded,
-        row.cost,
-        row.views,
-        percent(row.engagementRate),
-        row.conversions,
-        row.revenue,
-        row.cpa ? Math.round(row.cpa) : 0,
-        row.cost ? `${Math.round(row.roas)}%` : '',
-      ]),
-    ]
-
-    exportExcelWorkbook('creatorops-monitor-report-' + normalizeHandleSegment(reportName) + '.xls', [
-      { name: 'Summary', rows: summaryRows },
-      { name: 'Country Markets', rows: marketPerformanceRows },
-      { name: 'Raw Sources', rows: rawSourceRows },
-      { name: 'Video Monitor Data', rows: videoMonitorRows },
-      { name: 'Brand Monitor Influencers', rows: brandMonitorRows },
-      { name: 'Daily Changes', rows: dailyChangeRows },
-    ])
-    showToast('Report Excel workbook downloaded.')
+    try {
+      const costKnown = selectedCampaign?.actualSpend != null || fulfillmentRecords.some(r => r.campaignId === selectedCampaign?.id && r.paymentAmount != null) || creatorOperations.some(r => r.campaignId === selectedCampaign?.id && r.actualCost != null)
+      const revenueKnown = selectedCampaign?.actualRevenue != null || conversionEvents.some(r => r.campaignId === selectedCampaign?.id && ['purchase', 'refund'].includes(r.eventType) && r.eventValue != null)
+      const sheets = campaignWorkbookSheets({ brand: activeBrand, campaign: selectedCampaign, posts: selectedCampaignTrackedPosts, creators,
+        markets: campaignMarketPerformance.rows, externalPosts: externalVideoReportRows, brandMonitor: reportBrandInfluencerRows,
+        cost: costKnown ? getActualSpend(selectedCampaign, fulfillmentRecords, creatorOperations) : null,
+        revenue: revenueKnown ? getActualRevenue(selectedCampaign, conversionEvents) : null,
+      })
+      const bytes = await buildReportXlsx(sheets)
+      exportFile(`creatorops-report-${normalizeHandleSegment(reportName)}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', bytes)
+      showToast('서식을 적용한 캠페인 성과 보고서를 다운로드했어요.')
+    } catch (error) {
+      showToast(error instanceof Error ? `리포트 다운로드 실패: ${error.message}` : '리포트를 다운로드하지 못했습니다.')
+    }
   }
 
   const getRecommendationRows = () => [
@@ -14366,6 +14190,18 @@ function AppContent() {
     setCampaignEditDraft(null)
     setCampaignDetailMode(false)
     showToast(`${target.name} 캠페인을 삭제했어요.`)
+  }
+
+  const saveCampaignDocumentLink = (campaignId, document, kind) => {
+    if (!canWriteBrandWorkspace(normalizeRole(currentAccount?.role))) {
+      showToast('자료 링크를 관리할 권한이 없습니다.')
+      return
+    }
+    updateWorkspace(current => appendActivity({ ...current,
+      campaigns: current.campaigns.map(campaign => campaign.id === campaignId && campaign.brandId === activeBrand.id
+        ? saveCampaignDocument(campaign, document, kind) : campaign),
+    }, 'campaign', kind === 'quote' ? '캠페인 견적서 링크 저장' : '캠페인 컨택 양식 링크 저장'))
+    showToast('캠페인 자료 링크를 저장했어요.')
   }
 
   const buildCampaignEditDraft = (campaign = {}) => ({
@@ -21049,6 +20885,13 @@ function AppContent() {
                   </div>
                 )}
 
+                <CampaignDocumentPanel
+                  key={`quote-${activeCampaignForModal.id}`}
+                  campaign={activeCampaignForModal}
+                  kind="quote"
+                  onSave={canWriteBrandWorkspace(normalizeRole(currentAccount?.role)) ? document => saveCampaignDocumentLink(activeCampaignForModal.id, document, 'quote') : undefined}
+                />
+
                 <div className="campaign-kpi-block">
                   <div className="dashboard-section-label">
                     <span className="mini-label">핵심 지표</span>
@@ -21590,6 +21433,7 @@ function AppContent() {
               ))}
             />
 
+            {!selectedCampaign?.archiveReport && <>
             <section className="campaign-market-report">
               <div className="campaign-market-report-head">
                 <div>
@@ -21997,6 +21841,7 @@ function AppContent() {
               <Target size={18} />
               <p>현재 쇼트리스트 예상 총 단가 {won(getCreatorsByIds(creators, shortlist).reduce((sum, creator) => sum + creator.price, 0))} · 선택 캠페인 추적 전환 {compactNumber(reportMetricTotals.conversions)}</p>
             </div>
+            </>}
           </section>
           )}
         </section>
@@ -22015,6 +21860,12 @@ function AppContent() {
                 <MessageSquare size={18} />
               </button>
             </div>
+            <CampaignDocumentPanel
+              key={`contact-${selectedCampaign?.id}`}
+              campaign={selectedCampaign}
+              kind="contact"
+              onSave={canWriteBrandWorkspace(normalizeRole(currentAccount?.role)) ? document => saveCampaignDocumentLink(selectedCampaign.id, document, 'contact') : undefined}
+            />
             <div className="outreach-guidance">
               {contactChannelOptions.slice(0, 3).map((channel) => (
                 <article key={channel.id}>
