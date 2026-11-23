@@ -1,7 +1,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { buildCampaignQuote, campaignQuoteSheets } from '../shared/campaignQuote.js'
-import { campaignContactMessage, defaultContactTemplate, renderContactTemplate } from '../shared/campaignContact.js'
+import { campaignContactMessage, defaultContactTemplate, renderContactTemplate, CONTACT_TEMPLATE_PRESETS, withContactPreset } from '../shared/campaignContact.js'
 import { getCreatorRateSummary, withCreatorRate } from '../shared/creatorRates.js'
 import { creatorAudience, creatorProfileImage } from '../shared/creatorProfilePresentation.js'
 import { referencedBrandCreatorIds } from '../shared/brandCreatorReferences.js'
@@ -59,4 +59,21 @@ test('합산 팔로워를 채널 팔로워로 오인하지 않고 실제 이미�
 test('브랜드 저장 시 캠페인·즐겨찾기에만 연결된 후보도 보존된다', () => {
   const ids = referencedBrandCreatorIds({ brandId: 8, creators: [{ id: 5, brandId: 8 }, { id: 6, brandId: 9 }], campaigns: [{ creatorIds: [1] }], records: [{ creatorIds: [2] }, { memberIds: [3] }, { creatorId: 4 }] })
   assert.deepEqual([...ids].sort(), ['1', '2', '3', '4', '5'])
+})
+
+test('발송 멘트 후보는 제안 유형과 독립적이며 기존 캠페인 양식과 각 후보별 수정본을 보존한다', () => {
+  assert.deepEqual(CONTACT_TEMPLATE_PRESETS.map(p => p.id), ['basic_proposal', 'miping_contact'])
+  const legacy = { ...campaign, contactTemplates: { 'email:en': { subject: 'Legacy {{brand}}', body: 'Original {{creatorName}}' } } }
+  assert.equal(campaignContactMessage(withContactPreset(legacy, 'miping_contact'), 'en', 'email', { creatorName: 'Jamie' }).body, 'Original Jamie')
+  assert.notEqual(campaignContactMessage(withContactPreset(legacy, 'basic_proposal'), 'en', 'email', { creatorName: 'Jamie' }).body, 'Original Jamie')
+  const saved = { ...legacy, contactTemplatePreset: 'basic_proposal', contactTemplates: { 'email:en': { subject: 'Basic', body: 'Short {{creatorName}}' } }, contactTemplateLibrary: {
+    basic_proposal: { 'email:en': { subject: 'Basic', body: 'Short {{creatorName}}' } },
+    miping_contact: legacy.contactTemplates,
+  } }
+  assert.equal(campaignContactMessage(withContactPreset(saved, 'miping_contact'), 'en', 'email', { creatorName: 'Jamie' }).body, 'Original Jamie')
+  assert.equal(campaignContactMessage(withContactPreset(saved, 'basic_proposal'), 'en', 'email', { creatorName: 'Jamie' }).body, 'Short Jamie')
+  assert.equal(legacy.contactTemplates['email:en'].body, 'Original {{creatorName}}')
+  for (const language of ['ko', 'en', 'ja', 'zh-CN']) for (const channel of ['email', 'dm']) {
+    assert.notEqual(defaultContactTemplate(language, channel, 'basic_proposal').body, defaultContactTemplate(language, channel, 'miping_contact').body)
+  }
 })
