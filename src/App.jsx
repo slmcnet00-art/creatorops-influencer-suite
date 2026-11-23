@@ -1,5 +1,10 @@
 import CampaignDocumentPanel from './CampaignDocumentPanel.jsx'
-import { saveCampaignDocument } from '../shared/campaignDocuments.js'
+import CampaignQuotePanel from './CampaignQuotePanel.jsx'
+import CampaignContactPanel from './CampaignContactPanel.jsx'
+import CreatorProfileAvatar from './CreatorProfileAvatar.jsx'
+import { creatorAudience } from '../shared/creatorProfilePresentation.js'
+import { campaignContactMessage, contactProductLabel } from '../shared/campaignContact.js'
+import { referencedBrandCreatorIds } from '../shared/brandCreatorReferences.js'
 import { canWriteBrandWorkspace } from './workspacePermissions.js'
 import { buildReportXlsx, campaignWorkbookSheets } from './reportWorkbook.js'
 import { recordContentMetrics } from '../shared/contentMetricHistory.js'
@@ -1766,7 +1771,7 @@ function normalizeOutreachItem(item, creators = [], campaigns = []) {
     marketCountry,
     messageType,
     commercialTerms,
-    subject: buildOutreachSubject(messageType, campaign, marketCountry),
+    subject: item.subject || buildOutreachSubject(messageType, campaign, marketCountry),
     channel: contactPlan.id,
     deliveryMode: item.deliveryMode ?? contactPlan.deliveryMode,
     complianceNote: item.complianceNote ?? contactPlan.notice,
@@ -1990,14 +1995,8 @@ function buildBrandScopedWorkspace(workspace, brandId) {
     (workspace[key] ?? []).filter(belongsToBrand).map((item) =>
       item && typeof item === 'object' && item.brandId == null && item.brand_id == null ? { ...item, brandId } : item,
     )
-  const creatorIds = new Set((workspace.shortlist ?? []).map(String))
-  BRAND_SCOPED_ARRAY_KEYS.forEach((key) => {
-    scoped(key).forEach((item) => {
-      const creatorId = item?.creatorId ?? item?.creator_id
-      if (creatorId != null) creatorIds.add(String(creatorId))
-      ;(item?.memberIds ?? []).forEach((id) => creatorIds.add(String(id)))
-    })
-  })
+  const creatorIds = referencedBrandCreatorIds({ brandId, creators: workspace.creators, campaigns,
+    records: BRAND_SCOPED_ARRAY_KEYS.flatMap(key => scoped(key)), shortlist: workspace.shortlist })
 
   return {
     schemaVersion: 1,
@@ -2819,38 +2818,9 @@ function inferOutreachMessageType(creator) {
   return DEFAULT_OUTREACH_MESSAGE_TYPE
 }
 
-function buildOutreachSubject(typeId, campaign, marketCountry = '') {
-  const type = getOutreachMessageType(typeId)
+function buildOutreachSubject(_typeId, campaign, marketCountry = '', creator = {}) {
   const market = getCampaignMarketForCountry(campaign, marketCountry)
-  const campaignName = campaign?.name || '브랜드 캠페인'
-  const subjectByType = {
-    gifted_seeding: {
-      ko: `[${campaignName}] 제품 체험 및 콘텐츠 협업 제안드려요 🎁`,
-      en: `${campaignName} | Gifted product collaboration invitation 🎁`,
-      ja: `【${campaignName}】商品体験・コンテンツコラボのご提案 🎁`,
-      'zh-CN': `【${campaignName}】产品体验与内容合作邀请 🎁`,
-    },
-    paid_seeding_a: {
-      ko: `[${campaignName}] 유상 콘텐츠 협업을 제안드립니다 ✨`,
-      en: `${campaignName} | Paid content collaboration proposal ✨`,
-      ja: `【${campaignName}】有償コンテンツコラボのご提案 ✨`,
-      'zh-CN': `【${campaignName}】付费内容合作邀请 ✨`,
-    },
-    paid_seeding_b: {
-      ko: `[${campaignName}] 유상 콘텐츠 협업을 제안드립니다 ✨`,
-      en: `${campaignName} | Paid content collaboration proposal ✨`,
-      ja: `【${campaignName}】有償コンテンツコラボのご提案 ✨`,
-      'zh-CN': `【${campaignName}】付费内容合作邀请 ✨`,
-    },
-    premium_s: {
-      ko: `[${campaignName}] 브랜드 파트너십을 제안드립니다 🌟`,
-      en: `${campaignName} | Brand partnership proposal 🌟`,
-      ja: `【${campaignName}】ブランドパートナーシップのご提案 🌟`,
-      'zh-CN': `【${campaignName}】品牌合作伙伴邀请 🌟`,
-    },
-  }
-  const language = ['en', 'ja', 'zh-CN'].includes(market.language) ? market.language : 'ko'
-  return subjectByType[type.id]?.[language] || subjectByType.gifted_seeding[language]
+  return campaignContactMessage(campaign, market.language, 'email', { creatorName: creator.name || creator.handle || '' }).subject
 }
 
 function buildOutreachCommercialTerms(typeId, creator, campaign) {
@@ -2901,6 +2871,7 @@ function buildTypedProposalMessage(
   marketCountry = '',
   languageOverride = '',
   commercialTermsOverride = null,
+  channelOverride = '',
 ) {
   const type = getOutreachMessageType(typeId)
   const assignedMarketCountry = marketCountry || resolveCampaignRecordMarket(campaign, creator?.country, creator?.searchCountry)
@@ -2908,12 +2879,9 @@ function buildTypedProposalMessage(
   const creatorName = creator?.name || creator?.handle || 'Creator'
   const brand = brief?.brandName || campaign?.brandName || '저희 브랜드'
   const campaignName = campaign?.name || `${brief?.product || brand} 캠페인`
-  const product = brief?.product || campaign?.product || '제품'
-  const topics = Array.isArray(creator?.topics) ? creator.topics.slice(0, 3).join(', ') : ''
-  const fitReason = topics || `${creator?.platform || '소셜 미디어'} 콘텐츠`
-  const deadline = campaign?.deadline || campaign?.recruitmentDeadline || ''
   const selectedLanguage = languageOverride || market.language
   const language = ['en', 'ja', 'zh-CN'].includes(selectedLanguage) ? selectedLanguage : 'ko'
+  const product = contactProductLabel(campaign, language, brief?.product)
   const commercialTerms = commercialTermsOverride || buildOutreachCommercialTerms(type.id, creator, campaign)
   const fixedOfferLabel = formatOutreachOfferAmount(
     commercialTerms.fixedOfferAmountKrw,
@@ -2985,72 +2953,11 @@ function buildTypedProposalMessage(
     },
   }[type.id][language]
 
-  if (language === 'en') {
-    return [
-      `Hi ${creatorName}! 😊`,
-      '',
-      `I'm reaching out from ${brand} about ${campaignName}.`,
-      `We really enjoyed your content around ${fitReason}.`,
-      `We think your style would be a great fit for ${product}.`,
-      '',
-      `${typeEmoji} ${formatEmailParagraph(offer)}`,
-      ...(deadline ? [`Our preferred timing is around ${deadline}.`] : []),
-      '',
-      formatEmailParagraph(responseCopy),
-      '',
-      'Thank you!',
-      brand,
-    ].join('\n')
-  }
-  if (language === 'ja') {
-    return [
-      `${creatorName}様、こんにちは！😊`,
-      '',
-      `${brand}より「${campaignName}」についてご連絡しました。`,
-      `${fitReason}に関する投稿を楽しく拝見しています。`,
-      `${product}との相性がとても良いと感じています。`,
-      '',
-      `${typeEmoji} ${formatEmailParagraph(offer)}`,
-      ...(deadline ? [`希望時期は${deadline}頃です。`] : []),
-      '',
-      formatEmailParagraph(responseCopy),
-      '',
-      'どうぞよろしくお願いいたします。',
-    ].join('\n')
-  }
-  if (language === 'zh-CN') {
-    return [
-      `${creatorName}，您好！😊`,
-      '',
-      `我们是${brand}，想邀请您参与“${campaignName}”。`,
-      `我们很喜欢您关于${fitReason}的内容。`,
-      `也觉得您的风格非常适合${product}。`,
-      '',
-      `${typeEmoji} ${formatEmailParagraph(offer)}`,
-      ...(deadline ? [`期望时间为${deadline}前后。`] : []),
-      '',
-      formatEmailParagraph(responseCopy),
-      '',
-      '谢谢！',
-    ].join('\n')
-  }
-
-  return [
-    `${creatorName}님, 안녕하세요! 😊`,
-    '',
-    `${brand}의 ${campaignName} 협업을 제안드리고 싶어 연락드렸어요.`,
-    `평소 ${fitReason} 콘텐츠를 인상 깊게 보고 있었는데요.`,
-    `${product}의 매력을 크리에이터님만의 방식으로`,
-    '자연스럽게 보여주실 수 있을 것 같아 조심스럽게 제안드립니다.',
-    '',
-    `${typeEmoji} ${formatEmailParagraph(offer)}`,
-    ...(deadline ? [`희망 일정은 ${deadline} 전후예요.`] : []),
-    '',
-    formatEmailParagraph(responseCopy),
-    '',
-    '감사합니다!',
-    `${brand} 드림`,
-  ].join('\n')
+  return campaignContactMessage(campaign, language, channelOverride || (getRecommendedContactChannelId(creator) === 'email' ? 'email' : 'dm'), {
+    creatorName, brand, product, campaignName,
+    offer: `${typeEmoji} ${formatEmailParagraph(offer)}`,
+    replyRequest: formatEmailParagraph(responseCopy),
+  }).body
 }
 
 const SHORT_LINK_BASE_URL = 'https://go.creatorops.kr'
@@ -14192,16 +14099,41 @@ function AppContent() {
     showToast(`${target.name} 캠페인을 삭제했어요.`)
   }
 
-  const saveCampaignDocumentLink = (campaignId, document, kind) => {
-    if (!canWriteBrandWorkspace(normalizeRole(currentAccount?.role))) {
-      showToast('자료 링크를 관리할 권한이 없습니다.')
-      return
-    }
+  const saveCampaignCommercialSettings = (campaignId, patch) => {
+    if (!canWriteBrandWorkspace(normalizeRole(currentAccount?.role))) return
     updateWorkspace(current => appendActivity({ ...current,
-      campaigns: current.campaigns.map(campaign => campaign.id === campaignId && campaign.brandId === activeBrand.id
-        ? saveCampaignDocument(campaign, document, kind) : campaign),
-    }, 'campaign', kind === 'quote' ? '캠페인 견적서 링크 저장' : '캠페인 컨택 양식 링크 저장'))
-    showToast('캠페인 자료 링크를 저장했어요.')
+      campaigns: current.campaigns.map(campaign => campaign.id === campaignId && campaign.brandId === activeBrand.id ? { ...campaign, ...patch } : campaign),
+    }, 'campaign', '캠페인 견적·컨택 양식 저장'))
+    showToast('캠페인 설정을 저장했어요.')
+  }
+
+  const previewCampaignContact = (creator, campaign, language, channel, type = bulkOutreachMessageType) => {
+    const brief = buildCampaignDiscoveryBrief(brandBrief, campaign)
+    const marketCountry = resolveCampaignRecordMarket(campaign, creator.country, creator.searchCountry)
+    const message = buildTypedProposalMessage(creator, brief, campaign, type, marketCountry, language, null, channel)
+    const subject = campaignContactMessage(campaign, language, channel, { creatorName: creator.name, brand: campaign.brandName || activeBrand.name, product: campaign.product || brief.product }).subject
+    return { subject, body: message }
+  }
+
+  const prepareCampaignContacts = (templates, channel) => {
+    if (!selectedCampaign || !canWriteBrandWorkspace(normalizeRole(currentAccount?.role))) return
+    const campaign = { ...selectedCampaign, contactTemplates: templates }
+    const records = getCreatorsByIds(creators, campaign.creatorIds || []).filter(creator => !outreach.some(item => item.campaignId === campaign.id && item.creatorId === creator.id)).map(creator => {
+      const marketCountry = resolveCampaignRecordMarket(campaign, creator.country, creator.searchCountry)
+      const language = getCampaignMarketForCountry(campaign, marketCountry).language
+      const draft = previewCampaignContact(creator, campaign, language, channel)
+      const channelId = channel === 'email' ? 'email' : creator.platform === 'TikTok' ? 'tiktok_dm' : 'instagram_dm'
+      const plan = buildContactPlan(creator, channelId, draft.body, campaign.name)
+      return { id: createId(), creatorId: creator.id, campaignId: campaign.id, marketCountry, source: '캠페인 컨택 양식', status: '승인 대기', channel: plan.id,
+        deliveryMode: plan.deliveryMode, complianceNote: plan.notice, messageType: bulkOutreachMessageType,
+        commercialTerms: buildOutreachCommercialTerms(bulkOutreachMessageType, creator, campaign), subject: draft.subject, message: draft.body,
+        reason: '제공 컨택 양식 기반 캠페인별 초안', createdAt: nowLabel() }
+    })
+    updateWorkspace(current => appendActivity({ ...current,
+      campaigns: current.campaigns.map(c => c.id === campaign.id && c.brandId === activeBrand.id ? { ...c, contactTemplates: templates } : c),
+      outreach: [...records.filter(record => !current.outreach.some(item => item.campaignId === record.campaignId && item.creatorId === record.creatorId)), ...current.outreach],
+    }, 'outreach', `캠페인 컨택 초안 ${records.length}건 생성`))
+    showToast(`${records.length}건을 검토함에 준비했습니다. 기존 메시지는 보존했습니다.`)
   }
 
   const buildCampaignEditDraft = (campaign = {}) => ({
@@ -19613,10 +19545,16 @@ function AppContent() {
                             onChange={() => toggleCreatorGroupMemberSelection(creator.id)}
                           />
                         </label>
-                        <img src={creator.avatar} alt="" />
+                        <CreatorProfileAvatar creator={creator} />
                         <div>
                           <strong>{creator.name}</strong>
                           <span>{creator.handle} · {creator.category}</span>
+                          {creator.profileImageStatus === 'unavailable' && <small>프로필 이미지 공개 확인 불가</small>}
+                          {creator.socialProfiles?.length > 0 && <details className="creator-profile-channels"><summary>채널별 정보 · {creator.socialProfiles.length}개</summary>{creator.socialProfiles.map(profile => <p key={profile.url}>
+                            <a href={profile.url} target="_blank" rel="noreferrer">{profile.platform} ↗</a>
+                            <span>{profile.followers == null ? '채널 팔로워 확인 필요' : `팔로워 ${compactNumber(profile.followers)}`} · {profile.averageViews == null ? '평균 조회 확인 필요' : `평균 조회 ${compactNumber(profile.averageViews)}`}</span>
+                            <span>{profile.country || '국가 확인 필요'} · {profile.language || '언어 확인 필요'}{profile.collectedAt ? ` · 수집 ${profile.collectedAt.slice(0, 10)}` : ' · 제공 리스트 기준'}</span>
+                          </p>)}{creator.combinedFollowers > 0 && <small>원본 전체 채널 합산: {compactNumber(creator.combinedFollowers)}</small>}</details>}
                           {(() => {
                             const creatorPriceValue = getCreatorPriceValue(creator)
                             return (
@@ -19631,20 +19569,20 @@ function AppContent() {
                           <span>{creator.country}</span>
                         </div>
                         <div>
-                          <strong>{compactNumber(creator.followers)}</strong>
-                          <span>{audienceLabel(creator.platform)}</span>
+                          <strong>{creatorAudience(creator).value == null ? '확인 필요' : compactNumber(creatorAudience(creator).value)}</strong>
+                          <span title={creatorAudience(creator).source}>{creatorAudience(creator).label}</span>
                         </div>
                         <div>
-                          <strong>{compactNumber(getAverageViews(creator))}</strong>
+                          <strong>{getAverageViews(creator) > 0 ? compactNumber(getAverageViews(creator)) : '확인 필요'}</strong>
                           <span>평균조회</span>
                         </div>
                         <div>
-                          <strong>{percent(creator.engagement)}</strong>
+                          <strong>{creator.engagement == null ? '확인 필요' : percent(creator.engagement)}</strong>
                           <span>참여율</span>
                         </div>
                         <div className="creator-group-price-metric">
                           <strong>{getCreatorPriceValue(creator) ? won(getCreatorPriceValue(creator)) : '산정 전'}</strong>
-                          <span>예상 단가</span>
+                          <span>{getCreatorRateSummary(creator).label}</span>
                         </div>
                         <a href={creator.profileUrl || '#'} target="_blank" rel="noreferrer" aria-label={`${creator.name} 채널 보기`}>
                           채널 보기
@@ -20885,12 +20823,9 @@ function AppContent() {
                   </div>
                 )}
 
-                <CampaignDocumentPanel
-                  key={`quote-${activeCampaignForModal.id}`}
-                  campaign={activeCampaignForModal}
-                  kind="quote"
-                  onSave={canWriteBrandWorkspace(normalizeRole(currentAccount?.role)) ? document => saveCampaignDocumentLink(activeCampaignForModal.id, document, 'quote') : undefined}
-                />
+                <CampaignQuotePanel key={`quote-${activeCampaignForModal.id}`} campaign={activeCampaignForModal} brand={activeBrand} creators={creators}
+                  onSave={canWriteBrandWorkspace(normalizeRole(currentAccount?.role)) ? settings => saveCampaignCommercialSettings(activeCampaignForModal.id, { quoteSettings: settings }) : undefined} />
+                <details><summary>기존 견적 참고자료</summary><CampaignDocumentPanel campaign={activeCampaignForModal} kind="quote" /></details>
 
                 <div className="campaign-kpi-block">
                   <div className="dashboard-section-label">
@@ -21860,12 +21795,11 @@ function AppContent() {
                 <MessageSquare size={18} />
               </button>
             </div>
-            <CampaignDocumentPanel
-              key={`contact-${selectedCampaign?.id}`}
-              campaign={selectedCampaign}
-              kind="contact"
-              onSave={canWriteBrandWorkspace(normalizeRole(currentAccount?.role)) ? document => saveCampaignDocumentLink(selectedCampaign.id, document, 'contact') : undefined}
-            />
+            <CampaignContactPanel key={`contact-${selectedCampaign?.id}`} campaign={selectedCampaign} creators={getCreatorsByIds(creators, selectedCampaign?.creatorIds || [])}
+              preview={previewCampaignContact} messageType={bulkOutreachMessageType} messageTypes={OUTREACH_MESSAGE_TYPES} onMessageTypeChange={setBulkOutreachMessageType}
+              onSave={canWriteBrandWorkspace(normalizeRole(currentAccount?.role)) ? templates => saveCampaignCommercialSettings(selectedCampaign.id, { contactTemplates: templates }) : undefined}
+              onPrepare={canWriteBrandWorkspace(normalizeRole(currentAccount?.role)) ? prepareCampaignContacts : undefined} />
+            <details><summary>기존 컨택 참고자료</summary><CampaignDocumentPanel campaign={selectedCampaign} kind="contact" /></details>
             <div className="outreach-guidance">
               {contactChannelOptions.slice(0, 3).map((channel) => (
                 <article key={channel.id}>

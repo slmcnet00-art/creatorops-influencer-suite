@@ -81,7 +81,8 @@ export function calculateEstimatedCreatorRate(creator = {}, context = creator.ra
 export function getCreatorRateSummary(creator = {}, context = creator.rateContext || {}) {
   const calculated = calculateEstimatedCreatorRate(creator, context)
   const actualPrice = positive(creator.actualPrice, creator.agreedAmount, creator.contractAmount, ['manual', 'agreed'].includes(creator.rateSource) ? creator.price : 0)
-  return { ...calculated, actualPrice, effectivePrice: actualPrice || calculated.estimatedPrice, budgetPrice: actualPrice || calculated.range.high, label: actualPrice ? '확정 단가' : calculated.estimatedPrice ? '예상 단가' : '산정 전' }
+  const proposedPrice = creator.proposedPriceCurrency === 'KRW' ? positive(creator.proposedPrice) : 0
+  return { ...calculated, actualPrice, proposedPrice, effectivePrice: actualPrice || proposedPrice || calculated.estimatedPrice, budgetPrice: actualPrice || proposedPrice || calculated.range.high, label: actualPrice ? '확정 단가' : proposedPrice ? '제안 단가 · 미확정' : calculated.estimatedPrice ? '예상 단가' : '산정 전' }
 }
 
 export function withCreatorRate(creator = {}, context = creator.rateContext || {}) {
