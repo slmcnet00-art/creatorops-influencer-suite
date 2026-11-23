@@ -5,7 +5,7 @@ import { QUOTE_FORM_TYPES, quoteFormType } from '../shared/campaignQuote.js'
 // eslint-disable-next-line no-control-regex
 const xml = value => String(value ?? '').replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f]/g, '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&apos;')
 const col = index => String.fromCharCode(65 + index)
-const padNote = value => value ? `\u00a0\u00a0${value}` : ''
+const padNote = value => value ? String(value).split('\n').map(line => `\u00a0\u00a0${line}`).join('\n') : ''
 const unprefix = value => value?.replace(/(<\/?)x:/g, '$1').replace('xmlns:x=', 'xmlns=')
 const safeLink = value => { try { const u = new URL(value); return /^https?:$/.test(u.protocol) && !u.username && !u.password ? u.href : '' } catch { return '' } }
 const koreaDate = value => new Intl.DateTimeFormat('sv-SE', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(value))
@@ -46,7 +46,7 @@ export async function buildMipingQuoteXlsx({ campaign, brand, quote, settings = 
   const writeRow = (r, cells, height = 30) => rows.push(`<row r="${r}" ht="${height}" customHeight="1">${cells.join('')}</row>`)
   const meta = (r, label, value, style = styles.meta, formula) => {
     merges.push(`B${r}:H${r}`)
-    const lines = String(value ?? '').split('\n').reduce((sum, line) => sum + Math.max(1, Math.ceil([...line].reduce((n, c) => n + (c.charCodeAt(0) > 255 ? 2 : 1), 0) / 150)), 0)
+    const lines = String(value ?? '').split('\n').reduce((sum, line) => sum + Math.max(1, Math.ceil([...line].reduce((n, c) => n + (c.charCodeAt(0) > 255 ? 2 : 1), 0) / 120)), 0)
     writeRow(r, [cell(`A${r}`, label, styles.label), cell(`B${r}`, value, style, formula)], Math.max(30, lines * 16 + 10))
   }
   const first = 7
@@ -67,7 +67,8 @@ export async function buildMipingQuoteXlsx({ campaign, brand, quote, settings = 
     const values = [item.grade, item.name, item.platform, item.scope, item.quantity ?? '확인 필요', item.unitPrice ?? '확인 필요', item.total, padNote(note)]
     const cells = values.map((value, index) => cell(`${col(index)}${r}`, value, [styles.text, styles.text, styles.text, styles.text, styles.qty, styles.unit, styles.cost, styles.note][index], index === 6 ? `IF(AND(ISNUMBER(E${r}),ISNUMBER(F${r})),ROUND(E${r}*F${r},0)${item.roundingAdjustment ? `+(${item.roundingAdjustment})` : ''},"확인 필요")` : undefined))
     const length = (value, width) => Math.ceil([...String(value ?? '')].reduce((n, c) => n + (c.charCodeAt(0) > 255 ? 2 : 1), 0) / width)
-    const height = Math.max(32, Math.max(length(item.grade, 11), length(item.name, 28), length(item.platform, 14), length(item.scope, 23), ...note.split('\n').map(line => length(line, 39)), note.split('\n').length) * 14 + 12)
+    const noteLines = note.split('\n').reduce((sum, line) => sum + Math.max(1, length(line, 26)), 0)
+    const height = Math.max(32, Math.max(length(item.grade, 13), length(item.name, 23), length(item.platform, 11), length(item.scope, 17), noteLines) * 14 + 12)
     writeRow(r, cells, height)
     if (formType === 'list' && safeLink(item.profileUrl)) links.push({ ref: `B${r}`, url: safeLink(item.profileUrl) })
   })
@@ -94,7 +95,7 @@ export async function buildMipingQuoteXlsx({ campaign, brand, quote, settings = 
     const result = []; let text = '', width = 0
     for (const character of line) {
       const next = character.charCodeAt(0) > 255 ? 2 : 1
-      if (width + next > 165) { result.push(text); text = ''; width = 0 }
+      if (width + next > 135) { result.push(text); text = ''; width = 0 }
       text += character; width += next
     }
     result.push(text); return result
