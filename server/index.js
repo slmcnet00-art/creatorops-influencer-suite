@@ -4053,6 +4053,8 @@ async function fetchYouTubeVideoMetrics(post) {
 async function fetchPublicContentMetrics(post) {
   const snapshot = await fetchPublicProfileSnapshot(post.url)
   const metrics = snapshot.metrics || {}
+  const thumbnailUrl = isInstagramLoginTitle(snapshot.title) ? '' : selectReferenceThumbnail(snapshot.image)
+  const thumbnailMetadata = thumbnailUrl ? { thumbnailUrl, thumbnailCollectedAt: new Date().toISOString(), thumbnailSource: snapshot.source || '공개 게시물 메타데이터' } : {}
 
   if (!metrics.views && !metrics.likes && !metrics.comments) {
     return {
@@ -4061,6 +4063,7 @@ async function fetchPublicContentMetrics(post) {
       status: 'manual_required',
       message: 'Public page snapshot did not expose reliable performance metrics.',
       source: snapshot.source,
+      ...thumbnailMetadata,
     }
   }
 
@@ -4069,7 +4072,7 @@ async function fetchPublicContentMetrics(post) {
     platform: post.platform,
     status: 'refreshed',
     title: snapshot.title || '',
-    thumbnailUrl: snapshot.image || post.thumbnailUrl || '',
+    ...thumbnailMetadata,
     views: metrics.views ?? null,
     likes: metrics.likes ?? null,
     comments: metrics.comments ?? null,

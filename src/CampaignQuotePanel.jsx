@@ -43,7 +43,7 @@ export default function CampaignQuotePanel({ campaign, brand, creators, onSave }
     {formType === 'general' ? <>
       <div className="campaign-tab-actions">{onSave && <><button type="button" className="secondary-button compact-button" onClick={() => { setSettings(current => ({ ...current, gradeRows: [...gradeRows, { id: `grade-${Date.now()}-${gradeRows.length}`, grade: '', name: '인플루언서 콘텐츠 협업', platform: '', scope: (campaign.contentFormats || []).join(' + '), quantity: '', unitPrice: '', note: '' }] })); setNotice('등급·수량·단가를 입력하고 저장해 주세요.') }}>등급 행 추가</button><button type="button" className="secondary-button compact-button" onClick={() => { setSettings(current => { const next = { ...current }; delete next.gradeRows; return next }); setNotice('현재 배정 후보의 등급·단가를 다시 불러왔습니다.') }}>배정 후보 기준 불러오기</button></>}</div>
       <div className="commercial-table-wrap"><table className="grade-quote-table"><thead><tr><th>등급</th><th>채널 / 콘텐츠 형식</th><th>수량</th><th>단가 (KRW)</th><th>금액 (KRW)</th><th>비고</th><th>관리</th></tr></thead><tbody>{gradeRows.map((row, index) => <tr key={row.id}>
-        <td><input aria-label={`등급 ${index + 1}`} readOnly={!onSave} value={settings.gradeRows?.[index]?.grade ?? row.grade} onChange={e => changeGrade(index, 'grade', e.target.value)} placeholder="S급 / A급 / B급" /></td>
+        <td><input aria-label={`등급 ${index + 1}`} readOnly={!onSave} value={settings.gradeRows?.[index]?.grade ?? row.grade} onChange={e => changeGrade(index, 'grade', e.target.value)} placeholder="나노 / 마이크로 / 미드 / 매크로 / 메가" /></td>
         <td><input aria-label={`등급 채널 ${index + 1}`} readOnly={!onSave} value={row.platform} onChange={e => changeGrade(index, 'platform', e.target.value)} placeholder="Instagram / TikTok" /><input aria-label={`등급 형식 ${index + 1}`} readOnly={!onSave} value={row.scope} onChange={e => changeGrade(index, 'scope', e.target.value)} /></td>
         <td><input aria-label={`등급 수량 ${index + 1}`} type="number" min="0" step="1" readOnly={!onSave} value={row.quantity ?? ''} onChange={e => changeGrade(index, 'quantity', e.target.value)} /></td>
         <td><input aria-label={`등급 단가 ${index + 1}`} type="number" min="0" readOnly={!onSave} value={row.unitPrice ?? ''} onChange={e => changeGrade(index, 'unitPrice', e.target.value)} placeholder="확인 필요" /></td>
@@ -53,10 +53,10 @@ export default function CampaignQuotePanel({ campaign, brand, creators, onSave }
       <p>{settings.gradeRows ? '직접 편집한 등급별 계획 견적입니다. 리스트 견적서의 개별 단가는 변경하지 않습니다.' : '배정 후보의 등급·채널·형식·단가를 기준으로 자동 집계합니다. 단가가 다른 후보는 같은 등급이라도 별도 행으로 표시합니다.'}</p>
       {!gradeRows.length && <p>등급 행을 추가해 수량·단가를 입력하거나 캠페인에 후보를 배정해 주세요.</p>}
     </> : <>
-    <div className="commercial-table-wrap"><table><thead><tr><th>포함</th><th>크리에이터 / 채널</th><th>수량</th><th>단가 (KRW)</th><th>금액 (KRW)</th><th>근거</th></tr></thead><tbody>{allRows.map(row => {
+    <div className="commercial-table-wrap"><table><thead><tr><th>포함</th><th>크리에이터 / 채널</th><th>등급</th><th>수량</th><th>단가 (KRW)</th><th>금액 (KRW)</th><th>근거</th></tr></thead><tbody>{allRows.map(row => {
       const custom = settings.creatorOverrides?.[row.id] || {}
       const current = quote.items.find(item => item.id === row.id)
-      return <tr key={row.id}><td><input aria-label={`${row.name} 견적 포함`} type="checkbox" disabled={!onSave} checked={custom.included !== false} onChange={e => override(row.id, 'included', e.target.checked)} /></td><td>{row.name}<small>{row.platform}</small></td>
+      return <tr key={row.id}><td><input aria-label={`${row.name} 견적 포함`} type="checkbox" disabled={!onSave} checked={custom.included !== false} onChange={e => override(row.id, 'included', e.target.checked)} /></td><td>{row.name}<small>{row.platform}</small></td><td>{row.grade}</td>
         <td><input aria-label={`${row.name} 견적 수량`} type="number" min="0" step="1" readOnly={!onSave} value={custom.quantity ?? row.quantity} onChange={e => override(row.id, 'quantity', e.target.value)} /></td>
         <td><input aria-label={`${row.name} 견적 단가`} type="number" min="0" readOnly={!onSave} value={custom.unitPrice ?? row.unitPrice ?? ''} placeholder="확인 필요" onChange={e => override(row.id, 'unitPrice', e.target.value)} /></td>
         <td>{current ? money(current.total) : '제외'}</td><td>{current?.priceLabel || row.priceLabel}</td></tr>
