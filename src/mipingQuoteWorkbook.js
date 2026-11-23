@@ -38,7 +38,7 @@ export async function buildMipingQuoteXlsx({ campaign, brand, quote, settings = 
   zip.file('xl/styles.xml', styleXml.replace(xfBlock[0], `<cellXfs count="${xfs.length + 3}">${xfs.join('')}${percentXf}${indent(xfs[styles.note], true)}${indent(xfs[styles.totalNote], true)}</cellXfs>`))
   styles.note = noteStyle; styles.totalNote = totalNoteStyle
   const cell = (ref, value, style, formula) => {
-    if (formula) return `<c r="${ref}" s="${style}"${value == null ? ' t="str"' : ''}><f>${xml(formula)}</f><v>${value == null ? '확인 필요' : value}</v></c>`
+    if (formula) return `<c r="${ref}" s="${style}"${typeof value === 'number' && Number.isFinite(value) ? '' : ' t="str"'}><f>${xml(formula)}</f><v>${xml(value ?? '확인 필요')}</v></c>`
     if (typeof value === 'number' && Number.isFinite(value)) return `<c r="${ref}" s="${style}"><v>${value}</v></c>`
     return `<c r="${ref}" s="${style}" t="inlineStr"><is><t xml:space="preserve">${xml(value)}</t></is></c>`
   }
@@ -74,8 +74,8 @@ export async function buildMipingQuoteXlsx({ campaign, brand, quote, settings = 
   })
   const detail = (r, label, qty, unit, cost, note, formula, unitStyle = styles.unit) => writeRow(r, [cell(`A${r}`, '운영', styles.text), cell(`B${r}`, label, styles.text), cell(`C${r}`, '', styles.text), cell(`D${r}`, '', styles.text), cell(`E${r}`, qty, styles.qty), cell(`F${r}`, unit, unitStyle), cell(`G${r}`, cost == null ? '미포함' : cost, styles.cost, formula), cell(`H${r}`, padNote(note), styles.note)], 40)
   detail(managementRow, '운영 기획 및 관리, 모니터링', 1, quote.managementRate / 100, quote.management, '크리에이터 비용 소계 기준', quote.items.length ? `ROUND(SUM(G${first}:G${creatorLast})*F${managementRow},0)` : '0', percentStyle)
-  detail(shippingRow, '배송비', quote.shippingQuantity, quote.shippingUnitCost ?? '미입력', quote.shipping, '제품 배송 · 미입력 비용은 합계 제외', quote.shippingUnitCost == null ? undefined : `ROUND(E${shippingRow}*F${shippingRow},0)`)
-  detail(otherRow, '기타 비용', 1, quote.additionalCost ?? '미입력', quote.additionalCost, settings.additionalNote || '제품비·2차 활용료 등 별도 협의', quote.additionalCost == null ? undefined : `ROUND(E${otherRow}*F${otherRow},0)`)
+  detail(shippingRow, '배송비', quote.shippingQuantity, quote.shippingUnitCost ?? '미입력', quote.shipping, '제품 배송 · 미입력 비용은 합계 제외', `IF(AND(ISNUMBER(E${shippingRow}),ISNUMBER(F${shippingRow})),ROUND(E${shippingRow}*F${shippingRow},0),"미포함")`)
+  detail(otherRow, '기타 비용', 1, quote.additionalCost ?? '미입력', quote.additionalCost, settings.additionalNote || '제품비·2차 활용료 등 별도 협의', `IF(AND(ISNUMBER(E${otherRow}),ISNUMBER(F${otherRow})),ROUND(E${otherRow}*F${otherRow},0),"미포함")`)
   for (let r = otherRow + 1; r <= lastDetail; r++) writeRow(r, Array.from({ length: 8 }, (_, i) => cell(`${col(i)}${r}`, '', styles.text)), 24)
   const summary = (r, label, value, formula, leftStyle, numberStyle, note = '', noteStyle = leftStyle) => {
     merges.push(`A${r}:F${r}`)
