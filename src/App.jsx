@@ -74,6 +74,7 @@ import {
   X,
 } from 'lucide-react'
 import './App.css'
+import './campaignList.css'
 import { aggregateEngagement, getAverageViews, getActualRevenue, getActualSpend } from './performanceMetrics.js'
 import { audienceLabel, audienceGroupLabel, YOUTUBE_INPUT_NOTICE_EN } from './platformAudience'
 import {
@@ -24567,69 +24568,39 @@ function RecommendationCard({
 }
 
 function CampaignCard({ campaign, creators, kpiSummary, onOpen, onDelete }) {
+  const hasKpis = kpiSummary?.metrics?.length > 0
+  const memo = [
+    { label: '목표', value: campaign.kpiGoal },
+    { label: '운영 메모', value: campaign.mission },
+    { label: '협업 조건', value: campaign.reward },
+  ].filter(item => item.value)
   return (
-    <article className="campaign-row">
-      <button
-        className="card-delete-icon"
-        type="button"
-        aria-label={`${campaign.name} 캠페인 삭제`}
-        onClick={onDelete}
-      >
+    <article className="campaign-row campaign-summary-row" aria-label={campaign.name}>
+      <button className="card-delete-icon" type="button" aria-label={`${campaign.name} 캠페인 삭제`} onClick={onDelete}>
         <Trash2 size={15} aria-hidden="true" />
       </button>
-      <div className="campaign-main">
-        <div>
-          <div className="campaign-badges">
-            <span className="status-chip">{campaign.status}</span>
-            <span className="type-chip">{normalizeCampaignType(campaign.campaignType)}</span>
-            <span className="type-chip">콘텐츠 형식: {contentFormatSummary(campaign.contentFormats)}</span>
-          </div>
-          <h3>{campaign.name}</h3>
-          <p>
-            {getCampaignMarketSummary(campaign)} · {campaign.owner} · {creators.length}명 배정
-          </p>
+      <header className="campaign-summary-heading">
+        <div className="campaign-summary-title"><h3>{campaign.name}</h3><span className="status-chip">{campaign.status}</span></div>
+        <p className="campaign-summary-context">{normalizeCampaignType(campaign.campaignType)} · {getCampaignMarketSummary(campaign)}</p>
+        <p className="campaign-summary-format">콘텐츠 형식: {contentFormatSummary(campaign.contentFormats)}</p>
+      </header>
+      <dl className="campaign-summary-facts">
+        <div><dt><CalendarDays size={14} aria-hidden="true" />일정</dt><dd>{campaign.deadline || '일정 미정'}</dd></div>
+        <div><dt>실제 집행</dt><dd>{won(campaign.spend)}</dd></div>
+        <div><dt>KPI 달성률</dt><dd>{hasKpis ? `${kpiSummary.progress}%` : '목표 미설정'}</dd></div>
+      </dl>
+      {hasKpis && <div className="campaign-summary-kpis">{kpiSummary.metrics.slice(0, 3).map(metric => <span key={metric.key}>{metric.label} {metric.displayActual}/{metric.displayTarget}</span>)}</div>}
+      <footer className="campaign-summary-footer">
+        <div className="campaign-summary-actions" role="group" aria-label={`${campaign.name} 바로가기`}>
+          <button className="primary-button compact-button" type="button" onClick={() => onOpen('overview')}>캠페인 상세 보기</button>
+          <button className="secondary-button compact-button" type="button" onClick={() => onOpen('strategy')}>전략·가이드</button>
+          <button className="secondary-button compact-button" type="button" onClick={() => onOpen('quote')}>견적서</button>
         </div>
-      </div>
-      <div className="campaign-meta">
-        <span>
-          <CalendarDays size={15} />
-          {campaign.deadline}
-        </span>
-        <span>{won(campaign.spend)} 집행</span>
-      </div>
-      <div className="campaign-playbook-preview">
-        <span>{campaign.kpiGoal ?? 'KPI 미정'}</span>
-        <span>{campaign.mission ?? '미션 미입력'}</span>
-        <span>{campaign.reward ?? '리워드 협의'}</span>
-      </div>
-      {kpiSummary?.metrics?.length > 0 && (
-        <div className="campaign-kpi-preview">
-          <div className="campaign-kpi-hero">
-            <span>KPI 달성률</span>
-            <strong>{kpiSummary.progress}%</strong>
-          </div>
-          {kpiSummary.metrics.slice(0, 3).map((metric) => (
-            <span key={metric.key}>
-              {metric.label} {metric.displayActual}/{metric.displayTarget}
-            </span>
-          ))}
-        </div>
-      )}
-      <div className="assigned-creators">
-        {creators.slice(0, 3).map((creator) => (
-          <span key={creator.id}>{creator.name}</span>
-        ))}
-      </div>
-      <div className="campaign-card-actions">
-        <button className="primary-button compact-button" type="button" onClick={() => onOpen('overview')}>
-          캠페인 상세 보기
-        </button>
-        <button className="secondary-button compact-button" type="button" onClick={() => onOpen('strategy')}>전략·가이드</button>
-        <button className="secondary-button compact-button" type="button" onClick={() => onOpen('quote')}>견적서</button>
-      </div>
-      <div className="progress-line">
-        <span style={{ width: `${campaign.progress}%` }} />
-      </div>
+      </footer>
+      {(memo.length > 0 || creators.length > 0) && <div className="campaign-summary-disclosures">
+        {memo.length > 0 && <details><summary>운영 메모 보기</summary><dl>{memo.map(item => <div key={item.label}><dt>{item.label}</dt><dd>{item.value}</dd></div>)}</dl></details>}
+        {creators.length > 0 && <details><summary>배정 후보 {creators.length}명 보기</summary><ul>{creators.map(creator => <li key={creator.id}>{creator.name}</li>)}</ul></details>}
+      </div>}
     </article>
   )
 }
