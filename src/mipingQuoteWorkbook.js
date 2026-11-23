@@ -53,7 +53,6 @@ export async function buildMipingQuoteXlsx({ campaign, brand, quote, settings = 
   const creatorLast = first + quote.items.length - 1
   const managementRow = first + quote.items.length, shippingRow = managementRow + 1, otherRow = managementRow + 2
   const lastDetail = Math.max(otherRow, 14), subtotalRow = lastDetail + 1, vatRow = lastDetail + 2, grandRow = lastDetail + 3
-  let end = grandRow + 5
   meta(1, '', [settings.issuerName || '㈜미핑기획', settings.issuerAddress].filter(Boolean).join(' · '), styles.company)
   meta(2, 'To', settings.recipient || brand?.name || campaign.brandName || '수신처 확인 필요')
   const dates = [campaign.schedule?.recruitStart, campaign.schedule?.uploadDue].filter(Boolean)
@@ -101,7 +100,7 @@ export async function buildMipingQuoteXlsx({ campaign, brand, quote, settings = 
     result.push(text); return result
   }))
   footerLines.forEach((note, index) => { const r = grandRow + 2 + index; merges.push(`A${r}:H${r}`); writeRow(r, [cell(`A${r}`, note, styles.footer)], 30) })
-  end = grandRow + 2 + footerLines.length
+  const end = grandRow + 2 + footerLines.length
   const main = 'http://schemas.openxmlformats.org/spreadsheetml/2006/main', rel = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships'
   const cols = original.match(/<cols>[\s\S]*?<\/cols>/)?.[0]
   if (!cols) throw new Error('견적서 열 너비 서식이 없습니다.')
