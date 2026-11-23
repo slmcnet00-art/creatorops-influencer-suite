@@ -1,4 +1,8 @@
 import YouTubeEvidenceDetails from './YouTubeEvidenceDetails.jsx'
+import MetricDefinitionDetails from './MetricDefinitionDetails.jsx'
+import ClientReportOverview from './ClientReportOverview.jsx'
+import './clientReport.css'
+import { knownMetricCount, metricDefinitions } from '../shared/metricDefinitions.js'
 import { findSavedInstagramReferences, instagramPostKey, isInstagramLoginTitle } from '../shared/instagramReferenceReuse.js'
 import { calculateEstimatedCreatorRate, getCreatorRateSummary, toCreatorRateNumber, withCreatorRate } from '../shared/creatorRates.js'
 import CreatorRateDetails from './CreatorRateDetails.jsx'
@@ -6292,6 +6296,8 @@ function buildAdminMetricCatalog({
       `${orderLogCount}건 주문 · ${couponLogCount}건 쿠폰`,
     ],
     ['MET-POOL-001', '전체 인플루언서 수', '인플루언서 풀 관리 번들', '내부', '저장된 전체 크리에이터 수', 'count(creators)', rawRefs.pool, '전체', '실시간', '정상', '발굴, 데이터룸', '중복 제거 전후 수를 함께 확인', '전일 대비 -30% 이상', '높음', '데이터팀', 'creators table', `${creators.length}명`],
+    ['MET-POOL-007', metricDefinitions['search-reach'].name, '인플루언서 풀 관리 번들', '내부', metricDefinitions['search-reach'].formula, 'sum(filteredCreators.followers)', rawRefs.pool, metricDefinitions['search-reach'].period, '후보 필터 변경 시', '검증 필요', '대시보드', metricDefinitions['search-reach'].limitation, '미수집 후보 포함 시 부분 합계', '중간', '데이터팀', 'creator.metricSources', '실제 도달 인원과 구분'],
+    ['MET-CMP-005', metricDefinitions['recruiting-progress'].name, '캠페인 운영 번들', '내부', metricDefinitions['recruiting-progress'].formula, 'round(avg(min(100, round(actual/target*100))))', ['RAW-INT-CMP-001', 'RAW-INT-INF-001', 'RAW-EXT-CONT-001'], '선택한 캠페인', '운영 기록 변경 시', '검증 필요', '대시보드', metricDefinitions['recruiting-progress'].limitation, '목표 미설정', '중간', 'PM/운영', 'computeCampaignKpi', '설정된 KPI만 평균'],
     ['MET-POOL-002', '활성 인플루언서 수', '인플루언서 풀 관리 번들', '내부', '상태가 활성/검증 가능인 크리에이터 수', 'count(creators where active and not blocked)', rawRefs.pool, '전체', '실시간', '정상', '발굴, 메시지', '프로필 링크 접근 가능 여부 포함', '활성 비율 50% 이하', '중간', '운영팀', 'creator status logs', '향후 active flag 분리'],
     ['MET-POOL-003', '카테고리별 인플루언서 수', '인플루언서 풀 관리 번들', '내부', '카테고리 그룹별 크리에이터 분포', 'groupBy(creators.category).count', rawRefs.pool, '전체', '실시간', '정상', '발굴, 전략', '브랜드 카테고리와 후보군 균형 확인', '기타 카테고리 40% 이상', '중간', '운영팀', 'creator category map', '카테고리 표준화 필요'],
     ['MET-POOL-004', '등급별 인플루언서 수', '인플루언서 풀 관리 번들', '내부', 'fit/data quality 점수 기준 등급별 수', 'groupBy(score_band(fit, dataQuality)).count', rawRefs.pool, '전체', '실시간', '정상', '발굴, 대시보드', 'A/B/C 등급별 섭외 우선순위', 'A등급 0건', '중간', '데이터팀', 'creator scoring logs', '등급 정책 확정 필요'],
@@ -10200,38 +10206,42 @@ function AppContent() {
         {
           key: 'search-reach',
           icon: <UsersRound size={19} />,
-          label: '검색 도달',
-          value: compactNumber(totals.reach),
+          label: metricDefinitions['search-reach'].name,
+          value: knownMetricCount(filteredCreators, 'followers') ? compactNumber(totals.reach) : '수집 필요',
           delta: `${shortlist.length}명 저장`,
           detail: `${filteredCreators.length}명 후보`,
-          contract: { rawIds: ['RAW-INT-INF-001', 'RAW-EXT-CHN-001'], metricIds: ['MET-POOL-001'] },
+          evidence: { metricKey: 'search-reach', rows: filteredCreators, sample: `후보 ${filteredCreators.length}명 · 수치 확인 ${knownMetricCount(filteredCreators, 'followers')}명` },
+          contract: { rawIds: ['RAW-INT-INF-001', 'RAW-EXT-CHN-001'], metricIds: ['MET-POOL-007'] },
         },
         {
           key: 'expected-views',
           icon: <Eye size={19} />,
           label: '예상 조회수',
-          value: compactNumber(totals.views),
+          value: knownMetricCount(filteredCreators, 'averageViews') ? compactNumber(totals.views) : '수집 필요',
           delta: `${filteredCreators.length}명 후보 평균조회 합산`,
           detail: '후보 평균조회 raw 기반 추정',
+          evidence: { metricKey: 'expected-views', rows: filteredCreators, sample: `후보 ${filteredCreators.length}명 · 평균 조회 확인 ${knownMetricCount(filteredCreators, 'averageViews')}명. 합계에 검증 대기 자료가 포함될 수 있습니다.` },
           contract: { rawIds: ['RAW-INT-INF-001', 'RAW-INT-CMP-001', 'RAW-EXT-CHN-001', 'RAW-EXT-SNS-001'], metricIds: ['MET-CONT-005'] },
         },
         {
           key: 'average-engagement',
           icon: <TrendingUp size={19} />,
-          label: '평균 참여율',
-          value: percent(reportAverageEngagement),
+          label: metricDefinitions['average-engagement'].name,
+          value: reportVideoRows.some((row) => Number(row.views) > 0) ? percent(reportAverageEngagement) : '계산 불가',
           delta: `${reportVideoRows.length}건 계산`,
           detail: '조회/반응 raw 기준',
+          evidence: { metricKey: 'average-engagement', rows: reportVideoRows, sample: `리포트 콘텐츠 ${reportVideoRows.length}건` },
           contract: { rawIds: ['RAW-EXT-CONT-001', 'RAW-EXT-ENG-001'], metricIds: ['MET-SNS-006'] },
         },
         {
           key: 'recruiting-progress',
           icon: <WalletCards size={19} />,
-          label: '섭외 진행률',
-          value: `${selectedCampaignKpi?.progress ?? 0}%`,
+          label: metricDefinitions['recruiting-progress'].name,
+          value: selectedCampaignKpi?.metrics.length ? `${selectedCampaignKpi.progress}%` : '목표 미설정',
           delta: `${activeRecruitedPool.length}명 섭외 완료`,
           detail: selectedCampaign ? selectedCampaign.name : '캠페인 선택 필요',
-          contract: { rawIds: ['RAW-INT-CMP-001', 'RAW-INT-INF-001'], metricIds: ['MET-CMP-001', 'MET-CRM-005'] },
+          evidence: { metricKey: 'recruiting-progress' },
+          contract: { rawIds: ['RAW-INT-CMP-001', 'RAW-INT-INF-001', 'RAW-EXT-CONT-001'], metricIds: ['MET-CMP-005'] },
         },
       ].map((card) => {
         const canShow = dataRoomDisplayGate.canShow(card.contract)
@@ -10251,9 +10261,9 @@ function AppContent() {
     [
       activeRecruitedPool.length,
       dataRoomDisplayGate,
-      filteredCreators.length,
+      filteredCreators,
       reportAverageEngagement,
-      reportVideoRows.length,
+      reportVideoRows,
       selectedCampaign,
       selectedCampaignKpi,
       shortlist.length,
@@ -20451,6 +20461,7 @@ function AppContent() {
                   </div>
                   <strong>{item.title}</strong>
                   <p>{item.publishedAt} · 저장 {item.savedAt}</p>
+                  <MetricDefinitionDetails metricKey="reference-observation" rows={[item]} />
                   <div className="tracked-account-meta">
                     <span>조회 {compactOptionalNumber(item.views)}</span>
                     <span>{audienceLabel(item.platform)} {item.accountFollowers ? compactNumber(item.accountFollowers) : '-'}</span>
@@ -21558,13 +21569,22 @@ function AppContent() {
               </div>
             </div>
 
-            <div className="report-summary">
-              <div>
-                <span className="mini-label">선택 캠페인 매출</span>
-                <strong>{won(campaignMarketPerformance.total?.revenue ?? 0)}</strong>
-              </div>
-              <BarChart3 size={24} />
-            </div>
+            <ClientReportOverview
+              brand={activeBrand}
+              campaign={selectedCampaign}
+              performance={campaignMarketPerformance}
+              kpi={selectedCampaignKpi}
+              posts={selectedCampaignTrackedPosts}
+              hasCost={Boolean(selectedCampaign && (
+                (campaignMarketPerformance.rows.length === 1 && selectedCampaign.actualSpend != null) ||
+                fulfillmentRecords.some(record => record.campaignId === selectedCampaign.id && record.paymentAmount != null) ||
+                creatorOperations.some(record => record.campaignId === selectedCampaign.id && record.actualCost != null)
+              ))}
+              hasRevenue={Boolean(selectedCampaign && (
+                (campaignMarketPerformance.rows.length === 1 && selectedCampaign.actualRevenue != null) ||
+                conversionEvents.some(event => event.campaignId === selectedCampaign.id && ['purchase', 'refund'].includes(event.eventType) && event.eventValue != null)
+              ))}
+            />
 
             <section className="campaign-market-report">
               <div className="campaign-market-report-head">
@@ -24309,7 +24329,7 @@ function splitUnit(value) {
   return { num: str, unit: '' }
 }
 
-function KpiCard({ icon, label, value, delta, detail }) {
+function KpiCard({ icon, label, value, delta, detail, evidence }) {
   const { num, unit } = splitUnit(value)
   return (
     <article className="kpi">
@@ -24328,6 +24348,7 @@ function KpiCard({ icon, label, value, delta, detail }) {
       </div>
       <div className="kpi-lbl">{label}</div>
       {detail ? <div className="kpi-sub">{detail}</div> : null}
+      {evidence ? <MetricDefinitionDetails {...evidence} /> : null}
     </article>
   )
 }

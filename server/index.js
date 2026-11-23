@@ -3324,6 +3324,7 @@ async function searchWebContentReferences({ query, country, platform, maxResults
     return {
       ...item,
       title: item.title || snapshot.title,
+      fetchedAt: snapshot.fetchedAt || '',
       thumbnailUrl: selectReferenceThumbnail(item.thumbnailUrl, snapshot.image),
       views: metrics.views ?? item.views,
       accountFollowers: metrics.followers ?? item.accountFollowers,
