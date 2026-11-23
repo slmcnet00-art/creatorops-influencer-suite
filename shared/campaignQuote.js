@@ -1,4 +1,5 @@
 import { getCreatorRateSummary } from './creatorRates.js'
+import { creatorAccountGroup } from './creatorAccountGroup.js'
 
 const amount = value => value === '' || value == null || !Number.isFinite(Number(value)) || Number(value) < 0 ? null : Number(value)
 export const QUOTE_FORM_TYPES = [{ id: 'general', label: '일반 견적서', description: '등급별 수량·단가를 기준으로 작성합니다.' }, { id: 'list', label: '리스트 견적서', description: '크리에이터별 명단·수량·단가를 표시합니다.' }]
@@ -31,8 +32,12 @@ export function buildCampaignQuote(campaign = {}, creators = [], settings = camp
     const rate = getCreatorRateSummary(creator, campaign)
     const unitPrice = Object.hasOwn(override, 'unitPrice') ? amount(override.unitPrice) : rate.effectivePrice > 0 ? rate.effectivePrice : null
     const quantity = Object.hasOwn(override, 'quantity') ? amount(override.quantity) : 1
-    return { id: creator.id, name: creator.name, grade: quoteGrade(creator.tier), profileUrl: creator.profileUrl || '', platform: creator.platform, scope: (campaign.contentFormats || []).join(' + ') || '콘텐츠 형식 협의',
-      unitPrice, quantity, included: override.included !== false, note: quoteGrade(creator.tier) === '등급 미분류' && creator.tier ? `협업 유형: ${creator.tier}` : '',
+    const accountGroup = creatorAccountGroup(creator)
+    const sourceGrade = quoteGrade(creator.tier)
+    const grade = accountGroup.followers == null ? sourceGrade : accountGroup.label
+    const note = [accountGroup.followers != null ? accountGroup.detail : '', creator.tier ? `${sourceGrade === '등급 미분류' ? '협업 유형' : '원본 등급'}: ${creator.tier}` : ''].filter(Boolean).join('\n')
+    return { id: creator.id, name: creator.name, grade, profileUrl: creator.profileUrl || '', platform: creator.platform, scope: (campaign.contentFormats || []).join(' + ') || '콘텐츠 형식 협의',
+      unitPrice, quantity, included: override.included !== false, note,
       priceLabel: Object.hasOwn(override, 'unitPrice') ? '견적 초안 입력' : rate.label,
       total: unitPrice == null || quantity == null ? null : Math.round(unitPrice * quantity) }
   }).filter(row => row.included)
@@ -47,8 +52,9 @@ export function generalQuoteRows(campaign = {}, creators = [], settings = campai
   })
   const groups = new Map()
   for (const row of buildCampaignQuote(campaign, creators, settings).items) {
-    const key = JSON.stringify([row.grade, row.platform, row.scope, row.unitPrice, row.priceLabel, row.note, row.quantity == null])
-    const group = groups.get(key) || { ...row, id: key, name: '인플루언서 콘텐츠 협업', quantity: 0, total: row.total == null ? null : 0, memberCount: 0 }
+    const groupNote = row.note.split('\n').filter(line => !line.includes(' · 데이터 정의 기준')).join('\n')
+    const key = JSON.stringify([row.grade, row.platform, row.scope, row.unitPrice, row.priceLabel, groupNote, row.quantity == null])
+    const group = groups.get(key) || { ...row, note: [groupNote, row.note.includes(' · 데이터 정의 기준') ? '채널 구독자·팔로워 수 · 데이터 정의 기준' : ''].filter(Boolean).join('\n'), id: key, name: '인플루언서 콘텐츠 협업', quantity: 0, total: row.total == null ? null : 0, memberCount: 0 }
     group.quantity = row.quantity == null ? null : group.quantity + row.quantity
     group.memberCount++
     if (group.total != null) group.total += row.total

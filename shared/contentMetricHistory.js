@@ -3,8 +3,8 @@ const WINDOW_MS = 30 * 24 * 60 * 60 * 1000
 
 export function contentThumbnail(post = {}) {
   const first = post.images?.[0] || post.carousel?.[0] || post.media?.[0]
-  const candidate = typeof first === 'string' ? first : first?.url || first?.imageUrl || first?.display_url
-  return [candidate, post.thumbnailUrl, post.thumbnail].find(url => /^https?:\/\//i.test(String(url || ''))) || ''
+  const candidate = typeof first === 'string' ? first : first?.imageUrl || first?.display_url || first?.thumbnail_url || first?.url
+  return [candidate, post.thumbnailUrl, post.thumbnail_url, post.thumbnail, post.display_url].find(url => /^https?:\/\//i.test(String(url || '')) && !/\.(mp4|mov|webm)(?:[?#]|$)/i.test(url)) || ''
 }
 
 export function metricValue(post, field) {

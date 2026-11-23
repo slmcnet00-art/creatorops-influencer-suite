@@ -3,6 +3,7 @@ import CampaignQuotePanel from './CampaignQuotePanel.jsx'
 import { CampaignDetailTabs, CampaignDetailPanel } from './CampaignDetailTabs.jsx'
 import CampaignContactPanel from './CampaignContactPanel.jsx'
 import CreatorProfileAvatar from './CreatorProfileAvatar.jsx'
+import CreatorAccountGroupBadge from './CreatorAccountGroupBadge.jsx'
 import { creatorAudience } from '../shared/creatorProfilePresentation.js'
 import { campaignContactMessage, contactProductLabel, CONTACT_TEMPLATE_PRESETS, contactPresetId, withContactPreset } from '../shared/campaignContact.js'
 import { referencedBrandCreatorIds } from '../shared/brandCreatorReferences.js'
@@ -15772,6 +15773,7 @@ function AppContent() {
                 if (!next || next.status !== 'refreshed') {
                   return {
                     ...post,
+                    ...(next?.thumbnailUrl ? { thumbnailUrl: next.thumbnailUrl, thumbnailCollectedAt: next.thumbnailCollectedAt, thumbnailSource: next.thumbnailSource } : {}),
                     metricsSource: next?.message || post.metricsSource || '수동 확인 필요',
                     lastChecked: nowLabel(),
                   }
@@ -19558,6 +19560,7 @@ function AppContent() {
                         <CreatorProfileAvatar creator={creator} />
                         <div>
                           <strong>{creator.name}</strong>
+                          <CreatorAccountGroupBadge creator={creator} />
                           <span>{creator.handle} · {creator.category}</span>
                           {creator.profileImageStatus === 'unavailable' && <small>프로필 이미지 공개 확인 불가</small>}
                           {creator.socialProfiles?.length > 0 && <details className="creator-profile-channels"><summary>채널별 정보 · {creator.socialProfiles.length}개</summary>{creator.socialProfiles.map(profile => <p key={profile.url}>
@@ -24375,6 +24378,7 @@ function RecommendationCard({
           <img src={creator.avatar} alt="" />
           <div>
             <strong>{creator.name}</strong>
+            <CreatorAccountGroupBadge creator={creator} />
             <span>
               {[creator.platform, creator.country, recommendation.persona].filter(Boolean).join(' · ')}
             </span>

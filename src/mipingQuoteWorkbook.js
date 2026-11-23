@@ -59,8 +59,7 @@ export async function buildMipingQuoteXlsx({ campaign, brand, quote, settings = 
   meta(3, 'Title', `${campaign.name} · ${formLabel}${dates.length ? ` (${dates.join(' ~ ')})` : ''}`, styles.title)
   meta(4, 'Date', settings.issuedAt || koreaDate(exportedAt), styles.date)
   meta(5, 'Amount', quote.total, styles.amount, `G${grandRow}`)
-  merges.push('A6:B6')
-  writeRow(6, [cell('A6', 'List', styles.header), ...['채널', '콘텐츠 형식', '수량', 'Unit Cost (KRW)', '예상 비용 (KRW)', '비고'].map((v, i) => cell(`${col(i + 2)}6`, v, styles.header))], 34)
+  writeRow(6, [cell('A6', '등급', styles.header), cell('B6', formType === 'list' ? '크리에이터' : '협업 항목', styles.header), ...['채널', '콘텐츠 형식', '수량', 'Unit Cost (KRW)', '예상 비용 (KRW)', '비고'].map((v, i) => cell(`${col(i + 2)}6`, v, styles.header))], 34)
   quote.items.forEach((item, index) => {
     const r = first + index
     const note = [item.priceLabel, item.note, item.memberCount ? `${item.memberCount}명 기준` : '', item.roundingAdjustment ? `개별 건 원 단위 반올림 차이: ${item.roundingAdjustment}원` : ''].filter(Boolean).join('\n')

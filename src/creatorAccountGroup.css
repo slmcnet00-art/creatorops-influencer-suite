@@ -1,0 +1,2 @@
+.creator-account-group-badge { display: inline-flex !important; width: fit-content; align-items: center; margin: 4px 5px 4px 0; padding: 3px 8px; border: 1px solid #cbdcf8; border-radius: 5px; background: #eff5ff; color: #2354a1 !important; font-size: 11px !important; font-weight: 650; line-height: 1.4; white-space: nowrap; }
+.creator-account-group-badge.group-unknown { background: #f5f6f8; border-color: #dce1e8; color: #586579 !important; }
