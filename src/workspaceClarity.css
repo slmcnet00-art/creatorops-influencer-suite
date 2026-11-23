@@ -1,0 +1,47 @@
+/* Progressive disclosure keeps guidance available without displacing daily work. */
+.workspace-help { min-width: 0; padding: 12px 18px; border-bottom: 1px solid var(--border); color: var(--text-soft); font-size: 13px; }
+.workspace-help > summary { width: fit-content; max-width: 100%; min-height: 28px; align-content: center; cursor: pointer; color: var(--text-strong); font-weight: 600; line-height: 1.6; overflow-wrap: anywhere; }
+.workspace-help > summary:focus-visible, .stat-lineage > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 3px; }
+.workspace-help > summary:hover { color: var(--accent); }
+.workspace-help[open] > summary { margin-bottom: 12px; }
+.workspace-help > p { max-width: 75ch; margin: 8px 0; line-height: 1.7; }
+.workspace-help .discovery-flow-guide { margin: 0; }
+.workspace-help .brief-auto-setup, .workspace-help .campaign-brief-summary { margin: 0; }
+.contact-template-disclosure .campaign-commercial { padding: 12px 0; margin: 0; border: 0; border-radius: 0; }
+.contact-template-disclosure .campaign-commercial header p { max-width: 75ch; line-height: 1.7; }
+.outreach-channel-help .outreach-guidance { margin: 0; }
+.reference-source-help { margin-bottom: 8px; }
+.creator-groups-panel { grid-template-columns: minmax(0, 1fr); min-width: 0; }
+.creator-groups-panel > * { min-width: 0; }
+.creator-groups-panel > .panel-heading { flex-wrap: wrap; gap: 14px; }
+.creator-groups-panel .panel-heading-actions { flex-wrap: wrap; min-width: 0; }
+.creator-group-toolbar .search-field, .creator-group-toolbar input, .creator-group-toolbar select { min-width: 0; box-sizing: border-box; }
+.creator-group-workspace, .creator-group-grid, .creator-group-detail-panel { min-width: 0; }
+.stat-lineage { margin-top: 8px; font-size: 11px; color: var(--text-soft); }
+.stat-lineage summary { cursor: pointer; min-height: 24px; line-height: 1.6; }
+.stat-lineage .stat-code { overflow-wrap: anywhere; }
+.mobile-settings-nav { display: none; }
+.report-panel > .panel-heading { flex-wrap: wrap; gap: 14px; }
+.report-panel > .panel-heading > .panel-heading-actions { display: flex; flex-wrap: wrap; gap: 8px; min-width: 0; }
+@media (max-width: 760px) {
+  .workspace-help { padding: 12px; }
+  .creator-groups-panel > .panel-heading { flex-direction: column; align-items: stretch; }
+  .creator-groups-panel .panel-heading-actions { justify-content: flex-start; }
+  .creator-group-summary { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 0; }
+  .creator-group-summary > div { min-width: 0; padding: 0 12px; }
+  .creator-group-summary > div:nth-child(odd) { border-left: 0; }
+  .creator-group-summary > div strong { font-size: 17px; overflow-wrap: anywhere; }
+  .creator-groups-panel .creator-group-member-row { grid-template-columns: 24px 40px minmax(0, 1fr); gap: 8px; }
+  .creator-group-member-row > div { min-width: 0; overflow-wrap: anywhere; }
+  .creator-group-member-row > div:nth-of-type(2), .creator-group-member-row > div:nth-of-type(3) { grid-column: 2 / -1; text-align: left; }
+  .creator-group-member-row > a { grid-column: 3; justify-self: start; }
+  .report-panel > .panel-heading > .panel-heading-actions { width: 100%; }
+}
+@media (max-width: 560px) {
+  .nav-list { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 2px; }
+  .nav-list .nav-item { width: 100%; min-width: 0; height: 40px; }
+  .nav-list .mobile-settings-nav { display: flex; align-items: center; justify-content: center; }
+  .settings-grid .panel-heading { flex-direction: column; align-items: stretch; gap: 12px; }
+  .settings-grid .panel-heading-actions { display: flex; flex-wrap: wrap; justify-content: flex-start; gap: 8px; }
+  .settings-grid .integration-checklist { grid-template-columns: minmax(0, 1fr); }
+}

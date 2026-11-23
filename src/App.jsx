@@ -75,6 +75,7 @@ import {
 } from 'lucide-react'
 import './App.css'
 import './campaignList.css'
+import './workspaceClarity.css'
 import { aggregateEngagement, getAverageViews, getActualRevenue, getActualSpend } from './performanceMetrics.js'
 import { audienceLabel, audienceGroupLabel, YOUTUBE_INPUT_NOTICE_EN } from './platformAudience'
 import {
@@ -17554,6 +17555,9 @@ function AppContent() {
               onClick={() => jumpTo('references')}
             />
           )}
+          <button className={`nav-item mobile-settings-nav ${visibleSection === 'settings' ? 'active' : ''}`} type="button" title="설정" aria-label="설정" onClick={() => jumpTo('settings')}>
+            <Settings size={18} aria-hidden="true" />
+          </button>
         </nav>
 
         <div className="sidebar-bottom-actions">
@@ -18229,6 +18233,7 @@ function AppContent() {
         {activeDiscoveryPoolView === 'search' && (
           <>
         <div className="discovery-workspace">
+          <details className="workspace-help discovery-help"><summary>발굴 진행 순서 보기</summary>
           <section className="discovery-flow-guide" aria-label="발굴 작업 순서">
             <article>
               <span>1</span>
@@ -18259,6 +18264,7 @@ function AppContent() {
               </div>
             </article>
           </section>
+          </details>
         <section className="ai-grid">
           <section className="panel ai-brief-panel">
             <div className="panel-heading">
@@ -18273,6 +18279,7 @@ function AppContent() {
                 </button>
               </div>
             </div>
+            <details className="workspace-help brief-setup-disclosure"><summary>브리프 붙여넣기·조건 자동 세팅</summary>
             <div className="brief-auto-setup">
               <div className="brief-auto-head">
                 <div>
@@ -18298,6 +18305,8 @@ function AppContent() {
                 </div>
               )}
             </div>
+            </details>
+            <details className="workspace-help campaign-criteria-disclosure"><summary>선택 캠페인 조건 확인</summary>
             <div className="campaign-brief-summary">
               <div>
                 <span className="mini-label">선택 캠페인 조건</span>
@@ -18319,6 +18328,7 @@ function AppContent() {
                 )}
               </div>
             </div>
+            </details>
             <div className="brief-toggles">
               <div>
                 <span className="mini-label">플랫폼</span>
@@ -19384,6 +19394,7 @@ function AppContent() {
             </div>
           </div>
 
+          <details className="workspace-help group-guide"><summary>후보 풀과 후보 그룹의 차이</summary>
           <div className="creator-group-position-note">
             <span>메시지 전 후보 풀</span>
             <strong>이번 캠페인 발송 대기열</strong>
@@ -19391,6 +19402,7 @@ function AppContent() {
             <span>재사용 후보 그룹</span>
             <strong>반복 섭외용 저장 폴더</strong>
           </div>
+          </details>
 
           <div className="creator-group-summary">
             <Stat label="후보 그룹" value={`${creatorGroupSummary.groups}개`} />
@@ -19932,11 +19944,10 @@ function AppContent() {
           )}
 
           {referenceMode === 'content' && (
-            <div className="content-tracking-dashboard">
-              <strong>저장 콘텐츠 리스트</strong>
-              <p>콘텐츠 추적에서 저장한 개별 영상/이미지는 아래 검색 결과 목록과 하단 제작 저장 리스트에서 확인합니다.</p>
-              <span>{contentTrackingReferences.length}개 콘텐츠 raw · 제작 저장 {savedProductionReferences.length}개</span>
-            </div>
+            <details className="workspace-help reference-source-help">
+              <summary>추적 콘텐츠 {contentTrackingReferences.length}개 · 제작 저장 {savedProductionReferences.length}개</summary>
+              <p>추적한 영상·이미지는 검색 결과와 하단 제작 저장 리스트에서 확인할 수 있습니다. 제작에 활용하려면 분석 후 가이드용으로 저장하세요.</p>
+            </details>
           )}
 
           {referenceMode !== 'winning' && (
@@ -21352,25 +21363,25 @@ function AppContent() {
                 />
                 <button className="primary-button compact-button" type="button" title="콘텐츠 추적 단일 추가" onClick={() => setModal({ type: 'tracking' })}>
                   <Plus size={15} />
-                  단일 추가
+                  콘텐츠 추가
                 </button>
                 <span className="report-action-divider" aria-hidden="true" />
-                <button className="secondary-button compact-button" type="button" title="content-tracking-bulk-template" onClick={downloadTrackingBulkTemplate}>
+                <button className="secondary-button compact-button" type="button" title="콘텐츠 추적 대량 등록 양식 다운로드" onClick={downloadTrackingBulkTemplate}>
                   <Download size={15} />
                   대량 양식
                 </button>
-                <button className="secondary-button compact-button" type="button" title="content-tracking-bulk-upload" onClick={() => trackingBulkInputRef.current?.click()}>
+                <button className="secondary-button compact-button" type="button" title="콘텐츠 추적 내역 일괄 업로드" onClick={() => trackingBulkInputRef.current?.click()}>
                   <Plus size={15} />
                   대량 업로드
                 </button>
-                <button className="icon-button" type="button" title="성과 데이터 즉시 갱신" onClick={refreshTracking}>
-                  <RefreshCw size={18} />
+                <button className="secondary-button compact-button" type="button" title="성과 데이터 즉시 갱신" onClick={refreshTracking}>
+                  <RefreshCw size={15} /> 성과 갱신
                 </button>
-                <button className="icon-button" type="button" title="성과 보고서 다운로드" onClick={exportPerformanceReport}>
-                  <Download size={18} />
+                <button className="secondary-button compact-button" type="button" title="성과 보고서 다운로드" onClick={exportPerformanceReport}>
+                  <Download size={15} /> 보고서 다운로드
                 </button>
                 <button
-                  className="icon-button"
+                  className="secondary-button compact-button"
                   type="button"
                   title="리포트 검토"
                   onClick={() => {
@@ -21378,7 +21389,7 @@ function AppContent() {
                     showToast('리포트 검토 완료 상태로 저장했어요.')
                   }}
                 >
-                  <CheckCircle2 size={18} />
+                  <CheckCircle2 size={15} /> 검토 완료
                 </button>
               </div>
             </div>
@@ -21827,11 +21838,14 @@ function AppContent() {
                 <MessageSquare size={18} />
               </button>
             </div>
+            <details className="workspace-help contact-template-disclosure"><summary>메시지 양식·후보별 초안 만들기</summary>
             <CampaignContactPanel key={`contact-${selectedCampaign?.id}`} campaign={selectedCampaign} creators={getCreatorsByIds(creators, selectedCampaign?.creatorIds || [])}
               preview={previewCampaignContact} messageType={bulkOutreachMessageType} messageTypes={OUTREACH_MESSAGE_TYPES} onMessageTypeChange={setBulkOutreachMessageType}
               onSave={canWriteBrandWorkspace(normalizeRole(currentAccount?.role)) ? contactPatch => saveCampaignCommercialSettings(selectedCampaign.id, contactPatch) : undefined}
               onPrepare={canWriteBrandWorkspace(normalizeRole(currentAccount?.role)) ? prepareCampaignContacts : undefined} />
-            <details><summary>기존 컨택 참고자료</summary><CampaignDocumentPanel campaign={selectedCampaign} kind="contact" /></details>
+            </details>
+            <details className="workspace-help"><summary>기존 컨택 참고자료</summary><CampaignDocumentPanel campaign={selectedCampaign} kind="contact" /></details>
+            <details className="workspace-help outreach-channel-help"><summary>이메일·DM 발송 안내</summary>
             <div className="outreach-guidance">
               {contactChannelOptions.slice(0, 3).map((channel) => (
                 <article key={channel.id}>
@@ -21842,6 +21856,7 @@ function AppContent() {
                 </article>
               ))}
             </div>
+            </details>
             <div className="dashboard-section-label">
               <span className="mini-label">핵심 지표</span>
               <small>상태별 건수 · 클릭하면 필터</small>
@@ -24186,7 +24201,7 @@ function StatTile({ signal }) {
         {unit ? <span className="u">{unit}</span> : null}
       </div>
       <div className="stat-lbl">{signal.label}</div>
-      {signal.lineage?.length ? <div className="stat-code">{signal.lineage[0]}</div> : null}
+      {signal.lineage?.length ? <details className="stat-lineage"><summary>집계 기준</summary><div className="stat-code">{signal.lineage.join(' · ')}</div></details> : null}
     </div>
   )
 }
