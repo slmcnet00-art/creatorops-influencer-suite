@@ -1,4 +1,5 @@
 import { useRef, useState } from 'react'
+import { metricDefinitions } from '../shared/metricDefinitions.js'
 import {
   AlertTriangle,
   ChevronDown,
@@ -590,6 +591,17 @@ export default function AdminDataRoom({
       </section>
 
       <section className="panel data-responsibility-panel" aria-label="데이터룸 구분 목록">
+        <details className="creator-rate-details">
+          <summary>사용자 화면 지표 정의와 확인 기준</summary>
+          <p>출처·계산 방식·기간은 사용자 대시보드와 같은 정의를 사용합니다. API 설정, 계정 인증, 실제 수집 성공, 마지막 갱신일을 각각 확인하세요.</p>
+          <p>누락·미수집·권한 제한은 확인된 0과 구분합니다. 수집일이 없는 이전 자료는 최신으로 판정하지 않습니다.</p>
+          {Object.entries(metricDefinitions).map(([key, definition]) => <div key={key}>
+            <strong>{definition.name}</strong>
+            <p>{definition.formula} · {definition.period}</p>
+            <p>{definition.limitation}</p>
+          </div>)}
+          <p>BRAND DASH의 좋아요÷100+댓글 참여수, 계정 등급 경계, MPC 코드 길이, 월 귀속 주차, 대행 수수료·VAT 정의는 합의 후 적용할 확인 항목입니다.</p>
+        </details>
         <div className="data-room-map-heading">
           <div>
             <span className="mini-label">DATA RESPONSIBILITY MAP</span>
