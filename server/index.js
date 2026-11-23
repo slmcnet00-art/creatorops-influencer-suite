@@ -1,3 +1,4 @@
+import { recordContentMetrics } from '../shared/contentMetricHistory.js'
 import { createYouTubeEvidenceReviewer, classifyYouTubeVideo, isRelevantYouTubeTopicVideo } from './youtubeEvidence.js'
 import { reviewGuideClaims } from '../shared/guideClaimReview.js'
 import { isInstagramLoginTitle } from '../shared/instagramReferenceReuse.js'
@@ -3976,11 +3977,13 @@ async function refreshTrackedPosts(posts) {
       try {
         const platform = String(post.platform || '').toLowerCase()
         if (platform.includes('youtube')) {
-          return { ...post, ...(await fetchYouTubeVideoMetrics(post)) }
+          const measurement = await fetchYouTubeVideoMetrics(post)
+          return measurement.status === 'refreshed' ? recordContentMetrics(post, measurement) : { ...post, ...measurement }
         }
 
         if (isPublicSnapshotEnabled() && (platform.includes('instagram') || platform.includes('tiktok'))) {
-          return { ...post, ...(await fetchPublicContentMetrics(post)) }
+          const measurement = await fetchPublicContentMetrics(post)
+          return measurement.status === 'refreshed' ? recordContentMetrics(post, measurement) : { ...post, ...measurement }
         }
 
         return {
@@ -4035,9 +4038,11 @@ async function fetchYouTubeVideoMetrics(post) {
     status: 'refreshed',
     videoId,
     title: item.snippet?.title || '',
-    views: Number(statistics.viewCount || 0),
-    likes: Number(statistics.likeCount || 0),
-    comments: Number(statistics.commentCount || 0),
+    views: statistics.viewCount == null ? null : Number(statistics.viewCount),
+    likes: statistics.likeCount == null ? null : Number(statistics.likeCount),
+    comments: statistics.commentCount == null ? null : Number(statistics.commentCount),
+    thumbnailUrl: item.snippet?.thumbnails?.high?.url || item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.default?.url || '',
+    publishedAt: item.snippet?.publishedAt || post.publishedAt || '',
     shares: null,
     saves: null,
     source: 'YouTube Data API videos.list',
@@ -4064,6 +4069,7 @@ async function fetchPublicContentMetrics(post) {
     platform: post.platform,
     status: 'refreshed',
     title: snapshot.title || '',
+    thumbnailUrl: snapshot.image || post.thumbnailUrl || '',
     views: metrics.views ?? null,
     likes: metrics.likes ?? null,
     comments: metrics.comments ?? null,

@@ -1,3 +1,4 @@
+import ContentPerformanceReport from './ContentPerformanceReport.jsx'
 import { metricObservationSummary } from '../shared/metricDefinitions.js'
 
 const number = value => Number(value).toLocaleString('ko-KR', { maximumFractionDigits: 1 })
@@ -60,6 +61,8 @@ export default function ClientReportOverview({ brand, campaign, performance, kpi
         <strong>{number(post.views)}회</strong>
       </li>)}</ol> : <p className="client-report-empty">콘텐츠 URL을 등록하고 조회수를 수집하면 비교할 수 있습니다.</p>}
     </section>
+
+    <ContentPerformanceReport posts={posts} />
 
     <footer className="client-report-review">
       <div><strong>다음 검토</strong><p>{!posts.length ? '업로드 URL을 연결하고 콘텐츠 지표를 수집하세요.' : !hasCost || !hasRevenue ? '집행 비용과 구매·환불 데이터를 연결해 비용 대비 성과를 확인하세요.' : '조회 상위 소재의 반응과 전환을 함께 검토해 다음 캠페인의 재사용 후보를 선정하세요.'}</p></div>

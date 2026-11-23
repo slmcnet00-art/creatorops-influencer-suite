@@ -1,0 +1,28 @@
+export const CONTENT_METRICS = ['views', 'likes', 'comments', 'shares', 'saves']
+const WINDOW_MS = 30 * 24 * 60 * 60 * 1000
+
+export function metricValue(post, field) {
+  const value = post?.[field]
+  if (post?.metricsPending || ['missing', 'unavailable', 'restricted', 'unverified'].includes(post?.metric_availability?.[field])) return null
+  return value !== '' && value !== null && value !== undefined && typeof value !== 'boolean' && Number.isFinite(Number(value)) && Number(value) >= 0 ? Number(value) : null
+}
+
+export function contentMetricHistory(post, now = Date.now()) {
+  const points = new Map()
+  for (const point of Array.isArray(post?.metricHistory) ? post.metricHistory : []) {
+    const at = Date.parse(point.measuredAt)
+    if (!Number.isFinite(at) || at <= now - WINDOW_MS || at > now) continue
+    points.set(at, { measuredAt: new Date(at).toISOString(), source: point.source || '', ...Object.fromEntries(CONTENT_METRICS.map(field => [field, metricValue(point, field)])) })
+  }
+  return [...points.entries()].sort((a, b) => a[0] - b[0]).map(([, point]) => point).slice(-120)
+}
+
+export function recordContentMetrics(previous, measurement, now = Date.now()) {
+  if (measurement.status && measurement.status !== 'refreshed' && measurement.status !== 'manual') return previous
+  const measuredAt = measurement.checkedAt || measurement.measuredAt
+  if (!Number.isFinite(Date.parse(measuredAt))) return previous
+  const point = { measuredAt, source: measurement.source || '수동 입력', ...Object.fromEntries(CONTENT_METRICS.map(field => [field, metricValue(measurement, field)])) }
+  if (CONTENT_METRICS.every(field => point[field] === null)) return previous
+  return { ...previous, ...measurement, metricsPending: false, sourceCollectedAtIso: measuredAt,
+    metricHistory: contentMetricHistory({ metricHistory: [...(previous.metricHistory || []), ...(measurement.metricHistory || []), point] }, now) }
+}

@@ -1,3 +1,4 @@
+import { contentMetricHistory } from '../shared/contentMetricHistory.js'
 export const YOUTUBE_API_DATA_MAX_AGE_DAYS = 30
 export const YOUTUBE_API_DATA_MAX_AGE_MS = YOUTUBE_API_DATA_MAX_AGE_DAYS * 24 * 60 * 60 * 1000
 
@@ -101,6 +102,8 @@ function redactStaleReference(record) {
 function redactStaleTrackedPost(record) {
   return {
     ...record,
+    thumbnailUrl: '',
+    metricHistory: [],
     views: 0,
     likes: 0,
     comments: 0,
@@ -127,9 +130,18 @@ export function sanitizeStaleYouTubeApiData(payload = {}, { now = new Date() } =
   const creators = sanitizeRecords(payload.creators, redactStaleCreator, now)
   const contentReferences = sanitizeRecords(payload.contentReferences, redactStaleReference, now)
   const trackedPosts = sanitizeRecords(payload.trackedPosts, redactStaleTrackedPost, now)
+  if (Array.isArray(trackedPosts.records)) {
+    trackedPosts.records = trackedPosts.records.map(record => {
+      if (!Array.isArray(record.metricHistory)) return record
+      const retained = contentMetricHistory(record, now.getTime())
+      if (JSON.stringify(retained) === JSON.stringify(record.metricHistory)) return record
+      trackedPosts.changed = true
+      return { ...record, metricHistory: retained }
+    })
+  }
   const redacted = creators.redacted + contentReferences.redacted + trackedPosts.redacted
 
-  if (!redacted) return { payload, changed: false, redacted: 0 }
+  if (!redacted && !trackedPosts.changed) return { payload, changed: false, redacted: 0 }
   return {
     payload: {
       ...payload,

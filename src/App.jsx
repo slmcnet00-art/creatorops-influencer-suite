@@ -1,3 +1,4 @@
+import { recordContentMetrics } from '../shared/contentMetricHistory.js'
 import YouTubeEvidenceDetails from './YouTubeEvidenceDetails.jsx'
 import MetricDefinitionDetails from './MetricDefinitionDetails.jsx'
 import ClientReportOverview from './ClientReportOverview.jsx'
@@ -6319,7 +6320,7 @@ function buildAdminMetricCatalog({
     ['MET-CONT-001', '평균 조회수', '콘텐츠 성과 번들', '외부', '콘텐츠별 조회수 평균', 'avg(trackedPosts.views)', ['RAW-EXT-CONT-001'], '캠페인 기간', '매일/즉시', '정상', '리포트', '게시 후 경과일 함께 확인', '카테고리 평균 대비 -50%', '중간', '데이터팀', 'trackedPosts', '초기 24시간은 별도 표시'],
     ['MET-CONT-002', '콘텐츠별 반응률', '콘텐츠 성과 번들', '외부', '콘텐츠별 참여율', 'engagement / views * 100 by content', rawRefs.sns, '캠페인 기간', '매일/즉시', '정상', '리포트 상세', '소형 계정은 변동성 큼', '평균 대비 3표준편차', '중간', '데이터팀', 'metric calculation logs', '콘텐츠별 이상치 확인'],
     ['MET-CONT-003', '채널별 성과 비교', '콘텐츠 성과 번들', '외부', 'YouTube/Instagram/TikTok별 조회/참여 비교', 'groupBy(platform).sum/views/engagement', ['RAW-EXT-CHN-001', 'RAW-EXT-CONT-001', BULK_TRACKING_RAW_SOURCE_ID], '캠페인 기간', '일 1회', '정상', '리포트', '플랫폼별 알고리즘 차이를 감안', '한 채널만 80% 이상 편중', '중간', 'PM/데이터', 'platform group metrics', '채널 믹스 최적화에 사용'],
-    ['MET-CONT-004', '콘텐츠 성장률', '콘텐츠 성과 번들', '외부', '전일 대비 조회수 증가율', '(views_today-views_yesterday)/views_yesterday*100', ['RAW-EXT-CONT-001'], '최근 7일', '매일', '검증 필요', '리포트', '일별 스냅샷 저장 후 활성화', '음수 전환', '중간', '데이터팀', 'daily_content_snapshots', '스냅샷 테이블 필요'],
+    ['MET-CONT-004', '콘텐츠 관측 구간 증감', '콘텐츠 성과 번들', '외부', '선택 지표의 첫 관측 대비 최근 관측 증감', 'last_observed_value - first_observed_value', ['RAW-EXT-CONT-001'], '최근 7일', '매일', '검증 필요', '리포트', '관측 이력 2건 이상에서 구간별 증감 확인', '음수 전환', '중간', '데이터팀', 'trackedPosts.metricHistory', '최근 30일 실제 갱신 관측 이력 사용'],
     ['MET-CONT-005', '후보 예상 조회수', '콘텐츠 성과 번들', '외부', '발굴/저장 후보의 평균 조회수를 캠페인 후보 기준으로 합산한 예상 조회수', 'sum(creators.averageViews where candidate matches current campaign/filter)', rawRefs.expectedViews, '현재 캠페인/필터 기준', '후보 검색/필터 변경 시', creators.length ? '검증 필요' : '지연', '대시보드, 발굴', '실제 업로드 성과가 아니라 섭외 전 후보 raw 기반 추정치로 해석', '평균 조회수 0 또는 상위 1개 후보가 예상 조회수의 80% 이상', '중간', 'PM/데이터', 'creator.metricSources + campaign filter logs', `${compactNumber(expectedViewsTotal)} 예상 조회`],
     ['MET-BENCH-001', '레퍼런스 콘텐츠 수', '레퍼런스/벤치마크 번들', '외부', '저장된 제작 레퍼런스 콘텐츠 수', 'count(contentReferences)', ['RAW-EXT-REF-001'], '전체', '실시간', '정상', '레퍼런스', '저장된 레퍼런스만 계산', '0건', '높음', '콘텐츠팀', 'contentReferences', `${contentReferences.length}개`],
     ['MET-BENCH-002', '벤치마크 평균 조회수', '레퍼런스/벤치마크 번들', '외부', '벤치마크 콘텐츠 조회수 평균', 'avg(reference.views)', rawRefs.reference, '최근 30일', '검색/저장 시', contentReferences.length ? '정상' : '지연', '전략, 리포트', '50만 이상 터진 콘텐츠 중심', '평균 5만 미만', '중간', '전략/데이터', 'references/search logs', '검색 품질에 따라 변동'],
@@ -15632,12 +15633,13 @@ function AppContent() {
       creatorFollowers: metrics.followers ? String(metrics.followers) : current.creatorFollowers,
       profileUrl: current.profileUrl || snapshot?.profileUrl || snapshot?.authorUrl || url,
       snapshotSource: snapshot?.source || 'Public link snapshot',
-      snapshotCheckedAt: nowLabel(),
-      views: metrics.views ? String(metrics.views) : current.views,
-      likes: metrics.likes ? String(metrics.likes) : current.likes,
-      comments: metrics.comments ? String(metrics.comments) : current.comments,
-      shares: metrics.shares ? String(metrics.shares) : current.shares,
-      saves: metrics.saves ? String(metrics.saves) : current.saves,
+      snapshotCheckedAt: new Date().toISOString(),
+      thumbnailUrl: snapshot?.image || current.thumbnailUrl || '',
+      views: metrics.views != null ? String(metrics.views) : current.views,
+      likes: metrics.likes != null ? String(metrics.likes) : current.likes,
+      comments: metrics.comments != null ? String(metrics.comments) : current.comments,
+      shares: metrics.shares != null ? String(metrics.shares) : current.shares,
+      saves: metrics.saves != null ? String(metrics.saves) : current.saves,
     }
   }
 
@@ -15790,7 +15792,7 @@ function AppContent() {
         resolvedCreator?.country,
         resolvedCreator?.searchCountry,
       )
-      const nextPost = {
+      let nextPost = {
         id: createId(),
         campaignId,
         creatorId,
@@ -15798,17 +15800,24 @@ function AppContent() {
         platform,
         title: savedPostTitle,
         url: uploadedUrl,
+        thumbnailUrl: effectiveDraft.thumbnailUrl || '',
         status: hasManualMetrics ? '\uCD94\uC801 \uC911' : '\uC790\uB3D9 \uAC31\uC2E0 \uB300\uAE30',
         publishedAt: nowLabel(),
-        views: Number(effectiveDraft.views) || 0,
-        likes: Number(effectiveDraft.likes) || 0,
-        comments: Number(effectiveDraft.comments) || 0,
-        shares: Number(effectiveDraft.shares) || 0,
-        saves: Number(effectiveDraft.saves) || 0,
+        views: String(effectiveDraft.views ?? '').trim() === '' ? null : Number(effectiveDraft.views),
+        likes: String(effectiveDraft.likes ?? '').trim() === '' ? null : Number(effectiveDraft.likes),
+        comments: String(effectiveDraft.comments ?? '').trim() === '' ? null : Number(effectiveDraft.comments),
+        shares: String(effectiveDraft.shares ?? '').trim() === '' ? null : Number(effectiveDraft.shares),
+        saves: String(effectiveDraft.saves ?? '').trim() === '' ? null : Number(effectiveDraft.saves),
         conversions: Number(effectiveDraft.conversions) || 0,
         metricsSource: effectiveDraft.snapshotSource || (hasManualMetrics ? '\uC218\uB3D9 \uC785\uB825' : '\uC5C5\uB85C\uB4DC \uB9C1\uD06C \uB4F1\uB85D'),
         lastChecked: effectiveDraft.snapshotCheckedAt || (hasManualMetrics ? nowLabel() : '\uC790\uB3D9 \uAC31\uC2E0 \uB300\uAE30'),
       }
+      nextPost = recordContentMetrics(nextPost, {
+        ...nextPost, status: 'manual',
+        source: nextPost.metricsSource,
+        checkedAt: effectiveDraft.snapshotCheckedAt || new Date().toISOString(),
+      })
+      nextPost.status = hasManualMetrics ? '추적 중' : '자동 갱신 대기'
       createdPost = nextPost
       const nextUtmTrackingLogs = attachContentUrlToUtmLogs(current.utmTrackingLogs, {
         campaignId,
@@ -15964,7 +15973,7 @@ function AppContent() {
         const refreshedAt = new Date().toISOString()
 
         refreshed
-          .filter((post) => post && post.status !== 'manual_required' && post.status !== 'unsupported')
+          .filter((post) => post && post.status === 'refreshed')
           .forEach((post) => {
             const original = targetPosts.find((item) => item.id === post.id) || {}
             void saveContentMetricRawSnapshot({
@@ -15984,7 +15993,7 @@ function AppContent() {
               ...current,
               trackedPosts: current.trackedPosts.map((post) => {
                 const next = refreshedById.get(post.id)
-                if (!next || next.status === 'manual_required' || next.status === 'unsupported') {
+                if (!next || next.status !== 'refreshed') {
                   return {
                     ...post,
                     metricsSource: next?.message || post.metricsSource || '수동 확인 필요',
@@ -15992,12 +16001,7 @@ function AppContent() {
                   }
                 }
                 return {
-                  ...post,
-                  views: Number(next.views ?? post.views),
-                  likes: Number(next.likes ?? post.likes),
-                  comments: Number(next.comments ?? post.comments),
-                  shares: Number(next.shares ?? post.shares),
-                  saves: Number(next.saves ?? post.saves),
+                  ...recordContentMetrics(post, next),
                   metricsSource: next.source || '공식 API 갱신',
                   lastChecked: nowLabel(),
                 }

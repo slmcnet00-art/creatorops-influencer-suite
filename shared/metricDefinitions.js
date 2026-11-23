@@ -55,7 +55,7 @@ export function knownMetricCount(rows, field) {
 }
 
 export function metricObservationSummary(rows = []) {
-  const dates = rows.map((row) => row.youtubeRecentMetrics?.collectedAt || row.sourceCollectedAtIso || row.metricsUpdatedAt || row.fetchedAt)
+  const dates = rows.map((row) => row.youtubeRecentMetrics?.collectedAt || row.sourceCollectedAtIso || row.metricsUpdatedAt || row.checkedAt || row.fetchedAt)
     .filter((value) => value && Number.isFinite(Date.parse(value))).map((value) => Date.parse(value))
   const sources = [...new Set(rows.flatMap((row) => [row.source, row.sourceName, ...(Array.isArray(row.metricSources) ? row.metricSources : []).map((item) => item?.source)])
     .filter((value) => typeof value === 'string' && value.trim()))]
