@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import { canReadFullWorkspace, canWriteBrandWorkspace, canWriteFullWorkspace } from './workspacePermissions'
 import { compareAndSwapSnapshot } from './snapshotConcurrency.js'
+import { mergeBrandWorkspaceSnapshots } from '../shared/brandWorkspaceSnapshots.js'
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
 const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -605,9 +606,15 @@ export async function loadCloudWorkspace() {
     .maybeSingle()
 
   if (error) throw error
+  const { data: snapshots, error: snapshotsError } = await supabase
+    .from('brand_scoped_snapshots')
+    .select('brand_id,payload,updated_at')
+    .eq('workspace_id', WORKSPACE_ID)
+    .order('brand_id')
+  if (snapshotsError) throw snapshotsError
   return {
-    status: data?.payload ? 'loaded' : 'empty',
-    workspace: data?.payload ?? null,
+    status: data?.payload || snapshots?.length ? 'loaded' : 'empty',
+    workspace: data?.payload || snapshots?.length ? mergeBrandWorkspaceSnapshots(data?.payload || {}, snapshots || []) : null,
     updatedAt: data?.updated_at ?? null,
   }
 }
@@ -697,8 +704,15 @@ export function watchCloudWorkspace(callback, options = {}) {
       return
     }
     if (data?.updated_at && data.updated_at !== lastUpdatedAt) {
+      const { data: snapshots, error: snapshotsError } = await supabase
+        .from('brand_scoped_snapshots')
+        .select('brand_id,payload,updated_at')
+        .eq('workspace_id', WORKSPACE_ID)
+        .order('brand_id')
+      if (stopped) return
+      if (snapshotsError) { callback({ status: 'error', error: snapshotsError }); return }
       lastUpdatedAt = data.updated_at
-      callback({ status: 'updated', workspace: data.payload, updatedAt: data.updated_at })
+      callback({ status: 'updated', workspace: mergeBrandWorkspaceSnapshots(data.payload || {}, snapshots || []), updatedAt: data.updated_at })
     }
   }
 
