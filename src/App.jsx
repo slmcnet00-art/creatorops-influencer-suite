@@ -6,6 +6,8 @@ import CreatorProfileAvatar from './CreatorProfileAvatar.jsx'
 import CreatorAccountGroupBadge from './CreatorAccountGroupBadge.jsx'
 import { creatorAudience } from '../shared/creatorProfilePresentation.js'
 import { campaignContactMessage, contactProductLabel, CONTACT_TEMPLATE_PRESETS, contactPresetId, withContactPreset } from '../shared/campaignContact.js'
+import { normalizeCreatorGroups } from '../shared/creatorGroups.js'
+import { BRAND_SCOPED_ARRAY_KEYS, mergeBrandWorkspaceSnapshots } from '../shared/brandWorkspaceSnapshots.js'
 import { referencedBrandCreatorIds } from '../shared/brandCreatorReferences.js'
 import { canWriteBrandWorkspace } from './workspacePermissions.js'
 import { buildReportXlsx, campaignWorkbookSheets } from './reportWorkbook.js'
@@ -1948,42 +1950,6 @@ function mapAdminAccessMember(member, brands = []) {
   }
 }
 
-const BRAND_SCOPED_ARRAY_KEYS = [
-  'candidatePoolEvidence',
-  'recommendations',
-  'outreach',
-  'recruitedPool',
-  'quotes',
-  'fulfillmentRecords',
-  'trackedPosts',
-  'utmTrackingLogs',
-  'shortLinkClickLogs',
-  'orderAttributionLogs',
-  'couponRedemptionLogs',
-  'contentReferences',
-  'creatorGroups',
-  'contentExperiments',
-  'conversionEvents',
-  'creatorOperations',
-  'contentTemplates',
-  'operationalAlerts',
-]
-
-function recordIdentity(item, index) {
-  if (item == null || typeof item !== 'object') return `${typeof item}:${String(item)}`
-  return String(item.id ?? item.creatorId ?? item.creator_id ?? item.url ?? item.contentUrl ?? `row-${index}`)
-}
-
-function dedupeRecords(items = []) {
-  const seen = new Set()
-  return items.filter((item, index) => {
-    const identity = recordIdentity(item, index)
-    if (seen.has(identity)) return false
-    seen.add(identity)
-    return true
-  })
-}
-
 function buildBrandScopedWorkspace(workspace, brandId) {
   const brandKey = String(brandId)
   const campaigns = (workspace.campaigns ?? []).filter((campaign) => String(campaign.brandId) === brandKey)
@@ -2015,39 +1981,7 @@ function buildBrandScopedWorkspace(workspace, brandId) {
 }
 
 function mergeBrandCloudWorkspaces(workspace, snapshots = []) {
-  const next = { ...workspace }
-  const brandMap = new Map((next.brands ?? []).map((brand) => [String(brand.id), brand]))
-  const creatorMap = new Map((next.creators ?? []).map((creator) => [String(creator.id), creator]))
-
-  snapshots.forEach((snapshot) => {
-    const payload = snapshot?.payload ?? snapshot
-    const brandId = String(snapshot?.brand_id ?? payload?.brandId ?? '')
-    if (!brandId) return
-    if (payload.brand) brandMap.set(brandId, payload.brand)
-    ;(payload.creators ?? []).forEach((creator) => creatorMap.set(String(creator.id), creator))
-    next.campaigns = [
-      ...(next.campaigns ?? []).filter((campaign) => String(campaign.brandId) !== brandId),
-      ...(payload.campaigns ?? []),
-    ]
-    const campaignIds = new Set((payload.campaigns ?? []).map((campaign) => String(campaign.id)))
-    BRAND_SCOPED_ARRAY_KEYS.forEach((key) => {
-      const retained = (next[key] ?? []).filter((item) => {
-        if (!item || typeof item !== 'object') return brandId !== String(next.activeBrandId)
-        const itemBrandId = item.brandId ?? item.brand_id
-        const campaignId = item.campaignId ?? item.campaign_id
-        return String(itemBrandId ?? '') !== brandId && !campaignIds.has(String(campaignId ?? ''))
-      })
-      next[key] = dedupeRecords([...retained, ...(payload[key] ?? [])])
-    })
-    if (brandId === String(next.activeBrandId)) {
-      next.shortlist = payload.shortlist ?? next.shortlist
-      next.savedProductionReferenceIds = payload.savedProductionReferenceIds ?? next.savedProductionReferenceIds
-    }
-  })
-
-  next.brands = [...brandMap.values()]
-  next.creators = [...creatorMap.values()]
-  return normalizeWorkspace(next)
+  return normalizeWorkspace(mergeBrandWorkspaceSnapshots(workspace, snapshots))
 }
 
 function usePersistentState(key, fallback) {
@@ -3903,21 +3837,6 @@ function isLowQualitySavedReference(item) {
   return false
 }
 
-function normalizeCreatorGroups(groups = [], creators = []) {
-  const creatorIds = new Set(creators.map((creator) => creator.id))
-  const cleaned = (groups || defaultCreatorGroups).map((group, index) => ({
-    id: group.id || `group-${index + 1}`,
-    name: group.name || `인플루언서 그룹 ${index + 1}`,
-    description: group.description || '운영자가 저장한 인플루언서 그룹입니다.',
-    platform: group.platform || 'All',
-    type: group.type || '즐겨찾기',
-    owner: group.owner || '운영 담당자',
-    createdAt: group.createdAt || new Date().toLocaleDateString('ko-KR'),
-    creatorIds: (group.creatorIds || []).filter((id) => creatorIds.has(id)),
-  }))
-
-  return cleaned.length ? cleaned : defaultCreatorGroups
-}
 
 function getReferenceBrandName(item) {
   if (item.brandName) return item.brandName
@@ -10984,6 +10903,8 @@ function AppContent() {
             groupMap.set(groupKey, {
               id: createId(),
               name: groupName,
+              brandId: activeBrand.id,
+              campaignId: selectedCampaign?.id,
               description: String(getPayloadValue(payload, ['memo', 'note', 'description', '??', '??']) || '?????? ??? ?? ??'),
               platform,
               type: groupType,
@@ -16524,6 +16445,8 @@ function AppContent() {
 
     const nextGroup = {
       id: createId(),
+      brandId: activeBrand.id,
+      campaignId: selectedCampaign?.id,
       name: `${activeBrand.name} ${selectedCampaign?.name ?? '추천'} 후보 그룹`,
       description: 'AI 추천/메시지 전 후보 풀 기준으로 생성한 발송 세그먼트',
       platform: 'Mixed',
