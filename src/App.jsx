@@ -29,7 +29,7 @@ import { hasTrackingDestination, trackingLogTimestamp, invalidatePlaceholderTrac
 import { resolveCampaignBudget, buildNewCampaignAllocation } from './campaignCreationDefaults.js'
 import CampaignAssignmentEditor from './CampaignAssignmentEditor.jsx'
 import { operationalCandidateView } from './operationalCandidates.js'
-import { resolveGuideChannel, getCampaignGuideReferences, guideEvidenceAppendix, buildJapaneseIndividualGuide } from './campaignGuideEvidence.js'
+import { resolveGuideChannel, findSavedCampaignReference, getCampaignGuideReferences, guideEvidenceAppendix, buildJapaneseIndividualGuide } from './campaignGuideEvidence.js'
 import DiscoveryMarkets from './DiscoveryMarkets.jsx'
 import { DISCOVERY_MARKETS } from '../shared/discoveryMarkets.js'
 import useDialogKeyboard from './useDialogKeyboard.js'
@@ -14526,6 +14526,7 @@ function AppContent() {
             campaign,
             seedingType: campaign.reward || campaign.guideSeedType || '협업 조건 협의 필요',
             channel: resolveGuideChannel(campaign),
+            brief: campaignBrief,
             references: [
               ...evidenceReferences,
               ...reusableTemplateReferences,
@@ -16902,9 +16903,10 @@ function AppContent() {
       return
     }
 
-    const normalizedUrl = String(reference.url || '').toLowerCase()
-    const existingReference = contentReferences.find((item) => String(item.url || '').toLowerCase() === normalizedUrl)
     const isBrandRaw = referenceMode === 'brand' || reference.referenceKind === 'brand'
+    const existingReference = findSavedCampaignReference(
+      contentReferences, selectedCampaign.id, reference.url, isBrandRaw ? 'brand' : 'content',
+    )
 
     if (existingReference) {
       updateWorkspace((current) =>

@@ -68,3 +68,14 @@ test('과거 생성물이 다음 전략의 사실 근거로 재입력되지 않�
 test('계산한 참여율·위험도·가격이 전략의 검증된 사실로 전달되지 않는다', () => {
   assert.deepEqual(creatorGenerationInput({ id: 2, name: '요리', followers: 50000, engagement: 12, brandSafety: 94, fakeRisk: 6, price: 15000000, averageViews: 900000 }), { id: 2, name: '요리', followers: 50000 })
 })
+
+test('a source already saved in another campaign remains selectable for the current campaign', async () => {
+  const { findSavedCampaignReference } = await import('../src/campaignGuideEvidence.js')
+  const url = 'https://www.youtube.com/watch?v=f2QfuYtAkZs'
+  const original = { id: 'old', campaignId: 'other', url, referenceKind: 'content' }
+  const brand = { id: 'brand', campaignId: 'cnp', url, referenceKind: 'brand' }
+  const current = { id: 'cnp-ref', campaignId: 'cnp', url, referenceKind: 'content' }
+  assert.equal(findSavedCampaignReference([original, brand], 'cnp', url, 'content'), undefined)
+  assert.equal(findSavedCampaignReference([original, brand, current], 'cnp', url, 'content'), current)
+  assert.deepEqual(getCampaignGuideReferences({ id: 'cnp' }, [original, brand, current], ['old', 'brand', 'cnp-ref']), [current])
+})
