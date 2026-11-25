@@ -15,7 +15,8 @@ import { buildReportXlsx, campaignWorkbookSheets } from './reportWorkbook.js'
 import { recordContentMetrics } from '../shared/contentMetricHistory.js'
 import YouTubeEvidenceDetails from './YouTubeEvidenceDetails.jsx'
 import MetricDefinitionDetails from './MetricDefinitionDetails.jsx'
-import ClientReportOverview from './ClientReportOverview.jsx'
+import CampaignReport from './CampaignReport.jsx'
+import { buildCampaignReportAnalytics } from '../shared/campaignReportAnalytics.js'
 import './clientReport.css'
 import { knownMetricCount, metricDefinitions } from '../shared/metricDefinitions.js'
 import { findSavedInstagramReferences, instagramPostKey, isInstagramLoginTitle } from '../shared/instagramReferenceReuse.js'
@@ -8042,6 +8043,7 @@ function AppContent() {
   const [creatorGroupQuery, setCreatorGroupQuery] = useState('')
   const [creatorGroupTypeFilter, setCreatorGroupTypeFilter] = useState('전체')
   const [creatorGroupScopeSelection, setCreatorGroupScopeSelection] = useState(null)
+  const [reportTab, setReportTab] = useState('summary')
   const [selectedCreatorGroupId, setSelectedCreatorGroupId] = useState(defaultCreatorGroups[0]?.id ?? '')
   const [selectedCreatorGroupMemberIds, setSelectedCreatorGroupMemberIds] = useState([])
   const trackingBulkInputRef = useRef(null)
@@ -13417,12 +13419,13 @@ function AppContent() {
   const exportPerformanceReport = async () => {
     const reportName = selectedCampaign?.name ?? activeBrand.name
     try {
-      const costKnown = selectedCampaign?.actualSpend != null || fulfillmentRecords.some(r => r.campaignId === selectedCampaign?.id && r.paymentAmount != null) || creatorOperations.some(r => r.campaignId === selectedCampaign?.id && r.actualCost != null)
-      const revenueKnown = selectedCampaign?.actualRevenue != null || conversionEvents.some(r => r.campaignId === selectedCampaign?.id && ['purchase', 'refund'].includes(r.eventType) && r.eventValue != null)
+      const reportAnalytics = buildCampaignReportAnalytics({ campaign: selectedCampaign, creators, posts: selectedCampaignTrackedPosts,
+        fulfillment: fulfillmentRecords, operations: creatorOperations, conversions: conversionEvents,
+        orders: workspace.orderAttributionLogs ?? [] })
       const sheets = campaignWorkbookSheets({ brand: activeBrand, campaign: selectedCampaign, posts: selectedCampaignTrackedPosts, creators,
         markets: campaignMarketPerformance.rows, externalPosts: externalVideoReportRows, brandMonitor: reportBrandInfluencerRows,
-        cost: costKnown ? getActualSpend(selectedCampaign, fulfillmentRecords, creatorOperations) : null,
-        revenue: revenueKnown ? getActualRevenue(selectedCampaign, conversionEvents) : null,
+        cost: reportAnalytics.cost, costComplete: reportAnalytics.costComplete,
+        revenue: reportAnalytics.revenue,
       })
       const bytes = await buildReportXlsx(sheets)
       exportFile(`creatorops-report-${normalizeHandleSegment(reportName)}.xlsx`, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', bytes)
@@ -17560,7 +17563,7 @@ function AppContent() {
           </div>
         </header>
 
-        {['discovery', 'messages', 'report'].includes(visibleSection) && (
+        {['discovery', 'messages'].includes(visibleSection) && (
           <section className="campaign-context-bar" aria-label="현재 작업 캠페인">
             <div className="campaign-context-main">
               <span className="mini-label">현재 캠페인</span>
@@ -21358,23 +21361,33 @@ function AppContent() {
               </div>
             </div>
 
-            <ClientReportOverview
+            <label className="report-campaign-picker">리포트 캠페인
+              <select aria-label="리포트 캠페인" value={selectedCampaign?.id ?? ''} onChange={event => setSelectedCampaignId(brandCampaigns.find(campaign => String(campaign.id) === event.target.value)?.id)}>
+                {!brandCampaigns.length && <option value="">캠페인 없음</option>}
+                {brandCampaigns.map(campaign => <option key={campaign.id} value={campaign.id}>{campaign.name}</option>)}
+              </select>
+            </label>
+            <CampaignReport
+              activeTab={reportTab}
+              onTabChange={setReportTab}
               brand={activeBrand}
               campaign={selectedCampaign}
+              creators={creators}
               performance={campaignMarketPerformance}
               kpi={selectedCampaignKpi}
               posts={selectedCampaignTrackedPosts}
-              hasCost={Boolean(selectedCampaign && (
-                (campaignMarketPerformance.rows.length === 1 && selectedCampaign.actualSpend != null) ||
-                fulfillmentRecords.some(record => record.campaignId === selectedCampaign.id && record.paymentAmount != null) ||
-                creatorOperations.some(record => record.campaignId === selectedCampaign.id && record.actualCost != null)
-              ))}
-              hasRevenue={Boolean(selectedCampaign && (
-                (campaignMarketPerformance.rows.length === 1 && selectedCampaign.actualRevenue != null) ||
-                conversionEvents.some(event => event.campaignId === selectedCampaign.id && ['purchase', 'refund'].includes(event.eventType) && event.eventValue != null)
-              ))}
-            />
-
+              fulfillment={fulfillmentRecords}
+              operations={creatorOperations}
+              links={workspace.utmTrackingLogs ?? []}
+              clicks={workspace.shortLinkClickLogs ?? []}
+              orders={workspace.orderAttributionLogs ?? []}
+              conversions={conversionEvents}
+              onStrategy={() => selectedCampaign && openCampaign(selectedCampaign, 'strategy')}
+              onOperations={() => selectedCampaign && openCampaign(selectedCampaign, 'operations')}
+              onTracking={() => selectedCampaign && openCampaign(selectedCampaign, 'tracking')}
+            >
+            <details className="campaign-report-legacy"><summary>성과 학습·재사용 승인 및 원천 상세</summary>
+            <p>아래 기존 운영 상세에는 브랜드 전체 원천 기록이 포함될 수 있습니다. 선택 캠페인의 비교는 위 5개 탭을 기준으로 확인하세요.</p>
             {!selectedCampaign?.archiveReport && <>
             <section className="campaign-market-report">
               <div className="campaign-market-report-head">
@@ -21784,6 +21797,8 @@ function AppContent() {
               <p>현재 쇼트리스트 예상 총 단가 {won(getCreatorsByIds(creators, shortlist).reduce((sum, creator) => sum + creator.price, 0))} · 선택 캠페인 추적 전환 {compactNumber(reportMetricTotals.conversions)}</p>
             </div>
             </>}
+            </details>
+            </CampaignReport>
           </section>
           )}
         </section>
