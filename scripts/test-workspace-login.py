@@ -6,6 +6,7 @@ import base64
 import json
 import os
 import time
+from pathlib import Path
 from urllib.parse import urlparse
 from playwright.sync_api import sync_playwright
 
@@ -15,10 +16,10 @@ USER = {'id': USER_ID, 'email': 'owner@example.test', 'aud': 'authenticated', 'r
 MEMBER = {'workspace_id': 'test-workspace', 'user_id': USER_ID, 'role': 'Owner', 'status': 'active'}
 STAMP = '2026-11-25T00:00:00Z'
 WORKSPACE = {
-    'brands': [{'id': 101, 'name': '공유 테스트 브랜드'}], 'activeBrandId': 101,
+    'brands': [{'id': 101, 'name': '공유 테스트 브랜드'}, {'id': 102, 'name': '다른 테스트 브랜드'}], 'activeBrandId': 101,
     'campaigns': [{'id': 201, 'brandId': 101, 'name': '공유 캠페인', 'status': 'Live', 'creatorIds': []}],
     'creators': [{'id': 301, 'name': '공유 테스트 크리에이터', 'handle': '@fixture_creator', 'platform': 'YouTube', 'country': 'KR', 'followers': 15000, 'topics': [], 'tags': []}],
-    'creatorGroups': [{'id': 'shared-group', 'brandId': 101, 'name': '공유 후보 그룹', 'creatorIds': [301]}],
+    'creatorGroups': [{'id': 'shared-group', 'brandId': 101, 'name': '공유 후보 그룹', 'creatorIds': [301]}, {'id': 'other-group', 'brandId': 102, 'name': '다른 브랜드 그룹', 'creatorIds': [301]}],
     'activities': [], 'outreach': [],
 }
 
@@ -61,7 +62,7 @@ def run_case(browser, name, authenticated=False, denied=False, failed=False, emp
         elif path.endswith('/workspace_snapshots'):
             data = {'workspace_id': 'test-workspace', 'payload': {**WORKSPACE, 'creatorGroups': [] if empty else WORKSPACE['creatorGroups']}, 'updated_at': STAMP}
         elif path.endswith('/brand_scoped_snapshots'):
-            data = [{'brand_id': 101, 'payload': {'brand': WORKSPACE['brands'][0], 'campaigns': WORKSPACE['campaigns'], 'creatorGroups': [] if empty else WORKSPACE['creatorGroups'], 'creators': WORKSPACE['creators']}, 'updated_at': STAMP}]
+            data = [{'brand_id': 101, 'payload': {'brand': WORKSPACE['brands'][0], 'campaigns': WORKSPACE['campaigns'], 'creatorGroups': [] if empty else WORKSPACE['creatorGroups'][:1], 'creators': WORKSPACE['creators']}, 'updated_at': STAMP}]
         else:
             data = []
         route.fulfill(status=200, headers=headers, body=json.dumps(data))
@@ -85,12 +86,31 @@ def run_case(browser, name, authenticated=False, denied=False, failed=False, emp
             print(json.dumps({'errors': errors, 'screen': page.locator('body').inner_text()}, ensure_ascii=True))
             raise
         assert page.locator('.brand-switcher select').input_value() == '101'
-        page.get_by_role('button', name='후보 그룹', exact=True).click()
+        page.get_by_role('button', name='저장한 크리에이터', exact=True).click()
+        nav = page.locator('nav[aria-label="주요 메뉴"]').inner_text()
+        assert nav.index('레퍼런스') < nav.index('저장한 크리에이터')
         if empty:
             page.get_by_role('heading', name='후보 그룹 0개', exact=True).wait_for()
             assert page.locator('.creator-group-card').count() == 0
         else:
             page.locator('.creator-group-card').filter(has_text='공유 후보 그룹').wait_for(timeout=10000)
+            assert page.locator('.creator-group-card').count() == 1
+            page.get_by_label('그룹 브랜드 범위').select_option('all')
+            assert page.locator('.creator-group-card').count() == 2
+            assert sorted(page.locator('.creator-group-brand-badge').all_text_contents()) == sorted(['공유 테스트 브랜드', '다른 테스트 브랜드'])
+            if os.environ.get('TEST_SCREENSHOT_DIR'):
+                output = Path(os.environ['TEST_SCREENSHOT_DIR'])
+                output.mkdir(parents=True, exist_ok=True)
+                page.screenshot(path=str(output / 'saved-creators-desktop.png'), full_page=True)
+                page.set_viewport_size({'width': 390, 'height': 844})
+                assert page.evaluate('document.documentElement.scrollWidth <= window.innerWidth'), 'mobile overflow'
+                page.screenshot(path=str(output / 'saved-creators-mobile.png'), full_page=True)
+                page.set_viewport_size({'width': 1280, 'height': 900})
+            page.locator('.brand-switcher select').select_option('102')
+            assert page.get_by_label('그룹 브랜드 범위').input_value() == 'current'
+            assert page.locator('.creator-group-card').count() == 1
+            assert '다른 브랜드 그룹' in page.locator('.creator-group-card').inner_text()
+            page.locator('.brand-switcher select').select_option('101')
         assert page.get_by_text('뷰티_KR_우선 제안', exact=True).count() == 0
         page.reload()
         page.locator('.brand-switcher select').wait_for()
