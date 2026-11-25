@@ -1,4 +1,5 @@
 import CampaignDocumentPanel from './CampaignDocumentPanel.jsx'
+import WorkspaceConnectionGate from './WorkspaceConnectionGate.jsx'
 import CampaignQuotePanel from './CampaignQuotePanel.jsx'
 import { CampaignDetailTabs, CampaignDetailPanel } from './CampaignDetailTabs.jsx'
 import CampaignContactPanel from './CampaignContactPanel.jsx'
@@ -6,7 +7,7 @@ import CreatorProfileAvatar from './CreatorProfileAvatar.jsx'
 import CreatorAccountGroupBadge from './CreatorAccountGroupBadge.jsx'
 import { creatorAudience } from '../shared/creatorProfilePresentation.js'
 import { campaignContactMessage, contactProductLabel, CONTACT_TEMPLATE_PRESETS, contactPresetId, withContactPreset } from '../shared/campaignContact.js'
-import { normalizeCreatorGroups } from '../shared/creatorGroups.js'
+import { creatorGroupBrandId, creatorGroupsForBrand, normalizeCreatorGroups } from '../shared/creatorGroups.js'
 import { BRAND_SCOPED_ARRAY_KEYS, mergeBrandWorkspaceSnapshots } from '../shared/brandWorkspaceSnapshots.js'
 import { referencedBrandCreatorIds } from '../shared/brandCreatorReferences.js'
 import { canWriteBrandWorkspace } from './workspacePermissions.js'
@@ -279,10 +280,10 @@ const practiceTourSteps = [
   {
     section: 'groups',
     title: '반복 섭외 후보 묶기',
-    label: '후보 그룹',
+    label: '저장한 크리에이터',
     detail: '자주 쓰는 후보군은 그룹으로 저장해 캠페인마다 다시 찾지 않고 배정할 수 있습니다.',
-    task: '후보 그룹을 열어 멤버를 확인하고, 필요한 후보를 선택해 캠페인에 배정하세요.',
-    action: '후보 그룹 보기',
+    task: '저장한 크리에이터에서 그룹 멤버를 확인하고, 필요한 후보를 선택해 캠페인에 배정하세요.',
+    action: '저장한 크리에이터 보기',
   },
   {
     section: 'messages',
@@ -7788,15 +7789,16 @@ function AppContent() {
   })
   const [aiPolicyStatus, setAiPolicyStatus] = useState([])
   const [authSession, setAuthSession] = useState(null)
-  const [, setAuthReady] = useState(!backendConfig.hasSupabase)
+  const [authReady, setAuthReady] = useState(!backendConfig.hasSupabase)
   const [workspaceAccess, setWorkspaceAccess] = useState(null)
-  const [, setWorkspaceAccessError] = useState('')
+  const [workspaceAccessError, setWorkspaceAccessError] = useState('')
   const [adminAccessMembers, setAdminAccessMembers] = useState(null)
   const [adminAuditLogs, setAdminAuditLogs] = useState([])
   const [adminJobRuns, setAdminJobRuns] = useState([])
   const [adminRunningJob, setAdminRunningJob] = useState('')
   const [authEmail, setAuthEmail] = useState('')
   const [cloudWorkspaceLoaded, setCloudWorkspaceLoaded] = useState(!backendConfig.hasSupabase)
+  const [cloudWorkspaceUserId, setCloudWorkspaceUserId] = useState('')
   const cloudVersionRef = useRef('')
   const cloudHydratedUserRef = useRef('')
   const cloudConflictRef = useRef(false)
@@ -8039,6 +8041,7 @@ function AppContent() {
   })
   const [creatorGroupQuery, setCreatorGroupQuery] = useState('')
   const [creatorGroupTypeFilter, setCreatorGroupTypeFilter] = useState('전체')
+  const [creatorGroupScopeSelection, setCreatorGroupScopeSelection] = useState(null)
   const [selectedCreatorGroupId, setSelectedCreatorGroupId] = useState(defaultCreatorGroups[0]?.id ?? '')
   const [selectedCreatorGroupMemberIds, setSelectedCreatorGroupMemberIds] = useState([])
   const trackingBulkInputRef = useRef(null)
@@ -8701,7 +8704,14 @@ function AppContent() {
       ),
     [visibleReferences],
   )
-  const safeCreatorGroups = creatorGroups?.length ? creatorGroups : defaultCreatorGroups
+  const creatorGroupBrandScope = creatorGroupScopeSelection?.brandId === activeBrand.id ? creatorGroupScopeSelection.value : 'current'
+  const safeCreatorGroups = useMemo(
+    () => creatorGroupsForBrand((creatorGroups ?? []).filter(group => {
+      const brandId = creatorGroupBrandId(group, campaigns)
+      return brandId ? accessibleBrands.some(brand => String(brand.id) === brandId) : fullBrandAccessRoles.has(normalizeRole(currentAccount.role))
+    }), campaigns, activeBrand.id, creatorGroupBrandScope),
+    [creatorGroups, campaigns, activeBrand.id, creatorGroupBrandScope, accessibleBrands, currentAccount.role],
+  )
   const creatorGroupTypeOptions = useMemo(
     () => ['전체', ...Array.from(new Set(safeCreatorGroups.map((group) => group.type).filter(Boolean)))],
     [safeCreatorGroups],
@@ -10966,9 +10976,9 @@ function AppContent() {
       description: `${selectedCampaign?.name ?? activeBrand.name} 제작에 차용할 영상/이미지 레퍼런스`,
     },
     groups: {
-      eyebrow: '재사용 후보 그룹',
-      title: '재사용 후보 그룹',
-      description: '반복 섭외 가능한 크리에이터 묶음을 저장하고 캠페인/메시지로 다시 연결',
+      eyebrow: '크리에이터 저장소',
+      title: '저장한 크리에이터',
+      description: creatorGroupBrandScope === 'all' ? '접근 권한이 있는 브랜드의 그룹을 함께 확인합니다.' : `${activeBrand.name}에 저장한 그룹 · 다른 캠페인에서도 다시 활용할 수 있습니다.`,
     },
     dataRoom: {
       eyebrow: '어드민 데이터룸',
@@ -11007,6 +11017,7 @@ function AppContent() {
     async function hydrateCloudWorkspace() {
       if (!backendConfig.hasSupabase) return
       cloudHydratedUserRef.current = ''
+      setCloudWorkspaceUserId('')
       setCloudWorkspaceLoaded(false)
       if (!authSession?.user?.id) return
 
@@ -11023,6 +11034,7 @@ function AppContent() {
           })
         } else if (result.workspace) {
           cloudHydratedUserRef.current = authSession.user.id
+          setCloudWorkspaceUserId(authSession.user.id)
           cloudVersionRef.current = result.updatedAt || ''
           skipNextCloudSaveRef.current = true
           setWorkspace(normalizeWorkspace(result.workspace))
@@ -11034,6 +11046,7 @@ function AppContent() {
           })
         } else {
           cloudHydratedUserRef.current = authSession.user.id
+          setCloudWorkspaceUserId(authSession.user.id)
           cloudVersionRef.current = ''
           setCloudSyncStatus({
             mode: 'cloud',
@@ -11611,6 +11624,7 @@ function AppContent() {
       return
     }
 
+    setCreatorGroupScopeSelection(null)
     updateWorkspace((current) => ({
       ...current,
       activeBrandId: nextBrandId,
@@ -11622,6 +11636,7 @@ function AppContent() {
   const switchAccount = (accountId) => {
     const nextAccount = accounts.find((account) => account.id === accountId)
     if (!nextAccount) return
+    setCreatorGroupScopeSelection(null)
     const nextBrandId = getAccessibleBrands(nextAccount, brands)[0]?.id ?? activeBrandId
 
     setCandidatePoolPage(1)
@@ -17290,6 +17305,27 @@ function AppContent() {
     )
   }
 
+  // A configured team workspace must never look like a fresh example workspace
+  // while signed out, loading, or denied access. Local/review previews stay public.
+  if (backendConfig.hasSupabase && !youtubeEnglishReviewMode) {
+    const hydrationScope = `${authSession?.user?.id || authSession?.user?.email || 'member'}:${backendConfig.workspaceId}`
+    const hasLoadedSharedWorkspace = cloudWorkspaceLoaded
+      && cloudWorkspaceUserId === authSession?.user?.id
+      && brandCloudHydratedScope === hydrationScope
+    if (!authReady || !authSession || workspaceAccessError || workspaceAccess?.membership?.status !== 'active' || !hasLoadedSharedWorkspace) {
+      return (
+        <WorkspaceConnectionGate
+          authReady={authReady}
+          session={authSession}
+          accessError={workspaceAccessError}
+          membership={workspaceAccess?.membership}
+          syncStatus={cloudSyncStatus}
+          onSignOut={disconnectAuth}
+        />
+      )
+    }
+  }
+
   if (isAdminPath) {
     if (!hasAdminRouteAccess) {
       return (
@@ -17446,14 +17482,6 @@ function AppContent() {
               onClick={() => jumpTo('discovery')}
             />
           )}
-          {canAccessSection('groups') && (
-            <NavButton
-              active={visibleSection === 'groups'}
-              icon={<FolderOpen size={18} />}
-              label="후보 그룹"
-              onClick={() => jumpTo('groups')}
-            />
-          )}
           {canAccessSection('messages') && (
             <NavButton
               active={visibleSection === 'messages'}
@@ -17476,6 +17504,14 @@ function AppContent() {
               icon={<ImageIcon size={18} />}
               label="레퍼런스"
               onClick={() => jumpTo('references')}
+            />
+          )}
+          {canAccessSection('groups') && (
+            <NavButton
+              active={visibleSection === 'groups'}
+              icon={<FolderOpen size={18} />}
+              label="저장한 크리에이터"
+              onClick={() => jumpTo('groups')}
             />
           )}
           <button className={`nav-item mobile-settings-nav ${visibleSection === 'settings' ? 'active' : ''}`} type="button" title="설정" aria-label="설정" onClick={() => jumpTo('settings')}>
@@ -19336,6 +19372,10 @@ function AppContent() {
           </div>
 
           <div className="creator-group-toolbar">
+            <select aria-label="그룹 브랜드 범위" value={creatorGroupBrandScope} onChange={(event) => setCreatorGroupScopeSelection({ brandId: activeBrand.id, value: event.target.value })}>
+              <option value="current">현재 브랜드 · {activeBrand.name}</option>
+              <option value="all">전체 브랜드</option>
+            </select>
             <label className="search-field">
               <Search size={16} />
               <input
@@ -19344,7 +19384,7 @@ function AppContent() {
                 placeholder="후보 그룹명, 플랫폼, 멤버 검색"
               />
             </label>
-            <select value={creatorGroupTypeFilter} onChange={(event) => setCreatorGroupTypeFilter(event.target.value)}>
+            <select aria-label="그룹 유형" value={creatorGroupTypeFilter} onChange={(event) => setCreatorGroupTypeFilter(event.target.value)}>
               {creatorGroupTypeOptions.map((option) => (
                 <option key={option}>{option}</option>
               ))}
@@ -19386,6 +19426,7 @@ function AppContent() {
                     <div className="creator-group-card-head">
                       <div>
                         <span>{group.type}</span>
+                        {creatorGroupBrandScope === 'all' && <span className="creator-group-brand-badge">{brands.find(brand => String(brand.id) === creatorGroupBrandId(group, campaigns))?.name || '브랜드 미지정'}</span>}
                         <strong>{group.name}</strong>
                         <p>{group.description}</p>
                       </div>
