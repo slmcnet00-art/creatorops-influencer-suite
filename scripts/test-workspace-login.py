@@ -111,6 +111,8 @@ def run_case(browser, name, authenticated=False, denied=False, failed=False, emp
             assert page.locator('.creator-group-card').count() == 1
             assert '다른 브랜드 그룹' in page.locator('.creator-group-card').inner_text()
             page.locator('.brand-switcher select').select_option('101')
+            assert page.get_by_label('그룹 브랜드 범위').input_value() == 'current'
+            assert page.locator('.creator-group-card').count() == 1
         assert page.get_by_text('뷰티_KR_우선 제안', exact=True).count() == 0
         page.reload()
         page.locator('.brand-switcher select').wait_for()

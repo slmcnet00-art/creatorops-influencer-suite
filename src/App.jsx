@@ -11624,6 +11624,7 @@ function AppContent() {
       return
     }
 
+    setCreatorGroupScopeSelection(null)
     updateWorkspace((current) => ({
       ...current,
       activeBrandId: nextBrandId,
@@ -11635,6 +11636,7 @@ function AppContent() {
   const switchAccount = (accountId) => {
     const nextAccount = accounts.find((account) => account.id === accountId)
     if (!nextAccount) return
+    setCreatorGroupScopeSelection(null)
     const nextBrandId = getAccessibleBrands(nextAccount, brands)[0]?.id ?? activeBrandId
 
     setCandidatePoolPage(1)
