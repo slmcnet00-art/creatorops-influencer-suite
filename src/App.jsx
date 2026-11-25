@@ -1,4 +1,5 @@
 import CampaignDocumentPanel from './CampaignDocumentPanel.jsx'
+import WorkspaceConnectionGate from './WorkspaceConnectionGate.jsx'
 import CampaignQuotePanel from './CampaignQuotePanel.jsx'
 import { CampaignDetailTabs, CampaignDetailPanel } from './CampaignDetailTabs.jsx'
 import CampaignContactPanel from './CampaignContactPanel.jsx'
@@ -7788,15 +7789,16 @@ function AppContent() {
   })
   const [aiPolicyStatus, setAiPolicyStatus] = useState([])
   const [authSession, setAuthSession] = useState(null)
-  const [, setAuthReady] = useState(!backendConfig.hasSupabase)
+  const [authReady, setAuthReady] = useState(!backendConfig.hasSupabase)
   const [workspaceAccess, setWorkspaceAccess] = useState(null)
-  const [, setWorkspaceAccessError] = useState('')
+  const [workspaceAccessError, setWorkspaceAccessError] = useState('')
   const [adminAccessMembers, setAdminAccessMembers] = useState(null)
   const [adminAuditLogs, setAdminAuditLogs] = useState([])
   const [adminJobRuns, setAdminJobRuns] = useState([])
   const [adminRunningJob, setAdminRunningJob] = useState('')
   const [authEmail, setAuthEmail] = useState('')
   const [cloudWorkspaceLoaded, setCloudWorkspaceLoaded] = useState(!backendConfig.hasSupabase)
+  const [cloudWorkspaceUserId, setCloudWorkspaceUserId] = useState('')
   const cloudVersionRef = useRef('')
   const cloudHydratedUserRef = useRef('')
   const cloudConflictRef = useRef(false)
@@ -8701,7 +8703,7 @@ function AppContent() {
       ),
     [visibleReferences],
   )
-  const safeCreatorGroups = creatorGroups?.length ? creatorGroups : defaultCreatorGroups
+  const safeCreatorGroups = useMemo(() => creatorGroups ?? [], [creatorGroups])
   const creatorGroupTypeOptions = useMemo(
     () => ['전체', ...Array.from(new Set(safeCreatorGroups.map((group) => group.type).filter(Boolean)))],
     [safeCreatorGroups],
@@ -11007,6 +11009,7 @@ function AppContent() {
     async function hydrateCloudWorkspace() {
       if (!backendConfig.hasSupabase) return
       cloudHydratedUserRef.current = ''
+      setCloudWorkspaceUserId('')
       setCloudWorkspaceLoaded(false)
       if (!authSession?.user?.id) return
 
@@ -11023,6 +11026,7 @@ function AppContent() {
           })
         } else if (result.workspace) {
           cloudHydratedUserRef.current = authSession.user.id
+          setCloudWorkspaceUserId(authSession.user.id)
           cloudVersionRef.current = result.updatedAt || ''
           skipNextCloudSaveRef.current = true
           setWorkspace(normalizeWorkspace(result.workspace))
@@ -11034,6 +11038,7 @@ function AppContent() {
           })
         } else {
           cloudHydratedUserRef.current = authSession.user.id
+          setCloudWorkspaceUserId(authSession.user.id)
           cloudVersionRef.current = ''
           setCloudSyncStatus({
             mode: 'cloud',
@@ -17288,6 +17293,27 @@ function AppContent() {
         onAuthenticated={setAuthSession}
       />
     )
+  }
+
+  // A configured team workspace must never look like a fresh example workspace
+  // while signed out, loading, or denied access. Local/review previews stay public.
+  if (backendConfig.hasSupabase && !youtubeEnglishReviewMode) {
+    const hydrationScope = `${authSession?.user?.id || authSession?.user?.email || 'member'}:${backendConfig.workspaceId}`
+    const hasLoadedSharedWorkspace = cloudWorkspaceLoaded
+      && cloudWorkspaceUserId === authSession?.user?.id
+      && brandCloudHydratedScope === hydrationScope
+    if (!authReady || !authSession || workspaceAccessError || workspaceAccess?.membership?.status !== 'active' || !hasLoadedSharedWorkspace) {
+      return (
+        <WorkspaceConnectionGate
+          authReady={authReady}
+          session={authSession}
+          accessError={workspaceAccessError}
+          membership={workspaceAccess?.membership}
+          syncStatus={cloudSyncStatus}
+          onSignOut={disconnectAuth}
+        />
+      )
+    }
   }
 
   if (isAdminPath) {
