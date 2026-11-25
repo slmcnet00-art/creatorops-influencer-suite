@@ -1,0 +1,7 @@
+.workspace-connection-page { min-height: 100vh; display: grid; place-items: center; padding: 24px; background: #f5f7fb; }
+.workspace-connection-card { width: min(100%, 560px); padding: clamp(24px, 5vw, 40px); border: 1px solid #dfe5ef; border-radius: 18px; background: white; box-shadow: 0 12px 36px #182f5510; }
+.workspace-connection-brand { display: flex; align-items: center; gap: 10px; color: #255fee; font-weight: 750; }
+.workspace-connection-card h1 { font-size: clamp(21px, 4vw, 26px); line-height: 1.4; margin: 24px 0 12px; }
+.workspace-connection-card p { line-height: 1.7; color: #53627b; overflow-wrap: anywhere; }
+.workspace-connection-card small { display: block; margin-top: 16px; color: #53627b; overflow-wrap: anywhere; }
+.workspace-connection-actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 24px; }

@@ -11,7 +11,7 @@ function hydrationHarness(load) {
   const marker = source.indexOf('async function hydrateCloudWorkspace()')
   const start = source.lastIndexOf('  useEffect(() => {', marker)
   const end = source.indexOf('\n\n  useEffect(', marker)
-  const state = { loaded: null, workspace: null, status: null }
+  const state = { loaded: null, userId: '', workspace: null, status: null }
   let registered
   const context = {
     authSession: null,
@@ -23,6 +23,7 @@ function hydrationHarness(load) {
     normalizeWorkspace: value => value,
     setWorkspace: value => { state.workspace = value },
     setCloudWorkspaceLoaded: value => { state.loaded = value },
+    setCloudWorkspaceUserId: value => { state.userId = value },
     setCloudSyncStatus: value => { state.status = value },
     useEffect: (effect, dependencies) => { registered = { effect, dependencies } },
   }
@@ -51,6 +52,7 @@ test('비로그인 후 로그인하면 해당 계정의 DB 버전을 먼저 불�
   assert.equal(h.context.cloudHydratedUserRef.current, 'admin')
   assert.equal(h.context.cloudVersionRef.current, 'version-1')
   assert.equal(h.state.loaded, true)
+  assert.equal(h.state.userId, 'admin')
   assert.deepEqual(h.state.workspace, { remote: true })
 })
 
@@ -60,6 +62,7 @@ test('DB 로드 실패나 접근 거부 상태에서는 저장 준비 상태로 
     h.render({ user: { id: 'admin' } }).effect()
     await flush()
     assert.equal(h.state.loaded, false)
+    assert.equal(h.state.userId, '')
     assert.equal(h.context.cloudHydratedUserRef.current, '')
   }
 })
