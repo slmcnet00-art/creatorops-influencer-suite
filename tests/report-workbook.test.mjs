@@ -26,3 +26,9 @@ test('image carousel uses its first provided image as the thumbnail', () => {
   assert.equal(contentThumbnail({ images: [{ url: 'https://example.com/first.jpg' }, { url: 'https://example.com/second.jpg' }], thumbnailUrl: 'https://example.com/cover.jpg' }), 'https://example.com/first.jpg')
   assert.equal(contentThumbnail({ images: ['javascript:bad'], thumbnailUrl: 'https://example.com/cover.jpg' }), 'https://example.com/cover.jpg')
 })
+
+test('partial individual costs stay labelled and do not become a settled campaign ROAS', () => {
+  const sheets = campaignWorkbookSheets({ brand: { name: '검증' }, campaign: { name: '검증' }, cost: 5000, revenue: 10000, costComplete: false })
+  assert.match(sheets[0].rows.find(row => row[0] === '실제 집행비 (원)')[2], /전체 비용 확인 필요/)
+  assert.equal(sheets[0].rows.find(row => row[0] === '매출 대비 집행 효율')[1], '계산 대기')
+})
