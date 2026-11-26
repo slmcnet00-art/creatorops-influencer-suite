@@ -7,9 +7,6 @@
 
 | 줄 | 원문 확인 필요 코드 |
 |---|---|
-| 10588 | `getPayloadValue(payload, ['content_url', 'content url', 'video url', 'post url', 'url', 'link', '콘텐츠 URL', '영상 URL', '링크']) ?? '',` |
-| 10626 | `getPayloadValue(payload, ['content_url', 'content url', 'video url', 'post url', 'url', 'link', '콘텐츠 URL', '영상 URL', '링크']) ?? '',` |
-| 10634 | `const campaignName = String(getPayloadValue(payload, ['campaign_name', 'campaign', 'campaign name', '캠페인', '캠페인명']) ?? '').trim()` |
 | 10687 | `audience: '??? ?? ???? ??',` |
 | 10690 | `status: '?? ??',` |
 | 10691 | `topics: [activeBrand.category || '???', platform],` |

@@ -1,3 +1,5 @@
+import vm from 'node:vm'
+import { readFileSync } from 'node:fs'
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { recordContentMetrics, contentMetricHistory, metricValue } from '../shared/contentMetricHistory.js'
@@ -43,4 +45,43 @@ test('fresh YouTube record still purges old observation history from persisted p
   ] }] }, { now: new Date(now) })
   assert.equal(result.changed, true)
   assert.equal(result.payload.trackedPosts[0].metricHistory.length, 1)
+})
+
+
+test('NUM-8: refresh preserves known metrics, nonempty title and workflow status', () => {
+  const previous = { id: 'a', title: 'confirmed title', status: '게시 완료', views: 100, likes: 12, shares: 3, saves: 4 }
+  const post = recordContentMetrics(previous, { status: 'refreshed', checkedAt: '2026-11-23T00:00:00Z', title: '', views: 150, likes: null, shares: null, saves: null }, now)
+  assert.equal(post.views, 150)
+  assert.equal(post.likes, 12)
+  assert.equal(post.shares, 3)
+  assert.equal(post.saves, 4)
+  assert.equal(post.title, previous.title)
+  assert.equal(post.status, previous.status)
+  assert.equal(post.lastRefreshStatus, 'refreshed')
+  assert.equal(post.metricHistory[0].likes, null)
+  const again = recordContentMetrics(previous, post, now)
+  assert.equal(again.views, 150)
+  assert.equal(again.status, previous.status)
+  assert.equal(again.metricHistory[0].likes, null)
+})
+
+test('NUM-8: a two-second server clock skew remains observable but far future is excluded', () => {
+  const history = contentMetricHistory({ metricHistory: [{ measuredAt: new Date(now + 2000).toISOString(), views: 10 }, { measuredAt: new Date(now + 6 * 60000).toISOString(), views: 100 }] }, now)
+  assert.equal(history.length, 1)
+  assert.equal(history[0].views, 10)
+})
+
+
+test('NUM-8: server refresh results keep business status on success and failure', async () => {
+  const source = readFileSync(new URL('../server/index.js', import.meta.url), 'utf8')
+  for (const status of ['refreshed', 'manual_required', 'refresh_failed']) {
+    const context = vm.createContext({ recordContentMetrics, isPublicSnapshotEnabled: () => false, fetchYouTubeVideoMetrics: async () => {
+      if (status === 'refresh_failed') throw new Error('test failure')
+      return { status, checkedAt: new Date().toISOString(), views: 500, title: '' }
+    } })
+    vm.runInContext(source.slice(source.indexOf('async function refreshTrackedPosts('), source.indexOf('async function fetchYouTubeVideoMetrics(')), context)
+    const [post] = await context.refreshTrackedPosts([{ id: 'a', platform: 'YouTube', status: '게시 완료', title: 'title' }])
+    assert.equal(post.status, '게시 완료')
+    assert.equal(post.lastRefreshStatus, status)
+  }
 })

@@ -1215,7 +1215,7 @@ async function runTrackingRefreshOperation() {
 
   const measuredAt = new Date().toISOString()
   const rawRows = refreshedPosts
-    .filter((post) => post.status === 'refreshed' && (post.url || post.contentUrl))
+    .filter((post) => post.lastRefreshStatus === 'refreshed' && (post.url || post.contentUrl))
     .map((post) => ({
       workspace_id: WORKSPACE_ID,
       brand_id: post.brandId == null ? null : String(post.brandId),
@@ -3981,23 +3981,23 @@ async function refreshTrackedPosts(posts) {
         const platform = String(post.platform || '').toLowerCase()
         if (platform.includes('youtube')) {
           const measurement = await fetchYouTubeVideoMetrics(post)
-          return measurement.status === 'refreshed' ? recordContentMetrics(post, measurement) : { ...post, ...measurement }
+          return measurement.status === 'refreshed' ? recordContentMetrics(post, measurement) : { ...post, ...measurement, status: post.status, lastRefreshStatus: measurement.status }
         }
 
         if (isPublicSnapshotEnabled() && (platform.includes('instagram') || platform.includes('tiktok'))) {
           const measurement = await fetchPublicContentMetrics(post)
-          return measurement.status === 'refreshed' ? recordContentMetrics(post, measurement) : { ...post, ...measurement }
+          return measurement.status === 'refreshed' ? recordContentMetrics(post, measurement) : { ...post, ...measurement, status: post.status, lastRefreshStatus: measurement.status }
         }
 
         return {
           ...post,
-          status: 'manual_required',
+          lastRefreshStatus: 'manual_required',
           message: `${post.platform || 'This platform'} metrics require creator authorization or manual verification.`,
         }
       } catch (error) {
         return {
           ...post,
-          status: 'refresh_failed',
+          lastRefreshStatus: 'refresh_failed',
           message: error instanceof Error ? error.message : 'The public content refresh failed.',
           lastRefreshAttemptAt: new Date().toISOString(),
         }

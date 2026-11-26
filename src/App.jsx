@@ -15706,7 +15706,7 @@ function AppContent() {
         const refreshedAt = new Date().toISOString()
 
         refreshed
-          .filter((post) => post && post.status === 'refreshed')
+          .filter((post) => post && post.lastRefreshStatus === 'refreshed')
           .forEach((post) => {
             const original = targetPosts.find((item) => item.id === post.id) || {}
             void saveContentMetricRawSnapshot({
@@ -15726,10 +15726,11 @@ function AppContent() {
               ...current,
               trackedPosts: current.trackedPosts.map((post) => {
                 const next = refreshedById.get(post.id)
-                if (!next || next.status !== 'refreshed') {
+                if (!next || next.lastRefreshStatus !== 'refreshed') {
                   return {
                     ...post,
                     ...(next?.thumbnailUrl ? { thumbnailUrl: next.thumbnailUrl, thumbnailCollectedAt: next.thumbnailCollectedAt, thumbnailSource: next.thumbnailSource } : {}),
+                    lastRefreshStatus: next?.lastRefreshStatus || post.lastRefreshStatus,
                     metricsSource: next?.message || post.metricsSource || '수동 확인 필요',
                     lastChecked: nowLabel(),
                   }
