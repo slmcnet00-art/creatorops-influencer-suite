@@ -16080,6 +16080,13 @@ function AppContent() {
       return
     }
 
+    const recipientSummary = deliverableItems.map((item) => {
+      const creator = creators.find((candidate) => candidate.id === item.creatorId)
+      const campaign = brandCampaigns.find((candidate) => candidate.id === item.campaignId)
+      return `${campaign?.name || '캠페인 미확인'} · ${creator?.contactEmail || ''}`
+    }).join('\n')
+    if (!window.confirm(`실제 이메일 ${deliverableItems.length}건을 발송할까요?\n\n${recipientSummary}\n\n확인하면 위 수신자에게 메일이 발송됩니다.`)) return
+
     setGmailSending(true)
     const apiBaseUrl = backendConfig.apiBaseUrl.replace(/\/$/, '')
     let sentIds = []
