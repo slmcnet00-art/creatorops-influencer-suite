@@ -1014,19 +1014,20 @@ async function requireWorkspaceAccess(request, _response, next) {
 
 async function assertOutreachCampaigns(request, items) {
   assertOutreachRole(request.workspaceUser)
+  if (!items.length) return
   const supabase = getSupabaseAdminClient()
   const { data: memberships, error: membershipError } = await supabase.from('brand_memberships').select('brand_id,role').eq('workspace_id', WORKSPACE_ID).eq('user_id', request.workspaceUser.id).eq('status', 'active').in('role', ['Admin', 'Manager', 'Marketer'])
   if (membershipError) throw membershipError
   const user = { ...request.workspaceUser, brandIds: (memberships || []).map(row => row.brand_id) }
-  const { data: scoped, error: scopedError } = await supabase.from('brand_scoped_snapshots').select('brand_id,payload').eq('workspace_id', WORKSPACE_ID)
+  const { data: scoped, error: scopedError } = await supabase.from('brand_scoped_snapshots').select('brand_id,campaigns:payload->campaigns').eq('workspace_id', WORKSPACE_ID)
   if (scopedError) throw scopedError
-  const { data: full, error: fullError } = await supabase.from('workspace_snapshots').select('payload').eq('workspace_id', WORKSPACE_ID).maybeSingle()
+  const { data: full, error: fullError } = await supabase.from('workspace_snapshots').select('campaigns:payload->campaigns').eq('workspace_id', WORKSPACE_ID).maybeSingle()
   if (fullError) throw fullError
   // Brand snapshots are the newest authoritative copy, including deletions.
   const scopedBrands = new Set((scoped || []).map(row => String(row.brand_id)))
   const campaigns = [
-    ...(scoped || []).flatMap(row => (row.payload?.campaigns || []).map(campaign => ({ ...campaign, brandId: row.brand_id }))),
-    ...(full?.payload?.campaigns || []).filter(campaign => !scopedBrands.has(String(campaign.brandId))),
+    ...(scoped || []).flatMap(row => (row.campaigns || []).map(campaign => ({ ...campaign, brandId: row.brand_id }))),
+    ...(full?.campaigns || []).filter(campaign => !scopedBrands.has(String(campaign.brandId))),
   ]
   for (const item of items) assertCampaignScope(user, campaigns.find(campaign => String(campaign.id) === String(item.campaignId)))
 }
