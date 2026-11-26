@@ -1741,13 +1741,14 @@ app.post('/ai/outreach-message', async (request, response, next) => {
 
 app.post('/ai/content-guide', async (request, response, next) => {
   try {
-    const { brand, campaign, seedingType, channel, references, draftGuide, creator, commonGuide, creators } = request.body || {}
+    const { brand, campaign, seedingType, channel, brief, references, draftGuide, creator, commonGuide, creators } = request.body || {}
     const creatorEvidence = Array.isArray(creators) ? creators.slice(0, 30).map(creatorGenerationInput) : []
     const config = await getActiveAiFeatureConfig('content-guide')
     if (!config) throw httpError(503, 'An active administrator content-guide policy is required.')
-    const knowledge = buildAdminKnowledgeContext(buildContentGuidePrompt({ brand, campaign, seedingType, channel, references, draftGuide, creator, commonGuide, creators: creatorEvidence }), config)
+    const knowledge = buildAdminKnowledgeContext(buildContentGuidePrompt({ brand, campaign, seedingType, channel, brief, references, draftGuide, creator, commonGuide, creators: creatorEvidence }), config)
     const generated = await generateReviewedCreative({ prompt: knowledge.prompt + campaignFactsPrompt(campaign), campaign, trace: knowledge.trace, principles: knowledge.principles, source: { references, creator: creator ? creatorGenerationInput(creator) : null, creators: creatorEvidence }, kind: 'guide', run: (prompt, stage) => callOpenAIText(prompt, { featureKey: 'content-guide', policyVersion: config.version, actorId: request.workspaceUser.id, ...stage }) })
     const guide = generated.text
+
     response.json({
       data: {
         guide,
@@ -5024,8 +5025,9 @@ function buildCampaignStrategyPrompt({
     'campaign.recommendationTargetCount is the authoritative TOTAL candidate target, not a count per tier. Tier counts must sum exactly to that total; if unsure do not subdivide. Use only the supplied assigned creators, never add unrelated names. Do not introduce minimum follower requirements, fixed response rates, conversion forecasts or candidate prices as confirmed agreements.',
     'A budget of 0 means no approved spend; do not allocate paid fees, percentages, fabricated quotes or a paid casting plan. State that commercial terms and funding need agreement. The current stage is candidate review if the KPI says testing, not an already contracted production campaign.',
     'Do not claim that a creator used or posted about this brand without direct supplied evidence. Outreach example compliments must refer to the real recipe/video title provided, never to an invented brand collaboration.',
-    'Reference learning materials contain original URLs, public performance and adaptation ideas. Include a reference section citing those exact URLs and supplied performance, distinguish popularity from ad conversion, and use the actual cooking premise as the creative example. Do not turn internal compliance warnings or raw-data labels into consumer-facing hooks.',
+    'Reference learning materials contain original URLs, public performance and adaptation ideas. Include a reference section citing those exact URLs and supplied performance, distinguish popularity from ad conversion, and use the current product and campaign context for the creative example. Do not turn internal compliance warnings or raw-data labels into consumer-facing hooks.',
     'For an app, proposed copy can mention only supplied functionality; mark unverified app screens, Japanese availability, store URLs, tracking integrations and paid terms as items to verify. YouTube does not expose saves/shares through the supplied public API; never promise automatic collection of those metrics or operational short links without verified integration.',
+    'Preserve operator-confirmed hook wording, timed evidence shots, usage tips, and purchase CTA in the content architecture when supplied. For each chosen reference, state its URL and exactly how its observed structure informs a proposed cut.',
     'Required sections:',
     '1. Objective, target audience, and measurable KPI interpretation',
     '2. Big idea and one-message',
@@ -5045,8 +5047,9 @@ function buildCampaignStrategyPrompt({
   ].join('\n')
 }
 
-function buildContentGuidePrompt({ brand = {}, campaign = {}, seedingType = '', channel = '', references = [], draftGuide = '', creator = null, commonGuide = '', creators = [] } = {}) {
+function buildContentGuidePrompt({ brand = {}, campaign = {}, seedingType = '', channel = '', brief = {}, references = [], draftGuide = '', creator = null, commonGuide = '', creators = [] } = {}) {
   const cleanBrand = sanitizeAiPromptValue(campaignBrandInput(brand, campaign))
+
   const cleanCampaign = sanitizeAiPromptValue(campaignGenerationInput(campaign, { includeStrategy: true }))
   const cleanReferences = sanitizeAiPromptValue(references)
   const language = resolveCampaignLanguage(campaign)
@@ -5057,7 +5060,9 @@ function buildContentGuidePrompt({ brand = {}, campaign = {}, seedingType = '', 
     creator ? 'This is an INDIVIDUAL guide. First analyze the supplied creator public content evidence, then adapt the common concept to that demonstrated style. Recent matching samples are NOT necessarily their all-time TOP 3. Label missing top-content/performance analysis explicitly and request source URLs; never invent a top-3 ranking, comments, multiplier or creator personality. Do not merely prefix the creator name to the common guide.' : 'This is a COMMON guide. Do not invent individual creator research.',
     'Respect all campaign.contentFormats selections as the deliverable formats, independently of campaign type and platform. Adapt conflicting draft deliverables to these formats. If empty, leave formats for agreement.',
     'Use a document structure that a brand manager can share immediately, while making the shooting direction concrete and creator-friendly.',
+    'Preserve operator-confirmed dialogue verbatim when supplied. Use campaign.mission, campaign.oneMessage, campaign.hookPoints and campaign materials as requirements for the actual storyboard, including specified test timing, shot conditions, result-dependent reactions, usage tips, and CTA wording. If a generated strategy conflicts with explicit campaign requirements, use the explicit requirements. Do not present unobserved outcomes or unverified prices as facts.',
     'Use campaign.influencerStrategy as proposed creative context, not verified product facts or proof of approval. Adapt its useful concept into executable scenes; remove unsupported claims instead of repeating them. If absent, mark strategy selection as pending approval.',
+
     'For EACH selected format, provide one complete storyboard: duration or timestamp, what the creator films, exact sample spoken words, on-screen text, required evidence, and CTA. For short video give 0-3s, 3-8s, 8-20s, 20-35s and closing cuts; for longform give chapters. Label example dialogue as proposed copy, not verified product claims.',
     'For an app, require screen recording of real available screens and an actual task demonstrated step by step. Do not use physical product packaging/texture/shipping templates. Features, app language availability, landing links and download routes that were not provided must be marked to confirm before filming.',
     'For every supplied reference, include its original URL, supplied public performance and collection time if any, the observable hook/sequence to borrow, and how to adapt it to this campaign. Do not infer unseen video scenes from a title: explicitly require original-video review before asserting scene details. Missing metrics remain unverified. Channel lifetime averages are not the view count of a reference video. Public popularity does not prove ad conversion success. Never invent URLs, views, results or successful campaigns.',
@@ -5076,6 +5081,7 @@ function buildContentGuidePrompt({ brand = {}, campaign = {}, seedingType = '', 
     `Campaign: ${JSON.stringify(cleanCampaign || {})}`,
     `Seeding type: ${sanitizeAiPromptValue(seedingType) || ''}`,
     `Channel: ${sanitizeAiPromptValue(channel) || ''}`,
+    `Campaign brief and learning materials: ${JSON.stringify(sanitizeAiPromptValue(brief) || {})}`,
     `References: ${JSON.stringify(cleanReferences || [])}`,
     `Creator public evidence: ${JSON.stringify(creator ? sanitizeAiPromptValue(creatorGenerationInput(creator)) : null)}`,
     `Supporting campaign creator public evidence (for source URLs/style, not extra target creators; individual guide must focus only on Creator public evidence above): ${JSON.stringify(sanitizeAiPromptValue(creators))}`,

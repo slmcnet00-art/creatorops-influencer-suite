@@ -14,6 +14,10 @@ export function campaignFactsPrompt(campaign = {}) {
     mission: campaign.mission,
     kpiTarget: campaign.kpiTarget,
     internalSaveMeaning: 'Saving/selecting candidates means storing creator records in the internal CRM. It is NOT a public-video save or save-rate metric. In a candidate-selection test, measure valid records selected/saved; do not claim posts, creator agreements or audience engagement already occurred.',
+    oneMessage: campaign.oneMessage,
+    hookPoints: campaign.hookPoints,
+    confirmedHook: getConfirmedHook(campaign),
+
     unknownUntilVerified: ['app Japanese language support', 'exact app features and available recipes', 'store/download URL', 'agreed creator fee', 'conversion tracking integration', 'audience demographics', 'brand safety and fake follower rates'],
     zeroBudgetRule: '0 KRW is the only approved budget when budgetKrw is 0. Do not import 15,000,000 or any example amount. Do not allocate paid fees until separately approved.',
     creativeGrounding: 'Product category/name is not proof of specific functionality. Do NOT invent named app filters, timers, ingredient recommendations, automatic shopping lists, save functions or guarantees, even with a confirmation-required label. When no verified feature evidence is supplied, build the creative around a specific real cooking/content premise and brand introduction; reserve an actual app-screen proof slot pending supplied screen evidence. Do not make the chosen concept depend on an imagined feature. Never claim guaranteed zero failure or time savings. Market/audience statements without supplied research are hypotheses, not observed facts.',
@@ -21,8 +25,17 @@ export function campaignFactsPrompt(campaign = {}) {
   })
 }
 
+function getConfirmedHook(campaign) {
+  const mission = String(campaign.mission || '')
+  return mission.match(/(?:^|\n)\s*확정 훅(?: 그대로)?\s*[:：]\s*([^\n?!]+[?!]?)/)?.[1].trim() || ''
+}
+
 export function assertCampaignGenerationFacts(text, campaign = {}, source = {}) {
   const fail = (message) => { throw Object.assign(new Error(message), { status: 422 }) }
+  const confirmedHook = getConfirmedHook(campaign)
+  if (confirmedHook && !String(text).includes(confirmedHook)) {
+    fail('캠페인 미션의 확정 훅이 생성물에서 바뀌었습니다. 확정 문구를 유지해 다시 생성하세요.')
+  }
   if (Number(campaign.budget ?? 0) === 0) {
     for (const line of String(text).split('\n')) {
       if (!/예산|予算|budget/i.test(line)) continue
