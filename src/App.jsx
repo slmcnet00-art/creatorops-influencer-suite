@@ -7959,6 +7959,18 @@ function AppContent() {
   const [creatorGroupScopeSelection, setCreatorGroupScopeSelection] = useState(null)
   const [reportTab, setReportTab] = useState('summary')
   const [selectedCreatorGroupId, setSelectedCreatorGroupId] = useState(defaultCreatorGroups[0]?.id ?? '')
+  const creatorGroupDetailRef = useRef(null)
+  const [creatorGroupOpenRequest, setCreatorGroupOpenRequest] = useState(0)
+  const openCreatorGroupPool = (group) => {
+    setSelectedCreatorGroupId(group.id)
+    setCreatorGroupOpenRequest((current) => current + 1)
+  }
+  useEffect(() => {
+    if (!creatorGroupOpenRequest) return
+    const panel = creatorGroupDetailRef.current
+    panel?.focus({ preventScroll: true })
+    panel?.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' })
+  }, [creatorGroupOpenRequest])
   const [selectedCreatorGroupMemberIds, setSelectedCreatorGroupMemberIds] = useState([])
   const trackingBulkInputRef = useRef(null)
   const creatorGroupBulkInputRef = useRef(null)
@@ -19454,11 +19466,11 @@ function AppContent() {
                     key={group.id}
                     role="button"
                     tabIndex={0}
-                    onClick={() => setSelectedCreatorGroupId(group.id)}
+                    onClick={() => openCreatorGroupPool(group)}
                     onKeyDown={(event) => {
-                      if (event.key === 'Enter' || event.key === ' ') {
+                      if (event.target === event.currentTarget && (event.key === 'Enter' || event.key === ' ')) {
                         event.preventDefault()
-                        setSelectedCreatorGroupId(group.id)
+                        openCreatorGroupPool(group)
                       }
                     }}
                   >
@@ -19501,17 +19513,18 @@ function AppContent() {
                     </div>
                     <div className="creator-group-actions">
                       <button
-                        className="secondary-button compact-button"
+                        className="primary-button compact-button"
                         type="button"
+                        aria-controls="creator-group-members"
                         onClick={(event) => {
                           event.stopPropagation()
-                          addCreatorGroupToCandidatePool(group)
+                          openCreatorGroupPool(group)
                         }}
                       >
-                        후보 풀 저장
+                        후보 풀 열기
                       </button>
                       <button
-                        className="primary-button compact-button"
+                        className="secondary-button compact-button"
                         type="button"
                         onClick={(event) => {
                           event.stopPropagation()
@@ -19526,7 +19539,7 @@ function AppContent() {
               })
             )}
           </div>
-          <aside className="creator-group-detail-panel">
+          <aside className="creator-group-detail-panel" id="creator-group-members" ref={creatorGroupDetailRef} tabIndex={-1} aria-label="선택한 그룹의 후보 풀">
             {selectedCreatorGroup ? (
               <>
                 <div className="creator-group-detail-head">
