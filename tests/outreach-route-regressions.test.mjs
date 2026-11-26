@@ -101,7 +101,7 @@ function batchHarness({ failure = 'definitive', persistenceFailure = true } = {}
     sendGmailWithRetry: async (_token, item) => { sends++; if (item.id === 'bad' && failure !== 'accepted') throw Object.assign(new Error('test provider failure'), { status: failure === 'definitive' ? 400 : 500 }); return { id: `gmail-${item.id}`, attemptCount: 1 } },
     isDefinitiveDeliveryFailure, safeWriteAuditLog: async () => {}, getOutreachDailyRemaining: (used, limit) => limit - used, delay: async () => {},
   })
-  vm.runInContext(source.slice(source.indexOf("app.post('/outreach/gmail/send-batch',"), source.indexOf("app.post('/outreach/suppressions',")), context)
+  vm.runInContext(source.slice(source.indexOf("async function executeOutreachBatch("), source.indexOf("app.post('/outreach/suppressions',")), context)
   return { records, memory, get sends() { return sends }, async call(ids = ['first', 'bad', 'last']) {
     let body, error
     await handler({ workspaceUser: { id: 'user', role: 'Owner' }, body: { workspaceId: 'test', accessToken: 'fake', items: ids.map(id => ({ id, campaignId: 'campaign', creatorId: id, idempotencyKey: id, to: `${id}@example.invalid`, message: 'test' })) } }, { json: value => { body = value } }, value => { error = value })

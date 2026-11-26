@@ -1,3 +1,5 @@
+import { mergeCreatorSheetImport } from '../shared/creatorSheetImport.js'
+import { sendAndWatchOutreachJob, watchOutreachJob, applyOutreachJobResults, outreachJobStorageKey } from './outreachJobClient.js'
 import { snapshotMergeDecision, brandSnapshotSignature } from './workspaceSyncGuard.js'
 import CampaignDocumentPanel from './CampaignDocumentPanel.jsx'
 import CampaignQuotePanel from './CampaignQuotePanel.jsx'
@@ -1995,11 +1997,17 @@ function usePersistentState(key, fallback) {
     }
   })
 
+  const [cacheError, setCacheError] = useState('')
   useEffect(() => {
-    window.localStorage.setItem(key, JSON.stringify(value))
+    let cancelled = false
+    let error = ''
+    try { window.localStorage.setItem(key, JSON.stringify(value)) }
+    catch { error = '브라우저 저장 공간이 부족합니다. 화면의 데이터는 유지되지만 새로고침 전에 팀 DB 저장 완료를 확인해주세요.' }
+    queueMicrotask(() => { if (!cancelled) setCacheError(error) })
+    return () => { cancelled = true }
   }, [key, value])
 
-  return [value, setValue]
+  return [value, setValue, cacheError]
 }
 
 function nowLabel() {
@@ -7776,7 +7784,7 @@ function AppContent() {
       return null
     }
   })
-  const [workspace, setWorkspace] = usePersistentState(STORE_KEY, defaultWorkspace)
+  const [workspace, setWorkspace, workspaceCacheError] = usePersistentState(STORE_KEY, defaultWorkspace)
   const backendConfig = useMemo(() => getBackendConfig(), [])
   const [cloudSyncStatus, setCloudSyncStatus] = useState({
     mode: backendConfig.hasSupabase ? 'connecting' : 'local',
@@ -7853,6 +7861,12 @@ function AppContent() {
   })
   const [gmailClock, setGmailClock] = useState(() => Date.now())
   const [gmailSending, setGmailSending] = useState(false)
+  const [outreachJob, setOutreachJob] = useState(null)
+  const outreachJobRequestRef = useRef(null)
+  useEffect(() => {
+    queueMicrotask(() => setOutreachJob(null))
+    return () => { outreachJobRequestRef.current?.abort() }
+  }, [authSession?.user?.id])
   const [outreachSuppressionSaving, setOutreachSuppressionSaving] = useState(false)
   const [outreachDailyUsage, setOutreachDailyUsage] = useState(null)
   const [outreachStatusFilter, setOutreachStatusFilter] = useState('전체')
@@ -10803,6 +10817,12 @@ function AppContent() {
     if (!file) return
 
     try {
+      if (/\.json$/i.test(file.name)) {
+        const bundle = JSON.parse(await file.text())
+        updateWorkspace(current => mergeCreatorSheetImport(current, bundle))
+        showToast(`시트별 크리에이터 그룹 ${bundle.creatorGroups.length}개를 불러왔습니다. DB 동기화 상태를 확인해주세요.`)
+        return
+      }
       const rows = await readSpreadsheet(file)
       const sourceRows = buildExternalRowsFromSheet(rows, 'creator_group_bulk')
       const payloads = sourceRows.map((row) => row.payload)
@@ -16045,6 +16065,43 @@ function AppContent() {
     }
   }
 
+  const resumeOutreachJob = async () => {
+    const key = outreachJobStorageKey(backendConfig.workspaceId, authSession?.user?.id)
+    let jobId = outreachJob?.id || (key ? window.localStorage.getItem(key) : '')
+    if (!authSession?.access_token || !backendConfig.apiBaseUrl) {
+      showToast('진행 상황을 조회하려면 발송한 계정으로 로그인해주세요.')
+      return
+    }
+    outreachJobRequestRef.current?.abort()
+    const jobController = new AbortController()
+    outreachJobRequestRef.current = jobController
+    setGmailSending(true)
+    try {
+      if (!jobId) {
+        const response = await fetch(`${backendConfig.apiBaseUrl.replace(/\/$/, '')}/outreach/jobs`, { headers: { Authorization: `Bearer ${authSession.access_token}` } })
+        const payload = await response.json()
+        if (!response.ok) throw new Error(payload.message || '최근 발송 작업을 찾지 못했습니다.')
+        jobId = payload.data?.id
+        if (!jobId) throw new Error('이 계정에서 등록한 발송 작업이 없습니다.')
+        if (key) window.localStorage.setItem(key, jobId)
+      }
+      await watchOutreachJob({ signal: jobController.signal, baseUrl: backendConfig.apiBaseUrl.replace(/\/$/, ''), headers: { Authorization: `Bearer ${authSession.access_token}` }, jobId,
+        onProgress: job => { setOutreachJob(job); updateWorkspace(current => applyOutreachJobResults(current, job.results || [], nowLabel())) } })
+    } catch (error) { if (error.name !== 'AbortError') showToast(error.message || '발송 진행 상황을 확인하지 못했습니다.') }
+    finally { setGmailSending(false) }
+  }
+
+  const closeInterruptedOutreachJob = async () => {
+    if (!outreachJob?.id || !window.confirm('Gmail 발송함에서 각 수신자의 발송 여부를 직접 확인했나요? 작업만 종료하며 메일을 재발송하지 않습니다.')) return
+    try {
+      const response = await fetch(`${backendConfig.apiBaseUrl.replace(/\/$/, '')}/outreach/jobs/${encodeURIComponent(outreachJob.id)}/close`, {
+        method: 'POST', headers: { Authorization: `Bearer ${authSession?.access_token || ''}`, 'Content-Type': 'application/json' }, body: JSON.stringify({ confirmed: true }) })
+      const payload = await response.json()
+      if (!response.ok) throw new Error(payload.message || '작업을 종료하지 못했습니다.')
+      setOutreachJob(payload.data)
+    } catch (error) { showToast(error.message) }
+  }
+
   const sendSelectedOutreachEmails = async () => {
     if (!selectedOutreachItems.length) {
       showToast('먼저 발송할 메시지를 선택해주세요.')
@@ -16087,6 +16144,9 @@ function AppContent() {
     }).join('\n')
     if (!window.confirm(`실제 이메일 ${deliverableItems.length}건을 발송할까요?\n\n${recipientSummary}\n\n확인하면 위 수신자에게 메일이 발송됩니다.`)) return
 
+    outreachJobRequestRef.current?.abort()
+    const jobController = new AbortController()
+    outreachJobRequestRef.current = jobController
     setGmailSending(true)
     const apiBaseUrl = backendConfig.apiBaseUrl.replace(/\/$/, '')
     let sentIds = []
@@ -16097,13 +16157,22 @@ function AppContent() {
 
     try {
       const gmailAccessToken = await getFreshGmailAccessToken()
-      const response = await fetch(apiBaseUrl + '/outreach/gmail/send-batch', {
-        method: 'POST',
+      const job = await sendAndWatchOutreachJob({
+        baseUrl: apiBaseUrl,
+        signal: jobController.signal,
+        onCreated: (id) => {
+          const key = outreachJobStorageKey(backendConfig.workspaceId, authSession?.user?.id)
+          if (key) window.localStorage.setItem(key, id)
+        },
+        onProgress: (job) => {
+          setOutreachJob(job)
+          updateWorkspace(current => applyOutreachJobResults(current, job.results || [], nowLabel()))
+        },
         headers: {
           Authorization: `Bearer ${authSession?.access_token || ''}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
+        body: {
           accessToken: gmailAccessToken,
           workspaceId: backendConfig.workspaceId,
           items: deliverableItems.map((item) => {
@@ -16119,10 +16188,9 @@ function AppContent() {
               idempotencyKey: `${item.campaignId}:${item.creatorId}:email`,
             }
           }),
-        }),
+        },
       })
-      const payload = await response.json().catch(() => ({}))
-      if (!response.ok) throw Object.assign(new Error(payload?.message || 'Gmail 일괄 발송에 실패했습니다.'), { status: response.status })
+      const payload = { data: job }
       const results = Array.isArray(payload?.data?.results) ? payload.data.results : []
       const selectedCampaignUsage = payload?.data?.policy?.campaignUsage?.find(
         (usage) => String(usage.campaignId || '') === String(selectedCampaign?.id || ''),
@@ -16135,7 +16203,9 @@ function AppContent() {
         (item) => item.status === 'skipped' && !['suppressed', 'campaign_suppressed'].includes(item.reason) && !(item.reason === 'duplicate' && item.providerMessageId),
       ).length
       failures = results.filter((item) => item.status === 'failed')
+      if (['failed', 'manual_check_required'].includes(job.status)) failures.push({ message: job.message || '발송 작업을 확인해주세요.' })
     } catch (error) {
+      if (error.name === 'AbortError') return
       failures = [{ message: error instanceof Error ? error.message : 'Gmail 일괄 발송에 실패했습니다.', httpStatus: error?.status }]
     } finally {
       setGmailSending(false)
@@ -16147,14 +16217,14 @@ function AppContent() {
     }
 
     if (sentIds.length) {
-      const selectedIds = new Set(sentIds)
+      const selectedIds = new Set(sentIds.map(String))
       const eventTime = nowLabel()
       updateWorkspace((current) =>
         appendActivity(
           {
             ...current,
             outreach: current.outreach.map((outreachItem) =>
-              selectedIds.has(outreachItem.id)
+              selectedIds.has(String(outreachItem.id))
                 ? { ...outreachItem, status: '\uBC1C\uC1A1 \uC644\uB8CC', sentAt: outreachItem.sentAt || eventTime, deliveryMode: 'Gmail API send' }
                 : outreachItem,
             ),
@@ -16163,7 +16233,7 @@ function AppContent() {
           `Sent ${sentIds.length} outreach messages via Gmail API`,
         ),
       )
-      setSelectedOutreachIds((current) => current.filter((id) => !selectedIds.has(id)))
+      setSelectedOutreachIds((current) => current.filter((id) => !selectedIds.has(String(id))))
     }
 
     const summary = `Gmail 발송 ${sentIds.length}건 완료${skippedCount ? ` · 중복 차단 ${skippedCount}건` : ''}${campaignExcludedCount ? ` · 캠페인 제외 ${campaignExcludedCount}건` : ''}${globallySuppressedCount ? ` · 전체 수신 거부 ${globallySuppressedCount}건` : ''}`
@@ -17553,6 +17623,7 @@ function AppContent() {
       </aside>
 
       <main className="workspace">
+        {workspaceCacheError && <p role="alert" className="workspace-help">{workspaceCacheError}</p>}
         <header className="topbar" id="dashboard">
           <div>
             <span className="eyebrow">{pageMeta.eyebrow}</span>
@@ -19340,7 +19411,7 @@ function AppContent() {
               <input
                 ref={creatorGroupBulkInputRef}
                 type="file"
-                accept=".xlsx,.xls"
+                accept=".xlsx,.xls,.json"
                 hidden
                 onChange={handleCreatorGroupBulkUpload}
               />
@@ -21963,6 +22034,12 @@ function AppContent() {
               >
                 발송 완료 처리
               </button>
+            </div>
+            <div className="workspace-help" aria-live="polite">
+              {outreachJob && <p>이메일 발송 작업 · {outreachJob.processed}/{outreachJob.requested}건 처리 · 발송 완료 {(outreachJob.results || []).filter(item => item.status === 'sent' || (item.reason === 'duplicate' && item.providerMessageId)).length}건 · 실패 {(outreachJob.results || []).filter(item => item.status === 'failed').length}건{outreachJob.status === 'manual_check_required' ? ' · Gmail 수동 확인 필요' : ''}</p>}
+              {outreachJob?.message && <p>{outreachJob.message}</p>}
+              <button className="secondary-button compact-button" type="button" disabled={gmailSending} onClick={resumeOutreachJob}>최근 발송 진행 상황 조회</button>
+              {outreachJob?.status === 'manual_check_required' && <button className="secondary-button compact-button" type="button" onClick={closeInterruptedOutreachJob}>Gmail 확인 후 작업 종료</button>}
             </div>
             <div className="record-list">
               {filteredCampaignOutreach.length === 0 ? (

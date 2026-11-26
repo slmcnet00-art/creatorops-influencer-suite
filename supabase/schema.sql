@@ -409,6 +409,10 @@ create table if not exists public.job_runs (
   finished_at timestamptz
 );
 
+create unique index if not exists outreach_one_running_job_per_workspace
+  on public.job_runs(workspace_id)
+  where job_name = 'outreach-gmail-batch' and status = 'running';
+
 create table if not exists public.raw_data_sources (
   id text primary key,
   workspace_id text references public.workspaces(id) on delete cascade,

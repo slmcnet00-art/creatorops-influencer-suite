@@ -1,3 +1,4 @@
+import { createOutreachJobs } from './outreachJobs.js'
 import { compareAndSwapSnapshot } from '../src/snapshotConcurrency.js'
 import { recordContentMetrics } from '../shared/contentMetricHistory.js'
 import { createYouTubeEvidenceReviewer, classifyYouTubeVideo, isRelevantYouTubeTopicVideo } from './youtubeEvidence.js'
@@ -2379,7 +2380,7 @@ app.post('/outreach/gmail/send', requireWorkspaceAccess, async (request, respons
   }
 })
 
-app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, response, next) => {
+async function executeOutreachBatch(request, response, next) {
   const workspaceId = String(request.body?.workspaceId || WORKSPACE_ID).trim()
   if (activeOutreachSendWorkspaces.has(workspaceId)) {
     next(httpError(409, 'Another outreach send is already running for this workspace.'))
@@ -2405,6 +2406,7 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
     let lastSendStartedAt = 0
 
     for (let index = 0; index < items.length; index += 1) {
+      try {
       const item = items[index]
       const blockReason = getOutreachBlockReason(recipientBlocks, item)
       if (blockReason) {
@@ -2484,6 +2486,9 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
         outreachDeliveryMemory.set(memoryKey, { status: acceptedProviderMessageId ? 'sent' : definitiveFailure && !recordingFailed ? 'failed' : 'sending', providerMessageId: acceptedProviderMessageId, lastError: message, updatedAt: Date.now() })
         results.push({ id: item.id, status: 'failed', message, httpStatus: Number(error?.status) || 0, recordingFailed, requiresManualReview: !definitiveFailure || recordingFailed, providerMessageId: acceptedProviderMessageId })
       }
+      } finally {
+        await request.onOutreachProgress?.(results)
+      }
     }
 
     const summary = {
@@ -2519,7 +2524,9 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
   } finally {
     activeOutreachSendWorkspaces.delete(workspaceId)
   }
-})
+}
+
+app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, executeOutreachBatch)
 
 app.post('/outreach/suppressions', requireWorkspaceAccess, async (request, response, next) => {
   try {
@@ -2677,6 +2684,26 @@ app.post('/youtube/compliance-demo', async (request, response, next) => {
     })
     next(error)
   }
+})
+
+const outreachJobs = createOutreachJobs({
+  getClient: getSupabaseAdminClient, workspaceId: WORKSPACE_ID, authorize: assertOutreachCampaigns,
+  normalizeItem: normalizeOutreachDeliveryItem,
+  executeBatch: (request) => new Promise((resolve, reject) => {
+    executeOutreachBatch(request, { json: payload => resolve(payload.data) }, reject).catch(reject)
+  }),
+})
+app.post('/outreach/jobs', requireWorkspaceAccess, async (request, response, next) => {
+  try { response.status(202).json({ data: await outreachJobs.start(request) }) } catch (error) { next(error) }
+})
+app.get('/outreach/jobs', requireWorkspaceAccess, async (request, response, next) => {
+  try { response.json({ data: await outreachJobs.latest(request) }) } catch (error) { next(error) }
+})
+app.get('/outreach/jobs/:id', requireWorkspaceAccess, async (request, response, next) => {
+  try { response.json({ data: await outreachJobs.read(request, request.params.id) }) } catch (error) { next(error) }
+})
+app.post('/outreach/jobs/:id/close', requireWorkspaceAccess, async (request, response, next) => {
+  try { response.json({ data: await outreachJobs.close(request, request.params.id) }) } catch (error) { next(error) }
 })
 
 app.use((error, request, response, next) => {
