@@ -16,6 +16,9 @@
 .creator-groups-panel > .panel-heading { flex-wrap: wrap; gap: 14px; }
 .creator-groups-panel .panel-heading-actions { flex-wrap: wrap; min-width: 0; }
 .creator-group-toolbar .search-field, .creator-group-toolbar input, .creator-group-toolbar select { min-width: 0; box-sizing: border-box; }
+.creator-group-toolbar { grid-template-columns: minmax(160px, .7fr) minmax(0, 2fr) minmax(110px, .5fr); }
+.creator-group-brand-badge { margin-left: 6px; }
+@media (max-width: 760px) { .creator-group-toolbar { grid-template-columns: minmax(0, 1fr); } }
 .creator-group-workspace, .creator-group-grid, .creator-group-detail-panel { min-width: 0; }
 .stat-lineage { margin-top: 8px; font-size: 11px; color: var(--text-soft); }
 .stat-lineage summary { cursor: pointer; min-height: 24px; line-height: 1.6; }

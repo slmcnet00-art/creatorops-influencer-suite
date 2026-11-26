@@ -11,7 +11,7 @@ const dateCell = value => {
   return { serial: Date.parse(value) / 86400000 + 25569 + (dateOnly ? 0 : 9 / 24), dateOnly }
 }
 
-export function campaignWorkbookSheets({ brand, campaign, posts = [], creators = [], markets = [], externalPosts = [], brandMonitor = [], exportedAt = new Date().toISOString(), cost = null, revenue = null }) {
+export function campaignWorkbookSheets({ brand, campaign, posts = [], creators = [], markets = [], externalPosts = [], brandMonitor = [], exportedAt = new Date().toISOString(), cost = null, revenue = null, costComplete = true }) {
   posts = posts.filter(post => post.sourceType !== 'demo')
   externalPosts = externalPosts.filter(post => post.sourceType !== 'demo')
   const name = campaign?.name || '캠페인 미선택'
@@ -23,8 +23,8 @@ export function campaignWorkbookSheets({ brand, campaign, posts = [], creators =
   const summary = [
     ['브랜드', brand?.name || '', ''], ['캠페인', name, '선택한 캠페인만 포함'], ['업로드 콘텐츠', posts.length, '등록한 콘텐츠 URL 기준'],
     ...['조회수', '좋아요', '댓글', '공유', '저장'].map((label, i) => [label, ...totals[i]]),
-    ['실제 집행비 (원)', cost ?? '연결 필요', '예산·예상 견적과 구분'], ['기록된 매출 (원)', revenue ?? '연결 필요', '구매 귀속 확인 필요'],
-    ['매출 대비 집행 효율', cost > 0 && revenue !== null ? `${(revenue / cost * 100).toFixed(1)}%` : '계산 대기', '매출 ÷ 실제 집행비 × 100'],
+    ['실제 집행비 (원)', cost ?? '연결 필요', costComplete ? '예산·예상 견적과 구분' : '확인된 개별 비용 합계 · 전체 비용 확인 필요'], ['기록된 매출 (원)', revenue ?? '연결 필요', '구매 귀속 확인 필요'],
+    ['매출 대비 집행 효율', costComplete && cost > 0 && revenue !== null ? `${(revenue / cost * 100).toFixed(1)}%` : '계산 대기', '매출 ÷ 실제 집행비 × 100 · 전체 비용 확인 후 계산'],
   ]
   if (campaign?.archiveReport) summary.push(['제품 발송 기록', campaign.archiveReport.shipments?.length || 0, '발송과 업로드를 구분'])
   const sheets = [{ name: '성과 요약', title: '캠페인 성과 보고서', metadata, note: '미확인 값은 0으로 합산하지 않습니다. 수집일과 작성일을 구분합니다.', headers: ['항목', '결과', '집계 기준'], widths: [28, 42, 64], rows: summary, filter: false },

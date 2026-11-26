@@ -46,3 +46,9 @@ test('NUM-7: production seed button and handler are guarded; report inputs exclu
   assert.match(app, /const seedReportDemoData = \(\) => \{\s*if \(!import\.meta\.env\.DEV\) return/)
   assert.ok(app.includes("storedTrackedPosts.filter(post => post.sourceType !== 'demo')"))
 })
+
+test('partial individual costs stay labelled and do not become a settled campaign ROAS', () => {
+  const sheets = campaignWorkbookSheets({ brand: { name: '검증' }, campaign: { name: '검증' }, cost: 5000, revenue: 10000, costComplete: false })
+  assert.match(sheets[0].rows.find(row => row[0] === '실제 집행비 (원)')[2], /전체 비용 확인 필요/)
+  assert.equal(sheets[0].rows.find(row => row[0] === '매출 대비 집행 효율')[1], '계산 대기')
+})
