@@ -8095,8 +8095,8 @@ function AppContent() {
     recruitedPool,
     quotes,
     fulfillmentRecords,
-    trackedPosts,
-    externalReportRows,
+    trackedPosts: storedTrackedPosts,
+    externalReportRows: storedExternalReportRows,
     utmTrackingLogs,
     shortLinkClickLogs,
     orderAttributionLogs,
@@ -8114,6 +8114,9 @@ function AppContent() {
     accounts,
     activeAccountId,
   } = operationalView
+
+  const trackedPosts = useMemo(() => storedTrackedPosts.filter(post => post.sourceType !== 'demo'), [storedTrackedPosts])
+  const externalReportRows = useMemo(() => storedExternalReportRows.filter(row => row.sourceType !== 'demo'), [storedExternalReportRows])
 
   const localCurrentAccount =
     accounts.find((account) => account.id === activeAccountId) ?? accounts[0] ?? defaultWorkspace.accounts[0]
@@ -17197,6 +17200,7 @@ function AppContent() {
   }
 
   const seedReportDemoData = () => {
+    if (!import.meta.env.DEV) return
     if (!selectedCampaign) {
       showToast('먼저 캠페인을 선택해주세요.')
       return
@@ -21529,9 +21533,9 @@ function AppContent() {
               </div>
 
               <div className="owned-learning-lineage">
-                <button className="secondary-button compact-button" type="button" onClick={seedReportDemoData}>
+                {import.meta.env.DEV && <button className="secondary-button compact-button" type="button" onClick={seedReportDemoData}>
                   데모 성과 채우기
-                </button>
+                </button>}
                 {['RAW-EXT-CONT-001', 'RAW-EXT-ENG-001', 'RAW-INT-TEMPLATE-001'].map((rawId) => (
                   <button className="lineage-chip" type="button" key={rawId} onClick={() => openDataRoomRaw(rawId)}>
                     {rawId}

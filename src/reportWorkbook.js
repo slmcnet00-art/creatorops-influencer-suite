@@ -12,6 +12,8 @@ const dateCell = value => {
 }
 
 export function campaignWorkbookSheets({ brand, campaign, posts = [], creators = [], markets = [], externalPosts = [], brandMonitor = [], exportedAt = new Date().toISOString(), cost = null, revenue = null }) {
+  posts = posts.filter(post => post.sourceType !== 'demo')
+  externalPosts = externalPosts.filter(post => post.sourceType !== 'demo')
   const name = campaign?.name || '캠페인 미선택'
   const metadata = `${brand?.name || ''} · ${name} · 작성 ${new Date(exportedAt).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' })} (한국시간)`
   const totals = CONTENT_METRICS.map(key => {
