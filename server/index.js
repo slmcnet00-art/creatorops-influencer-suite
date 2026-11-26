@@ -1,3 +1,4 @@
+import { compareAndSwapSnapshot } from '../src/snapshotConcurrency.js'
 import { recordContentMetrics } from '../shared/contentMetricHistory.js'
 import { createYouTubeEvidenceReviewer, classifyYouTubeVideo, isRelevantYouTubeTopicVideo } from './youtubeEvidence.js'
 import { reviewGuideClaims } from '../shared/guideClaimReview.js'
@@ -1076,6 +1077,38 @@ function normalizeAutomationSourceType(value) {
   return allowed.has(value) ? value : 'api_direct'
 }
 
+// Replay only this operation's changes against the latest snapshot after a conflict.
+async function saveOperationSnapshot(supabase, table, keys, snapshot, transform) {
+  let current = snapshot
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const change = transform(current.payload || {})
+    if (!change.changed) return { ...change, status: 'unchanged' }
+    const result = await compareAndSwapSnapshot(supabase, table, keys, change.payload, current.updated_at)
+    if (result.status === 'saved') return { ...change, ...result }
+    if (!result.payload) throw httpError(409, 'Snapshot was removed during the operation.')
+    current = { payload: result.payload, updated_at: result.updatedAt }
+  }
+  throw httpError(409, 'Concurrent snapshot edits prevented the operation after three attempts.')
+}
+
+function mergeTrackingRefresh(payload, originalById, refreshedById) {
+  let changed = false
+  const trackedPosts = (payload.trackedPosts || []).map((post) => {
+    const id = trackedPostIdentity(post)
+    const original = originalById.get(id)
+    const refreshed = refreshedById.get(id)
+    if (!original || !refreshed) return post
+    const patch = Object.fromEntries(Object.entries(refreshed).filter(([key, value]) => (
+      JSON.stringify(value) !== JSON.stringify(original[key])
+      && JSON.stringify(post[key]) === JSON.stringify(original[key])
+    )))
+    if (!Object.keys(patch).length) return post
+    changed = true
+    return { ...post, ...patch }
+  })
+  return { changed, payload: { ...payload, trackedPosts } }
+}
+
 async function runYouTubeRetentionOperation() {
   const supabase = getSupabaseAdminClient()
   if (!supabase) throw httpError(503, 'Supabase is required for YouTube API data retention.')
@@ -1121,33 +1154,15 @@ async function runYouTubeRetentionOperation() {
 
   let redactedSnapshotRecords = 0
   let updatedSnapshots = 0
-  if (fullSnapshot?.payload) {
-    const sanitized = sanitizeStaleYouTubeApiData(fullSnapshot.payload, {
-      now,
-    })
-    if (sanitized.changed) {
-      const { error } = await supabase
-        .from('workspace_snapshots')
-        .update({ payload: sanitized.payload, updated_at: now.toISOString() })
-        .eq('workspace_id', WORKSPACE_ID)
-      if (error) throw error
-      redactedSnapshotRecords += sanitized.redacted
-      updatedSnapshots += 1
-    }
-  }
-
-  for (const snapshot of brandSnapshots || []) {
-    const sanitized = sanitizeStaleYouTubeApiData(snapshot.payload || {}, {
-      now,
-    })
-    if (!sanitized.changed) continue
-    const { error } = await supabase
-      .from('brand_scoped_snapshots')
-      .update({ payload: sanitized.payload, updated_at: now.toISOString() })
-      .eq('workspace_id', WORKSPACE_ID)
-      .eq('brand_id', snapshot.brand_id)
-    if (error) throw error
-    redactedSnapshotRecords += sanitized.redacted
+  const containers = [
+    ...(fullSnapshot?.payload ? [{ table: 'workspace_snapshots', keys: { workspace_id: WORKSPACE_ID }, snapshot: fullSnapshot }] : []),
+    ...(brandSnapshots || []).map((snapshot) => ({ table: 'brand_scoped_snapshots', keys: { workspace_id: WORKSPACE_ID, brand_id: snapshot.brand_id }, snapshot })),
+  ]
+  for (const container of containers) {
+    const result = await saveOperationSnapshot(supabase, container.table, container.keys, container.snapshot,
+      (payload) => sanitizeStaleYouTubeApiData(payload, { now }))
+    if (result.status !== 'saved') continue
+    redactedSnapshotRecords += result.redacted
     updatedSnapshots += 1
   }
 
@@ -1172,8 +1187,8 @@ async function runTrackingRefreshOperation() {
   if (brandError) throw brandError
 
   const containers = [
-    ...(fullSnapshot?.payload ? [{ type: 'workspace', payload: fullSnapshot.payload }] : []),
-    ...(brandSnapshots || []).map((snapshot) => ({ type: 'brand', brandId: snapshot.brand_id, payload: snapshot.payload || {} })),
+    ...(fullSnapshot?.payload ? [{ type: 'workspace', ...fullSnapshot }] : []),
+    ...(brandSnapshots || []).map((snapshot) => ({ type: 'brand', brandId: snapshot.brand_id, ...snapshot, payload: snapshot.payload || {} })),
   ]
   const uniquePosts = new Map()
   containers.forEach((container) => {
@@ -1190,25 +1205,12 @@ async function runTrackingRefreshOperation() {
   const refreshedById = new Map(refreshedPosts.map((post) => [trackedPostIdentity(post), post]))
   let updatedSnapshots = 0
   for (const container of containers) {
-    const existingPosts = container.payload?.trackedPosts || []
-    const nextPosts = existingPosts.map((post) => refreshedById.get(trackedPostIdentity(post)) || post)
-    if (!nextPosts.some((post, index) => post !== existingPosts[index])) continue
-    const nextPayload = { ...container.payload, trackedPosts: nextPosts }
-    if (container.type === 'workspace') {
-      const { error } = await supabase
-        .from('workspace_snapshots')
-        .update({ payload: nextPayload, updated_at: new Date().toISOString() })
-        .eq('workspace_id', WORKSPACE_ID)
-      if (error) throw error
-    } else {
-      const { error } = await supabase
-        .from('brand_scoped_snapshots')
-        .update({ payload: nextPayload, updated_at: new Date().toISOString() })
-        .eq('workspace_id', WORKSPACE_ID)
-        .eq('brand_id', container.brandId)
-      if (error) throw error
-    }
-    updatedSnapshots += 1
+    const originalById = new Map((container.payload?.trackedPosts || []).map((post) => [trackedPostIdentity(post), post]))
+    const table = container.type === 'workspace' ? 'workspace_snapshots' : 'brand_scoped_snapshots'
+    const keys = { workspace_id: WORKSPACE_ID, ...(container.type === 'brand' ? { brand_id: container.brandId } : {}) }
+    const result = await saveOperationSnapshot(supabase, table, keys, container,
+      (payload) => mergeTrackingRefresh(payload, originalById, refreshedById))
+    if (result.status === 'saved') updatedSnapshots += 1
   }
 
   const measuredAt = new Date().toISOString()
