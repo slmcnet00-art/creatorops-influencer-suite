@@ -1,4 +1,5 @@
 import YouTubeUsagePanel from './YouTubeUsagePanel.jsx'
+import TikTokBusinessPanel from './TikTokBusinessPanel.jsx'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import readSheet from 'read-excel-file/browser'
 import {
@@ -16,7 +17,7 @@ import {
 
 const knowledgeFileExtensions = new Set(['txt', 'md', 'csv', 'json', 'xlsx'])
 const maxKnowledgeFileCount = 20
-const adminSectionIds = new Set(['overview', 'data', 'policy', 'llm', 'youtube', 'automation', 'access', 'audit'])
+const adminSectionIds = new Set(['overview', 'data', 'policy', 'llm', 'youtube', 'tiktok', 'automation', 'access', 'audit'])
 
 function initialAdminSection() {
   const requested = typeof window === 'undefined' ? '' : new URLSearchParams(window.location.search).get('section')
@@ -339,7 +340,7 @@ export default function AdminConsole({
   const saveAutomations = (next) => { setAutomations(next); persistLocal(policies, next) }
   const navigation = [
     ['overview', '운영 개요', LayoutDashboard], ['data', '데이터룸', Database], ['policy', 'AI 학습 관리', Bot],
-    ['llm', 'LLM Ops', Activity], ['youtube', 'YouTube 사용량', Activity],
+    ['llm', 'LLM Ops', Activity], ['youtube', 'YouTube 사용량', Activity], ['tiktok', 'TikTok 연결', Link2],
     ['automation', '자동화', Workflow], ['access', '계정·브랜드 권한', UsersRound], ['audit', '감사 로그', FileClock],
   ]
 
@@ -368,6 +369,7 @@ export default function AdminConsole({
 
       {section === 'data' && <div className="admin-data-room">{dataRoom}</div>}
       {section === 'youtube' && <YouTubeUsagePanel apiBaseUrl={apiBaseUrl} accessToken={adminAccessToken} />}
+      {section === 'tiktok' && <TikTokBusinessPanel apiBaseUrl={apiBaseUrl} accessToken={adminAccessToken} />}
       {section === 'llm' && <LlmOpsPanel apiBaseUrl={apiBaseUrl} accessToken={adminAccessToken} />}
 
       {section === 'policy' && <div className="admin-page admin-policy-layout">
