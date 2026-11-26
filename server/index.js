@@ -2277,6 +2277,7 @@ app.post('/outreach/gmail/send', requireWorkspaceAccess, async (request, respons
   try {
     assertOutreachRole(request.workspaceUser)
     const accessToken = String(request.body?.accessToken || '').trim()
+    if (!isValidOutreachEmail(request.body?.to)) throw httpError(400, 'A single valid recipient email is required.')
     const to = String(request.body?.to || '').trim()
     const subject = String(request.body?.subject || 'CreatorOps collaboration proposal').trim()
     const message = String(request.body?.message || '').trim()
@@ -5102,6 +5103,7 @@ function normalizeRecommendationEnrichmentItem(item = {}) {
 }
 
 function buildGmailRawMessage({ to, subject, message }) {
+  if (!isValidOutreachEmail(to)) throw httpError(400, 'A single valid recipient email is required.')
   const headers = [
     `To: ${to}`,
     `Subject: ${encodeMimeHeader(subject)}`,
@@ -5315,6 +5317,7 @@ function normalizeOutreachDeliveryItem(item = {}, index = 0) {
   const id = String(item.id || `outreach-${Date.now()}-${index}`).trim()
   const campaignId = String(item.campaignId || '').trim()
   const creatorId = String(item.creatorId || '').trim()
+  if (!isValidOutreachEmail(item.to)) throw httpError(400, `items[${index}] requires a single valid recipient email.`)
   const to = normalizeOutreachEmail(item.to)
   const subject = String(item.subject || 'CreatorOps collaboration proposal').trim()
   const message = String(item.message || '').trim()

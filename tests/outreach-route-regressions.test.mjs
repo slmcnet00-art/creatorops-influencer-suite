@@ -1,3 +1,4 @@
+import { isValidOutreachEmail } from '../server/outreachSuppression.js'
 import vm from 'node:vm'
 import { readFileSync } from 'node:fs'
 import { createHash } from 'node:crypto'
@@ -12,7 +13,7 @@ function routeHarness({ uncertain = false } = {}) {
   let handler, sends = 0
   const context = vm.createContext({
     app: { post: (_path, _auth, callback) => { handler = callback } }, requireWorkspaceAccess() {},
-    WORKSPACE_ID: 'test', activeOutreachSendWorkspaces: new Set(), createHash, assertOutreachRole,
+    isValidOutreachEmail, WORKSPACE_ID: 'test', activeOutreachSendWorkspaces: new Set(), createHash, assertOutreachRole,
     assertOutreachCampaigns: async (request, items) => { for (const item of items) assertCampaignScope(request.workspaceUser, { id: item.campaignId, brandId: item.campaignId === 'allowed' ? 'a' : 'b' }) },
     httpError: (status, message) => Object.assign(new Error(message), { status }),
     normalizeOutreachEmail: value => value.toLowerCase(), normalizeOutreachDeliveryItem: row => row,
@@ -31,9 +32,9 @@ function routeHarness({ uncertain = false } = {}) {
   vm.runInContext(source.slice(source.indexOf("app.post('/outreach/gmail/send',"), source.indexOf("app.post('/outreach/gmail/send-batch',")), context)
   return {
     get sends() { return sends },
-    async call(role = 'Owner', campaignId = 'allowed') {
+    async call(role = 'Owner', campaignId = 'allowed', to = 'nobody@example.invalid') {
       let error, body
-      await handler({ workspaceUser: { id: 'test-user', role, email: 'nobody@example.invalid', brandIds: ['a'] }, body: { workspaceId: 'test', campaignId, accessToken: 'not-a-real-token', to: 'nobody@example.invalid', message: 'test only', idempotencyKey: 'same-request' } }, { json: row => { body = row } }, failure => { error = failure })
+      await handler({ workspaceUser: { id: 'test-user', role, email: 'nobody@example.invalid', brandIds: ['a'] }, body: { workspaceId: 'test', campaignId, accessToken: 'not-a-real-token', to, message: 'test only', idempotencyKey: 'same-request' } }, { json: row => { body = row } }, failure => { error = failure })
       return { error, body }
     },
   }
@@ -59,4 +60,25 @@ test('결과가 불확실한 발송은 pending을 유지하고 자동 재발송�
   assert.equal((await harness.call()).error.status, 500)
   assert.equal((await harness.call()).error.status, 409)
   assert.equal(harness.sends, 1)
+})
+
+
+test('SEC-3: route rejects recipient lists and header injection before sending', async () => {
+  for (const to of ['a@example.com,b@example.com', 'Name <a@example.com>', 'a@example.com\r\nBcc:b@example.com', 'a@example.com\n']) {
+    const harness = routeHarness()
+    assert.equal((await harness.call('Owner', 'allowed', to)).error.status, 400)
+    assert.equal(harness.sends, 0)
+  }
+})
+
+test('SEC-3: batch normalizer and MIME builder reject malformed recipients', () => {
+  const source = readFileSync(new URL('../server/index.js', import.meta.url), 'utf8')
+  const context = vm.createContext({ isValidOutreachEmail, normalizeOutreachEmail: value => value.trim().toLowerCase(), Buffer, httpError: (status, message) => Object.assign(new Error(message), { status }) })
+  vm.runInContext(source.slice(source.indexOf('function normalizeOutreachDeliveryItem('), source.indexOf('async function getOutreachRecipientBlocks(')), context)
+  vm.runInContext(source.slice(source.indexOf('function buildGmailRawMessage('), source.indexOf('async function callOpenAIText(')), context)
+  for (const to of ['a@example.com;b@example.com', 'a@example.com\r\n', 'Name <a@example.com>']) {
+    assert.throws(() => context.normalizeOutreachDeliveryItem({ to, message: 'test' }), { status: 400 })
+    assert.throws(() => context.buildGmailRawMessage({ to, message: 'test' }), { status: 400 })
+  }
+  assert.equal(context.normalizeOutreachDeliveryItem({ to: 'A@example.com', message: 'test' }).to, 'a@example.com')
 })
