@@ -1614,7 +1614,7 @@ function getRecommendedContactChannelId(creator) {
   if (creator?.preferredContactChannel && contactChannelCatalog[creator.preferredContactChannel]) {
     return creator.preferredContactChannel
   }
-  if (creator?.contactEmail) return 'email'
+  if (getCreatorContactEmail(creator)) return 'email'
   if (creator?.platform === 'Instagram') return 'instagram_dm'
   if (creator?.platform === 'TikTok') return 'tiktok_dm'
   if (creator?.platform === 'YouTube') return 'email'
@@ -8491,7 +8491,7 @@ function AppContent() {
       selectedOutreachItems.filter((item) => {
         const creator = creators.find((candidate) => candidate.id === item.creatorId)
         const channelId = item.channel || getRecommendedContactChannelId(creator)
-        return channelId === 'email' && Boolean(creator?.contactEmail)
+        return channelId === 'email' && Boolean(getCreatorContactEmail(creator))
       }),
     [creators, selectedOutreachItems],
   )
@@ -16083,7 +16083,7 @@ function AppContent() {
     const recipientSummary = deliverableItems.map((item) => {
       const creator = creators.find((candidate) => candidate.id === item.creatorId)
       const campaign = brandCampaigns.find((candidate) => candidate.id === item.campaignId)
-      return `${campaign?.name || '캠페인 미확인'} · ${creator?.contactEmail || ''}`
+      return `${campaign?.name || '캠페인 미확인'} · ${getCreatorContactEmail(creator)}`
     }).join('\n')
     if (!window.confirm(`실제 이메일 ${deliverableItems.length}건을 발송할까요?\n\n${recipientSummary}\n\n확인하면 위 수신자에게 메일이 발송됩니다.`)) return
 
@@ -16113,7 +16113,7 @@ function AppContent() {
               id: item.id,
               campaignId: item.campaignId,
               creatorId: item.creatorId,
-              to: creator?.contactEmail,
+              to: getCreatorContactEmail(creator),
               subject: item.subject || buildOutreachSubject(item.messageType, campaign, item.marketCountry),
               message: item.message,
               idempotencyKey: `${item.campaignId}:${item.creatorId}:email`,
