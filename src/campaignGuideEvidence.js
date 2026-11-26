@@ -9,16 +9,28 @@ export function resolveGuideChannel(campaign = {}) {
   return campaign.guideChannel || '채널 협의 필요'
 }
 
+export function findSavedCampaignReference(references, campaignId, url, referenceKind) {
+  const targetUrl = String(url || '').trim()
+  if (!targetUrl) return undefined
+  return references.find((reference) =>
+    String(reference.campaignId) === String(campaignId) &&
+    String(reference.url || '').trim() === targetUrl &&
+    (reference.referenceKind === 'brand' ? 'brand' : 'content') === referenceKind,
+  )
+}
+
 export function getCampaignGuideReferences(campaign, savedReferences = [], savedIds = [], creators = []) {
   const selected = new Set(savedIds.map(String))
   const assigned = new Set((campaign.creatorIds ?? []).map(String))
   const refs = [
     ...(campaign.guideReferences ?? []),
     ...savedReferences.filter((ref) => String(ref.campaignId) === String(campaign.id) && selected.has(String(ref.id)) && ref.referenceKind !== 'brand'),
-    ...creators.filter((creator) => assigned.has(String(creator.id)) && creator.matchedContentUrl && creator.sourceTitle && !creator.isDemo).map((creator) => ({
-      title: creator.sourceTitle, url: creator.matchedContentUrl, creator: creator.name,
-      source: '공개 검색에서 발견한 요리/콘텐츠 근거 · 성과 미검증',
-    })),
+    ...creators.filter((creator) => assigned.has(String(creator.id)) && !creator.isDemo).flatMap((creator) => {
+      const evidence = creator.recentRelevance?.evidence?.length ? creator.recentRelevance.evidence
+        : creator.matchedContentUrl && creator.sourceTitle ? [{ title: creator.sourceTitle.split(' | ')[0], url: creator.matchedContentUrl }] : []
+      return evidence.map(item => ({ title: item.title, url: item.url, creator: creator.name,
+        collectedAt: creator.sourceCollectedAtIso, source: '공개 콘텐츠 제목·설명 근거 · 장면/광고 전환 성과 미검증' }))
+    }),
   ]
   const seen = new Set()
   return refs.filter((ref) => {

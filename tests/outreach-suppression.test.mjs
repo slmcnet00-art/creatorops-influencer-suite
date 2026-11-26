@@ -50,3 +50,9 @@ test('전체 수신 거부는 같은 이메일의 모든 캠페인 발송을 막
   assert.equal(getOutreachBlockReason(records, { to: 'creator@example.com', campaignId: 'campaign-a' }), 'suppressed')
   assert.equal(getOutreachBlockReason(records, { to: 'creator@example.com', campaignId: 'campaign-b' }), 'suppressed')
 })
+
+
+test('SEC-3: only a single mailbox without controls is valid', () => {
+  for (const value of ['a@example.com,b@example.com', 'a@example.com;b@example.com', 'Name <a@example.com>', 'a@example.com\n', 'a@example.com\r', 'a\x00@example.com']) assert.equal(isValidOutreachEmail(value), false)
+  assert.equal(isValidOutreachEmail('creator+campaign@example.com'), true)
+})

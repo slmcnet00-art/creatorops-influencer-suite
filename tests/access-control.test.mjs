@@ -1,5 +1,7 @@
+import { prepareMemberAccessUpdate } from '../server/accessPolicy.js'
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import {
   buildPermissionTestAccounts,
   canAccessSection,
@@ -14,6 +16,45 @@ const brands = [
   { id: 202, name: '브랜드 B' },
   { id: 203, name: '브랜드 C' },
 ]
+
+test('SEC-1: authenticated delivery writes are removed and sensitive policies enforce role/brand scope', () => {
+  const sql = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8')
+  const migration = readFileSync(new URL('../supabase/migrations/202611260001_sec1_brand_role_rls.sql', import.meta.url), 'utf8')
+  const policies = [...sql.matchAll(/create policy "([^"]+)"\s+on public\.(\w+) for (\w+) to authenticated\s+([\s\S]*?);/g)]
+  const outreach = policies.filter(([, , table]) => table === 'outreach_messages')
+  assert.equal(outreach.length, 1)
+  assert.equal(outreach[0][3], 'select')
+  assert.match(outreach[0][4], /array\['Owner', 'Admin', 'Manager', 'Marketer'\]/)
+  assert.match(migration, /drop policy if exists "Members can write outreach messages"/)
+  for (const table of ['creator_contact_points', 'creator_rates']) {
+    const write = policies.find(([, , t, action]) => t === table && action === 'all')
+    assert.match(write[4], /array\['Owner', 'Admin'\]/)
+    assert.ok(policies.some(([, , t, action, body]) => t === table && action === 'select' && body.includes('has_brand_access(workspace_id, brand_id)')))
+  }
+  for (const table of ['creator_profile_snapshots', 'content_metric_snapshots', 'audience_demographic_snapshots', 'brand_mention_evidence', 'ad_disclosure_evidence', 'creator_quality_signals', 'related_content_edges', 'utm_tracking_rows']) {
+    for (const policy of policies.filter(([, , t]) => t === table)) {
+      assert.match(policy[4], /has_brand_access\(workspace_id, brand_id/)
+      if (policy[3] !== 'select') assert.doesNotMatch(policy[4], /'Client'/)
+      assert.ok(migration.includes(policy[0]))
+    }
+  }
+  const frontend = readFileSync(new URL('../src/backendSync.js', import.meta.url), 'utf8')
+  assert.doesNotMatch(frontend, /from\(['"]outreach_messages['"]\)/)
+})
+
+test('SEC-2: global definitions stay readable but every client write requires a non-null member workspace', () => {
+  const sql = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8')
+  const migration = readFileSync(new URL('../supabase/migrations/202611260002_sec2_protect_global_definitions.sql', import.meta.url), 'utf8')
+  for (const table of ['raw_data_sources', 'metric_definitions', 'metric_definition_versions']) {
+    const policies = [...sql.matchAll(new RegExp('create policy "[^"]+"\\s+on public\\.' + table + ' for (\\w+) to authenticated\\s+([\\s\\S]*?);', 'g'))]
+    const read = policies.find(([, action]) => action === 'select')
+    const write = policies.find(([, action]) => action === 'all')
+    assert.match(read[2], /workspace_id is null or public.is_workspace_member/)
+    assert.match(write[2], /workspace_id is not null and public.is_workspace_member/)
+    assert.doesNotMatch(write[2], /workspace_id is null or/)
+    assert.ok(migration.includes(write[0]))
+  }
+})
 
 test('Owner와 Admin은 전체 브랜드와 권한 관리에 접근한다', () => {
   for (const role of ['Owner', 'Admin']) {
@@ -63,4 +104,22 @@ test('권한 테스트 계정은 실제 브랜드 ID로 생성되고 중복 없�
   const merged = mergePermissionTestAccounts(existing, brands)
   assert.equal(merged.filter((account) => account.id === 'acct-admin-test').length, 1)
   assert.equal(merged.find((account) => account.id === 'acct-admin-test').name, '권한 테스트 관리자')
+})
+
+
+test('SEC-4: Admin cannot promote or edit Owners; Owner retains last-owner protection', () => {
+  const owner = { role: 'Owner', status: 'active' }
+  const admin = { role: 'Admin', status: 'active' }
+  assert.throws(() => prepareMemberAccessUpdate(admin, { role: 'Owner' }, 2, 'Admin'), { status: 403 })
+  assert.throws(() => prepareMemberAccessUpdate(owner, { role: 'Admin' }, 2, 'Admin'), { status: 403 })
+  assert.throws(() => prepareMemberAccessUpdate(owner, { status: 'disabled' }, 2, 'Admin'), { status: 403 })
+  assert.throws(() => prepareMemberAccessUpdate(owner, { role: 'Admin' }, 1, 'Owner'), { status: 409 })
+  assert.equal(prepareMemberAccessUpdate(admin, { role: 'Owner' }, 2, 'Owner').role, 'Owner')
+  const schema = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8')
+  const policy = schema.match(/create policy "Owners and admins manage workspace members"[\s\S]*?;/)[0]
+  assert.equal((policy.match(/role <> 'Owner'/g) || []).length, 2)
+  const migration = readFileSync(new URL('../supabase/migrations/202611260003_sec4_owner_role_protection.sql', import.meta.url), 'utf8')
+  assert.ok(migration.includes(policy))
+  const server = readFileSync(new URL('../server/index.js', import.meta.url), 'utf8')
+  assert.ok(server.includes('activeOwnerCount || 0, request.adminUser.role)'))
 })

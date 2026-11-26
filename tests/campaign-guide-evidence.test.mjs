@@ -40,11 +40,19 @@ test('전략→공통→개별 가이드가 실제 내용과 레퍼런스를 전
   assert.match(app, /operationalCandidateView\(workspace\)/)
   assert.match(app, /\.\.\.referenceMaterials/)
   assert.match(app, /guide \+= guideEvidenceAppendix\(evidenceReferences, campaign.outputLanguage\)/)
-  assert.match(app, /실행에 사용할 공통 촬영안과 레퍼런스[\s\S]*?\$\{commonGuide\}/)
+  // Individual production guides now call the same administrator-backed AI endpoint,
+  // rather than concatenating a local template with the common guide.
+  assert.match(app, /creator, commonGuide,[\s\S]*?getCampaignGuideReferences/)
   assert.match(app, /if \(!campaign.influencerStrategy\)/)
   assert.match(app, /if \(!campaign.generatedContentGuide\)/)
   assert.equal((app.match(/공통 가이드 전체 보기/g) || []).length, 2)
   assert.doesNotMatch(app, /influencerStrategy.slice\(0, 900\)|50만 이상 조회 레퍼런스/)
+})
+
+test('크리에이터 여러 영상 제목을 원본 한 개의 제목인 것처럼 연결하지 않는다', () => {
+  const result = getCampaignGuideReferences({ id: 1, creatorIds: [4] }, [], [], [{ id: 4, name: '실제 채널', sourceTitle: '다른 제목 | 다른 영상', matchedContentUrl: 'https://youtu.be/old', recentRelevance: { evidence: [{ title: '개별 영상 실제 제목', url: 'https://youtu.be/actual' }] } }])
+  assert.equal(result[0].title, '개별 영상 실제 제목')
+  assert.equal(result[0].url, 'https://youtu.be/actual')
 })
 
 test('일본 크리에이터용 가이드는 일본어 안내와 실제 공통 촬영안·원본 링크를 포함한다', () => {
@@ -67,4 +75,15 @@ test('과거 생성물이 다음 전략의 사실 근거로 재입력되지 않�
 
 test('계산한 참여율·위험도·가격이 전략의 검증된 사실로 전달되지 않는다', () => {
   assert.deepEqual(creatorGenerationInput({ id: 2, name: '요리', followers: 50000, engagement: 12, brandSafety: 94, fakeRisk: 6, price: 15000000, averageViews: 900000 }), { id: 2, name: '요리', followers: 50000 })
+})
+
+test('a source already saved in another campaign remains selectable for the current campaign', async () => {
+  const { findSavedCampaignReference } = await import('../src/campaignGuideEvidence.js')
+  const url = 'https://www.youtube.com/watch?v=f2QfuYtAkZs'
+  const original = { id: 'old', campaignId: 'other', url, referenceKind: 'content' }
+  const brand = { id: 'brand', campaignId: 'cnp', url, referenceKind: 'brand' }
+  const current = { id: 'cnp-ref', campaignId: 'cnp', url, referenceKind: 'content' }
+  assert.equal(findSavedCampaignReference([original, brand], 'cnp', url, 'content'), undefined)
+  assert.equal(findSavedCampaignReference([original, brand, current], 'cnp', url, 'content'), current)
+  assert.deepEqual(getCampaignGuideReferences({ id: 'cnp' }, [original, brand, current], ['old', 'brand', 'cnp-ref']), [current])
 })

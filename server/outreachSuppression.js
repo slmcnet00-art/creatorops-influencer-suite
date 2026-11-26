@@ -3,6 +3,8 @@ export function normalizeOutreachEmail(value) {
 }
 
 export function isValidOutreachEmail(value) {
+  // Validate the original value before trimming away control characters.
+  if ([...String(value || '')].some((char) => char.charCodeAt(0) < 32 || char.charCodeAt(0) === 127 || ',;<>'.includes(char))) return false
   const email = normalizeOutreachEmail(value)
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 }

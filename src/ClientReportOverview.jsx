@@ -6,7 +6,7 @@ import { metricObservationSummary } from '../shared/metricDefinitions.js'
 const number = value => Number(value).toLocaleString('ko-KR', { maximumFractionDigits: 1 })
 const money = value => `${number(value)}원`
 
-export default function ClientReportOverview({ brand, campaign, performance, kpi, posts = [], hasCost, hasRevenue }) {
+export default function ClientReportOverview({ brand, campaign, performance, kpi, posts = [], hasCost, hasRevenue, hasEfficiency = true, showContent = true }) {
   const total = performance.total
   const observation = metricObservationSummary(posts)
   const ranked = posts.filter(post => metricValue(post, 'views') !== null).slice().sort((a, b) => Number(b.views) - Number(a.views)).slice(0, 5)
@@ -31,7 +31,7 @@ export default function ClientReportOverview({ brand, campaign, performance, kpi
     <div className="client-report-kpis">
       <div><span>기록된 매출</span><strong>{hasRevenue && total ? money(total.revenue) : '연결 필요'}</strong><small>구매·환불 또는 운영 입력 기준</small></div>
       <div><span>기록된 집행 비용</span><strong>{hasCost && total ? money(total.cost) : '연결 필요'}</strong><small>예산과 실제 지출을 구분</small></div>
-      <div><span>매출 대비 집행 효율</span><strong>{hasCost && hasRevenue && total?.cost > 0 ? `${number(total.roas)}%` : '계산 대기'}</strong><small>매출 ÷ 비용 × 100 · 귀속 검수 필요</small></div>
+      <div><span>매출 대비 집행 효율</span><strong>{hasEfficiency && hasCost && hasRevenue && total?.cost > 0 ? `${number(total.roas)}%` : '계산 대기'}</strong><small>매출 ÷ 비용 × 100 · 귀속 검수 필요</small></div>
       <div><span>추적 조회수</span><strong>{ranked.length && total ? `${number(total.views)}회` : '수집 필요'}</strong><small>선택 캠페인 업로드 콘텐츠 누적값</small></div>
     </div>
 
@@ -66,7 +66,7 @@ export default function ClientReportOverview({ brand, campaign, performance, kpi
       </li>)}</ol> : <p className="client-report-empty">조회수가 확인된 콘텐츠가 생기면 순위를 비교할 수 있습니다.</p>}
     </section>
 
-    <ContentPerformanceReport posts={posts} />
+    {showContent && <ContentPerformanceReport posts={posts} />}
 
     <footer className="client-report-review">
       <div><strong>다음 검토</strong><p>{!posts.length ? '업로드 URL을 연결하고 콘텐츠 지표를 수집하세요.' : !hasCost || !hasRevenue ? '집행 비용과 구매·환불 데이터를 연결해 비용 대비 성과를 확인하세요.' : '조회 상위 소재의 반응과 전환을 함께 검토해 다음 캠페인의 재사용 후보를 선정하세요.'}</p></div>

@@ -19,6 +19,22 @@ export function parseLocalizedQueries(text, countries, originalQuery = '') {
   }
   return result
 }
+
+export function discoveryPlanningPrompt(query, countries) {
+  return localizationPrompt(query, countries) + '\nAlso add optional focusKeywords to EACH query item: up to TWO short target-language search refinements for distinct relevant creator subtopics/use cases (e.g. a recipe query may add lunchbox or quick home cooking). These are appended to the translated original; do not replace or remove original concepts. No identities, URLs, search operators, popularity claims or invented brands. Example shape: {"queries":[{"country":"JP","query":"料理 レシピ","focusKeywords":["お弁当","時短"]}]}. Return only this JSON object.'
+}
+
+export function parseDiscoverySearchPlans(text, countries, originalQuery = '') {
+  const queries = parseLocalizedQueries(text, countries, originalQuery)
+  const value = JSON.parse(String(text).replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '').trim())
+  const plans = {}
+  for (const item of value.queries) {
+    const focus = item.focusKeywords ?? []
+    if (!Array.isArray(focus) || focus.length > 2 || focus.some(term => typeof term !== 'string' || !/^[\p{L}\p{M}\p{N} ]{1,40}$/u.test(term))) throw Error('검색 확장 계획 형식이 잘못되었습니다.')
+    plans[item.country] = [...new Set([queries[item.country], ...focus.map(term => `${queries[item.country]} ${term.trim()}`)])]
+  }
+  return { ...queries, searchPlans: plans }
+}
 const stopWords = new Set('co review reviews creator creators influencer influencers youtube video channel official 리뷰 후기 크리에이터 인플루언서 영상 채널 공식 レビュー クリエイター 動画 公式 测评 評測 评测 評價 評價 รีวิว ulasan avis bewertung reseña đánh giá'.split(' '))
 // Small, reviewable equivalence sets improve recall without accepting unrelated categories.
 const conceptAliases = [
@@ -82,9 +98,27 @@ export async function searchAcrossMarkets({ query, countries, maxResults, strict
       if (!localizedQuery) throw Error('국가별 검색어 번역이 누락되었습니다.')
       const started = Date.now()
       try {
-        const items = await search(localizedQuery, limit, country, { strictCountry, evidenceQuery: localizedQuery, sourceQuery: query })
+        const plan = (localized.searchPlans?.[country] || [localizedQuery]).slice(0, 3)
+        const collected = new Map(), attempts = []
+        let lastError = null
+        for (const plannedQuery of plan) {
+          try {
+            const result = await search(plannedQuery, limit, country, { strictCountry, evidenceQuery: localizedQuery, sourceQuery: query })
+            for (const item of result) {
+              const evidence = assessDiscoveryEvidence(item, localizedQuery, query)
+              if (!evidence.matches || (item.country && item.country !== country) || (strictCountry && !(countryPolicy === 'public-profile' ? item.countryConfidence === 'detected' && item.country === country : evidence.countryVerified))) continue
+              const key = item.id || item.profileUrl
+              if (key) collected.set(key, item)
+            }
+            attempts.push({ query: plannedQuery, returned: result.length, search: result.searchMeta || null, status: 'success' })
+          } catch (error) { lastError = error; attempts.push({ query: plannedQuery, status: 'failed' }); if ([402, 403, 429].includes(Number(error.status))) break }
+          if (collected.size >= limit) break
+        }
+        if (!collected.size && attempts.every(item => item.status === 'failed')) throw lastError
+        const items = [...collected.values()]
+        items.searchMeta = { ...(attempts[0]?.search || {}), planning: 'ai-refinements-with-original-constraints', attempts, cacheHit: attempts.every(item => item.status === 'success' && item.search?.cacheHit), stale: attempts.some(item => item.search?.stale), searchCalls: attempts.reduce((total, item) => total + Number(item.search?.searchCalls || 0), 0), partial: attempts.some(item => item.status === 'failed' || item.search?.stale) }
         const matched = items.map(item => ({ ...item, discoveryQuery: query, localizedQuery, searchCountry: country, discoveryEvidence: { ...assessDiscoveryEvidence(item, localizedQuery, query), ...(countryPolicy === 'public-profile' ? { countryVerified:false, countryInferred:item.countryConfidence === 'detected' && item.country === country } : {}) } }))
-          .filter(item => item.discoveryEvidence.matches && (!item.country || item.country === country) && (!strictCountry || (countryPolicy === 'public-profile' ? item.discoveryEvidence.countryInferred : item.discoveryEvidence.countryVerified)))
+          .filter(item => item.discoveryEvidence.matches && (!item.country || item.country === country) && (!strictCountry || (countryPolicy === 'public-profile' ? item.discoveryEvidence.countryInferred : item.discoveryEvidence.countryVerified))).slice(0, limit)
         markets[index] = { country, language: DISCOVERY_MARKETS[country].language, query: localizedQuery, requested: limit, returned: matched.length, durationMs: Date.now() - started, status: 'success', partial: matched.length < limit || Boolean(items.searchMeta?.stale || items.searchMeta?.partial), countryInferred:matched.filter(c=>c.countryConfidence==='detected').length, countryUnverified:matched.filter(c=>c.countryConfidence==='unverified').length, search: items.searchMeta || null, items: matched }
       } catch (error) {
         markets[index] = { country, language: DISCOVERY_MARKETS[country].language, query: localizedQuery, requested: limit, returned: 0, status: 'failed', error: Number(error.status) === 403 ? '검색 API 할당량 또는 접근 권한을 확인하세요.' : '검색을 완료하지 못했습니다. 이 국가를 다시 검색하세요.', items: [] }

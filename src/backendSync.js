@@ -1,3 +1,4 @@
+import { brandSnapshotSignature } from './workspaceSyncGuard.js'
 import { createClient } from '@supabase/supabase-js'
 import { canReadFullWorkspace, canWriteBrandWorkspace, canWriteFullWorkspace } from './workspacePermissions'
 import { compareAndSwapSnapshot } from './snapshotConcurrency.js'
@@ -695,7 +696,7 @@ export function watchCloudWorkspace(callback, options = {}) {
     if (stopped) return
     const { data, error } = await supabase
       .from('workspace_snapshots')
-      .select('payload,updated_at')
+      .select('updated_at')
       .eq('workspace_id', WORKSPACE_ID)
       .maybeSingle()
     if (stopped) return
@@ -703,7 +704,11 @@ export function watchCloudWorkspace(callback, options = {}) {
       callback({ status: 'error', error })
       return
     }
-    if (data?.updated_at && data.updated_at !== lastUpdatedAt) {
+    if (data?.updated_at && data.updated_at !== lastUpdatedAt && data.updated_at !== options.getAcknowledgedVersion?.()) {
+      const { data: current, error: payloadError } = await supabase.from('workspace_snapshots').select('payload,updated_at').eq('workspace_id', WORKSPACE_ID).maybeSingle()
+      if (stopped) return
+      if (payloadError) { callback({ status: 'error', error: payloadError }); return }
+      if (!current?.updated_at || current.updated_at === options.getAcknowledgedVersion?.()) return
       const { data: snapshots, error: snapshotsError } = await supabase
         .from('brand_scoped_snapshots')
         .select('brand_id,payload,updated_at')
@@ -711,8 +716,8 @@ export function watchCloudWorkspace(callback, options = {}) {
         .order('brand_id')
       if (stopped) return
       if (snapshotsError) { callback({ status: 'error', error: snapshotsError }); return }
-      lastUpdatedAt = data.updated_at
-      callback({ status: 'updated', workspace: mergeBrandWorkspaceSnapshots(data.payload || {}, snapshots || []), updatedAt: data.updated_at })
+      lastUpdatedAt = current.updated_at
+      callback({ status: 'updated', workspace: mergeBrandWorkspaceSnapshots(current.payload || {}, snapshots || []), updatedAt: current.updated_at })
     }
   }
 
@@ -795,7 +800,7 @@ export function watchBrandCloudWorkspaces(callback, options = {}) {
     if (stopped) return
     const { data, error } = await supabase
       .from('brand_scoped_snapshots')
-      .select('brand_id,payload,updated_at')
+      .select('brand_id,updated_at')
       .eq('workspace_id', WORKSPACE_ID)
       .order('brand_id')
     if (stopped) return
@@ -805,10 +810,16 @@ export function watchBrandCloudWorkspaces(callback, options = {}) {
     }
 
     const snapshots = data || []
-    const version = snapshots.map((item) => `${item.brand_id}:${item.updated_at}`).join('|')
+    const version = brandSnapshotSignature(Object.fromEntries(snapshots.map((item) => [String(item.brand_id), item.updated_at])))
+    if (version === options.getAcknowledgedVersion?.()) { lastVersion = version; return }
     if (version && version !== lastVersion) {
-      lastVersion = version
-      callback({ status: 'updated', snapshots, version })
+      const { data: payloads, error: payloadError } = await supabase.from('brand_scoped_snapshots').select('brand_id,payload,updated_at').eq('workspace_id', WORKSPACE_ID).order('brand_id')
+      if (stopped) return
+      if (payloadError) { callback({ status: 'error', error: payloadError }); return }
+      const freshVersion = brandSnapshotSignature(Object.fromEntries((payloads || []).map(item => [String(item.brand_id), item.updated_at])))
+      lastVersion = freshVersion
+      if (freshVersion === options.getAcknowledgedVersion?.()) return
+      callback({ status: 'updated', snapshots: payloads || [], version: freshVersion })
     }
   }
 

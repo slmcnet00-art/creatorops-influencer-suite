@@ -12,6 +12,9 @@ export function planCampaignBudget(campaign = {}, rows = [], creators = []) {
   const items = []
   let totalCost = 0, unknownCount = 0, overBudgetCount = 0, overFeeCount = 0
   for (const row of [...rows].sort((a, b) => (Number(b.score) || 0) - (Number(a.score) || 0))) {
+    // New AI evaluations are eligible only after evidence-backed recommendation.
+    // Legacy recommendations keep their previous behavior until explicitly regenerated.
+    if (row.aiDecision && row.aiDecision !== 'recommend') continue
     const key = String(row.creatorId)
     if (seen.has(key)) continue
     seen.add(key)

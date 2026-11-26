@@ -51,7 +51,7 @@ export default function ContentPerformanceReport({ posts = [] }) {
       return <article className="content-performance-row" key={post.id || url || index}>
         <div className="content-performance-identity">
           <div className={`content-performance-thumbnail${/youtube/i.test(post.platform || '') ? ' is-youtube' : ''}`}>{thumbnail ? <img src={thumbnail} alt={`${post.title || '콘텐츠'} 썸네일`} loading="lazy" referrerPolicy="no-referrer" onError={event => { event.currentTarget.style.display = 'none' }} /> : null}<span>썸네일 미제공</span></div>
-          <div><strong>{post.title || '제목 미입력'}</strong><small>{post.platform || '플랫폼 미입력'} · {collected && Number.isFinite(Date.parse(collected)) ? `수집 ${time(collected)}` : '수집 시각 미확인'}</small>
+          <div><strong className="content-performance-title">{post.title || '제목 미입력'}</strong>{post.title?.length > 140 && <details className="content-performance-caption"><summary>전체 제목·본문 보기</summary><p>{post.title}</p></details>}<small>{post.platform || '플랫폼 미입력'} · {collected && Number.isFinite(Date.parse(collected)) ? `수집 ${time(collected)}` : '수집 시각 미확인'}</small>
             {post.publishedAt && <small>게시 {Number.isFinite(Date.parse(post.publishedAt)) ? time(post.publishedAt) : post.publishedAt}</small>}
             {url && <a href={url} target="_blank" rel="noreferrer">원본 열기 ↗</a>}
           </div>
