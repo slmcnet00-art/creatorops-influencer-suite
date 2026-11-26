@@ -1490,7 +1490,7 @@ function normalizeBrand(brand, index = 0) {
   brief.learningMaterials = brand?.brief?.learningMaterials ?? fallback?.brief?.learningMaterials ?? defaultBrandBrief.learningMaterials ?? []
 
   return {
-    id: Number(brand?.id) || fallback.id || createId(),
+    id: brand?.id ?? fallback.id ?? createId(),
     name: brand?.name || brief.brandName,
     owner: brand?.owner || fallback.owner || brand?.name || brief.brandName,
     color: brand?.color || fallback.color || '#2563eb',
@@ -2012,7 +2012,11 @@ function nowLabel() {
 }
 
 function createId() {
-  return Date.now() + Math.floor(Math.random() * 1000)
+  return crypto.randomUUID()
+}
+
+function resolveRecordId(records, value) {
+  return records.find((record) => String(record.id) === String(value))?.id ?? value
 }
 
 function compactNumber(value) {
@@ -2487,7 +2491,7 @@ function buildLearningMaterialsFromRows(rawRows, sourceType, sourceName = '') {
     const dontSay = pickLearningCell(row, headers, ['금지표현', '주의', 'dontsay', 'avoid', 'risk'])
 
     return {
-      id: createId() + index,
+      id: createId(),
       title,
       sourceType,
       sourceName,
@@ -5287,7 +5291,7 @@ function buildBriefDiscoveryCreators(setup, existingCreators = []) {
 
       return {
         ...(existing ?? {}),
-        id: existing?.id ?? createId() + serial,
+        id: existing?.id ?? createId(),
         name: existing?.name ?? `${templates[index % templates.length]} ${String(index + 1).padStart(2, '0')}`,
         handle: existing?.handle ?? `@${target.platform.toLowerCase()}.pet.discovery${String(index + 1).padStart(2, '0')}`,
         avatar: existing?.avatar ?? avatarPool[(serial - 1) % avatarPool.length],
@@ -8231,9 +8235,9 @@ function AppContent() {
     brandCampaigns.find((campaign) => campaign.id === selectedCampaignId) ?? brandCampaigns[0]
   const creators = useMemo(() => storedCreators.map(creator => withCreatorRate(creator, selectedCampaign || {})), [storedCreators, selectedCampaign])
   const trackingDraftCampaign =
-    brandCampaigns.find((campaign) => campaign.id === Number(trackingDraft.campaignId)) ?? selectedCampaign
+    brandCampaigns.find((campaign) => campaign.id === resolveRecordId(brandCampaigns, trackingDraft.campaignId)) ?? selectedCampaign
   const fulfillmentDraftCampaign =
-    brandCampaigns.find((campaign) => campaign.id === Number(fulfillmentDraft.campaignId)) ?? selectedCampaign
+    brandCampaigns.find((campaign) => campaign.id === resolveRecordId(brandCampaigns, fulfillmentDraft.campaignId)) ?? selectedCampaign
   const activeCampaignIdSet = useMemo(
     () => new Set(brandCampaigns.map((campaign) => campaign.id)),
     [brandCampaigns],
@@ -8676,7 +8680,11 @@ function AppContent() {
     return [...filtered].sort((a, b) => {
       if (referenceFilters.sort === 'virality') return getReferenceVirality(b) - getReferenceVirality(a)
       if (referenceFilters.sort === 'shares') return Number(b.shares || 0) - Number(a.shares || 0)
-      if (referenceFilters.sort === 'recent') return Number(b.id || 0) - Number(a.id || 0)
+      if (referenceFilters.sort === 'recent') {
+        const aTime = Date.parse(a.sourceCollectedAtIso || a.collectedAt || a.publishedAt)
+        const bTime = Date.parse(b.sourceCollectedAtIso || b.collectedAt || b.publishedAt)
+        return Number.isFinite(aTime) && Number.isFinite(bTime) ? bTime - aTime : activeReferenceBase.indexOf(a) - activeReferenceBase.indexOf(b)
+      }
       return Number(b.views || 0) - Number(a.views || 0)
     })
   }, [activeReferenceBase, referenceFilters])
@@ -11625,7 +11633,7 @@ function AppContent() {
   }
 
   const switchBrand = (brandId) => {
-    const nextBrandId = Number(brandId)
+    const nextBrandId = resolveRecordId(accessibleBrands, brandId)
     const nextBrand = accessibleBrands.find((brand) => brand.id === nextBrandId)
     if (!nextBrand) {
       showToast('현재 계정에는 이 브랜드 DB 접근권한이 없습니다.')
@@ -11864,7 +11872,7 @@ function AppContent() {
 
   const updateBulkPermissionBrandAccess = (mode) => {
     if (!canManagePermissions || !selectedPermissionAccounts.length || !bulkPermissionBrandId) return
-    const brandId = Number(bulkPermissionBrandId)
+    const brandId = resolveRecordId(brands, bulkPermissionBrandId)
     const targetBrand = brands.find((brand) => brand.id === brandId)
     const skippedCount = selectedPermissionAccounts.filter((account) => {
       if (fullBrandAccessRoles.has(normalizeRole(account.role))) return true
@@ -12399,7 +12407,7 @@ function AppContent() {
     const contactPlan = buildContactPlan(creator, getRecommendedContactChannelId(creator), message, campaign.name)
 
     return {
-      id: createId() + creator.id,
+      id: createId(),
       creatorId: creator.id,
       campaignId: campaign.id,
       marketCountry,
@@ -12809,8 +12817,8 @@ function AppContent() {
     )
     const sourcePool = basePool.length ? basePool : defaultCreators
     const queryLabel = query.trim() || campaignBrief.product || selectedCampaign?.name || activeBrand.name
-    const demoCreators = sourcePool.slice(0, maxDemoCount).map((creator, index) => {
-      const demoId = createId() + index
+    const demoCreators = sourcePool.slice(0, maxDemoCount).map((creator) => {
+      const demoId = createId()
       return {
         ...creator,
         id: demoId,
@@ -13237,7 +13245,7 @@ function AppContent() {
     const dataContract = recommendation.dataContract ?? fallbackRecommendation?.dataContract ?? null
 
     return {
-      id: createId() + creator.id,
+      id: createId(),
       creatorId: creator.id,
       campaignId: campaign.id,
       marketCountry,
@@ -15390,7 +15398,7 @@ function AppContent() {
 
   const createTrackedPost = async (event) => {
     event.preventDefault()
-    const campaignId = Number(trackingDraft.campaignId) || selectedCampaign?.id
+    const campaignId = resolveRecordId(brandCampaigns, trackingDraft.campaignId) || selectedCampaign?.id
     const trackingCampaign = brandCampaigns.find((campaign) => campaign.id === campaignId) || selectedCampaign
     const uploadedUrl = trackingDraft.url.trim()
 
@@ -15424,7 +15432,7 @@ function AppContent() {
       }
     }
 
-    const requestedCreatorId = Number(effectiveDraft.creatorId)
+    const requestedCreatorId = resolveRecordId(creators, effectiveDraft.creatorId)
     const platform = effectiveDraft.platform || inferPlatformFromUrl(uploadedUrl) || 'Instagram'
     const handle = effectiveDraft.creatorHandle || deriveHandleFromUrl(effectiveDraft.profileUrl || uploadedUrl)
     const creatorName = effectiveDraft.creatorName || String(handle || '').replace(/^@/, '') || 'Public creator'
@@ -15599,8 +15607,8 @@ function AppContent() {
 
   const createFulfillmentRecord = (event) => {
     event.preventDefault()
-    const campaignId = Number(fulfillmentDraft.campaignId) || selectedCampaign?.id
-    const creatorId = Number(fulfillmentDraft.creatorId) || selectedCreator?.id
+    const campaignId = resolveRecordId(brandCampaigns, fulfillmentDraft.campaignId) || selectedCampaign?.id
+    const creatorId = resolveRecordId(creators, fulfillmentDraft.creatorId) || selectedCreator?.id
     const creator = creators.find((item) => item.id === creatorId)
     const paymentAmount = Number(String(fulfillmentDraft.paymentAmount || '').replace(/[^\d]/g, '')) || 0
     const recipient = fulfillmentDraft.recipient.trim() || creator?.name || ''
@@ -17553,7 +17561,7 @@ function AppContent() {
                 <Target size={16} />
                 <select
                   value={selectedCampaign?.id ?? ''}
-                  onChange={(event) => setSelectedCampaignId(Number(event.target.value))}
+                  onChange={(event) => setSelectedCampaignId(resolveRecordId(brandCampaigns, event.target.value))}
                   disabled={!brandCampaigns.length}
                 >
                   {brandCampaigns.length === 0 ? (
@@ -22750,7 +22758,7 @@ function AppContent() {
                 <select
                   value={trackingDraft.campaignId || selectedCampaign?.id || ''}
                   onChange={(event) => {
-                    const campaign = brandCampaigns.find((item) => item.id === Number(event.target.value))
+                    const campaign = brandCampaigns.find((item) => String(item.id) === event.target.value)
                     setTrackingDraft({
                       ...trackingDraft,
                       campaignId: event.target.value,
@@ -22877,7 +22885,7 @@ function AppContent() {
                   <select
                     value={fulfillmentDraft.campaignId || selectedCampaign?.id || ''}
                     onChange={(event) => {
-                      const nextCampaign = brandCampaigns.find((campaign) => campaign.id === Number(event.target.value))
+                      const nextCampaign = brandCampaigns.find((campaign) => String(campaign.id) === event.target.value)
                       setFulfillmentDraft({
                         ...fulfillmentDraft,
                         campaignId: event.target.value,
@@ -22895,7 +22903,7 @@ function AppContent() {
                   <select
                     value={fulfillmentDraft.creatorId || selectedCreator?.id || ''}
                     onChange={(event) => {
-                      const nextCreator = creators.find((creator) => creator.id === Number(event.target.value))
+                      const nextCreator = creators.find((creator) => String(creator.id) === event.target.value)
                       setFulfillmentDraft({
                         ...fulfillmentDraft,
                         creatorId: event.target.value,
