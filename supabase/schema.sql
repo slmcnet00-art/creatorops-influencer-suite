@@ -1029,8 +1029,8 @@ create policy "Members can read metric definition versions"
 drop policy if exists "Owners and managers can manage metric definition versions" on public.metric_definition_versions;
 create policy "Owners and managers can manage metric definition versions"
   on public.metric_definition_versions for all to authenticated
-  using (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']))
-  with check (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']));
+  using (workspace_id is not null and public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']))
+  with check (workspace_id is not null and public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']));
 
 create policy "Owners and admins read audit logs"
   on public.audit_logs for select to authenticated
@@ -1050,8 +1050,8 @@ create policy "Members can read raw data sources"
 
 create policy "Owners and managers can manage raw data sources"
   on public.raw_data_sources for all to authenticated
-  using (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']))
-  with check (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']));
+  using (workspace_id is not null and public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']))
+  with check (workspace_id is not null and public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']));
 
 create policy "Members can read metric definitions"
   on public.metric_definitions for select to authenticated
@@ -1059,8 +1059,8 @@ create policy "Members can read metric definitions"
 
 create policy "Owners and managers can manage metric definitions"
   on public.metric_definitions for all to authenticated
-  using (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']))
-  with check (workspace_id is null or public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']));
+  using (workspace_id is not null and public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']))
+  with check (workspace_id is not null and public.is_workspace_member(workspace_id, array['Owner', 'Admin', 'Manager']));
 
 create policy "Members can read external report imports"
   on public.external_report_imports for select to authenticated

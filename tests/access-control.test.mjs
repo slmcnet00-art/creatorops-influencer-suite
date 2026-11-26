@@ -41,6 +41,20 @@ test('SEC-1: authenticated delivery writes are removed and sensitive policies en
   assert.doesNotMatch(frontend, /from\(['"]outreach_messages['"]\)/)
 })
 
+test('SEC-2: global definitions stay readable but every client write requires a non-null member workspace', () => {
+  const sql = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8')
+  const migration = readFileSync(new URL('../supabase/migrations/202611260002_sec2_protect_global_definitions.sql', import.meta.url), 'utf8')
+  for (const table of ['raw_data_sources', 'metric_definitions', 'metric_definition_versions']) {
+    const policies = [...sql.matchAll(new RegExp('create policy "[^"]+"\\s+on public\\.' + table + ' for (\\w+) to authenticated\\s+([\\s\\S]*?);', 'g'))]
+    const read = policies.find(([, action]) => action === 'select')
+    const write = policies.find(([, action]) => action === 'all')
+    assert.match(read[2], /workspace_id is null or public.is_workspace_member/)
+    assert.match(write[2], /workspace_id is not null and public.is_workspace_member/)
+    assert.doesNotMatch(write[2], /workspace_id is null or/)
+    assert.ok(migration.includes(write[0]))
+  }
+})
+
 test('Owner와 Admin은 전체 브랜드와 권한 관리에 접근한다', () => {
   for (const role of ['Owner', 'Admin']) {
     const account = { role, brandIds: [] }
