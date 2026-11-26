@@ -1905,7 +1905,7 @@ app.patch('/admin/access/members/:userId', requireAdminWorkspaceAccess, async (r
 
     let update
     try {
-      update = prepareMemberAccessUpdate(currentMember, request.body || {}, activeOwnerCount || 0)
+      update = prepareMemberAccessUpdate(currentMember, request.body || {}, activeOwnerCount || 0, request.adminUser.role)
     } catch (error) {
       throw httpError(error.status || 400, error.message)
     }

@@ -33,11 +33,11 @@ test('브랜드 ID를 문자열로 정규화하고 중복을 제거한다', () =
 test('마지막 Owner는 강등하거나 비활성화할 수 없다', () => {
   const current = { role: 'Owner', status: 'active' }
   assert.throws(
-    () => prepareMemberAccessUpdate(current, { role: 'Admin', status: 'active' }, 1),
+    () => prepareMemberAccessUpdate(current, { role: 'Admin', status: 'active' }, 1, 'Owner'),
     /last active workspace owner/i,
   )
   assert.throws(
-    () => prepareMemberAccessUpdate(current, { role: 'Owner', status: 'disabled' }, 1),
+    () => prepareMemberAccessUpdate(current, { role: 'Owner', status: 'disabled' }, 1, 'Owner'),
     /last active workspace owner/i,
   )
 })

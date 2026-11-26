@@ -846,8 +846,14 @@ create policy "Members read self or admins read workspace members"
 
 create policy "Owners and admins manage workspace members"
   on public.workspace_members for all to authenticated
-  using (public.is_workspace_member(workspace_id, array['Owner', 'Admin']))
-  with check (public.is_workspace_member(workspace_id, array['Owner', 'Admin']));
+  using (
+    public.is_workspace_member(workspace_id, array['Owner'])
+    or (role <> 'Owner' and public.is_workspace_member(workspace_id, array['Admin']))
+  )
+  with check (
+    public.is_workspace_member(workspace_id, array['Owner'])
+    or (role <> 'Owner' and public.is_workspace_member(workspace_id, array['Admin']))
+  );
 
 create policy "Members read own or admins read brand memberships"
   on public.brand_memberships for select to authenticated

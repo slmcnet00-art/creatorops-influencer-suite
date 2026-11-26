@@ -1,3 +1,4 @@
+import { prepareMemberAccessUpdate } from '../server/accessPolicy.js'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { readFileSync } from 'node:fs'
@@ -103,4 +104,22 @@ test('권한 테스트 계정은 실제 브랜드 ID로 생성되고 중복 없�
   const merged = mergePermissionTestAccounts(existing, brands)
   assert.equal(merged.filter((account) => account.id === 'acct-admin-test').length, 1)
   assert.equal(merged.find((account) => account.id === 'acct-admin-test').name, '권한 테스트 관리자')
+})
+
+
+test('SEC-4: Admin cannot promote or edit Owners; Owner retains last-owner protection', () => {
+  const owner = { role: 'Owner', status: 'active' }
+  const admin = { role: 'Admin', status: 'active' }
+  assert.throws(() => prepareMemberAccessUpdate(admin, { role: 'Owner' }, 2, 'Admin'), { status: 403 })
+  assert.throws(() => prepareMemberAccessUpdate(owner, { role: 'Admin' }, 2, 'Admin'), { status: 403 })
+  assert.throws(() => prepareMemberAccessUpdate(owner, { status: 'disabled' }, 2, 'Admin'), { status: 403 })
+  assert.throws(() => prepareMemberAccessUpdate(owner, { role: 'Admin' }, 1, 'Owner'), { status: 409 })
+  assert.equal(prepareMemberAccessUpdate(admin, { role: 'Owner' }, 2, 'Owner').role, 'Owner')
+  const schema = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8')
+  const policy = schema.match(/create policy "Owners and admins manage workspace members"[\s\S]*?;/)[0]
+  assert.equal((policy.match(/role <> 'Owner'/g) || []).length, 2)
+  const migration = readFileSync(new URL('../supabase/migrations/202611260003_sec4_owner_role_protection.sql', import.meta.url), 'utf8')
+  assert.ok(migration.includes(policy))
+  const server = readFileSync(new URL('../server/index.js', import.meta.url), 'utf8')
+  assert.ok(server.includes('activeOwnerCount || 0, request.adminUser.role)'))
 })

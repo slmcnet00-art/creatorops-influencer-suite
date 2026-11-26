@@ -13,12 +13,16 @@ export function normalizeBrandIds(value) {
   return [...new Set(value.map((item) => String(item || '').trim()).filter(Boolean))]
 }
 
-export function prepareMemberAccessUpdate(currentMember, input = {}, activeOwnerCount = 0) {
+export function prepareMemberAccessUpdate(currentMember, input = {}, activeOwnerCount = 0, requesterRole = '') {
   if (!currentMember) throw validationError('Workspace member not found.', 404)
   const role = String(input.role || currentMember.role || '').trim()
   const status = String(input.status || currentMember.status || '').trim()
   if (!WORKSPACE_ROLES.has(role)) throw validationError('Unsupported workspace role.')
   if (!WORKSPACE_MEMBER_STATUSES.has(status)) throw validationError('Unsupported workspace member status.')
+
+  if (requesterRole !== 'Owner' && (currentMember.role === 'Owner' || role === 'Owner')) {
+    throw validationError('Only an Owner can modify or assign an Owner.', 403)
+  }
 
   const removesActiveOwner = currentMember.role === 'Owner'
     && currentMember.status === 'active'
