@@ -1,3 +1,4 @@
+import { snapshotMergeDecision, brandSnapshotSignature } from './workspaceSyncGuard.js'
 import CampaignDocumentPanel from './CampaignDocumentPanel.jsx'
 import CampaignQuotePanel from './CampaignQuotePanel.jsx'
 import { CampaignDetailTabs, CampaignDetailPanel } from './CampaignDetailTabs.jsx'
@@ -7797,6 +7798,9 @@ function AppContent() {
   const [adminRunningJob, setAdminRunningJob] = useState('')
   const [authEmail, setAuthEmail] = useState('')
   const [cloudWorkspaceLoaded, setCloudWorkspaceLoaded] = useState(!backendConfig.hasSupabase)
+  const syncPendingRef = useRef({ full: false, brand: false })
+  const latestWorkspaceRef = useRef(workspace)
+  useEffect(() => { latestWorkspaceRef.current = workspace }, [workspace])
   const cloudVersionRef = useRef('')
   const cloudHydratedUserRef = useRef('')
   const cloudConflictRef = useRef(false)
@@ -11070,7 +11074,13 @@ function AppContent() {
       (event) => {
         if (cloudConflictRef.current) return
         if (event.status !== 'updated' || !event.workspace) return
-        if (event.updatedAt === cloudVersionRef.current) return
+        const decision = snapshotMergeDecision(event.updatedAt, cloudVersionRef.current, syncPendingRef.current.full || syncPendingRef.current.brand)
+        if (decision === 'ignore') return
+        if (decision === 'conflict') {
+          cloudConflictRef.current = true
+          setCloudSyncStatus({ mode: 'conflict', label: '동시 수정 충돌 — 내 변경사항은 보존됨', detail: '저장 대기 중 원격 변경이 도착했습니다. 내 변경사항을 다운로드하고 병합해주세요.', updatedAt: event.updatedAt || '' })
+          return
+        }
 
         cloudVersionRef.current = event.updatedAt || ''
         skipNextCloudSaveRef.current = true
@@ -11083,7 +11093,7 @@ function AppContent() {
           updatedAt: event.updatedAt || '',
         }))
       },
-      { after: cloudVersionRef.current, intervalMs: 10000 },
+      { after: cloudVersionRef.current, getAcknowledgedVersion: () => cloudVersionRef.current, intervalMs: 10000 },
     )
   }, [authSession, backendConfig.hasSupabase, canManagePermissions, cloudWorkspaceLoaded, setWorkspace])
 
@@ -11095,6 +11105,7 @@ function AppContent() {
       return undefined
     }
 
+    syncPendingRef.current.full = true
     const timeout = window.setTimeout(async () => {
       if (cloudConflictRef.current || cloudHydratedUserRef.current !== authSession?.user?.id) return
       try {
@@ -11120,6 +11131,7 @@ function AppContent() {
         }
         if (cloudConflictRef.current) return
         cloudVersionRef.current = result.updatedAt || cloudVersionRef.current
+        if (result.status === 'saved' && latestWorkspaceRef.current === workspace) syncPendingRef.current.full = false
         setCloudSyncStatus((current) => ({
           ...current,
           mode: 'cloud',
@@ -11187,7 +11199,13 @@ function AppContent() {
       (event) => {
         if (cloudConflictRef.current) return
         if (event.status !== 'updated' || !Array.isArray(event.snapshots)) return
-        if (event.version === brandCloudSignatureRef.current) return
+        const decision = snapshotMergeDecision(event.version, brandCloudSignatureRef.current, syncPendingRef.current.full || syncPendingRef.current.brand)
+        if (decision === 'ignore') return
+        if (decision === 'conflict') {
+          cloudConflictRef.current = true
+          setCloudSyncStatus({ mode: 'conflict', label: '브랜드 동시 수정 충돌 — 내 변경사항은 보존됨', detail: '저장 대기 중 원격 변경이 도착했습니다. 내 변경사항을 다운로드하고 병합해주세요.', updatedAt: '' })
+          return
+        }
         brandCloudSignatureRef.current = event.version || ''
         brandCloudVersionsRef.current = Object.fromEntries(
           event.snapshots.map((snapshot) => [String(snapshot.brand_id), snapshot.updated_at || '']),
@@ -11195,7 +11213,7 @@ function AppContent() {
         skipNextBrandCloudSaveRef.current = true
         setWorkspace((current) => mergeBrandCloudWorkspaces(current, event.snapshots))
       },
-      { after: brandCloudSignatureRef.current, intervalMs: 10000 },
+      { after: brandCloudSignatureRef.current, getAcknowledgedVersion: () => brandCloudSignatureRef.current, intervalMs: 10000 },
     )
 
     return () => {
@@ -11218,6 +11236,7 @@ function AppContent() {
       return undefined
     }
 
+    syncPendingRef.current.brand = true
     const timeout = window.setTimeout(async () => {
       if (cloudConflictRef.current || cloudHydratedUserRef.current !== authSession?.user?.id) return
       try {
@@ -11233,6 +11252,8 @@ function AppContent() {
       if (cloudConflictRef.current) return
       if (result.status === 'saved') {
         brandCloudVersionsRef.current[String(brandId)] = result.updatedAt || ''
+        brandCloudSignatureRef.current = brandSnapshotSignature(brandCloudVersionsRef.current)
+        if (latestWorkspaceRef.current === workspace) syncPendingRef.current.brand = false
         setCloudSyncStatus((current) => ({
           ...current,
           mode: 'cloud',

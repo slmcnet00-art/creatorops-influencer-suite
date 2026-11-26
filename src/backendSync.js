@@ -1,3 +1,4 @@
+import { brandSnapshotSignature } from './workspaceSyncGuard.js'
 import { createClient } from '@supabase/supabase-js'
 import { canReadFullWorkspace, canWriteBrandWorkspace, canWriteFullWorkspace } from './workspacePermissions'
 import { compareAndSwapSnapshot } from './snapshotConcurrency.js'
@@ -703,7 +704,7 @@ export function watchCloudWorkspace(callback, options = {}) {
       callback({ status: 'error', error })
       return
     }
-    if (data?.updated_at && data.updated_at !== lastUpdatedAt) {
+    if (data?.updated_at && data.updated_at !== lastUpdatedAt && data.updated_at !== options.getAcknowledgedVersion?.()) {
       const { data: snapshots, error: snapshotsError } = await supabase
         .from('brand_scoped_snapshots')
         .select('brand_id,payload,updated_at')
@@ -805,7 +806,8 @@ export function watchBrandCloudWorkspaces(callback, options = {}) {
     }
 
     const snapshots = data || []
-    const version = snapshots.map((item) => `${item.brand_id}:${item.updated_at}`).join('|')
+    const version = brandSnapshotSignature(Object.fromEntries(snapshots.map((item) => [String(item.brand_id), item.updated_at])))
+    if (version === options.getAcknowledgedVersion?.()) { lastVersion = version; return }
     if (version && version !== lastVersion) {
       lastVersion = version
       callback({ status: 'updated', snapshots, version })
