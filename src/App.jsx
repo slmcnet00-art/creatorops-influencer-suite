@@ -1690,7 +1690,7 @@ function buildOutreachTimeline(item = {}) {
     })
   }
 
-  if (item.responseAt || item.responseNote || item.status === '?묐떟') {
+  if (item.responseAt || item.responseNote || item.status === '응답') {
     events.push({
       label: '응답 확인',
       detail: item.responseNote || '응답 상태로 기록했습니다.',
@@ -1698,7 +1698,7 @@ function buildOutreachTimeline(item = {}) {
     })
   }
 
-  if (item.recruitedAt || item.status === '??쇅 ?꾨즺') {
+  if (item.recruitedAt || item.status === '섭외 완료') {
     events.push({
       label: '섭외 완료',
       detail: item.recruitmentNote || '섭외 완료 풀에 저장했습니다.',
@@ -10623,7 +10623,7 @@ function AppContent() {
         payloads.forEach((payload, index) => {
           const rawRow = rawRows[index]
           const url = String(
-            getPayloadValue(payload, ['content_url', 'content url', 'video url', 'post url', 'url', 'link', '??? URL', '?? URL', '??']) ?? '',
+            getPayloadValue(payload, ['content_url', 'content url', 'video url', 'post url', 'url', 'link', '콘텐츠 URL', '영상 URL', '링크']) ?? '',
           ).trim()
           const normalizedUrl = url.toLowerCase()
           if (!url || seenUrls.has(normalizedUrl)) {
@@ -10631,7 +10631,7 @@ function AppContent() {
             return
           }
 
-          const campaignName = String(getPayloadValue(payload, ['campaign_name', 'campaign', 'campaign name', '???', '????']) ?? '').trim()
+          const campaignName = String(getPayloadValue(payload, ['campaign_name', 'campaign', 'campaign name', '캠페인', '캠페인명']) ?? '').trim()
           const targetCampaign =
             currentCampaigns.find((campaign) => campaignName && campaign.name === campaignName) ||
             currentCampaigns.find((campaign) => campaign.id === selectedCampaign?.id) ||
@@ -10644,15 +10644,15 @@ function AppContent() {
 
           const platform = String(getPayloadValue(payload, ['platform', 'channel', '플랫폼', '채널']) || inferPlatformFromUrl(url) || 'Instagram')
           const profileUrl = String(getPayloadValue(payload, ['profile_url', 'profile url', 'channel url', '프로필 URL', '채널 URL']) || '').trim()
-          const handle = String(getPayloadValue(payload, ['creator_handle', 'handle', 'account', '??', '??', '???']) || deriveHandleFromUrl(profileUrl || url) || '').trim()
-          const creatorName = String(getPayloadValue(payload, ['creator_name', 'creator', 'influencer', '?????', '?????', '??']) || handle.replace(/^@/, '') || 'Imported creator').trim()
+          const handle = String(getPayloadValue(payload, ['creator_handle', 'handle', 'account', '핸들', '계정', '아이디']) || deriveHandleFromUrl(profileUrl || url) || '').trim()
+          const creatorName = String(getPayloadValue(payload, ['creator_name', 'creator', 'influencer', '크리에이터', '인플루언서', '이름']) || handle.replace(/^@/, '') || 'Imported creator').trim()
           const followers = parseMetricNumber(getPayloadValue(payload, ['followers', 'subscribers', 'fans', '팔로워', '구독자']))
-          const views = parseMetricNumber(getPayloadValue(payload, ['views', 'view count', 'play count', '???', '???']))
-          const likes = parseMetricNumber(getPayloadValue(payload, ['likes', 'like count', '???']))
-          const comments = parseMetricNumber(getPayloadValue(payload, ['comments', 'comment count', '??']))
-          const shares = parseMetricNumber(getPayloadValue(payload, ['shares', 'share count', '??']))
-          const saves = parseMetricNumber(getPayloadValue(payload, ['saves', 'bookmarks', 'collects', '??']))
-          const conversions = parseMetricNumber(getPayloadValue(payload, ['conversions', 'orders', 'purchase', '??', '??', '??']))
+          const views = parseMetricNumber(getPayloadValue(payload, ['views', 'view count', 'play count', '조회수', '재생수']))
+          const likes = parseMetricNumber(getPayloadValue(payload, ['likes', 'like count', '좋아요']))
+          const comments = parseMetricNumber(getPayloadValue(payload, ['comments', 'comment count', '댓글']))
+          const shares = parseMetricNumber(getPayloadValue(payload, ['shares', 'share count', '공유']))
+          const saves = parseMetricNumber(getPayloadValue(payload, ['saves', 'bookmarks', 'collects', '저장']))
+          const conversions = parseMetricNumber(getPayloadValue(payload, ['conversions', 'orders', 'purchase', '전환', '주문', '구매']))
 
           const existingCreator = nextCreators.find((creator) => {
             const creatorProfile = String(creator.profileUrl || creator.sourceUrl || '').toLowerCase()
@@ -10703,10 +10703,10 @@ function AppContent() {
             campaignId: targetCampaign.id,
             creatorId,
             platform,
-            title: String(getPayloadValue(payload, ['content_title', 'title', 'video title', '??? ??', '??']) || '???? ???').trim(),
+            title: String(getPayloadValue(payload, ['content_title', 'title', 'video title', '콘텐츠 제목', '제목']) || '???? ???').trim(),
             url,
             status: views || likes || comments || shares || saves ? '?? ???' : '?? ?? ??',
-            publishedAt: String(getPayloadValue(payload, ['published_at', 'published', 'date', '????', '???']) || nowLabel()).trim(),
+            publishedAt: String(getPayloadValue(payload, ['published_at', 'published', 'date', '업로드일', '게시일']) || nowLabel()).trim(),
             views,
             likes,
             comments,
@@ -10840,7 +10840,7 @@ function AppContent() {
 
         payloads.forEach((payload, index) => {
           const rawRow = rawRows[index]
-          const profileUrl = String(getPayloadValue(payload, ['profile_url', 'profile url', 'channel url', '??? URL', '?? URL']) || '').trim()
+          const profileUrl = String(getPayloadValue(payload, ['profile_url', 'profile url', 'channel url', '프로필 URL', '채널 URL']) || '').trim()
           const handle = String(getPayloadValue(payload, ['handle', 'creator_handle', 'account', '핸들', '계정', '아이디']) || deriveHandleFromUrl(profileUrl) || '').trim()
           const creatorName = String(getPayloadValue(payload, ['creator_name', 'creator', 'influencer', 'name', '크리에이터', '인플루언서', '이름']) || handle.replace(/^@/, '') || '').trim()
           if (!creatorName && !handle && !profileUrl) {
@@ -10848,13 +10848,13 @@ function AppContent() {
             return
           }
 
-          const platform = String(getPayloadValue(payload, ['platform', 'channel', '???', '??']) || inferPlatformFromUrl(profileUrl) || 'Instagram')
+          const platform = String(getPayloadValue(payload, ['platform', 'channel', '플랫폼', '채널']) || inferPlatformFromUrl(profileUrl) || 'Instagram')
           const followers = parseMetricNumber(getPayloadValue(payload, ['followers', 'subscribers', 'fans', '팔로워', '구독자']))
           const averageViews = parseMetricNumber(getPayloadValue(payload, ['average_views', 'average views', 'avg views', '평균 조회수']))
           const engagement = parseRatePercent(getPayloadValue(payload, ['engagement_rate', 'engagement', '참여율']))
-          const country = String(getPayloadValue(payload, ['country', '??']) || activeBrand.country || 'KR').trim()
-          const category = String(getPayloadValue(payload, ['category', '????']) || activeBrand.category || '???').trim()
-          const email = String(getPayloadValue(payload, ['email', 'contact_email', '???']) || '').trim()
+          const country = String(getPayloadValue(payload, ['country', '국가']) || activeBrand.country || 'KR').trim()
+          const category = String(getPayloadValue(payload, ['category', '카테고리']) || activeBrand.category || '???').trim()
+          const email = String(getPayloadValue(payload, ['email', 'contact_email', '이메일']) || '').trim()
 
           let creator = nextCreators.find((item) => {
             const itemProfile = String(item.profileUrl || item.sourceUrl || '').toLowerCase()
@@ -10884,7 +10884,7 @@ function AppContent() {
               fakeRisk: 0,
               cpm: 0,
               price: 0,
-              audience: String(getPayloadValue(payload, ['memo', 'note', '??']) || '???? ?? ??'),
+              audience: String(getPayloadValue(payload, ['memo', 'note', '메모', '비고']) || '???? ?? ??'),
               city: '',
               lastPost: nowLabel(),
               status: '??? ??',
@@ -10900,9 +10900,9 @@ function AppContent() {
             importedCreators += 1
           }
 
-          const groupName = String(getPayloadValue(payload, ['group_name', 'group name', 'list name', '???', '????']) || activeBrand.name + ' ?? ??').trim()
+          const groupName = String(getPayloadValue(payload, ['group_name', 'group name', 'list name', '그룹명', '리스트명']) || activeBrand.name + ' ?? ??').trim()
           const groupKey = groupName.toLowerCase()
-          const groupType = String(getPayloadValue(payload, ['group_type', 'group type', 'type', '?? ??', '??']) || '????').trim()
+          const groupType = String(getPayloadValue(payload, ['group_type', 'group type', 'type', '그룹 유형', '유형']) || '????').trim()
           const currentGroup = groupMap.get(groupKey)
 
           if (currentGroup) {
@@ -10917,7 +10917,7 @@ function AppContent() {
               name: groupName,
               brandId: activeBrand.id,
               campaignId: selectedCampaign?.id,
-              description: String(getPayloadValue(payload, ['memo', 'note', 'description', '??', '??']) || '?????? ??? ?? ??'),
+              description: String(getPayloadValue(payload, ['memo', 'note', 'description', '메모', '설명']) || '?????? ??? ?? ??'),
               platform,
               type: groupType,
               owner: currentAccount?.name || '?? ???',
