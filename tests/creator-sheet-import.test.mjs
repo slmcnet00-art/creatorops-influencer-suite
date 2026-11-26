@@ -61,3 +61,12 @@ test('source countries and swapped shipping columns remain explicit; missing cou
   assert.deepEqual(bundle.creators.map(creator => creator.country), ['US', 'US', '미확인'])
   assert.ok(bundle.creators.every(creator => creator.countryConfidence === 'unverified'))
 })
+
+test('imported and legacy bundle creators satisfy the UI topics array contract', () => {
+  const bundle = parseCreatorSheets([{ name: 'KR', sourceId: 's', sourceTitle: 'archive', rows: [['계정명'], ['creator']] }])
+  assert.deepEqual(bundle.creators[0].topics, [])
+  const legacy = { ...bundle, creators: bundle.creators.map(({ topics, ...creator }) => creator) }
+  const merged = mergeCreatorSheetImport({}, legacy)
+  assert.deepEqual(merged.creators[0].topics, [])
+  assert.doesNotThrow(() => [...merged.creators[0].topics])
+})

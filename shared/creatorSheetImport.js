@@ -107,7 +107,7 @@ export function parseCreatorSheets(tabs, { importedAt = new Date().toISOString()
       const source = { sourceId: tab.sourceId, sheet: tab.name, row: index + 1, asOf: text(value('date')) }
       const creator = { id, name: text(value('name')) || handle, handle: `@${handle}`, platform, profileUrl, isDemo: false,
         country: sourceCountry(value('country'), value('state'), tab.name), countryConfidence: 'unverified',
-        category: text(value('category')) || '뷰티', sourceTier: text(value('tier')), followers, averageViews,
+        category: text(value('category')) || '뷰티', topics: [], sourceTier: text(value('tier')), followers, averageViews,
         engagement: sheetNumber(value('engagement')), contactEmail: /^[^\s@,;<>]+@[^\s@,;<>]+\.[^\s@,;<>]+$/.test(email) ? email : '',
         preferredContactChannel: email ? 'email' : platform === 'TikTok' ? 'tiktok_dm' : platform === 'Instagram' ? 'instagram_dm' : 'email',
         source: '팀 제공 크리에이터 풀', sourceType: 'manual', sourceImportedAt: importedAt, sourceAsOf: source.asOf, needsVerification: true,
@@ -136,7 +136,8 @@ export function parseCreatorSheets(tabs, { importedAt = new Date().toISOString()
 export function mergeCreatorSheetImport(workspace, bundle) {
   if (bundle.format !== 'creatorops-creator-groups-v1' || !Array.isArray(bundle.creators) || !Array.isArray(bundle.creatorGroups)) throw new Error('지원하지 않는 크리에이터 그룹 자료입니다.')
   const creators = [...(workspace.creators || [])], identities = new Map(creators.map(c => [creatorAccountIdentity(c), c]).filter(([identity]) => identity)), ids = new Map()
-  for (const incoming of bundle.creators) {
+  for (const sourceCreator of bundle.creators) {
+    const incoming = { ...sourceCreator, topics: Array.isArray(sourceCreator.topics) ? sourceCreator.topics : [] }
     const identity = creatorAccountIdentity(incoming)
     if (!identity) continue
     const existing = identities.get(identity)
