@@ -1,4 +1,4 @@
-import { applyCreatorProfileEvidence } from '../shared/creatorProfileEvidence.js'
+import { applyCreatorProfileEvidence, isCandidateExcluded, restoreCreatorCandidate } from '../shared/creatorProfileEvidence.js'
 import { subscribeCreatorProfileEvidence } from './creatorProfileImageClient.js'
 import { mergeCreatorSheetImport } from '../shared/creatorSheetImport.js'
 import { sendAndWatchOutreachJob, watchOutreachJob, applyOutreachJobResults, outreachJobStorageKey } from './outreachJobClient.js'
@@ -8656,7 +8656,7 @@ function AppContent() {
   const visibleCreatorGroups = useMemo(() => {
     const query = creatorGroupQuery.trim().toLowerCase()
     return safeCreatorGroups.filter((group) => {
-      const groupCreators = getCreatorsByIds(creators, group.creatorIds || [])
+      const groupCreators = getCreatorsByIds(creators, group.creatorIds || []).filter(creator => !isCandidateExcluded(creator))
       const searchable = [
         group.name,
         group.description,
@@ -8674,7 +8674,7 @@ function AppContent() {
   const creatorGroupSummary = useMemo(() => {
     const summary = safeCreatorGroups.reduce(
       (groupSummary, group) => {
-        const groupCreators = getCreatorsByIds(creators, group.creatorIds || [])
+        const groupCreators = getCreatorsByIds(creators, group.creatorIds || []).filter(creator => !isCandidateExcluded(creator))
         const priceStats = getCreatorGroupPriceStats(groupCreators)
         return {
           groups: groupSummary.groups + 1,
@@ -8696,8 +8696,12 @@ function AppContent() {
     () => visibleCreatorGroups.find((group) => group.id === selectedCreatorGroupId) ?? visibleCreatorGroups[0] ?? null,
     [selectedCreatorGroupId, visibleCreatorGroups],
   )
+  const creatorExclusionLog = useMemo(() => {
+    const ids = new Set(safeCreatorGroups.flatMap(group => (group.creatorIds || []).map(String)))
+    return creators.filter(creator => ids.has(String(creator.id)) && creator.candidateExclusionHistory?.length)
+  }, [creators, safeCreatorGroups])
   const selectedCreatorGroupCreators = useMemo(
-    () => (selectedCreatorGroup ? getCreatorsByIds(creators, selectedCreatorGroup.creatorIds || []) : []),
+    () => (selectedCreatorGroup ? getCreatorsByIds(creators, selectedCreatorGroup.creatorIds || []).filter(creator => !isCandidateExcluded(creator)) : []),
     [creators, selectedCreatorGroup],
   )
   const selectedCreatorGroupPriceStats = useMemo(
@@ -8712,7 +8716,7 @@ function AppContent() {
     selectedCreatorGroupCreators.length > 0 &&
     selectedCreatorGroupCreators.every((creator) => selectedCreatorGroupMemberIds.includes(creator.id))
   const candidatePoolAllCreators = useMemo(() => {
-    return getCreatorsByIds(creators, shortlist)
+    return getCreatorsByIds(creators, shortlist).filter(creator => !isCandidateExcluded(creator))
   }, [creators, shortlist])
   const candidatePoolCreators = useMemo(() => {
     const normalizedQuery = candidatePoolQuery.trim().toLowerCase()
@@ -8985,7 +8989,7 @@ function AppContent() {
 
     return discoveryCreatorPool
       .filter((creator) => {
-        if (!showExampleCreators && isExampleCreator(creator)) return false
+        if (isCandidateExcluded(creator) || (!showExampleCreators && isExampleCreator(creator))) return false
         const pendingMetrics = hasPendingMetrics(creator)
         const searchable = [
           creator.name,
@@ -13106,6 +13110,7 @@ function AppContent() {
       const campaignCountry = String(campaignBrief.country || activeBrand.country || '전체')
       const campaignPlatforms = campaignBrief.platforms
       const eligibleCreators = creators
+        .filter(creator => !isCandidateExcluded(creator))
         .map((creator) => getCreatorWithPerformanceLearning(creator))
         .filter((creator) => {
           const pendingMetrics = hasPendingMetrics(creator)
@@ -16541,7 +16546,7 @@ function AppContent() {
   }
 
   const addCreatorGroupToCandidatePool = (group) => {
-    const creatorIds = group.creatorIds || []
+    const creatorIds = getCreatorsByIds(creators, group.creatorIds || []).filter(creator => !isCandidateExcluded(creator)).map(creator => creator.id)
     if (!creatorIds.length) {
       showToast('후보 풀로 보낼 멤버가 없습니다.')
       return
@@ -16585,7 +16590,7 @@ function AppContent() {
       return
     }
 
-    const creatorIds = group.creatorIds || []
+    const creatorIds = getCreatorsByIds(creators, group.creatorIds || []).filter(creator => !isCandidateExcluded(creator)).map(creator => creator.id)
     updateWorkspace((current) =>
       appendActivity(
         {
@@ -19422,6 +19427,17 @@ function AppContent() {
           </div>
           </details>
 
+          <details className="workspace-help">
+            <summary>자동 제외 내역 · {creatorExclusionLog.filter(isCandidateExcluded).length}명</summary>
+            <p>공식 채널 또는 공개 프로필이 없다는 응답을 두 번 확인한 계정만 후보에서 제외합니다. 접속 오류·로그인 필요·비공개·사진 미수집은 제외 사유가 아닙니다. 기존 캠페인과 리포트 기록은 보존합니다.</p>
+            {creatorExclusionLog.length ? <ul>{creatorExclusionLog.map(creator => <li key={creator.id}>
+              <strong>{creator.name} · {creator.platform}</strong>{' '}
+              <a href={creator.profileUrl} target="_blank" rel="noreferrer">원본 프로필</a>{' '}
+              <span>{isCandidateExcluded(creator) ? '후보 자동 제외' : '복구됨'} · {creator.candidateExclusion?.reason} · {creator.candidateExclusion?.evidenceSource} · {creator.candidateExclusion?.checkedAt && new Date(creator.candidateExclusion.checkedAt).toLocaleString('ko-KR')}</span>{' '}
+              {isCandidateExcluded(creator) && <button className="secondary-button compact-button" type="button" onClick={() => updateWorkspace(current => restoreCreatorCandidate(current, creator.id, new Date().toISOString()))}>후보 복구</button>}
+            </li>)}</ul> : <p>현재 확인되어 자동 제외된 계정은 없습니다.</p>}
+          </details>
+
           <div className="creator-group-summary">
             <Stat label="후보 그룹" value={`${creatorGroupSummary.groups}개`} />
             <Stat label="누적 멤버" value={`${creatorGroupSummary.creators}명`} />
@@ -19460,7 +19476,7 @@ function AppContent() {
               </div>
             ) : (
               visibleCreatorGroups.map((group) => {
-                const groupCreators = getCreatorsByIds(creators, group.creatorIds || [])
+                const groupCreators = getCreatorsByIds(creators, group.creatorIds || []).filter(creator => !isCandidateExcluded(creator))
                 const platforms = Array.from(new Set(groupCreators.map((creator) => creator.platform).filter(Boolean))).slice(0, 3)
                 const groupViews = groupCreators.reduce((sum, creator) => sum + getAverageViews(creator), 0)
                 const groupFollowers = groupCreators.reduce((sum, creator) => sum + Number(creator.followers || 0), 0)

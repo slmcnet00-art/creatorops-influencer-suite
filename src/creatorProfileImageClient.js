@@ -15,7 +15,7 @@ function pump() {
     const job = queue.shift()
     job.run().catch(() => ({ status: 'unavailable', imageUrl: '' })).then(data => {
       cache.set(job.url, { promise: Promise.resolve(data), expires: Date.now() + (data.status === 'verified' ? 6 * 3600000 : 120000) })
-      if (data.status === 'verified') observations.set(job.url, data)
+      if (['verified', 'account_not_found'].includes(data.status)) observations.set(job.url, data)
       job.resolve(data)
     }).finally(() => { active--; pump(); clearTimeout(flushTimer); flushTimer = setTimeout(flush, 1000) })
   }

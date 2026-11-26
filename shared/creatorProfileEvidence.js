@@ -7,12 +7,18 @@ export function profileEvidenceKey(value) {
   } catch { return '' }
 }
 export function applyCreatorProfileEvidence(workspace, observations) {
-  const evidence = new Map(observations.filter(row => row.status === 'verified').map(row => [profileEvidenceKey(row.profileUrl), row]))
+  const evidence = new Map(observations.filter(row => row.status === 'verified' || (row.status === 'account_not_found' && row.confirmedAbsent === true && row.checkCount >= 2)).map(row => [profileEvidenceKey(row.profileUrl), row]))
   let changed = false
   const creators = (workspace.creators || []).map(creator => {
     const row = evidence.get(profileEvidenceKey(creator.profileUrl))
     if (!row || Date.parse(row.collectedAt) <= Date.parse(creator.profileCheckedAt || 0)) return creator
     const patch = { profileCheckedAt: row.collectedAt }
+    if (row.status === 'account_not_found') {
+      const exclusion = { source: 'profile-check', reason: row.reason, evidenceSource: row.source, checkedAt: row.collectedAt, profileUrl: row.profileUrl }
+      changed = true
+      return { ...creator, ...patch, candidateExcluded: true, candidateExclusion: exclusion, candidateExclusionHistory: [...(creator.candidateExclusionHistory || []), { ...exclusion, action: 'excluded' }] }
+    }
+    if (creator.candidateExcluded && creator.candidateExclusion?.source === 'profile-check') Object.assign(patch, { candidateExcluded: false, candidateExclusionHistory: [...(creator.candidateExclusionHistory || []), { action: 'restored', checkedAt: row.collectedAt, reason: '공개 프로필 재확인 완료' }] })
     if (row.imageUrl) Object.assign(patch, { profileImageUrl: row.imageUrl, profileImageStatus: 'verified', profileImageCollectedAt: row.collectedAt })
     if (Number.isSafeInteger(row.followers) && row.followers >= 0) {
       const old = creator.followers == null || creator.followers === '' ? null : Number(creator.followers)
@@ -23,5 +29,12 @@ export function applyCreatorProfileEvidence(workspace, observations) {
     changed = true
     return { ...creator, ...patch }
   })
-  return changed ? { ...workspace, creators } : workspace
+  if (!changed) return workspace
+  const newExclusions = creators.filter((creator, index) => creator.candidateExcluded && !workspace.creators[index]?.candidateExcluded)
+  const activities = newExclusions.map(creator => ({ id: `profile-exclusion:${creator.id}:${creator.candidateExclusion.checkedAt}`, type: 'candidate', text: `후보 자동 제외: ${creator.name} · ${creator.platform} · ${creator.candidateExclusion.reason} · ${creator.profileUrl}`, createdAt: creator.candidateExclusion.checkedAt }))
+  return { ...workspace, creators, ...(activities.length ? { activities: [...activities, ...(workspace.activities || [])].slice(0, 40) } : {}) }
+}
+export const isCandidateExcluded = creator => creator?.candidateExcluded === true
+export function restoreCreatorCandidate(workspace, id, at) {
+  return { ...workspace, creators: (workspace.creators || []).map(creator => String(creator.id) !== String(id) ? creator : { ...creator, candidateExcluded: false, profileCheckedAt: at, candidateExclusionHistory: [...(creator.candidateExclusionHistory || []), { action: 'restored', checkedAt: at, reason: '운영자 복구' }] }) }
 }

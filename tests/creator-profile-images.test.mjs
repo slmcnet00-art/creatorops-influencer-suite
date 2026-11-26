@@ -39,3 +39,28 @@ test('YouTube uses channels.list snippet images and TikTok uses the matching acc
   assert.equal(urls[0].searchParams.get('part'), 'snippet,statistics')
   assert.equal((await photos.resolve('https://tiktok.com/@creator')).imageUrl, 'https://p16.tiktokcdn.com/photo')
 })
+
+test('only two explicit missing-profile responses confirm absence; blocked or private pages do not', async () => {
+  let calls = 0
+  const missingHtml = "<title>Page not found</title>Sorry, this page isn't available."
+  const missing = createCreatorProfileImages({ fetchImpl: async () => { calls++; return new Response(missingHtml, { status: 404 }) } })
+  const result = await missing.resolve('https://instagram.com/gone/')
+  assert.equal(result.status, 'account_not_found')
+  assert.equal(result.confirmedAbsent, true)
+  assert.equal(calls, 2)
+  for (const [body, status] of [[missingHtml, 429], [missingHtml, 503], ['<title>Login • Instagram</title>' + missingHtml, 404], ['Private account', 200], ['Not found', 404]]) {
+    const service = createCreatorProfileImages({ fetchImpl: async () => new Response(body, { status }) })
+    assert.equal((await service.resolve('https://instagram.com/safe/')).status, 'unavailable')
+  }
+  let attempt = 0
+  const transient = createCreatorProfileImages({ fetchImpl: async () => ++attempt === 1 ? new Response(missingHtml, { status: 404 }) : new Response(html) })
+  assert.equal((await transient.resolve('https://instagram.com/creator/')).status, 'unavailable')
+})
+
+test('stable YouTube channel ID absence is rechecked; an absent handle could be renamed and is retained', async () => {
+  let calls = 0
+  const service = createCreatorProfileImages({ env: { YOUTUBE_DATA_API_KEY: 'test-only' }, fetchJson: async () => { calls++; return { items: [] } } })
+  assert.equal((await service.resolve('https://youtube.com/channel/UCknown')).status, 'account_not_found')
+  assert.equal(calls, 2)
+  assert.equal((await service.resolve('https://youtube.com/@renamed')).status, 'unavailable')
+})

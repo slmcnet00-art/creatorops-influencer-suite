@@ -34,14 +34,24 @@ function publicCount(value) {
 }
 export function createCreatorProfileImages({ fetchImpl = fetch, fetchJson = async (url, options) => { const r = await fetchImpl(url, options); if (!r.ok) throw Error('upstream unavailable'); return r.json() }, env = process.env, now = Date.now } = {}) {
   const cache = new Map(), inFlight = new Map()
+  const missing = (identity, source) => ({ profileUrl: identity.url, platform: identity.platform, imageUrl: '', followers: null, status: 'account_not_found', confirmedAbsent: true, checkCount: 2, reason: '공개 프로필이 존재하지 않음 · 삭제 또는 주소 변경', source, collectedAt: new Date(now()).toISOString() })
+  async function confirmMissingPage(identity, response, html, options) {
+    const absent = (reply, body) => [404, 410].includes(reply.status) && !/log\s?in|로그인/i.test(decode(body.match(/<title>([\s\S]*?)<\/title>/i)?.[1])) && /sorry,? this page isn't available|page (?:may have been|has been) removed|user not found|couldn.t find this (?:account|user)|이 페이지를 사용할 수 없습니다|사용자를 찾을 수 없습니다/i.test(decode(body))
+    if (!absent(response, html)) return false
+    const second = await fetchImpl(identity.url, { ...options, signal: AbortSignal.timeout(8000), cache: 'no-store' })
+    return absent(second, await second.text())
+  }
   async function collect(identity) {
     let imageUrl, followers, source
     let followerPrecision = 'public_reported'
     const options = { signal: AbortSignal.timeout(8000), redirect: 'error' }
     if (identity.platform === 'Instagram') {
       const response = await fetchImpl(identity.url, { ...options, headers: { Accept: 'text/html', 'User-Agent': 'CreatorOpsPublicSnapshot/1.0' } })
-      if (!response.ok) throw Error('profile unavailable')
       const html = await response.text(), title = decode(html.match(/<title>([\s\S]*?)<\/title>/i)?.[1])
+      if (!response.ok) {
+        if (await confirmMissingPage(identity, response, html, options)) return missing(identity, 'Instagram 공개 프로필 404/410 재확인')
+        throw Error('profile unavailable')
+      }
       if (/login|log in|sign up|로그인/i.test(title) || ![...title.matchAll(/@([\p{L}\p{N}._-]+)/gu)].some(match => match[1].toLowerCase() === identity.handle.toLowerCase())) throw Error('profile identity not confirmed')
       imageUrl = safeImage(meta(html, 'og:image'), identity.platform)
       const description = meta(html, 'og:description') || meta(html, 'description')
@@ -54,13 +64,21 @@ export function createCreatorProfileImages({ fetchImpl = fetch, fetchJson = asyn
       const params = new URLSearchParams({ part: 'snippet,statistics', [identity.lookup]: identity.handle, key: env.YOUTUBE_DATA_API_KEY })
       const payload = await fetchJson(`https://www.googleapis.com/youtube/v3/channels?${params}`, options)
       const channel = payload.items?.[0]
+      if (!channel && identity.lookup === 'id' && Array.isArray(payload.items)) {
+        const second = await fetchJson(`https://www.googleapis.com/youtube/v3/channels?${params}`, { ...options, signal: AbortSignal.timeout(8000) })
+        if (Array.isArray(second.items) && !second.items.length) return missing(identity, 'YouTube Data API 채널 ID 2회 재확인')
+      }
       imageUrl = safeImage(channel?.snippet?.thumbnails?.high?.url || channel?.snippet?.thumbnails?.default?.url, identity.platform)
       followers = channel?.statistics?.hiddenSubscriberCount ? null : publicCount(channel?.statistics?.subscriberCount)
       source = 'YouTube Data API channels.list'
     } else {
       const payload = await fetchJson(`https://www.tikwm.com/api/user/info?${new URLSearchParams({ unique_id: identity.handle })}`, options)
       const user = payload.data?.user
-      if (payload.code !== 0 || user?.uniqueId?.toLowerCase() !== identity.handle.toLowerCase()) throw Error('profile identity not confirmed')
+      if (payload.code !== 0 || user?.uniqueId?.toLowerCase() !== identity.handle.toLowerCase()) {
+        const response = await fetchImpl(identity.url, options)
+        if (await confirmMissingPage(identity, response, await response.text(), options)) return missing(identity, 'TikTok 공개 프로필 404/410 재확인')
+        throw Error('profile identity not confirmed')
+      }
       imageUrl = safeImage(user.avatarLarger || user.avatarMedium || user.avatarThumb, identity.platform)
       followers = publicCount(payload.data?.stats?.followerCount)
       source = 'TikTok 공개 프로필 미러'
@@ -75,7 +93,7 @@ export function createCreatorProfileImages({ fetchImpl = fetch, fetchJson = asyn
     if (inFlight.size >= 12) return { profileUrl: identity.url, imageUrl: '', followers: null, status: 'busy' }
     const task = collect(identity).catch(() => ({ profileUrl: identity.url, platform: identity.platform, imageUrl: '', followers: null, status: 'unavailable', collectedAt: new Date(now()).toISOString() })).then(data => {
       if (cache.size >= 1000) cache.delete(cache.keys().next().value)
-      cache.set(key, { data, expires: now() + (data.status === 'verified' ? 6 * 3600000 : 120000) })
+      cache.set(key, { data, expires: now() + (['verified', 'account_not_found'].includes(data.status) ? 6 * 3600000 : 120000) })
       return data
     }).finally(() => inFlight.delete(key))
     inFlight.set(key, task)
