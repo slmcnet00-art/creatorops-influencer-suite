@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
+import { readFileSync } from 'node:fs'
 import {
   buildPermissionTestAccounts,
   canAccessSection,
@@ -14,6 +15,31 @@ const brands = [
   { id: 202, name: '브랜드 B' },
   { id: 203, name: '브랜드 C' },
 ]
+
+test('SEC-1: authenticated delivery writes are removed and sensitive policies enforce role/brand scope', () => {
+  const sql = readFileSync(new URL('../supabase/schema.sql', import.meta.url), 'utf8')
+  const migration = readFileSync(new URL('../supabase/migrations/202611260001_sec1_brand_role_rls.sql', import.meta.url), 'utf8')
+  const policies = [...sql.matchAll(/create policy "([^"]+)"\s+on public\.(\w+) for (\w+) to authenticated\s+([\s\S]*?);/g)]
+  const outreach = policies.filter(([, , table]) => table === 'outreach_messages')
+  assert.equal(outreach.length, 1)
+  assert.equal(outreach[0][3], 'select')
+  assert.match(outreach[0][4], /array\['Owner', 'Admin', 'Manager', 'Marketer'\]/)
+  assert.match(migration, /drop policy if exists "Members can write outreach messages"/)
+  for (const table of ['creator_contact_points', 'creator_rates']) {
+    const write = policies.find(([, , t, action]) => t === table && action === 'all')
+    assert.match(write[4], /array\['Owner', 'Admin'\]/)
+    assert.ok(policies.some(([, , t, action, body]) => t === table && action === 'select' && body.includes('has_brand_access(workspace_id, brand_id)')))
+  }
+  for (const table of ['creator_profile_snapshots', 'content_metric_snapshots', 'audience_demographic_snapshots', 'brand_mention_evidence', 'ad_disclosure_evidence', 'creator_quality_signals', 'related_content_edges', 'utm_tracking_rows']) {
+    for (const policy of policies.filter(([, , t]) => t === table)) {
+      assert.match(policy[4], /has_brand_access\(workspace_id, brand_id/)
+      if (policy[3] !== 'select') assert.doesNotMatch(policy[4], /'Client'/)
+      assert.ok(migration.includes(policy[0]))
+    }
+  }
+  const frontend = readFileSync(new URL('../src/backendSync.js', import.meta.url), 'utf8')
+  assert.doesNotMatch(frontend, /from\(['"]outreach_messages['"]\)/)
+})
 
 test('Owner와 Admin은 전체 브랜드와 권한 관리에 접근한다', () => {
   for (const role of ['Owner', 'Admin']) {
