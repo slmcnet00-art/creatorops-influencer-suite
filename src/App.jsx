@@ -16122,26 +16122,26 @@ function AppContent() {
         }),
       })
       const payload = await response.json().catch(() => ({}))
-      if (!response.ok) throw new Error(payload?.message || 'Gmail 일괄 발송에 실패했습니다.')
+      if (!response.ok) throw Object.assign(new Error(payload?.message || 'Gmail 일괄 발송에 실패했습니다.'), { status: response.status })
       const results = Array.isArray(payload?.data?.results) ? payload.data.results : []
       const selectedCampaignUsage = payload?.data?.policy?.campaignUsage?.find(
         (usage) => String(usage.campaignId || '') === String(selectedCampaign?.id || ''),
       )
       if (selectedCampaignUsage) setOutreachDailyUsage(selectedCampaignUsage)
-      sentIds = results.filter((item) => item.status === 'sent').map((item) => item.id)
+      sentIds = results.filter((item) => item.status === 'sent' || (item.reason === 'duplicate' && item.providerMessageId)).map((item) => item.id)
       campaignExcludedCount += results.filter((item) => item.reason === 'campaign_suppressed').length
       globallySuppressedCount += results.filter((item) => item.reason === 'suppressed').length
       skippedCount += results.filter(
-        (item) => item.status === 'skipped' && !['suppressed', 'campaign_suppressed'].includes(item.reason),
+        (item) => item.status === 'skipped' && !['suppressed', 'campaign_suppressed'].includes(item.reason) && !(item.reason === 'duplicate' && item.providerMessageId),
       ).length
       failures = results.filter((item) => item.status === 'failed')
     } catch (error) {
-      failures = [{ message: error instanceof Error ? error.message : 'Gmail 일괄 발송에 실패했습니다.' }]
+      failures = [{ message: error instanceof Error ? error.message : 'Gmail 일괄 발송에 실패했습니다.', httpStatus: error?.status }]
     } finally {
       setGmailSending(false)
     }
 
-    if (failures.some((failure) => /accessToken|token|401|invalid/i.test(failure.message))) {
+    if (failures.some((failure) => Number(failure.httpStatus) === 401)) {
       window.localStorage.removeItem(GMAIL_AUTH_STORE_KEY)
       setGmailAuth(null)
     }

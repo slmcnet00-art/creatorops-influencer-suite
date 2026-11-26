@@ -2254,6 +2254,8 @@ app.get('/outreach/policy', requireWorkspaceAccess, async (request, response, ne
     const campaignId = String(request.query?.campaignId || '').trim()
     if (workspaceId !== WORKSPACE_ID) throw httpError(403, 'The requested workspace does not match the authenticated workspace.')
     if (!campaignId) throw httpError(400, 'campaignId is required.')
+    await assertOutreachCampaigns(request, [{ campaignId }])
+    const manualReviewRequired = await getOutreachPendingReviews(workspaceId, campaignId)
     const usage = await getCampaignDailyOutreachUsage(workspaceId, campaignId)
     response.json({
       data: {
@@ -2262,6 +2264,7 @@ app.get('/outreach/policy', requireWorkspaceAccess, async (request, response, ne
         dailyLimitPerCampaign: OUTREACH_DAILY_LIMIT_PER_CAMPAIGN,
         timeZone: 'Asia/Seoul',
         usage,
+        manualReviewRequired,
       },
     })
   } catch (error) {
@@ -2418,7 +2421,7 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
       const memoryKey = `${workspaceId}:${item.idempotencyKey}`
       const memoryEntry = outreachDeliveryMemory.get(memoryKey)
       if (memoryEntry?.status === 'sending' || memoryEntry?.status === 'sent') {
-        results.push({ id: item.id, status: 'skipped', reason: 'duplicate', providerMessageId: memoryEntry.providerMessageId || '' })
+        results.push({ id: item.id, status: 'skipped', reason: 'duplicate', providerMessageId: memoryEntry.providerMessageId || memoryEntry.provider_message_id || '' })
         continue
       }
 
@@ -2443,17 +2446,21 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
         continue
       }
 
+      let acceptedProviderMessageId = ''
       try {
         const waitMs = Math.max(0, OUTREACH_SEND_INTERVAL_MS - (Date.now() - lastSendStartedAt))
         if (lastSendStartedAt && waitMs) await delay(waitMs)
         const claim = await claimOutreachDelivery(workspaceId, item)
         if (!claim.claimed) {
-          results.push({ id: item.id, status: 'skipped', reason: 'duplicate', message: 'Delivery is pending, completed, or requires manual review.' })
+          results.push({ id: item.id, status: 'skipped', reason: 'duplicate', providerMessageId: claim.existing?.provider_message_id || claim.existing?.providerMessageId || '', message: 'Delivery is pending, completed, or requires manual review.' })
           continue
         }
         outreachDeliveryMemory.set(memoryKey, { status: 'sending', updatedAt: Date.now() })
         lastSendStartedAt = Date.now()
         const payload = await sendGmailWithRetry(accessToken, item)
+        acceptedProviderMessageId = payload.id || ''
+        dailyUsage.used += 1
+        dailyUsage.remaining = getOutreachDailyRemaining(dailyUsage.used, dailyUsage.limit)
         const sentAt = new Date().toISOString()
         await persistOutreachDelivery(workspaceId, item, {
           status: 'sent',
@@ -2464,18 +2471,18 @@ app.post('/outreach/gmail/send-batch', requireWorkspaceAccess, async (request, r
         }).catch(error => { error.deliveryAccepted = true; throw error })
         outreachDeliveryMemory.set(memoryKey, { status: 'sent', providerMessageId: payload.id, updatedAt: Date.now() })
         results.push({ id: item.id, status: 'sent', providerMessageId: payload.id, threadId: payload.threadId, attemptCount: payload.attemptCount })
-        dailyUsage.used += 1
-        dailyUsage.remaining = getOutreachDailyRemaining(dailyUsage.used, dailyUsage.limit)
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Gmail send failed.'
-        if (isDefinitiveDeliveryFailure(error)) await persistOutreachDelivery(workspaceId, item, {
+        const definitiveFailure = isDefinitiveDeliveryFailure(error)
+        let recordingFailed = Boolean(acceptedProviderMessageId)
+        if (definitiveFailure) await persistOutreachDelivery(workspaceId, item, {
           status: 'failed',
           attemptCount: Number(error?.attemptCount || OUTREACH_MAX_ATTEMPTS),
           lastError: message,
           retrySafe: true,
-        })
-        outreachDeliveryMemory.set(memoryKey, { status: 'failed', lastError: message, updatedAt: Date.now() })
-        results.push({ id: item.id, status: 'failed', message })
+        }).catch(() => { recordingFailed = true })
+        outreachDeliveryMemory.set(memoryKey, { status: acceptedProviderMessageId ? 'sent' : definitiveFailure && !recordingFailed ? 'failed' : 'sending', providerMessageId: acceptedProviderMessageId, lastError: message, updatedAt: Date.now() })
+        results.push({ id: item.id, status: 'failed', message, httpStatus: Number(error?.status) || 0, recordingFailed, requiresManualReview: !definitiveFailure || recordingFailed, providerMessageId: acceptedProviderMessageId })
       }
     }
 
@@ -5377,6 +5384,18 @@ async function persistOutreachSuppression({ workspaceId, email, scope, campaignI
   const { error } = await supabase.from('outreach_messages').upsert(row, { onConflict: 'id' })
   if (error) throw error
   return row
+}
+
+async function getOutreachPendingReviews(workspaceId, campaignId, now = new Date()) {
+  const supabase = getSupabaseAdminClient()
+  if (!supabase) throw httpError(503, 'Supabase is required to inspect pending deliveries.')
+  const cutoff = new Date(now.getTime() - 15 * 60 * 1000).toISOString()
+  const { data, error } = await supabase.from('outreach_messages')
+    .select('id,recipient,provider_message_id,updated_at')
+    .eq('workspace_id', workspaceId).eq('campaign_id', campaignId).eq('status', 'sending')
+    .lt('updated_at', cutoff).order('updated_at').limit(100)
+  if (error) throw error
+  return (data || []).map((row) => ({ id: row.id, recipient: row.recipient, providerMessageId: row.provider_message_id || '', updatedAt: row.updated_at, status: 'manual_check_required', message: '발송 결과를 Gmail에서 수동 확인하세요. 자동 재발송하지 않습니다.' }))
 }
 
 async function getCampaignDailyOutreachUsage(workspaceId, campaignId, now = new Date()) {

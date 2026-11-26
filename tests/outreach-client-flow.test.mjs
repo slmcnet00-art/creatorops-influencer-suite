@@ -42,3 +42,21 @@ test('OUT-2: fallback email fields enter the same batch and recipient preview', 
     assert.match(h.confirmation, /business@example\.invalid/)
   }
 })
+
+
+test('OUT-3: duplicate with provider ID reconciles pending client row as sent', async () => {
+  const h = clientHarness({ confirm: true, response: { data: { results: [{ id: 'item', status: 'skipped', reason: 'duplicate', providerMessageId: 'gmail-id' }] } } })
+  await h.context.send()
+  assert.equal(h.workspace.outreach[0].status, '발송 완료')
+})
+
+test('OUT-3: Gmail disconnect uses actual HTTP 401, not error wording', async () => {
+  for (const httpStatus of [400, 401, 500]) {
+    const h = clientHarness({ confirm: true, httpStatus, response: { message: 'invalid token wording' } })
+    await h.context.send()
+    assert.equal(h.disconnected, httpStatus === 401)
+  }
+  const h = clientHarness({ confirm: true, response: { data: { results: [{ id: 'item', status: 'failed', message: 'invalid input' }] } } })
+  await h.context.send()
+  assert.equal(h.disconnected, false)
+})
