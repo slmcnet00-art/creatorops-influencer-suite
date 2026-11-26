@@ -13692,9 +13692,10 @@ function AppContent() {
 
     const previousGroup = { value: '' }
     const rows = sourceItems.map(({ creator, campaign, note }, index) => {
-      const combinedPrice = Math.max(1, Math.round(Number(creator.price || 0) / 10000))
-      const shortsPrice = creator.platform === 'YouTube' ? Math.max(1, Math.round(combinedPrice * 0.72)) : ''
-      const reelsPrice = creator.platform === 'Instagram' || creator.platform === 'TikTok'
+      const hasPrice = Number.isFinite(Number(creator.price)) && Number(creator.price) > 0
+      const combinedPrice = hasPrice ? Math.max(1, Math.round(Number(creator.price) / 10000)) : '협의'
+      const shortsPrice = creator.platform === 'YouTube' ? (hasPrice ? Math.max(1, Math.round(combinedPrice * 0.72)) : '협의') : ''
+      const reelsPrice = !hasPrice ? '협의' : creator.platform === 'Instagram' || creator.platform === 'TikTok'
         ? Math.max(1, Math.round(combinedPrice * 0.62))
         : Math.max(1, Math.round(combinedPrice * 0.52))
       const group = creator.followers >= 100000
@@ -13708,7 +13709,7 @@ function AppContent() {
       const schedule = campaign?.deadline && campaign.deadline !== '일정 미정'
         ? `${campaign.deadline} 전후 업로드 가능`
         : '추후협의 필요'
-      const licensePrice = creator.price ? `${Math.max(20, Math.round(combinedPrice * 0.35))}만원` : '협의'
+      const licensePrice = hasPrice ? `${Math.max(20, Math.round(combinedPrice * 0.35))}만원` : '협의'
       const remarks = [
         creator.needsVerification ? '공개 수치 검증 대기' : '',
         note,
@@ -13734,7 +13735,7 @@ function AppContent() {
     const numericRows = rows.filter((row) => typeof row[5] === 'number')
     const totalFollowers = numericRows.reduce((sum, row) => sum + Number(row[5] || 0), 0)
     const totalViews = numericRows.reduce((sum, row) => sum + Number(row[6] || 0), 0)
-    const totalCombinedPrice = rows.reduce((sum, row) => sum + Number(row[7] || 0), 0)
+    const totalCombinedPrice = rows.reduce((sum, row) => sum + (typeof row[7] === 'number' ? row[7] : 0), 0)
 
     return [
       [title, '', '', '', '', '', '', '', '', '', '', '', ''],
