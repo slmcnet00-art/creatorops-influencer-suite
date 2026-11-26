@@ -1,3 +1,5 @@
+import { applyCreatorProfileEvidence } from '../shared/creatorProfileEvidence.js'
+import { subscribeCreatorProfileEvidence } from './creatorProfileImageClient.js'
 import { mergeCreatorSheetImport } from '../shared/creatorSheetImport.js'
 import { sendAndWatchOutreachJob, watchOutreachJob, applyOutreachJobResults, outreachJobStorageKey } from './outreachJobClient.js'
 import { snapshotMergeDecision, brandSnapshotSignature } from './workspaceSyncGuard.js'
@@ -11295,6 +11297,11 @@ function AppContent() {
   }
 
   useEffect(() => {
+    if (!authSession?.user?.id || !['Owner', 'Admin'].includes(normalizeRole(currentAccount?.role))) return
+    return subscribeCreatorProfileEvidence(observations => setWorkspace(current => applyCreatorProfileEvidence(current, observations)))
+  }, [authSession?.user?.id, currentAccount?.role, setWorkspace])
+
+  useEffect(() => {
     const apiBaseUrl = String(backendConfig.apiBaseUrl || '').replace(/\/$/, '')
     if (!apiBaseUrl) return
     let cancelled = false
@@ -19507,7 +19514,7 @@ function AppContent() {
                     </div>
                     <div className="creator-group-avatars">
                       {groupCreators.slice(0, 7).map((creator) => (
-                        <img key={creator.id} src={creator.avatar} alt="" />
+                        <CreatorProfileAvatar key={creator.id} creator={creator} />
                       ))}
                       {groupCreators.length > 7 && <span>+{groupCreators.length - 7}</span>}
                     </div>
@@ -19614,6 +19621,7 @@ function AppContent() {
                         <div>
                           <strong>{creatorAudience(creator).value == null ? '확인 필요' : compactNumber(creatorAudience(creator).value)}</strong>
                           <span title={creatorAudience(creator).source}>{creatorAudience(creator).label}</span>
+                          {creator.followerCheckedAt && <small>확인 {new Date(creator.followerCheckedAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}{creator.previousFollowers != null && creator.followerChange !== 0 ? ` · 이전 ${Number(creator.previousFollowers).toLocaleString('ko-KR')} → 현재 ${Number(creator.followers).toLocaleString('ko-KR')}` : ''}{creator.followerPrecision === 'public_display_rounded' ? ' · 공개 표시값(반올림)' : ''}</small>}
                         </div>
                         <div>
                           <strong>{getAverageViews(creator) > 0 ? compactNumber(getAverageViews(creator)) : '확인 필요'}</strong>

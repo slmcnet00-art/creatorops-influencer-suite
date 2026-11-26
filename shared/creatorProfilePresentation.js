@@ -5,6 +5,6 @@ export function creatorAudience(creator = {}) {
   return { value: null, label: '팔로워 확인 필요', source: '미수집' }
 }
 export function creatorProfileImage(creator = {}) {
-  const urls = [creator.avatar, creator.thumbnailUrl, ...(creator.socialProfiles || []).map(profile => profile.avatar)]
+  const urls = [creator.profileImageUrl, creator.profile_image_url, creator.profilePictureUrl, creator.avatar, ...(creator.socialProfiles || []).filter(profile => !profile.platform || profile.platform === creator.platform).map(profile => profile.avatar)]
   return urls.find(url => /^https:\/\//.test(url || '') && !/unsplash\.com|ui-avatars\.com|data:image/i.test(url)) || ''
 }

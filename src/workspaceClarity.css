@@ -21,6 +21,8 @@
 @media (max-width: 760px) { .creator-group-toolbar { grid-template-columns: minmax(0, 1fr); } }
 .creator-group-workspace, .creator-group-grid, .creator-group-detail-panel { min-width: 0; }
 .creator-group-detail-panel { scroll-margin-top: 20px; }
+.creator-group-avatars > :first-child { margin-left: 0; }
+.creator-profile-placeholder svg { max-width: 65%; max-height: 65%; }
 .creator-group-detail-panel:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
 .stat-lineage { margin-top: 8px; font-size: 11px; color: var(--text-soft); }
 .stat-lineage summary { cursor: pointer; min-height: 24px; line-height: 1.6; }

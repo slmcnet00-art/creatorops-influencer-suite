@@ -1,3 +1,4 @@
+import { createCreatorProfileImages } from './creatorProfileImages.js'
 import { createOutreachJobs } from './outreachJobs.js'
 import { compareAndSwapSnapshot } from '../src/snapshotConcurrency.js'
 import { recordContentMetrics } from '../shared/contentMetricHistory.js'
@@ -140,7 +141,7 @@ app.use(cors({
   },
 }))
 app.use(express.json({ limit: '5mb' }))
-const PROTECTED_API_PATHS = ['/youtube/channel', '/discovery/youtube/search', '/discovery/google-profiles/search', '/references/search', '/ai/outreach-message', '/ai/content-guide', '/ai/campaign-strategy', '/ai/recommendations/enrich', '/public/profile-snapshot', '/tracking/refresh']
+const PROTECTED_API_PATHS = ['/youtube/channel', '/discovery/youtube/search', '/discovery/google-profiles/search', '/references/search', '/ai/outreach-message', '/ai/content-guide', '/ai/campaign-strategy', '/ai/recommendations/enrich', '/public/profile-snapshot', '/tracking/refresh', '/creators/profile-image']
 app.use(PROTECTED_API_PATHS, requireWorkspaceAccess)
 registerOsLearningBridge(app,{loadActiveConfigs:()=>getAiFeatureConfigs({strict:true}),loadDecisionPrinciples:async stage=>{
   const features=learningFeatures(stage),packs=await Promise.all(features.map(f=>decisionMemory.retrieve(f)))
@@ -2075,6 +2076,13 @@ app.put('/admin/ai-configs/:featureKey', requireAdminWorkspaceAccess, async (req
   } catch (error) {
     next(error)
   }
+})
+
+const creatorProfileImages = createCreatorProfileImages({ fetchJson })
+app.post('/creators/profile-image', async (request, response, next) => {
+  try {
+    response.set('Cache-Control', 'no-store').json({ data: await creatorProfileImages.resolve(String(request.body?.url || '')) })
+  } catch (error) { next(error) }
 })
 
 app.post('/public/profile-snapshot', async (request, response, next) => {
