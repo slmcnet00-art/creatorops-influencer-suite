@@ -54,3 +54,15 @@ test('명시적 빈 목록은 존중하고 부분 스냅샷에 없는 목록과 
   assert.deepEqual(cleared.creatorGroups, [])
   assert.deepEqual(normalizeCreatorGroups([], creators), [])
 })
+
+
+test('SYNC-3: newest brand creator copy wins regardless of brand or device order', () => {
+  const older = { brand_id: 'z', updated_at: '2026-11-25T00:00:00Z', payload: { creators: [{ id: 10, actualPrice: 500000 }] } }
+  const newer = { brand_id: 'a', updated_at: '2026-11-26T00:00:00Z', payload: { creators: [{ id: '10', actualPrice: 900000 }] } }
+  for (const snapshots of [[newer, older], [older, newer]]) {
+    const first = mergeBrandWorkspaceSnapshots({ creators: [{ id: 10, actualPrice: 100 }] }, snapshots)
+    const second = mergeBrandWorkspaceSnapshots(JSON.parse(JSON.stringify(first)), snapshots)
+    assert.equal(second.creators.length, 1)
+    assert.equal(second.creators[0].actualPrice, 900000)
+  }
+})

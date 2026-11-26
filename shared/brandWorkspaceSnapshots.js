@@ -35,12 +35,20 @@ export function mergeBrandWorkspaceSnapshots(workspace, snapshots = []) {
   const brandMap = new Map((next.brands ?? []).map((brand) => [String(brand.id), brand]))
   const creatorMap = new Map((next.creators ?? []).map((creator) => [String(creator.id), creator]))
 
+  const creatorVersions = new Map()
   snapshots.forEach((snapshot) => {
     const payload = snapshot?.payload ?? snapshot
     const brandId = String(snapshot?.brand_id ?? payload?.brandId ?? '')
     if (!brandId) return
     if (payload.brand) brandMap.set(brandId, payload.brand)
-    ;(payload.creators ?? []).forEach((creator) => creatorMap.set(String(creator.id), creator))
+    const snapshotTime = Date.parse(snapshot?.updated_at) || 0
+    ;(payload.creators ?? []).forEach((creator) => {
+      const id = String(creator.id)
+      if (!creatorVersions.has(id) || snapshotTime >= creatorVersions.get(id)) {
+        creatorMap.set(id, creator)
+        creatorVersions.set(id, snapshotTime)
+      }
+    })
     if (Array.isArray(payload.campaigns)) next.campaigns = [
       ...(next.campaigns ?? []).filter((campaign) => String(campaign.brandId) !== brandId),
       ...payload.campaigns,
